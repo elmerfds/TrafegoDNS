@@ -1,0 +1,17 @@
+#!/usr/bin/with-contenv sh
+
+# Set up DNS records file
+if [ ! -f /config/dns-records.json ]; then
+  echo "Creating initial DNS records file"
+  echo "[]" > /config/dns-records.json
+  chown abc:abc /config/dns-records.json
+fi
+
+# Create symlink from config to app directory
+if [ -L /app/dns-records.json ]; then
+  rm /app/dns-records.json
+fi
+ln -sf /config/dns-records.json /app/dns-records.json
+chown -h abc:abc /app/dns-records.json
+
+echo "TráfegoDNS configuration setup complete"

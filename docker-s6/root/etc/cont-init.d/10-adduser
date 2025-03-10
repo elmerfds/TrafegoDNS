@@ -1,0 +1,46 @@
+#!/usr/bin/with-contenv sh
+
+PUID=${PUID:-1000}
+PGID=${PGID:-1000}
+
+echo "
+-------------------------------------
+User/Group Information
+-------------------------------------
+User uid:    $(id -u abc)
+User gid:    $(id -g abc)
+Changing to: uid:$PUID gid:$PGID
+-------------------------------------
+"
+
+# Change UID and GID of abc user
+groupmod -o -g "$PGID" abc
+usermod -o -u "$PUID" abc
+
+# Handle Docker socket permission if present
+if [ -e /var/run/docker.sock ]; then
+  DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
+  echo "Docker socket GID: $DOCKER_GID"
+  
+  # Create docker group with the right GID
+  if getent group $DOCKER_GID > /dev/null; then
+    # Group with this GID already exists
+    DOCKER_GROUP=$(getent group $DOCKER_GID | cut -d: -f1)
+    echo "Group with GID $DOCKER_GID already exists as $DOCKER_GROUP"
+  else
+    # Create new group
+    groupadd -g $DOCKER_GID docker-external
+    echo "Created docker-external group with GID: $DOCKER_GID"
+  fi
+  
+  # Add abc user to the docker group
+  usermod -aG $(getent group $DOCKER_GID | cut -d: -f1) abc
+  echo "Added abc user to docker socket group"
+fi
+
+# Fix permissions
+chown -R abc:abc \
+    /app \
+    /config
+
+echo "PUID/PGID setup complete"
