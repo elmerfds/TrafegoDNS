@@ -1,10 +1,10 @@
-name: Build and Publish Docker Image
+name: Build and Publish S6 Docker Image
 
 on:
   workflow_dispatch:  # Manual trigger
   push:
     branches: [ main, master, dev ]
-    tags: [ 'v*' ]
+    tags: [ 'v*-s6' ]
     paths-ignore:
       - 'README.md'
       - '**.md'
@@ -12,7 +12,7 @@ on:
 
 jobs:
   build-and-push:
-    name: Build and Push Docker Image
+    name: Build and Push S6 Docker Image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -70,14 +70,14 @@ jobs:
             ${{ secrets.DOCKER_USERNAME }}/trafegodns
             ghcr.io/${{ github.repository }}
           tags: |
-            # Latest tag for main/master
-            type=raw,value=latest,enable=true
+            # Latest s6 tag for main/master
+            type=raw,value=s6,enable=true
             
             # Date + commit count for all builds
-            type=raw,value=${{ steps.version.outputs.VERSION }}
+            type=raw,value=s6-${{ steps.version.outputs.VERSION }}
             
             # Just date for all builds
-            type=raw,value=${{ steps.version.outputs.DATE_TAG }}
+            type=raw,value=s6-${{ steps.version.outputs.DATE_TAG }}
       
       - name: Extract metadata for Docker (Dev branch)
         id: meta-dev
@@ -89,16 +89,17 @@ jobs:
             ghcr.io/${{ github.repository }}
           tags: |
             # Dev tag
-            type=raw,value=dev
+            type=raw,value=s6-dev
             
             # Dev with version
-            type=raw,value=dev-${{ steps.version.outputs.VERSION }}
+            type=raw,value=s6-dev-${{ steps.version.outputs.VERSION }}
       
       - name: Build and push Docker image (Main branch)
         if: ${{ steps.version.outputs.IS_DEV == 'false' }}
         uses: docker/build-push-action@v4
         with:
           context: .
+          file: ./docker-s6/Dockerfile
           push: true
           tags: ${{ steps.meta-main.outputs.tags }}
           labels: ${{ steps.meta-main.outputs.labels }}
@@ -109,8 +110,8 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
+          file: ./docker-s6/Dockerfile
           push: true
           tags: ${{ steps.meta-dev.outputs.tags }}
           labels: ${{ steps.meta-dev.outputs.labels }}
           cache-from: type=gha
-          # cache-to: type=gha,mode=max
