@@ -1,17 +1,33 @@
-#!/usr/bin/with-contenv sh
+#!/usr/bin/with-contenv bash
 
-# Set up DNS records file
+# Check if the config file exists in the persistent storage
 if [ ! -f /config/dns-records.json ]; then
-  echo "Creating initial DNS records file"
-  echo "[]" > /config/dns-records.json
+  echo "Config file doesn't exist in persistent storage"
+  
+  # If the app has a dns-records.json file, copy it to config
+  if [ -f /app/dns-records.json ]; then
+    echo "Using existing dns-records.json from application"
+    cp /app/dns-records.json /config/
+  else
+    echo "Creating initial empty DNS records file"
+    echo "[]" > /config/dns-records.json
+  fi
+  
   chown abc:abc /config/dns-records.json
 fi
 
-# Create symlink from config to app directory
-if [ -L /app/dns-records.json ]; then
-  rm /app/dns-records.json
+# Now set up the symlink if needed
+if [ ! -L /app/dns-records.json ]; then
+  # If it's not already a symlink, backup the original file first
+  if [ -f /app/dns-records.json ]; then
+    echo "Backing up original dns-records.json"
+    cp /app/dns-records.json /app/dns-records.json.original
+    rm /app/dns-records.json
+  fi
+  
+  echo "Creating symlink to persistent storage"
+  ln -sf /config/dns-records.json /app/dns-records.json
 fi
-ln -sf /config/dns-records.json /app/dns-records.json
-chown -h abc:abc /app/dns-records.json
 
-echo "TráfegoDNS configuration setup complete"
+chown -h abc:abc /app/dns-records.json
+echo "DNS records configuration complete"
