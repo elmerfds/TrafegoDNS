@@ -41,49 +41,19 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/src ./src
 RUN chown -R abc:abc /app
 
-# Create script content directly - easier to debug
+# Create necessary directories for s6-overlay scripts
 RUN mkdir -p /etc/cont-init.d /etc/services.d/trafegodns
 
-# Create the init scripts directly
-RUN echo '#!/command/with-contenv bash' > /etc/cont-init.d/10-adduser && \
-    echo 'PUID=${PUID:-1001}' >> /etc/cont-init.d/10-adduser && \
-    echo 'PGID=${PGID:-1001}' >> /etc/cont-init.d/10-adduser && \
-    echo 'echo "User/Group IDs"' >> /etc/cont-init.d/10-adduser && \
-    echo 'echo "User uid: $(id -u abc) gid: $(id -g abc)"' >> /etc/cont-init.d/10-adduser && \
-    echo 'echo "Setting uid:$PUID gid:$PGID"' >> /etc/cont-init.d/10-adduser && \
-    echo 'groupmod -o -g "$PGID" abc' >> /etc/cont-init.d/10-adduser && \
-    echo 'usermod -o -u "$PUID" abc' >> /etc/cont-init.d/10-adduser && \
-    echo 'if [ -e /var/run/docker.sock ]; then' >> /etc/cont-init.d/10-adduser && \
-    echo '  DOCKER_GID=$(stat -c "%g" /var/run/docker.sock)' >> /etc/cont-init.d/10-adduser && \
-    echo '  echo "Docker socket GID: $DOCKER_GID"' >> /etc/cont-init.d/10-adduser && \
-    echo '  addgroup -g $DOCKER_GID docker-external 2>/dev/null || true' >> /etc/cont-init.d/10-adduser && \
-    echo '  addgroup abc docker-external' >> /etc/cont-init.d/10-adduser && \
-    echo 'fi' >> /etc/cont-init.d/10-adduser && \
-    echo 'chown -R abc:abc /app /config' >> /etc/cont-init.d/10-adduser
+# Copy your prepared scripts
+COPY docker-s6/root/ /
 
-RUN echo '#!/command/with-contenv bash' > /etc/cont-init.d/20-config && \
-    echo 'if [ ! -f /config/dns-records.json ]; then' >> /etc/cont-init.d/20-config && \
-    echo '  echo "Creating initial DNS records file"' >> /etc/cont-init.d/20-config && \
-    echo '  echo "[]" > /config/dns-records.json' >> /etc/cont-init.d/20-config && \
-    echo '  chown abc:abc /config/dns-records.json' >> /etc/cont-init.d/20-config && \
-    echo 'fi' >> /etc/cont-init.d/20-config && \
-    echo 'if [ -L /app/dns-records.json ]; then' >> /etc/cont-init.d/20-config && \
-    echo '  rm /app/dns-records.json' >> /etc/cont-init.d/20-config && \
-    echo 'fi' >> /etc/cont-init.d/20-config && \
-    echo 'ln -sf /config/dns-records.json /app/dns-records.json' >> /etc/cont-init.d/20-config && \
-    echo 'chown -h abc:abc /app/dns-records.json' >> /etc/cont-init.d/20-config
+# Update shebang line in scripts to use command/with-contenv bash
+RUN sed -i '1s#^#!/usr/bin/with-contenv.*##!/command/with-contenv bash#' /etc/cont-init.d/* && \
+    sed -i '1s#^#!/usr/bin/with-contenv.*##!/command/with-contenv bash#' /etc/services.d/trafegodns/*
 
-RUN echo '#!/command/with-contenv bash' > /etc/services.d/trafegodns/run && \
-    echo 'cd /app' >> /etc/services.d/trafegodns/run && \
-    echo 'echo "Starting TráfegoDNS..."' >> /etc/services.d/trafegodns/run && \
-    echo 'exec s6-setuidgid abc node src/app.js' >> /etc/services.d/trafegodns/run
-
-RUN echo '#!/command/with-contenv bash' > /etc/services.d/trafegodns/finish && \
-    echo 'echo "TráfegoDNS exited with status $?"' >> /etc/services.d/trafegodns/finish && \
-    echo 'exit 0' >> /etc/services.d/trafegodns/finish
-
-# Make scripts executable
-RUN chmod +x /etc/cont-init.d/* /etc/services.d/trafegodns/*
+# Make scripts executable and fix line endings
+RUN chmod +x /etc/cont-init.d/* /etc/services.d/trafegodns/* && \
+    sed -i 's/\r$//' /etc/cont-init.d/* /etc/services.d/trafegodns/*
 
 # Configure volumes
 VOLUME /config
