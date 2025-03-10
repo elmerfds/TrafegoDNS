@@ -1,7 +1,7 @@
 # Stage 1: Generate package-lock.json
 FROM node:23-alpine AS dependencies
 WORKDIR /app
-COPY ../package.json .
+COPY package.json .
 RUN npm install --package-lock-only
 RUN npm install --omit=dev
 
@@ -10,7 +10,7 @@ FROM node:23-alpine AS build
 WORKDIR /app
 COPY --from=dependencies /app/package*.json ./
 COPY --from=dependencies /app/node_modules ./node_modules
-COPY ../src ./src
+COPY src ./src
 
 # Stage 3: Create the production image with s6-overlay
 FROM node:23-alpine
@@ -43,7 +43,7 @@ COPY --from=build /app/src ./src
 RUN chown -R abc:abc /app
 
 # Copy s6-overlay configuration
-COPY root/ /
+COPY docker-s6/root/ /
 
 # Make scripts executable
 RUN chmod -R +x /etc/cont-init.d && \
