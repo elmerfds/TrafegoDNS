@@ -47,13 +47,20 @@ RUN mkdir -p /etc/cont-init.d /etc/services.d/trafegodns
 # Copy your prepared scripts
 COPY docker-s6/root/ /
 
-# Update shebang line in scripts to use command/with-contenv bash
-RUN sed -i '1s#^#!/usr/bin/with-contenv.*##!/command/with-contenv bash#' /etc/cont-init.d/* && \
-    sed -i '1s#^#!/usr/bin/with-contenv.*##!/command/with-contenv bash#' /etc/services.d/trafegodns/*
+# Update the scripts to use command/with-contenv and fix any issues
+RUN for script in /etc/cont-init.d/* /etc/services.d/trafegodns/*; do \
+    if [ -f "$script" ]; then \
+        # Replace the shebang line correctly \
+        sed -i '1s|^#!/usr/bin/with-contenv.*|#!/command/with-contenv bash|' "$script"; \
+        # Make executable \
+        chmod +x "$script"; \
+        # Remove Windows line endings \
+        sed -i 's/\r$//' "$script"; \
+    fi; \
+done
 
-# Make scripts executable and fix line endings
-RUN chmod +x /etc/cont-init.d/* /etc/services.d/trafegodns/* && \
-    sed -i 's/\r$//' /etc/cont-init.d/* /etc/services.d/trafegodns/*
+# Verify the scripts have the correct shebang
+RUN head -1 /etc/cont-init.d/* /etc/services.d/trafegodns/*
 
 # Configure volumes
 VOLUME /config
