@@ -1,33 +1,20 @@
 #!/usr/bin/with-contenv bash
 
-# Check if the config file exists in the persistent storage
-if [ ! -f /config/dns-records.json ]; then
-  echo "Config file doesn't exist in persistent storage"
-  
-  # If the app has a dns-records.json file, copy it to config
-  if [ -f /app/dns-records.json ]; then
-    echo "Using existing dns-records.json from application"
-    cp /app/dns-records.json /config/
-  else
-    echo "Creating initial empty DNS records file"
-    echo "[]" > /config/dns-records.json
-  fi
-  
-  chown abc:abc /config/dns-records.json
+# Make sure the config directory has correct permissions
+echo "Setting permissions on config directory"
+chown abc:abc /config
+
+# If the config directory is mounted but empty, create a basic structure
+if [ -d /config ] && [ ! "$(ls -A /config)" ]; then
+  echo "Config directory is empty, creating initial structure"
+  mkdir -p /config/data
+  chown -R abc:abc /config
 fi
 
-# Now set up the symlink if needed
-if [ ! -L /app/dns-records.json ]; then
-  # If it's not already a symlink, backup the original file first
-  if [ -f /app/dns-records.json ]; then
-    echo "Backing up original dns-records.json"
-    cp /app/dns-records.json /app/dns-records.json.original
-    rm /app/dns-records.json
-  fi
-  
-  echo "Creating symlink to persistent storage"
-  ln -sf /config/dns-records.json /app/dns-records.json
+# Check if app data file exists and make sure it has correct permissions
+if [ -f /app/dns-records.json ]; then
+  echo "Setting permissions on app data file"
+  chown abc:abc /app/dns-records.json
 fi
 
-chown -h abc:abc /app/dns-records.json
-echo "DNS records configuration complete"
+echo "Configuration setup complete"
