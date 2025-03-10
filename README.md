@@ -31,6 +31,7 @@ A service that automatically manages DNS records based on Traefik routing config
 - [Performance Optimisation](#performance-optimisation)
 - [Automatic Apex Domain Handling](#automatic-apex-domain-handling)
 - [Building from Source](#building-from-source)
+- [Development](#development)
 - [Licence](#licence)
 
 ## Features
@@ -539,6 +540,26 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   traefik-dns-manager
 ```
+
+## Development
+
+### Technologies
+- **Backend**: Node.js with optimised async processing
+- **DNS Integration**: Native API clients for Cloudflare, DigitalOcean, and AWS Route53
+- **Container Integration**: Docker API via dockerode
+- **Event Architecture**: Custom event bus for decoupled component communication
+- **Configuration**: Environment-based with intelligent defaults
+- **Resilience**: Retry mechanisms and error categorisation
+- **Caching**: Local DNS record caching for improved performance
+
+### Approach
+- Core concept, architecture, and management by the project author
+- Implementation assistance from Claude AI
+- A collaborative blend of human domain expertise with AI capabilities
+
+### Inspiration
+- [cloudflare-dns-swarm](https://github.com/MarlBurroW/cloudflare-dns-swarm)
+- [docker-traefik-cloudflare-companion](https://github.com/tiredofit/docker-traefik-cloudflare-companion/)
 
 ## Licence
 
