@@ -16,11 +16,10 @@ COPY src ./src
 FROM node:23-alpine
 WORKDIR /app
 
-# Install s6-overlay
+# Install s6-overlay v3
 ARG S6_OVERLAY_VERSION=3.1.5.0
-ARG S6_OVERLAY_ARCH=x86_64
 
-# Switch to root to install dependencies and set up s6
+# Switch to root for installation
 USER root
 
 # Install required packages
@@ -28,10 +27,7 @@ RUN apk add --no-cache shadow curl xz tar bash
 
 # Download and install s6-overlay
 RUN curl -sSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz | tar -Jxpf - -C / && \
-    curl -sSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_OVERLAY_ARCH}.tar.xz | tar -Jxpf - -C /
-
-# Debug: Show directory structure after s6 installation
-RUN find / -path "*/s6*" -type d | sort
+    curl -sSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-x86_64.tar.xz | tar -Jxpf - -C /
 
 # Create abc user for PUID/PGID support
 RUN addgroup -g 1001 abc && \
@@ -45,25 +41,51 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/src ./src
 RUN chown -R abc:abc /app
 
-# Copy your scripts with an explicit path
-RUN mkdir -p /etc/services.d/trafegodns && mkdir -p /etc/cont-init.d
+# Create script content directly - easier to debug
+RUN mkdir -p /etc/cont-init.d /etc/services.d/trafegodns
 
-# Create initialization scripts with explicit content
-COPY docker-s6/root/etc/cont-init.d/10-adduser /etc/cont-init.d/10-adduser
-COPY docker-s6/root/etc/cont-init.d/20-config /etc/cont-init.d/20-config
-COPY docker-s6/root/etc/services.d/trafegodns/run /etc/services.d/trafegodns/run
-COPY docker-s6/root/etc/services.d/trafegodns/finish /etc/services.d/trafegodns/finish
+# Create the init scripts directly
+RUN echo '#!/command/with-contenv bash' > /etc/cont-init.d/10-adduser && \
+    echo 'PUID=${PUID:-1001}' >> /etc/cont-init.d/10-adduser && \
+    echo 'PGID=${PGID:-1001}' >> /etc/cont-init.d/10-adduser && \
+    echo 'echo "User/Group IDs"' >> /etc/cont-init.d/10-adduser && \
+    echo 'echo "User uid: $(id -u abc) gid: $(id -g abc)"' >> /etc/cont-init.d/10-adduser && \
+    echo 'echo "Setting uid:$PUID gid:$PGID"' >> /etc/cont-init.d/10-adduser && \
+    echo 'groupmod -o -g "$PGID" abc' >> /etc/cont-init.d/10-adduser && \
+    echo 'usermod -o -u "$PUID" abc' >> /etc/cont-init.d/10-adduser && \
+    echo 'if [ -e /var/run/docker.sock ]; then' >> /etc/cont-init.d/10-adduser && \
+    echo '  DOCKER_GID=$(stat -c "%g" /var/run/docker.sock)' >> /etc/cont-init.d/10-adduser && \
+    echo '  echo "Docker socket GID: $DOCKER_GID"' >> /etc/cont-init.d/10-adduser && \
+    echo '  addgroup -g $DOCKER_GID docker-external 2>/dev/null || true' >> /etc/cont-init.d/10-adduser && \
+    echo '  addgroup abc docker-external' >> /etc/cont-init.d/10-adduser && \
+    echo 'fi' >> /etc/cont-init.d/10-adduser && \
+    echo 'chown -R abc:abc /app /config' >> /etc/cont-init.d/10-adduser
 
-# Debug: Show script files
-RUN ls -la /etc/cont-init.d/ && \
-    ls -la /etc/services.d/trafegodns/
+RUN echo '#!/command/with-contenv bash' > /etc/cont-init.d/20-config && \
+    echo 'if [ ! -f /config/dns-records.json ]; then' >> /etc/cont-init.d/20-config && \
+    echo '  echo "Creating initial DNS records file"' >> /etc/cont-init.d/20-config && \
+    echo '  echo "[]" > /config/dns-records.json' >> /etc/cont-init.d/20-config && \
+    echo '  chown abc:abc /config/dns-records.json' >> /etc/cont-init.d/20-config && \
+    echo 'fi' >> /etc/cont-init.d/20-config && \
+    echo 'if [ -L /app/dns-records.json ]; then' >> /etc/cont-init.d/20-config && \
+    echo '  rm /app/dns-records.json' >> /etc/cont-init.d/20-config && \
+    echo 'fi' >> /etc/cont-init.d/20-config && \
+    echo 'ln -sf /config/dns-records.json /app/dns-records.json' >> /etc/cont-init.d/20-config && \
+    echo 'chown -h abc:abc /app/dns-records.json' >> /etc/cont-init.d/20-config
 
-# Make scripts executable and fix line endings
-RUN chmod +x /etc/cont-init.d/* && \
-    chmod +x /etc/services.d/trafegodns/* && \
-    sed -i -e 's/\r$//' /etc/cont-init.d/* && \
-    sed -i -e 's/\r$//' /etc/services.d/trafegodns/*
+RUN echo '#!/command/with-contenv bash' > /etc/services.d/trafegodns/run && \
+    echo 'cd /app' >> /etc/services.d/trafegodns/run && \
+    echo 'echo "Starting TráfegoDNS..."' >> /etc/services.d/trafegodns/run && \
+    echo 'exec s6-setuidgid abc node src/app.js' >> /etc/services.d/trafegodns/run
 
+RUN echo '#!/command/with-contenv bash' > /etc/services.d/trafegodns/finish && \
+    echo 'echo "TráfegoDNS exited with status $?"' >> /etc/services.d/trafegodns/finish && \
+    echo 'exit 0' >> /etc/services.d/trafegodns/finish
+
+# Make scripts executable
+RUN chmod +x /etc/cont-init.d/* /etc/services.d/trafegodns/*
+
+# Configure volumes
 VOLUME /config
 
 # Set entrypoint to s6-overlay init
