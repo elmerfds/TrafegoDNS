@@ -30,9 +30,14 @@ RUN apk add --no-cache shadow curl xz tar
 RUN curl -sSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz | tar -Jxpf - -C / && \
     curl -sSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_OVERLAY_ARCH}.tar.xz | tar -Jxpf - -C /
 
-# Create abc user for PUID/PGID support
-RUN addgroup -g 1000 abc && \
-    adduser -u 1000 -G abc -h /home/abc -s /bin/sh -D abc && \
+# Check for existing user/group
+RUN echo "Checking for existing user/group with ID 1000"
+RUN getent group 1000 || echo "No group with GID 1000"
+RUN getent passwd 1000 || echo "No user with UID 1000"
+
+# Create abc user for PUID/PGID support - using 1001 to avoid conflicts
+RUN addgroup -g 1001 abc && \
+    adduser -u 1001 -G abc -h /home/abc -s /bin/sh -D abc && \
     mkdir -p /config && \
     chown -R abc:abc /config
 
