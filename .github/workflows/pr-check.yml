@@ -24,6 +24,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ./docker-s6/Dockerfile
           push: false
           load: true
           tags: trafegodns:pr-check

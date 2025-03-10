@@ -1,10 +1,10 @@
-name: Build and Publish S6 Docker Image
+name: Build and Publish Docker Image
 
 on:
   workflow_dispatch:  # Manual trigger
   push:
     branches: [ main, master, dev ]
-    tags: [ 'v*-s6' ]
+    tags: [ 'v*' ]
     paths-ignore:
       - 'README.md'
       - '**.md'
@@ -12,7 +12,7 @@ on:
 
 jobs:
   build-and-push:
-    name: Build and Push S6 Docker Image
+    name: Build and Push Docker Image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -70,14 +70,14 @@ jobs:
             ${{ secrets.DOCKER_USERNAME }}/trafegodns
             ghcr.io/${{ github.repository }}
           tags: |
-            # Latest s6 tag for main/master
-            type=raw,value=s6,enable=true
+            # Latest tag for main/master
+            type=raw,value=latest,enable=true
             
             # Date + commit count for all builds
-            type=raw,value=s6-${{ steps.version.outputs.VERSION }}
+            type=raw,value=${{ steps.version.outputs.VERSION }}
             
             # Just date for all builds
-            type=raw,value=s6-${{ steps.version.outputs.DATE_TAG }}
+            type=raw,value=${{ steps.version.outputs.DATE_TAG }}
       
       - name: Extract metadata for Docker (Dev branch)
         id: meta-dev
@@ -89,10 +89,10 @@ jobs:
             ghcr.io/${{ github.repository }}
           tags: |
             # Dev tag
-            type=raw,value=s6-dev
+            type=raw,value=dev
             
             # Dev with version
-            type=raw,value=s6-dev-${{ steps.version.outputs.VERSION }}
+            type=raw,value=dev-${{ steps.version.outputs.VERSION }}
       
       - name: Build and push Docker image (Main branch)
         if: ${{ steps.version.outputs.IS_DEV == 'false' }}
