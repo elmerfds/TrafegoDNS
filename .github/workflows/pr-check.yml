@@ -17,20 +17,37 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+      
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: Build Docker image
-        uses: docker/build-push-action@v6
+      - name: Build Docker image for multiple architectures
+        uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker-s6/Dockerfile
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: false
+          load: false  # Can't use load with multiple platforms
+          tags: trafegodns:pr-check
+          cache-from: type=gha
+      
+      - name: Build Docker image for local verification
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker-s6/Dockerfile
+          platforms: linux/amd64  # Just build for the CI runner architecture
           push: false
           load: true
-          tags: trafegodns:pr-check
+          tags: trafegodns:local-check
           cache-from: type=gha
       
       - name: Verify image builds successfully
         run: |
-          docker image inspect trafegodns:pr-check
+          docker image inspect trafegodns:local-check
           echo "✅ Docker image built successfully"

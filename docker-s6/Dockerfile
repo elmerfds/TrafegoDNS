@@ -18,6 +18,7 @@ WORKDIR /app
 
 # Install s6-overlay v3
 ARG S6_OVERLAY_VERSION=3.1.5.0
+ARG TARGETARCH
 
 # Switch to root for installation
 USER root
@@ -25,9 +26,17 @@ USER root
 # Install required packages
 RUN apk add --no-cache shadow curl xz tar bash
 
-# Download and install s6-overlay
-RUN curl -sSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz | tar -Jxpf - -C / && \
-    curl -sSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-x86_64.tar.xz | tar -Jxpf - -C /
+# Set architecture for s6-overlay download
+RUN case "${TARGETARCH}" in \
+        "amd64")  S6_ARCH="x86_64"  ;; \
+        "386")    S6_ARCH="i686"    ;; \
+        "arm64")  S6_ARCH="aarch64" ;; \
+        "arm")    S6_ARCH="armhf"   ;; \
+        *)        S6_ARCH="${TARGETARCH}" ;; \
+    esac && \
+    echo "Building for architecture: ${TARGETARCH}, s6-overlay arch: ${S6_ARCH}" && \
+    curl -sSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz | tar -Jxpf - -C / && \
+    curl -sSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz | tar -Jxpf - -C /
 
 # Create abc user for PUID/PGID support
 RUN addgroup -g 1001 abc && \
