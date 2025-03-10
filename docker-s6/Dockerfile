@@ -30,6 +30,9 @@ RUN apk add --no-cache shadow curl xz tar bash
 RUN curl -sSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz | tar -Jxpf - -C / && \
     curl -sSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_OVERLAY_ARCH}.tar.xz | tar -Jxpf - -C /
 
+# Debug: Show directory structure after s6 installation
+RUN find / -path "*/s6*" -type d | sort
+
 # Create abc user for PUID/PGID support
 RUN addgroup -g 1001 abc && \
     adduser -u 1001 -G abc -h /home/abc -s /bin/bash -D abc && \
@@ -42,25 +45,24 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/src ./src
 RUN chown -R abc:abc /app
 
-# Create s6 directory structure 
-RUN find / -name "s6-rc" -type d | xargs ls -la && \
-    mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d && \
-    mkdir -p /etc/cont-init.d && \
-    mkdir -p /etc/services.d/trafegodns
+# Copy your scripts with an explicit path
+RUN mkdir -p /etc/services.d/trafegodns && mkdir -p /etc/cont-init.d
 
-# Create init scripts with correct content
-RUN echo '#!/usr/bin/with-contenv bash\n\nPUID=${PUID:-1001}\nPGID=${PGID:-1001}\n\necho "-------------------------------------"\necho "User/Group Information"\necho "-------------------------------------"\necho "User uid:    $(id -u abc)"\necho "User gid:    $(id -g abc)"\necho "Changing to: uid:$PUID gid:$PGID"\necho "-------------------------------------"\n\n# Change UID and GID of abc user\ngroupmod -o -g "$PGID" abc\nusermod -o -u "$PUID" abc\n\n# Handle Docker socket permission if present\nif [ -e /var/run/docker.sock ]; then\n  DOCKER_GID=$(stat -c '\''%g'\'' /var/run/docker.sock)\n  echo "Docker socket GID: $DOCKER_GID"\n  \n  # Create docker group with the correct GID\n  if getent group $DOCKER_GID > /dev/null; then\n    # Group with this GID already exists\n    DOCKER_GROUP=$(getent group $DOCKER_GID | cut -d: -f1)\n    echo "Group with GID $DOCKER_GID already exists as $DOCKER_GROUP"\n  else\n    # Create new group\n    addgroup -g $DOCKER_GID docker-external\n    DOCKER_GROUP="docker-external"\n    echo "Created docker-external group with GID: $DOCKER_GID"\n  fi\n  \n  # Add abc user to the docker group\n  echo "Adding abc user to $DOCKER_GROUP group"\n  addgroup abc $DOCKER_GROUP\n  \n  # Check permissions\n  echo "Docker socket permissions:"\n  ls -la /var/run/docker.sock\n  \n  echo "Group membership for abc:"\n  id abc\nfi\n\n# Fix permissions\nchown -R abc:abc \\\n    /app \\\n    /config\n\necho "PUID/PGID setup complete"' > /etc/cont-init.d/10-adduser
+# Create initialization scripts with explicit content
+COPY docker-s6/root/etc/cont-init.d/10-adduser /etc/cont-init.d/10-adduser
+COPY docker-s6/root/etc/cont-init.d/20-config /etc/cont-init.d/20-config
+COPY docker-s6/root/etc/services.d/trafegodns/run /etc/services.d/trafegodns/run
+COPY docker-s6/root/etc/services.d/trafegodns/finish /etc/services.d/trafegodns/finish
 
-RUN echo '#!/usr/bin/with-contenv bash\n\n# Set up DNS records file\nif [ ! -f /config/dns-records.json ]; then\n  echo "Creating initial DNS records file"\n  echo "[]" > /config/dns-records.json\n  chown abc:abc /config/dns-records.json\nfi\n\n# Create symlink from config to app directory\nif [ -L /app/dns-records.json ]; then\n  rm /app/dns-records.json\nfi\nln -sf /config/dns-records.json /app/dns-records.json\nchown -h abc:abc /app/dns-records.json\n\necho "TráfegoDNS configuration setup complete"' > /etc/cont-init.d/20-config
-
-RUN echo '#!/usr/bin/with-contenv bash\n\necho "Starting TráfegoDNS..."\ncd /app\nexec s6-setuidgid abc node src/app.js' > /etc/services.d/trafegodns/run
-
-RUN echo '#!/usr/bin/with-contenv bash\n\necho "TráfegoDNS has exited with status $?. Restarting..."\nexit 0' > /etc/services.d/trafegodns/finish
+# Debug: Show script files
+RUN ls -la /etc/cont-init.d/ && \
+    ls -la /etc/services.d/trafegodns/
 
 # Make scripts executable and fix line endings
 RUN chmod +x /etc/cont-init.d/* && \
     chmod +x /etc/services.d/trafegodns/* && \
-    find /etc -type f -name "1*" -o -name "2*" -o -name "run" -o -name "finish" | xargs sed -i -e 's/\r$//'
+    sed -i -e 's/\r$//' /etc/cont-init.d/* && \
+    sed -i -e 's/\r$//' /etc/services.d/trafegodns/*
 
 VOLUME /config
 
