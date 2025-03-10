@@ -98,7 +98,8 @@ jobs:
         if: ${{ steps.version.outputs.IS_DEV == 'false' }}
         uses: docker/build-push-action@v4
         with:
-          context: ./docker-s6  # Set context to docker-s6 directory
+          context: .
+          file: ./docker-s6/Dockerfile
           push: true
           tags: ${{ steps.meta-main.outputs.tags }}
           labels: ${{ steps.meta-main.outputs.labels }}
@@ -108,7 +109,8 @@ jobs:
         if: ${{ steps.version.outputs.IS_DEV == 'true' }}
         uses: docker/build-push-action@v4
         with:
-          context: ./docker-s6  # Set context to docker-s6 directory 
+          context: .
+          file: ./docker-s6/Dockerfile
           push: true
           tags: ${{ steps.meta-dev.outputs.tags }}
           labels: ${{ steps.meta-dev.outputs.labels }}
