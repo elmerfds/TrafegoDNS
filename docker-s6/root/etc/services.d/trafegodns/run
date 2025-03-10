@@ -1,5 +1,7 @@
 #!/usr/bin/with-contenv bash
 
+echo "-------------------------------------"
 echo "Starting TráfegoDNS..."
+echo "-------------------------------------"
 cd /app
 exec s6-setuidgid abc node src/app.js
