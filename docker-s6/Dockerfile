@@ -43,7 +43,7 @@ COPY --from=build /app/src ./src
 RUN chown -R abc:abc /app
 
 # Copy s6-overlay configuration
-COPY root/ /
+COPY ./root/ /
 
 # Make scripts executable
 RUN chmod -R +x /etc/cont-init.d && \
