@@ -290,6 +290,8 @@ Different DNS providers have different requirements for TTL values:
 | DigitalOcean | 30 seconds | 30 seconds | Values below 30 are automatically adjusted to 30 |
 | Route53 | 60 seconds | 60 seconds | Values below 60 are automatically adjusted to 60 |
 
+The application automatically applies the appropriate minimum TTL value for each provider. If you set `DNS_DEFAULT_TTL` in your environment, it will be used only if it's equal to or higher than the provider-specific minimum.
+
 ## Usage Examples
 
 ### Basic Service with Default Settings
@@ -436,7 +438,7 @@ services:
 | `DNS_DEFAULT_TYPE` | Default DNS record type | `CNAME` | No |
 | `DNS_DEFAULT_CONTENT` | Default record content | Value of `CLOUDFLARE_ZONE` or `DO_DOMAIN` or `ROUTE53_ZONE` | No |
 | `DNS_DEFAULT_PROXIED` | Default Cloudflare proxy status | `true` | No |
-| `DNS_DEFAULT_TTL` | Default TTL in seconds | `1` (Auto for Cloudflare) or minimum TTL for provider | No |
+| `DNS_DEFAULT_TTL` | Default TTL in seconds | Provider-specific: Cloudflare=1 (Auto), DigitalOcean=30, Route53=60 | No |
 | `DNS_DEFAULT_MANAGE` | Global DNS management mode | `true` | No |
 
 ### IP Address Settings
