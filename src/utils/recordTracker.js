@@ -11,14 +11,33 @@ class RecordTracker {
   constructor(config) {
     this.config = config;
     this.trackedRecords = new Map();
-    this.trackerFile = path.join(process.cwd(), 'dns-records.json');
+    
+    // Define config directory path for data storage
+    const configDir = path.join('/config', 'data');
+    
+    // Ensure the config directory exists
+    if (!fs.existsSync(configDir)) {
+      try {
+        fs.mkdirSync(configDir, { recursive: true });
+        logger.debug(`Created directory: ${configDir}`);
+      } catch (error) {
+        logger.error(`Failed to create config directory: ${error.message}`);
+      }
+    }
+    
+    // Define the new path for the tracker file
+    this.trackerFile = path.join(configDir, 'dns-records.json');
+    
+    // Also check for the legacy location
+    this.legacyTrackerFile = path.join(process.cwd(), 'dns-records.json');
+    
     this.providerDomain = config.getProviderDomain();
     this.provider = config.dnsProvider;
     
     // Load preserved hostnames from config
     this.loadPreservedHostnames();
     
-    // Initialise the tracker
+    // Initialize the tracker
     this.loadTrackedRecords();
   }
   
@@ -50,13 +69,14 @@ class RecordTracker {
    * Load tracked records from file
    */
   loadTrackedRecords() {
+    // Start with an empty map
+    this.trackedRecords = new Map();
+    
     try {
+      // First check if we have data in the new location
       if (fs.existsSync(this.trackerFile)) {
         const data = fs.readFileSync(this.trackerFile, 'utf8');
         const records = JSON.parse(data);
-        
-        // Convert to Map for faster lookups
-        this.trackedRecords = new Map();
         
         // Process each record
         for (const record of records) {
@@ -65,15 +85,42 @@ class RecordTracker {
         }
         
         logger.debug(`Loaded ${this.trackedRecords.size} tracked DNS records from ${this.trackerFile}`);
-      } else {
-        logger.debug(`No DNS record tracker file found at ${this.trackerFile}, starting fresh`);
-        this.trackedRecords = new Map();
+      } 
+      // If not, check the legacy location
+      else if (fs.existsSync(this.legacyTrackerFile)) {
+        logger.info(`No records found at ${this.trackerFile}, checking legacy location ${this.legacyTrackerFile}`);
+        
+        const data = fs.readFileSync(this.legacyTrackerFile, 'utf8');
+        const records = JSON.parse(data);
+        
+        // Process each record
+        for (const record of records) {
+          const key = this.getRecordKey(record.provider, record.domain, record.name, record.type);
+          this.trackedRecords.set(key, record);
+        }
+        
+        logger.info(`Loaded ${this.trackedRecords.size} tracked DNS records from legacy location ${this.legacyTrackerFile}`);
+        logger.info(`Will save to new location ${this.trackerFile} on next update`);
+        
+        // Save to the new location right away
+        this.saveTrackedRecords();
+        
+        // Create a backup of the legacy file
+        try {
+          const backupFile = `${this.legacyTrackerFile}.backup`;
+          fs.copyFileSync(this.legacyTrackerFile, backupFile);
+          logger.info(`Created backup of legacy tracker file at ${backupFile}`);
+        } catch (backupError) {
+          logger.warn(`Could not create backup of legacy file: ${backupError.message}`);
+        }
+      }
+      // If neither exists, start fresh
+      else {
+        logger.debug(`No DNS record tracker file found, starting fresh`);
         this.saveTrackedRecords();
       }
     } catch (error) {
       logger.error(`Error loading tracked DNS records: ${error.message}`);
-      // Start with empty tracking if file load fails
-      this.trackedRecords = new Map();
     }
   }
   

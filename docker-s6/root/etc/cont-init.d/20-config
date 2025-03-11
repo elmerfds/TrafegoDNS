@@ -1,4 +1,11 @@
-#!/usr/bin/with-contenv bash
+#!/command/with-contenv bash
+
+LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+echo
+echo "-------------------------------------"
+echo "Directory Permissions Setup"
+echo "-------------------------------------"
 
 # Make sure the config directory has correct permissions
 echo "Setting permissions on config directory"
@@ -17,4 +24,5 @@ if [ -f /app/dns-records.json ]; then
   chown abc:abc /app/dns-records.json
 fi
 
-echo "Configuration setup complete"
+echo "Directory setup complete"
+echo "-------------------------------------"

@@ -1,17 +1,18 @@
-#!/usr/bin/with-contenv bash
+#!/command/with-contenv bash
 
 PUID=${PUID:-1001}
 PGID=${PGID:-1001}
+LOG_LEVEL=${LOG_LEVEL:-INFO}
 
-echo "
--------------------------------------
-User/Group Information
--------------------------------------
-User uid:    $(id -u abc)
-User gid:    $(id -g abc)
-Changing to: uid:$PUID gid:$PGID
--------------------------------------
-"
+echo
+echo "-------------------------------------"
+echo "User/Group Configuration"
+echo "-------------------------------------"
+echo "User uid:    $(id -u abc)"
+echo "User gid:    $(id -g abc)"
+echo "Changing to: uid:$PUID gid:$PGID"
+echo "-------------------------------------"
+echo
 
 # Change UID and GID of abc user
 groupmod -o -g "$PGID" abc
@@ -38,12 +39,13 @@ if [ -e /var/run/docker.sock ]; then
   echo "Adding abc user to $DOCKER_GROUP group"
   addgroup abc $DOCKER_GROUP
   
-  # Check permissions
-  echo "Docker socket permissions:"
-  ls -la /var/run/docker.sock
-  
-  echo "Group membership for abc:"
-  id abc
+  # Verify the setup
+  if [[ "$LOG_LEVEL" == "DEBUG" || "$LOG_LEVEL" == "TRACE" ]]; then
+    echo "Docker socket permissions:"
+    ls -la /var/run/docker.sock
+    echo "Group membership for abc:"
+    id abc
+  fi
 fi
 
 # Fix permissions

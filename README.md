@@ -28,6 +28,7 @@ A service that automatically manages DNS records based on Traefik routing config
 - [Automated Cleanup of Orphaned Records](#automated-cleanup-of-orphaned-records)
   - [Preserving Specific DNS Records](#preserving-specific-dns-records)
 - [DNS Record Tracking](#dns-record-tracking)
+- [Configuration Storage](#configuration-storage)
 - [DNS Management Modes](#dns-management-modes)
 - [Logging System](#logging-system)
 - [Performance Optimisation](#performance-optimisation)
@@ -51,6 +52,7 @@ A service that automatically manages DNS records based on Traefik routing config
 - 🔒 Preserves manually created DNS records using smart tracking system
 - 🛡️ Support for explicitly preserving specific hostnames from cleanup
 - 🔐 PUID/PGID support for proper file permissions
+- 💾 Persistent configuration storage in mounted volumes
 
 ## Supported DNS Providers
 
@@ -117,8 +119,7 @@ services:
       - API_TIMEOUT=60000  # API request timeout in milliseconds (60 seconds)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./dns-records.json:/app/dns-records.json  # Persist tracking information
-      - ./config:/config                          # Optional: for persistent configuration
+      - ./config:/config   # Persistent configuration storage
     networks:
       - traefik-network
 ```
@@ -495,19 +496,33 @@ Preserved hostnames will be logged during startup and skipped during any cleanup
 
 ## DNS Record Tracking
 
-The application maintains a persistent record of all DNS entries it creates in a JSON file `dns-records.json`. This enables:
+The application maintains a persistent record of all DNS entries it creates in a tracking file. This enables:
 
 1. **Provider Independence**: Consistent tracking across different DNS providers (Cloudflare, DigitalOcean, Route53)
 2. **Safety**: Only records created by the tool are ever deleted during cleanup
 3. **Persistence**: Record history is maintained between application restarts
 
-For optimal reliability, mount this file as a volume in your Docker setup:
+## Configuration Storage
+
+TráfegoDNS stores its configuration and data files in the `/config` directory within the container, which should be mounted as a volume for persistence:
 
 ```yaml
 volumes:
   - /var/run/docker.sock:/var/run/docker.sock:ro
-  - ./dns-records.json:/app/dns-records.json
+  - ./config:/config
 ```
+
+The main configuration files include:
+
+- `/config/data/dns-records.json` - Tracking information for all DNS records managed by the application
+
+This approach provides several benefits:
+
+1. **Data Persistence**: All data is stored in a mounted volume that persists across container restarts and updates
+2. **Backup Capability**: The config directory can be easily backed up
+3. **Migration Support**: Moving to a new server is as simple as copying the config directory
+
+The application will automatically migrate any existing data from legacy locations into the new structure.
 
 ## DNS Management Modes
 
@@ -599,6 +614,7 @@ docker run -d \
   -e CLOUDFLARE_TOKEN=your_token \
   -e CLOUDFLARE_ZONE=example.com \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v ./config:/config \
   traefik-dns-manager
 ```
 
