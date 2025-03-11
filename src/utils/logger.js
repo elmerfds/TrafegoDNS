@@ -35,7 +35,7 @@ class Logger {
       warning: '⚠️'
     };
     
-    console.log(`Logger initialized with level: ${this.levelNames[this.level]} (${this.level})`);
+    console.log(`Logger initialised with level: ${this.levelNames[this.level]} (${this.level})`);
   }
   
   /**
