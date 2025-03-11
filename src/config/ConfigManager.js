@@ -1,5 +1,5 @@
 /**
- * Configuration management for Traefik DNS Manager
+ * Configuration management for Traefik DNS Manager 
  */
 const axios = require('axios');
 const logger = require('../utils/logger');
@@ -126,6 +126,9 @@ class ConfigManager {
     
     // Cache refresh interval in milliseconds (default: 1 hour)
     this.cacheRefreshInterval = EnvironmentLoader.getInt('DNS_CACHE_REFRESH_INTERVAL', 3600000);
+
+    // API request timeout in milliseconds (default: 1 minute)
+    this.apiTimeout = EnvironmentLoader.getInt('API_TIMEOUT', 60000);    
     
     // IP refresh interval in milliseconds (default: 1 hour)
     this.ipRefreshInterval = EnvironmentLoader.getInt('IP_REFRESH_INTERVAL', 3600000);
