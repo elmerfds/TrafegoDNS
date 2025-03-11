@@ -16,7 +16,7 @@ class TraefikMonitor {
     // Initialize HTTP client
     this.client = axios.create({
       baseURL: config.traefikApiUrl,
-      timeout: 5000
+      timeout: config.apiTimeout  // Use the configurable timeout
     });
     
     // Add basic auth if configured
