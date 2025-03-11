@@ -10,11 +10,13 @@ A service that automatically manages DNS records based on Traefik routing config
 
 - [Features](#features)
 - [Supported DNS Providers](#supported-dns-providers)
+- [Supported Architectures](#supported-architectures)
 - [Quick Start](#quick-start)
 - [DNS Provider Configuration](#dns-provider-configuration)
   - [Cloudflare](#cloudflare)
   - [DigitalOcean](#digitalocean)
   - [Route53](#route53)
+- [User/Group Permissions](#usergroup-permissions)
 - [Service Labels](#service-labels)
   - [Basic Labels](#basic-labels-provider-agnostic)
   - [Provider-Specific Labels](#provider-specific-labels-override-provider-agnostic-labels)
@@ -48,6 +50,7 @@ A service that automatically manages DNS records based on Traefik routing config
 - 🔌 Multi-provider support with provider-agnostic label system
 - 🔒 Preserves manually created DNS records using smart tracking system
 - 🛡️ Support for explicitly preserving specific hostnames from cleanup
+- 🔐 PUID/PGID support for proper file permissions
 
 ## Supported DNS Providers
 
@@ -56,6 +59,16 @@ A service that automatically manages DNS records based on Traefik routing config
 | ![Cloudflare](https://img.shields.io/badge/Cloudflare-F38020?style=flat&logo=cloudflare&logoColor=white) | ![Stable](https://img.shields.io/badge/✓-Stable-success) | Full support for all record types and features |
 | ![DigitalOcean](https://img.shields.io/badge/DigitalOcean-0080FF?style=flat&logo=digitalocean&logoColor=white) | ![Stable](https://img.shields.io/badge/✓-Stable-success) | Full support for all record types and features |
 | ![AWS](https://img.shields.io/badge/Route53-FF9900?style=flat&logo=amazonaws&logoColor=white) | ![Stable](https://img.shields.io/badge/✓-Stable-success) | Full support for all record types and features |
+
+## Supported Architectures
+
+TráfegoDNS supports multiple architectures with multi-arch Docker images:
+
+- **amd64**: Standard 64-bit PCs and servers
+- **arm64**: 64-bit ARM devices (Raspberry Pi 4/5, newer ARM servers)
+- **armv7**: 32-bit ARM devices (Raspberry Pi 3 and older)
+
+Docker will automatically select the appropriate architecture when you pull the image.
 
 ## Quick Start
 
@@ -69,8 +82,11 @@ services:
     image: eafxx/traefik-dns-manager:latest
     container_name: traefik-dns-manager
     restart: unless-stopped
-    user: "0:0"  # Required for Docker socket access
     environment:
+      # User/Group Permissions (optional)
+      - PUID=1000                # User ID to run as
+      - PGID=1000                # Group ID to run as
+      
       # DNS Provider (choose one)
       - DNS_PROVIDER=cloudflare  # Options: cloudflare, digitalocean, route53
       
@@ -96,9 +112,13 @@ services:
       # DNS record management
       - CLEANUP_ORPHANED=true  # Set to true to automatically remove DNS records when containers are removed
       - PRESERVED_HOSTNAMES=static.example.com,api.example.com,*.admin.example.com  # Hostnames to preserve (even when orphaned)
+      
+      # API and network timeout settings
+      - API_TIMEOUT=60000  # API request timeout in milliseconds (60 seconds)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./dns-records.json:/app/dns-records.json  # Persist tracking information
+      - ./config:/config                          # Optional: for persistent configuration
     networks:
       - traefik-network
 ```
@@ -176,6 +196,33 @@ Required AWS IAM permissions:
     ]
 }
 ```
+
+## User/Group Permissions
+
+TráfegoDNS supports running as a specific user and group using the PUID and PGID environment variables:
+
+```yaml
+environment:
+  - PUID=1000  # User ID to run as
+  - PGID=1000  # Group ID to run as
+```
+
+This is useful for ensuring that files created by the container (like the DNS record tracking file) have the correct ownership. If not specified, the container will run as the default `abc` user (UID 1001, GID 1001).
+
+To access the Docker socket, you'll need to ensure the user has the appropriate permissions. There are several ways to do this:
+
+1. Run the container as root:
+   ```yaml
+   user: "0:0"  # Run as root
+   ```
+
+2. Add the container's user to the Docker group (done automatically by the container):
+   ```yaml
+   volumes:
+     - /var/run/docker.sock:/var/run/docker.sock:ro
+   ```
+
+3. Set appropriate permissions on the Docker socket host-side.
 
 ## Service Labels
 
@@ -340,6 +387,12 @@ services:
 
 ## Environment Variables
 
+### User/Group Settings
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `PUID` | User ID to run as | `1001` | No |
+| `PGID` | Group ID to run as | `1001` | No |
+
 ### DNS Provider Selection
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
@@ -402,6 +455,7 @@ services:
 | `DOCKER_SOCKET` | Path to Docker socket | `/var/run/docker.sock` | No |
 | `LOG_LEVEL` | Logging verbosity (ERROR, WARN, INFO, DEBUG, TRACE) | `INFO` | No |
 | `DNS_CACHE_REFRESH_INTERVAL` | How often to refresh DNS cache (ms) | `3600000` (1 hour) | No |
+| `API_TIMEOUT` | API request timeout (ms) | `60000` (1 minute) | No |
 
 ## Automated Cleanup of Orphaned Records
 
@@ -517,6 +571,14 @@ DNS record updates are processed in batches:
 
 This significantly reduces API calls to DNS providers, especially for deployments with many hostnames.
 
+### Timeout Handling
+
+The application includes robust timeout handling for API operations:
+
+- All API calls have a configurable timeout (default: 60 seconds)
+- This can be adjusted with the `API_TIMEOUT` environment variable
+- Timeouts are particularly important when running on lower-powered devices like Raspberry Pi
+
 ## Automatic Apex Domain Handling
 
 The DNS Manager automatically detects apex domains (e.g., `example.com`) and uses A records with your public IP instead of CNAME records, which are not allowed at the apex domain level.
@@ -534,7 +596,6 @@ docker build -t traefik-dns-manager .
 # Run the container
 docker run -d \
   --name traefik-dns-manager \
-  --user 0:0 \
   -e CLOUDFLARE_TOKEN=your_token \
   -e CLOUDFLARE_ZONE=example.com \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
