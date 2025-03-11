@@ -1,5 +1,6 @@
 #!/usr/bin/with-contenv bash
 
+echo
 echo "-------------------------------------"
 echo "Starting TráfegoDNS..."
 echo "-------------------------------------"
