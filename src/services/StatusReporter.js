@@ -141,6 +141,16 @@ class StatusReporter {
           logger.info(`  🛡️ Preserved Hostnames: None`);
         }
       }
+
+      // Add managed hostnames if available
+      if (this.recordTracker && this.recordTracker.managedHostnames) {
+        if (this.recordTracker.managedHostnames.length > 0) {
+          const managedList = this.recordTracker.managedHostnames.map(h => h.hostname).join(', ');
+          logger.info(`  📋 Managed Hostnames: ${managedList}`);
+        } else {
+          logger.info(`  📋 Managed Hostnames: None`);
+        }
+      }      
       
       console.log(''); // Empty line for spacing
       
