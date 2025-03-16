@@ -1,6 +1,6 @@
 {
   "name": "TráfegoDNS",
-  "version": "1.6.5",
+  "version": "1.7.0",
   "description": "Automatically manage Cloudflare DNS records based on Traefik routing configuration",
   "main": "src/app.js",
   "scripts": {
