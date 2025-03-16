@@ -4,19 +4,18 @@
   <img src="logo.svg" alt="TráfegoDNS Logo" width="200" height="200">
 </div>
 
-A service that automatically manages DNS records based on Traefik routing configuration.
+A service that automatically manages DNS records based on container configuration. Supports both Traefik integration and direct Docker container label mode, making it compatible with any web server or reverse proxy solution.
 
 ## Table of Contents
 
 - [Features](#features)
+- [Operation Modes](#operation-modes)
 - [Supported DNS Providers](#supported-dns-providers)
-- [Supported Architectures](#supported-architectures)
 - [Quick Start](#quick-start)
 - [DNS Provider Configuration](#dns-provider-configuration)
   - [Cloudflare](#cloudflare)
   - [DigitalOcean](#digitalocean)
   - [Route53](#route53)
-- [User/Group Permissions](#usergroup-permissions)
 - [Service Labels](#service-labels)
   - [Basic Labels](#basic-labels-provider-agnostic)
   - [Provider-Specific Labels](#provider-specific-labels-override-provider-agnostic-labels)
@@ -28,7 +27,6 @@ A service that automatically manages DNS records based on Traefik routing config
 - [Automated Cleanup of Orphaned Records](#automated-cleanup-of-orphaned-records)
   - [Preserving Specific DNS Records](#preserving-specific-dns-records)
 - [DNS Record Tracking](#dns-record-tracking)
-- [Configuration Storage](#configuration-storage)
 - [DNS Management Modes](#dns-management-modes)
 - [Logging System](#logging-system)
 - [Performance Optimisation](#performance-optimisation)
@@ -39,7 +37,8 @@ A service that automatically manages DNS records based on Traefik routing config
 
 ## Features
 
-- 🔄 Automatic DNS record management based on Traefik Host rules
+- 🔄 Automatic DNS record management based on container configuration
+- 🔀 Support for both Traefik integration and direct container label mode (works with NGINX, Apache, etc.)
 - 👀 Real-time monitoring of Docker container events
 - 🏷️ Support for multiple DNS record types (A, AAAA, CNAME, MX, TXT, SRV, CAA)
 - 🌐 Automatic public IP detection for apex domains
@@ -51,8 +50,88 @@ A service that automatically manages DNS records based on Traefik routing config
 - 🔌 Multi-provider support with provider-agnostic label system
 - 🔒 Preserves manually created DNS records using smart tracking system
 - 🛡️ Support for explicitly preserving specific hostnames from cleanup
-- 🔐 PUID/PGID support for proper file permissions
-- 💾 Persistent configuration storage in mounted volumes
+
+## Operation Modes
+
+TráfegoDNS supports two operation modes:
+
+### Traefik Mode (Default)
+
+In this mode, TráfegoDNS monitors the Traefik API to detect hostnames from router rules.
+
+```yaml
+environment:
+  - OPERATION_MODE=traefik
+  - TRAEFIK_API_URL=http://traefik:8080/api
+```
+
+With Traefik mode, you define hostnames using standard Traefik Host rules:
+
+```yaml
+services:
+  my-app:
+    image: my-image
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.my-app.rule=Host(`app.example.com`)"
+      - "dns.proxied=false"  # Configure DNS settings
+```
+
+### Direct Mode
+
+In this mode, TráfegoDNS operates independently of Traefik, directly reading hostnames from container labels. This allows it to run completely independently of any web server or reverse proxy, making it compatible with NGINX, Apache, HAProxy, or any other solution - or even with containers that don't use a reverse proxy at all. The only requirement is that services are deployed as Docker containers.
+
+```yaml
+environment:
+  - OPERATION_MODE=direct
+```
+
+When using direct mode, you can specify hostnames using any of the following label formats:
+
+1. Comma-separated hostnames:
+   ```yaml
+   services:
+     my-app:
+       image: my-image
+       labels:
+         - "dns.hostname=app.example.com,api.example.com"
+         - "dns.proxied=false"  # Configure DNS settings
+   ```
+
+2. Domain and subdomain combination:
+   ```yaml
+   services:
+     my-app:
+       image: my-image
+       labels:
+         - "dns.domain=example.com"
+         - "dns.subdomain=app,api,admin"
+         - "dns.proxied=false"  # Configure DNS settings
+   ```
+
+3. Use apex domain:
+   ```yaml
+   services:
+     my-app:
+       image: my-image
+       labels:
+         - "dns.domain=example.com"
+         - "dns.use_apex=true"
+         - "dns.proxied=false"  # Configure DNS settings
+   ```
+
+4. Individual host labels:
+   ```yaml
+   services:
+     my-app:
+       image: my-image
+       labels:
+         - "dns.host.1=app.example.com"
+         - "dns.host.2=api.example.com"
+         - "dns.proxied=false"  # Configure DNS settings
+   ```
+
+All other DNS configuration labels work the same way as in Traefik mode.
 
 ## Supported DNS Providers
 
@@ -61,16 +140,6 @@ A service that automatically manages DNS records based on Traefik routing config
 | ![Cloudflare](https://img.shields.io/badge/Cloudflare-F38020?style=flat&logo=cloudflare&logoColor=white) | ![Stable](https://img.shields.io/badge/✓-Stable-success) | Full support for all record types and features |
 | ![DigitalOcean](https://img.shields.io/badge/DigitalOcean-0080FF?style=flat&logo=digitalocean&logoColor=white) | ![Stable](https://img.shields.io/badge/✓-Stable-success) | Full support for all record types and features |
 | ![AWS](https://img.shields.io/badge/Route53-FF9900?style=flat&logo=amazonaws&logoColor=white) | ![Stable](https://img.shields.io/badge/✓-Stable-success) | Full support for all record types and features |
-
-## Supported Architectures
-
-TráfegoDNS supports multiple architectures with multi-arch Docker images:
-
-- **amd64**: Standard 64-bit PCs and servers
-- **arm64**: 64-bit ARM devices (Raspberry Pi 4/5, newer ARM servers)
-- **armv7**: 32-bit ARM devices (Raspberry Pi 3 and older)
-
-Docker will automatically select the appropriate architecture when you pull the image.
 
 ## Quick Start
 
@@ -84,10 +153,10 @@ services:
     image: eafxx/traefik-dns-manager:latest
     container_name: traefik-dns-manager
     restart: unless-stopped
+    user: "0:0"  # Required for Docker socket access
     environment:
-      # User/Group Permissions (optional)
-      - PUID=1000                # User ID to run as
-      - PGID=1000                # Group ID to run as
+      # Operation mode
+      - OPERATION_MODE=traefik  # Options: traefik, direct
       
       # DNS Provider (choose one)
       - DNS_PROVIDER=cloudflare  # Options: cloudflare, digitalocean, route53
@@ -107,21 +176,55 @@ services:
       # - ROUTE53_ZONE_ID=Z1234567890ABC  # Alternative to ROUTE53_ZONE
       # - ROUTE53_REGION=eu-west-2  # Optional, defaults to eu-west-2 (London)
       
-      # Traefik API settings
+      # Traefik API settings (for traefik mode)
       - TRAEFIK_API_URL=http://traefik:8080/api
       - LOG_LEVEL=INFO
       
       # DNS record management
       - CLEANUP_ORPHANED=true  # Set to true to automatically remove DNS records when containers are removed
       - PRESERVED_HOSTNAMES=static.example.com,api.example.com,*.admin.example.com  # Hostnames to preserve (even when orphaned)
-      
-      # API and network timeout settings
-      - API_TIMEOUT=60000  # API request timeout in milliseconds (60 seconds)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./config:/config   # Persistent configuration storage
+      - ./dns-records.json:/app/dns-records.json  # Persist tracking information
     networks:
       - traefik-network
+```
+
+### Using Direct Mode Example
+
+```yaml
+version: '3'
+
+services:
+  traefik-dns-manager:
+    image: eafxx/traefik-dns-manager:latest
+    container_name: traefik-dns-manager
+    restart: unless-stopped
+    user: "0:0"  # Required for Docker socket access
+    environment:
+      # Operation mode - direct doesn't need Traefik
+      - OPERATION_MODE=direct
+      
+      # DNS Provider
+      - DNS_PROVIDER=cloudflare
+      - CLOUDFLARE_TOKEN=your_cloudflare_api_token
+      - CLOUDFLARE_ZONE=example.com
+      
+      # Application settings
+      - LOG_LEVEL=INFO
+      - CLEANUP_ORPHANED=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./dns-records.json:/app/dns-records.json  # Persist tracking information
+
+  example-app:
+    image: nginx
+    labels:
+      # Direct mode hostname definition
+      - "dns.hostname=app.example.com"
+      # DNS configuration
+      - "dns.type=A"  # A record instead of default CNAME
+      - "dns.proxied=false"  # Disable Cloudflare proxy
 ```
 
 ## DNS Provider Configuration
@@ -198,33 +301,6 @@ Required AWS IAM permissions:
 }
 ```
 
-## User/Group Permissions
-
-TráfegoDNS supports running as a specific user and group using the PUID and PGID environment variables:
-
-```yaml
-environment:
-  - PUID=1000  # User ID to run as
-  - PGID=1000  # Group ID to run as
-```
-
-This is useful for ensuring that files created by the container (like the DNS record tracking file) have the correct ownership. If not specified, the container will run as the default `abc` user (UID 1001, GID 1001).
-
-To access the Docker socket, you'll need to ensure the user has the appropriate permissions. There are several ways to do this:
-
-1. Run the container as root:
-   ```yaml
-   user: "0:0"  # Run as root
-   ```
-
-2. Add the container's user to the Docker group (done automatically by the container):
-   ```yaml
-   volumes:
-     - /var/run/docker.sock:/var/run/docker.sock:ro
-   ```
-
-3. Set appropriate permissions on the Docker socket host-side.
-
 ## Service Labels
 
 The DNS Manager supports the following labels for customising DNS record creation:
@@ -238,6 +314,11 @@ The DNS Manager supports the following labels for customising DNS record creatio
 | `dns.type` | DNS record type (A, AAAA, CNAME, etc.) | `CNAME` or `A` for apex domains |
 | `dns.content` | Record content/value | Domain for CNAME, Public IP for A |
 | `dns.ttl` | Record TTL in seconds | `1` (Auto) for Cloudflare, `30` for DigitalOcean, `60` for Route53 |
+| `dns.hostname` | Comma-separated list of hostnames (direct mode) | None |
+| `dns.domain` | Domain name (direct mode) | None |
+| `dns.subdomain` | Comma-separated list of subdomains (direct mode) | None |
+| `dns.use_apex` | Whether to use the apex domain (direct mode) | `false` |
+| `dns.host.X` | Individual hostnames (direct mode) | None |
 
 ### Provider-Specific Labels (Override Provider-Agnostic Labels)
 
@@ -290,14 +371,13 @@ Different DNS providers have different requirements for TTL values:
 | DigitalOcean | 30 seconds | 30 seconds | Values below 30 are automatically adjusted to 30 |
 | Route53 | 60 seconds | 60 seconds | Values below 60 are automatically adjusted to 60 |
 
-The application automatically applies the appropriate minimum TTL value for each provider. If you set `DNS_DEFAULT_TTL` in your environment, it will be used only if it's equal to or higher than the provider-specific minimum.
-
 ## Usage Examples
 
 ### Basic Service with Default Settings
 
-Just use standard Traefik labels, and DNS records are automatically created:
+Just use standard Traefik labels (in Traefik mode) or DNS labels (in Direct mode):
 
+#### Traefik Mode
 ```yaml
 services:
   my-app:
@@ -308,7 +388,14 @@ services:
       - "traefik.http.routers.my-app.entrypoints=https"
 ```
 
-This will create a CNAME record for `app.example.com` pointing to your domain.
+#### Direct Mode
+```yaml
+services:
+  my-app:
+    image: my-image
+    labels:
+      - "dns.hostname=app.example.com"
+```
 
 ### Disable Cloudflare Proxy for Media Servers
 
@@ -317,8 +404,13 @@ services:
   my-service:
     image: my-image
     labels:
+      # For Traefik mode
       - "traefik.enable=true"
       - "traefik.http.routers.my-service.rule=Host(`service.example.com`)"
+      # For Direct mode
+      - "dns.hostname=service.example.com"
+      
+      # DNS configuration (works in both modes)
       - "dns.proxied=false"  # Use generic label
       # OR "dns.cloudflare.proxied=false"  # Use provider-specific label
 ```
@@ -330,8 +422,13 @@ services:
   my-app:
     image: my-image
     labels:
+      # For Traefik mode
       - "traefik.enable=true"
       - "traefik.http.routers.my-app.rule=Host(`app.example.com`)"
+      # For Direct mode
+      - "dns.hostname=app.example.com"
+      
+      # DNS configuration (works in both modes)
       - "dns.type=A"
       - "dns.content=203.0.113.10"  # Custom IP address
 ```
@@ -343,8 +440,13 @@ services:
   my-app:
     image: my-image
     labels:
+      # For Traefik mode
       - "traefik.enable=true"
       - "traefik.http.routers.my-app.rule=Host(`app.example.com`)"
+      # For Direct mode
+      - "dns.hostname=app.example.com"
+      
+      # DNS configuration (works in both modes)
       - "dns.route53.ttl=3600"  # Set TTL to 1 hour (3600 seconds)
 ```
 
@@ -355,8 +457,13 @@ services:
   internal-app:
     image: internal-image
     labels:
+      # For Traefik mode
       - "traefik.enable=true"
       - "traefik.http.routers.internal.rule=Host(`internal.example.com`)"
+      # For Direct mode
+      - "dns.hostname=internal.example.com"
+      
+      # DNS configuration (works in both modes)
       - "dns.skip=true"  # Skip DNS management for all providers
       # OR "dns.route53.skip=true"  # Skip just Route53 DNS management
 ```
@@ -368,8 +475,13 @@ services:
   public-app:
     image: public-image
     labels:
+      # For Traefik mode
       - "traefik.enable=true"
       - "traefik.http.routers.public.rule=Host(`public.example.com`)"
+      # For Direct mode
+      - "dns.hostname=public.example.com"
+      
+      # DNS configuration (works in both modes)
       - "dns.manage=true"  # Explicitly enable DNS management for all providers
       # OR "dns.route53.manage=true"  # Enable just for Route53
 ```
@@ -381,8 +493,13 @@ services:
   mail-service:
     image: mail-image
     labels:
+      # For Traefik mode
       - "traefik.enable=true"
       - "traefik.http.routers.mail.rule=Host(`example.com`)"
+      # For Direct mode
+      - "dns.hostname=example.com"
+      
+      # DNS configuration (works in both modes)
       - "dns.type=MX"
       - "dns.content=mail.example.com"
       - "dns.priority=10"
@@ -390,11 +507,10 @@ services:
 
 ## Environment Variables
 
-### User/Group Settings
+### Application Mode
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `PUID` | User ID to run as | `1001` | No |
-| `PGID` | Group ID to run as | `1001` | No |
+| `OPERATION_MODE` | Operation mode (`traefik` or `direct`) | `traefik` | No |
 
 ### DNS Provider Selection
 | Variable | Description | Default | Required |
@@ -438,7 +554,7 @@ services:
 | `DNS_DEFAULT_TYPE` | Default DNS record type | `CNAME` | No |
 | `DNS_DEFAULT_CONTENT` | Default record content | Value of `CLOUDFLARE_ZONE` or `DO_DOMAIN` or `ROUTE53_ZONE` | No |
 | `DNS_DEFAULT_PROXIED` | Default Cloudflare proxy status | `true` | No |
-| `DNS_DEFAULT_TTL` | Default TTL in seconds | Provider-specific: Cloudflare=1 (Auto), DigitalOcean=30, Route53=60 | No |
+| `DNS_DEFAULT_TTL` | Default TTL in seconds | `1` (Auto for Cloudflare) or minimum TTL for provider | No |
 | `DNS_DEFAULT_MANAGE` | Global DNS management mode | `true` | No |
 
 ### IP Address Settings
@@ -451,14 +567,13 @@ services:
 ### Application Behaviour
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `POLL_INTERVAL` | How often to poll Traefik API (ms) | `60000` (1 min) | No |
+| `POLL_INTERVAL` | How often to poll for changes (ms) | `60000` (1 min) | No |
 | `WATCH_DOCKER_EVENTS` | Whether to watch Docker events | `true` | No |
 | `CLEANUP_ORPHANED` | Whether to remove orphaned DNS records | `false` | No |
 | `PRESERVED_HOSTNAMES` | Comma-separated list of hostnames to exclude from cleanup | - | No |
 | `DOCKER_SOCKET` | Path to Docker socket | `/var/run/docker.sock` | No |
 | `LOG_LEVEL` | Logging verbosity (ERROR, WARN, INFO, DEBUG, TRACE) | `INFO` | No |
 | `DNS_CACHE_REFRESH_INTERVAL` | How often to refresh DNS cache (ms) | `3600000` (1 hour) | No |
-| `API_TIMEOUT` | API request timeout (ms) | `60000` (1 minute) | No |
 
 ## Automated Cleanup of Orphaned Records
 
@@ -498,33 +613,19 @@ Preserved hostnames will be logged during startup and skipped during any cleanup
 
 ## DNS Record Tracking
 
-The application maintains a persistent record of all DNS entries it creates in a tracking file. This enables:
+The application maintains a persistent record of all DNS entries it creates in a JSON file `dns-records.json`. This enables:
 
 1. **Provider Independence**: Consistent tracking across different DNS providers (Cloudflare, DigitalOcean, Route53)
 2. **Safety**: Only records created by the tool are ever deleted during cleanup
 3. **Persistence**: Record history is maintained between application restarts
 
-## Configuration Storage
-
-TráfegoDNS stores its configuration and data files in the `/config` directory within the container, which should be mounted as a volume for persistence:
+For optimal reliability, mount this file as a volume in your Docker setup:
 
 ```yaml
 volumes:
   - /var/run/docker.sock:/var/run/docker.sock:ro
-  - ./config:/config
+  - ./dns-records.json:/app/dns-records.json
 ```
-
-The main configuration files include:
-
-- `/config/data/dns-records.json` - Tracking information for all DNS records managed by the application
-
-This approach provides several benefits:
-
-1. **Data Persistence**: All data is stored in a mounted volume that persists across container restarts and updates
-2. **Backup Capability**: The config directory can be easily backed up
-3. **Migration Support**: Moving to a new server is as simple as copying the config directory
-
-The application will automatically migrate any existing data from legacy locations into the new structure.
 
 ## DNS Management Modes
 
@@ -588,14 +689,6 @@ DNS record updates are processed in batches:
 
 This significantly reduces API calls to DNS providers, especially for deployments with many hostnames.
 
-### Timeout Handling
-
-The application includes robust timeout handling for API operations:
-
-- All API calls have a configurable timeout (default: 60 seconds)
-- This can be adjusted with the `API_TIMEOUT` environment variable
-- Timeouts are particularly important when running on lower-powered devices like Raspberry Pi
-
 ## Automatic Apex Domain Handling
 
 The DNS Manager automatically detects apex domains (e.g., `example.com`) and uses A records with your public IP instead of CNAME records, which are not allowed at the apex domain level.
@@ -613,10 +706,10 @@ docker build -t traefik-dns-manager .
 # Run the container
 docker run -d \
   --name traefik-dns-manager \
+  --user 0:0 \
   -e CLOUDFLARE_TOKEN=your_token \
   -e CLOUDFLARE_ZONE=example.com \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  -v ./config:/config \
   traefik-dns-manager
 ```
 

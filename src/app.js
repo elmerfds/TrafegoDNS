@@ -15,10 +15,10 @@ async function start() {
     // Create event bus (central communication)
     const eventBus = new EventBus();
     
-    // Initialise configuration
+    // Initialize configuration
     const config = new ConfigManager();
     
-    // Initialise services
+    // Initialize services
     const statusReporter = new StatusReporter(config, eventBus);
     const dnsManager = new DNSManager(config, eventBus);
     const dockerMonitor = new DockerMonitor(config, eventBus);
@@ -40,7 +40,7 @@ async function start() {
     // Display startup configuration
     await statusReporter.displaySettings();
     
-    // Initialise all services
+    // Initialize all services
     await dnsManager.init();
     await monitor.init();
     
@@ -58,3 +58,6 @@ async function start() {
     process.exit(1);
   }
 }
+
+// Start the application
+start();
