@@ -1,17 +1,11 @@
 /**
- * Services module index
- * Exports all service components
+ * Configuration module index
+ * Exports all configuration components
  */
-const DNSManager = require('./DNSManager');
-const TraefikMonitor = require('./TraefikMonitor');
-const DockerMonitor = require('./DockerMonitor');
-const StatusReporter = require('./StatusReporter');
-const DirectDNSManager = require('./DirectDNSManager');
+const ConfigManager = require('./ConfigManager');
+const EnvironmentLoader = require('./EnvironmentLoader');
 
 module.exports = {
-  DNSManager,
-  TraefikMonitor,
-  DockerMonitor,
-  StatusReporter,
-  DirectDNSManager
+  ConfigManager,
+  EnvironmentLoader
 };
