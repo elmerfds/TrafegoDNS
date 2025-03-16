@@ -28,6 +28,7 @@ A service that automatically manages DNS records based on container configuratio
 - [Environment Variables](#environment-variables)
 - [Automated Cleanup of Orphaned Records](#automated-cleanup-of-orphaned-records)
   - [Preserving Specific DNS Records](#preserving-specific-dns-records)
+- [Manual Hostname Management](#manual-hostname-management)
 - [DNS Record Tracking](#dns-record-tracking)
 - [Configuration Storage](#configuration-storage)
 - [DNS Management Modes](#dns-management-modes)
@@ -53,6 +54,7 @@ A service that automatically manages DNS records based on container configuratio
 - 🔌 Multi-provider support with provider-agnostic label system
 - 🔒 Preserves manually created DNS records using smart tracking system
 - 🛡️ Support for explicitly preserving specific hostnames from cleanup
+- 📝 Manual creation and management of hostnames independent of containers
 - 🔐 PUID/PGID support for proper file permissions
 - 💾 Persistent configuration storage in mounted volumes
 
@@ -201,6 +203,7 @@ services:
       # DNS record management
       - CLEANUP_ORPHANED=true  # Set to true to automatically remove DNS records when containers are removed
       - PRESERVED_HOSTNAMES=static.example.com,api.example.com,*.admin.example.com  # Hostnames to preserve (even when orphaned)
+      - MANAGED_HOSTNAMES=blog.example.com:A:192.168.1.10:3600:false,mail.example.com:MX:mail.example.com:3600:false  # Manually managed hostnames
       
       # API and network timeout settings
       - API_TIMEOUT=60000  # API request timeout in milliseconds (60 seconds)
@@ -633,6 +636,7 @@ services:
 | `WATCH_DOCKER_EVENTS` | Whether to watch Docker events | `true` | No |
 | `CLEANUP_ORPHANED` | Whether to remove orphaned DNS records | `false` | No |
 | `PRESERVED_HOSTNAMES` | Comma-separated list of hostnames to exclude from cleanup | - | No |
+| `MANAGED_HOSTNAMES` | Comma-separated list of hostnames to create and maintain | - | No |
 | `DOCKER_SOCKET` | Path to Docker socket | `/var/run/docker.sock` | No |
 | `LOG_LEVEL` | Logging verbosity (ERROR, WARN, INFO, DEBUG, TRACE) | `INFO` | No |
 | `DNS_CACHE_REFRESH_INTERVAL` | How often to refresh DNS cache (ms) | `3600000` (1 hour) | No |
@@ -673,6 +677,35 @@ This supports:
 - Wildcard subdomains (e.g., `*.admin.example.com`) which will preserve all subdomains that match the pattern
 
 Preserved hostnames will be logged during startup and skipped during any cleanup operations.
+
+## Manual Hostname Management
+
+TráfegoDNS allows you to manually specify hostnames that should be created and maintained regardless of container lifecycle:
+
+```yaml
+environment:
+  - MANAGED_HOSTNAMES=blog.example.com:A:192.168.1.10:3600:false,mail.example.com:MX:mail.example.com:3600:false
+```
+
+The format for each managed hostname is:
+```
+hostname:type:content:ttl:proxied
+```
+
+Where:
+- `hostname`: The full hostname to create (e.g., blog.example.com)
+- `type`: DNS record type (A, AAAA, CNAME, MX, TXT, etc.)
+- `content`: Record content/value (IP address for A records, target domain for CNAME, etc.)
+- `ttl`: Time-to-live in seconds
+- `proxied`: Whether to enable Cloudflare proxying (true/false, only applicable for Cloudflare)
+
+These hostnames will be:
+- Created during initialization and kept in sync during runtime
+- Maintained independently of container lifecycle
+- Never deleted by the cleanup process
+- Preserved even if containers using the same hostname are created and then removed
+
+This is useful for maintaining static DNS records for services that don't run in containers, legacy systems, or external endpoints.
 
 ## DNS Record Tracking
 
