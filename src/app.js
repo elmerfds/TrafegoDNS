@@ -3,7 +3,7 @@
  * Primary responsibility: Wire up the application components
  */
 const { ConfigManager } = require('./config');
-const { DNSManager, TraefikMonitor, DockerMonitor, StatusReporter } = require('./services');
+const { DNSManager, TraefikMonitor, DockerMonitor, StatusReporter, DirectDNSManager } = require('./services');
 const { EventBus } = require('./events/EventBus');
 const logger = require('./utils/logger');
 
@@ -21,18 +21,28 @@ async function start() {
     // Initialize services
     const statusReporter = new StatusReporter(config, eventBus);
     const dnsManager = new DNSManager(config, eventBus);
-    const traefikMonitor = new TraefikMonitor(config, eventBus);
     const dockerMonitor = new DockerMonitor(config, eventBus);
     
+    // Choose the appropriate monitor based on operation mode
+    let monitor;
+    
+    if (config.operationMode.toLowerCase() === 'direct') {
+      logger.info('🚀 Starting in DIRECT mode (without Traefik)');
+      monitor = new DirectDNSManager(config, eventBus);
+    } else {
+      logger.info('🚀 Starting in TRAEFIK mode');
+      monitor = new TraefikMonitor(config, eventBus);
+    }
+    
     // Connect monitors for container name resolution
-    traefikMonitor.dockerMonitor = dockerMonitor;
+    monitor.dockerMonitor = dockerMonitor;
     
     // Display startup configuration
     await statusReporter.displaySettings();
     
     // Initialize all services
     await dnsManager.init();
-    await traefikMonitor.init();
+    await monitor.init();
     
     // Start monitoring
     if (config.watchDockerEvents) {
@@ -40,7 +50,7 @@ async function start() {
     }
     
     // Start main polling
-    await traefikMonitor.startPolling();
+    await monitor.startPolling();
     
     logger.complete('TráfegoDNS running successfully');
   } catch (error) {
