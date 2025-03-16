@@ -1,18 +1,79 @@
-name: Build and Publish Multi-Arch Docker Image
+name: Version Bump and Docker Build
 
 on:
-  workflow_dispatch:  # Manual trigger
   push:
-    branches: [ main, master, dev ]
-    tags: [ 'v*' ]
+    branches: 
+      - main
+      - master
+      - dev
     paths-ignore:
+      - 'package.json'
+      - 'package-lock.json'
       - 'README.md'
       - '**.md'
-      - '.github/workflows/**'
+      - '.github/workflows/**'      
+  workflow_dispatch:  # Manual trigger
 
 jobs:
+  version-bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      new_version: ${{ steps.version.outputs.NEW_VERSION }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Calculate version
+        id: version
+        run: |
+          # Generate date-based version
+          DATE_TAG=$(date +'%Y%m%d')
+          
+          # Get commit count for additional uniqueness
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          
+          # Create a version like 1.7.0 (increment minor version)
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
+          
+          MAJOR_VERSION=${VERSION_PARTS[0]}
+          MINOR_VERSION=$((${VERSION_PARTS[1]} + 1))
+          PATCH_VERSION=0
+          
+          NEW_VERSION="${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}"
+          echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_OUTPUT
+          echo "New version will be: ${NEW_VERSION}"
+      
+      - name: Update package.json and package-lock.json
+        run: |
+          # Update version in package.json
+          npm version ${{ steps.version.outputs.NEW_VERSION }} --no-git-tag-version
+          
+          # Update name in package-lock.json
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          jq --arg name "$PACKAGE_NAME" --arg version "${{ steps.version.outputs.NEW_VERSION }}" '.name = $name | .version = $version' package-lock.json > package-lock.tmp
+          mv package-lock.tmp package-lock.json
+      
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add package.json package-lock.json
+          git commit -m "Bump version to ${{ steps.version.outputs.NEW_VERSION }}" || echo "No changes to commit"
+          git push
+
   build-and-push:
-    name: Build and Push Multi-Architecture Docker Image
+    needs: version-bump
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -22,7 +83,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.ref }}  # Checkout the branch that triggered the workflow
           fetch-depth: 0  # Fetch all history for all tags and branches
+      
+      - name: Check branch
+        id: check-branch
+        run: |
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+          
+          if [[ "$BRANCH_NAME" == "dev" ]]; then
+            echo "IS_DEV=true" >> $GITHUB_OUTPUT
+          else
+            echo "IS_DEV=false" >> $GITHUB_OUTPUT
+          fi
       
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -32,26 +106,21 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: Generate version number
+      - name: Generate version info
         id: version
         run: |
-          # Generate date-based version
+          # Get the version from package.json
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          
+          # Generate date-based tag
           DATE_TAG=$(date +'%Y%m%d')
           
           # Get commit count for additional uniqueness
           COMMIT_COUNT=$(git rev-list --count HEAD)
           
-          # Create a version like 20250302.45 (date.commit_count)
-          VERSION_TAG="${DATE_TAG}.${COMMIT_COUNT}"
-          echo "VERSION=${VERSION_TAG}" >> $GITHUB_OUTPUT
+          echo "PACKAGE_VERSION=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
           echo "DATE_TAG=${DATE_TAG}" >> $GITHUB_OUTPUT
-          
-          # Check if this is the dev branch
-          if [[ "${{ github.ref_name }}" == "dev" ]]; then
-            echo "IS_DEV=true" >> $GITHUB_OUTPUT
-          else
-            echo "IS_DEV=false" >> $GITHUB_OUTPUT
-          fi
+          echo "COMMIT_COUNT=${COMMIT_COUNT}" >> $GITHUB_OUTPUT
       
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -68,7 +137,7 @@ jobs:
       
       - name: Extract metadata for Docker (Main branch)
         id: meta-main
-        if: ${{ steps.version.outputs.IS_DEV == 'false' }}
+        if: ${{ steps.check-branch.outputs.IS_DEV == 'false' }}
         uses: docker/metadata-action@v5
         with:
           images: |
@@ -78,15 +147,18 @@ jobs:
             # Latest tag for main/master
             type=raw,value=latest,enable=true
             
+            # Package version from package.json
+            type=raw,value=${{ steps.version.outputs.PACKAGE_VERSION }}
+            
             # Date + commit count for all builds
-            type=raw,value=${{ steps.version.outputs.VERSION }}
+            type=raw,value=${{ steps.version.outputs.DATE_TAG }}.${{ steps.version.outputs.COMMIT_COUNT }}
             
             # Just date for all builds
             type=raw,value=${{ steps.version.outputs.DATE_TAG }}
       
       - name: Extract metadata for Docker (Dev branch)
         id: meta-dev
-        if: ${{ steps.version.outputs.IS_DEV == 'true' }}
+        if: ${{ steps.check-branch.outputs.IS_DEV == 'true' }}
         uses: docker/metadata-action@v5
         with:
           images: |
@@ -97,10 +169,14 @@ jobs:
             type=raw,value=dev
             
             # Dev with version
-            type=raw,value=dev-${{ steps.version.outputs.VERSION }}
+            type=raw,value=dev-${{ steps.version.outputs.PACKAGE_VERSION }}
+            
+            # Dev with date+commit count
+            type=raw,value=dev-${{ steps.version.outputs.DATE_TAG }}.${{ steps.version.outputs.COMMIT_COUNT }}
       
-      - name: Build and push Docker image (Main branch)
-        if: ${{ steps.version.outputs.IS_DEV == 'false' }}
+      # Build and push multi-arch Docker image for main/master branch
+      - name: Build and push Docker image (Main branch - Multi Architecture)
+        if: ${{ steps.check-branch.outputs.IS_DEV == 'false' }}
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -111,13 +187,14 @@ jobs:
           labels: ${{ steps.meta-main.outputs.labels }}
           cache-from: type=gha
       
-      - name: Build and push Docker image (Dev branch)
-        if: ${{ steps.version.outputs.IS_DEV == 'true' }}
+      # Build and push x64-only Docker image for dev branch
+      - name: Build and push Docker image (Dev branch - x64 only)
+        if: ${{ steps.check-branch.outputs.IS_DEV == 'true' }}
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker-s6/Dockerfile
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta-dev.outputs.tags }}
           labels: ${{ steps.meta-dev.outputs.labels }}
