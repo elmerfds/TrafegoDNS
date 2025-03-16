@@ -1,0 +1,28 @@
+#!/command/with-contenv bash
+
+LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+echo
+echo "-------------------------------------"
+echo "Directory Permissions Setup"
+echo "-------------------------------------"
+
+# Make sure the config directory has correct permissions
+echo "Setting permissions on config directory"
+chown abc:abc /config
+
+# If the config directory is mounted but empty, create a basic structure
+if [ -d /config ] && [ ! "$(ls -A /config)" ]; then
+  echo "Config directory is empty, creating initial structure"
+  mkdir -p /config/data
+  chown -R abc:abc /config
+fi
+
+# Check if app data file exists and make sure it has correct permissions
+if [ -f /app/dns-records.json ]; then
+  echo "Setting permissions on app data file"
+  chown abc:abc /app/dns-records.json
+fi
+
+echo "Directory setup complete"
+echo "-------------------------------------"

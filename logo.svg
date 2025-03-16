@@ -19,8 +19,8 @@
   <!-- Vertical routing path -->
   <line x1="100" y1="55" x2="100" y2="145" stroke="#F8FAFC" stroke-width="3" stroke-linecap="round" />
   
-  <!-- Connection dots representing the routing intersections -->
-  <circle cx="100" cy="70" r="5" fill="#F8FAFC" />
-  <circle cx="100" cy="100" r="5" fill="#F8FAFC" />
-  <circle cx="100" cy="130" r="5" fill="#F8FAFC" />
+  <!-- Connection dots representing the routing intersections with traffic light colors -->
+  <circle cx="100" cy="70" r="5" fill="#EF4444" /> <!-- Red -->
+  <circle cx="100" cy="100" r="5" fill="#EAB308" /> <!-- Yellow -->
+  <circle cx="100" cy="130" r="5" fill="#22C55E" /> <!-- Green -->
 </svg>

@@ -1,0 +1,8 @@
+#!/usr/bin/with-contenv bash
+
+echo
+echo "-------------------------------------"
+echo "TráfegoDNS has exited with status $?. Restarting..."
+echo "-------------------------------------"
+echo
+exit 0

@@ -10,11 +10,13 @@ A service that automatically manages DNS records based on Traefik routing config
 
 - [Features](#features)
 - [Supported DNS Providers](#supported-dns-providers)
+- [Supported Architectures](#supported-architectures)
 - [Quick Start](#quick-start)
 - [DNS Provider Configuration](#dns-provider-configuration)
   - [Cloudflare](#cloudflare)
   - [DigitalOcean](#digitalocean)
   - [Route53](#route53)
+- [User/Group Permissions](#usergroup-permissions)
 - [Service Labels](#service-labels)
   - [Basic Labels](#basic-labels-provider-agnostic)
   - [Provider-Specific Labels](#provider-specific-labels-override-provider-agnostic-labels)
@@ -26,6 +28,7 @@ A service that automatically manages DNS records based on Traefik routing config
 - [Automated Cleanup of Orphaned Records](#automated-cleanup-of-orphaned-records)
   - [Preserving Specific DNS Records](#preserving-specific-dns-records)
 - [DNS Record Tracking](#dns-record-tracking)
+- [Configuration Storage](#configuration-storage)
 - [DNS Management Modes](#dns-management-modes)
 - [Logging System](#logging-system)
 - [Performance Optimisation](#performance-optimisation)
@@ -48,6 +51,8 @@ A service that automatically manages DNS records based on Traefik routing config
 - 🔌 Multi-provider support with provider-agnostic label system
 - 🔒 Preserves manually created DNS records using smart tracking system
 - 🛡️ Support for explicitly preserving specific hostnames from cleanup
+- 🔐 PUID/PGID support for proper file permissions
+- 💾 Persistent configuration storage in mounted volumes
 
 ## Supported DNS Providers
 
@@ -56,6 +61,16 @@ A service that automatically manages DNS records based on Traefik routing config
 | ![Cloudflare](https://img.shields.io/badge/Cloudflare-F38020?style=flat&logo=cloudflare&logoColor=white) | ![Stable](https://img.shields.io/badge/✓-Stable-success) | Full support for all record types and features |
 | ![DigitalOcean](https://img.shields.io/badge/DigitalOcean-0080FF?style=flat&logo=digitalocean&logoColor=white) | ![Stable](https://img.shields.io/badge/✓-Stable-success) | Full support for all record types and features |
 | ![AWS](https://img.shields.io/badge/Route53-FF9900?style=flat&logo=amazonaws&logoColor=white) | ![Stable](https://img.shields.io/badge/✓-Stable-success) | Full support for all record types and features |
+
+## Supported Architectures
+
+TráfegoDNS supports multiple architectures with multi-arch Docker images:
+
+- **amd64**: Standard 64-bit PCs and servers
+- **arm64**: 64-bit ARM devices (Raspberry Pi 4/5, newer ARM servers)
+- **armv7**: 32-bit ARM devices (Raspberry Pi 3 and older)
+
+Docker will automatically select the appropriate architecture when you pull the image.
 
 ## Quick Start
 
@@ -69,8 +84,11 @@ services:
     image: eafxx/traefik-dns-manager:latest
     container_name: traefik-dns-manager
     restart: unless-stopped
-    user: "0:0"  # Required for Docker socket access
     environment:
+      # User/Group Permissions (optional)
+      - PUID=1000                # User ID to run as
+      - PGID=1000                # Group ID to run as
+      
       # DNS Provider (choose one)
       - DNS_PROVIDER=cloudflare  # Options: cloudflare, digitalocean, route53
       
@@ -96,9 +114,12 @@ services:
       # DNS record management
       - CLEANUP_ORPHANED=true  # Set to true to automatically remove DNS records when containers are removed
       - PRESERVED_HOSTNAMES=static.example.com,api.example.com,*.admin.example.com  # Hostnames to preserve (even when orphaned)
+      
+      # API and network timeout settings
+      - API_TIMEOUT=60000  # API request timeout in milliseconds (60 seconds)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./dns-records.json:/app/dns-records.json  # Persist tracking information
+      - ./config:/config   # Persistent configuration storage
     networks:
       - traefik-network
 ```
@@ -177,6 +198,33 @@ Required AWS IAM permissions:
 }
 ```
 
+## User/Group Permissions
+
+TráfegoDNS supports running as a specific user and group using the PUID and PGID environment variables:
+
+```yaml
+environment:
+  - PUID=1000  # User ID to run as
+  - PGID=1000  # Group ID to run as
+```
+
+This is useful for ensuring that files created by the container (like the DNS record tracking file) have the correct ownership. If not specified, the container will run as the default `abc` user (UID 1001, GID 1001).
+
+To access the Docker socket, you'll need to ensure the user has the appropriate permissions. There are several ways to do this:
+
+1. Run the container as root:
+   ```yaml
+   user: "0:0"  # Run as root
+   ```
+
+2. Add the container's user to the Docker group (done automatically by the container):
+   ```yaml
+   volumes:
+     - /var/run/docker.sock:/var/run/docker.sock:ro
+   ```
+
+3. Set appropriate permissions on the Docker socket host-side.
+
 ## Service Labels
 
 The DNS Manager supports the following labels for customising DNS record creation:
@@ -241,6 +289,8 @@ Different DNS providers have different requirements for TTL values:
 | Cloudflare | 1 second | 1 second (Auto) | TTL is ignored for proxied records (always Auto) |
 | DigitalOcean | 30 seconds | 30 seconds | Values below 30 are automatically adjusted to 30 |
 | Route53 | 60 seconds | 60 seconds | Values below 60 are automatically adjusted to 60 |
+
+The application automatically applies the appropriate minimum TTL value for each provider. If you set `DNS_DEFAULT_TTL` in your environment, it will be used only if it's equal to or higher than the provider-specific minimum.
 
 ## Usage Examples
 
@@ -340,6 +390,12 @@ services:
 
 ## Environment Variables
 
+### User/Group Settings
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `PUID` | User ID to run as | `1001` | No |
+| `PGID` | Group ID to run as | `1001` | No |
+
 ### DNS Provider Selection
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
@@ -382,7 +438,7 @@ services:
 | `DNS_DEFAULT_TYPE` | Default DNS record type | `CNAME` | No |
 | `DNS_DEFAULT_CONTENT` | Default record content | Value of `CLOUDFLARE_ZONE` or `DO_DOMAIN` or `ROUTE53_ZONE` | No |
 | `DNS_DEFAULT_PROXIED` | Default Cloudflare proxy status | `true` | No |
-| `DNS_DEFAULT_TTL` | Default TTL in seconds | `1` (Auto for Cloudflare) or minimum TTL for provider | No |
+| `DNS_DEFAULT_TTL` | Default TTL in seconds | Provider-specific: Cloudflare=1 (Auto), DigitalOcean=30, Route53=60 | No |
 | `DNS_DEFAULT_MANAGE` | Global DNS management mode | `true` | No |
 
 ### IP Address Settings
@@ -402,6 +458,7 @@ services:
 | `DOCKER_SOCKET` | Path to Docker socket | `/var/run/docker.sock` | No |
 | `LOG_LEVEL` | Logging verbosity (ERROR, WARN, INFO, DEBUG, TRACE) | `INFO` | No |
 | `DNS_CACHE_REFRESH_INTERVAL` | How often to refresh DNS cache (ms) | `3600000` (1 hour) | No |
+| `API_TIMEOUT` | API request timeout (ms) | `60000` (1 minute) | No |
 
 ## Automated Cleanup of Orphaned Records
 
@@ -441,19 +498,33 @@ Preserved hostnames will be logged during startup and skipped during any cleanup
 
 ## DNS Record Tracking
 
-The application maintains a persistent record of all DNS entries it creates in a JSON file `dns-records.json`. This enables:
+The application maintains a persistent record of all DNS entries it creates in a tracking file. This enables:
 
 1. **Provider Independence**: Consistent tracking across different DNS providers (Cloudflare, DigitalOcean, Route53)
 2. **Safety**: Only records created by the tool are ever deleted during cleanup
 3. **Persistence**: Record history is maintained between application restarts
 
-For optimal reliability, mount this file as a volume in your Docker setup:
+## Configuration Storage
+
+TráfegoDNS stores its configuration and data files in the `/config` directory within the container, which should be mounted as a volume for persistence:
 
 ```yaml
 volumes:
   - /var/run/docker.sock:/var/run/docker.sock:ro
-  - ./dns-records.json:/app/dns-records.json
+  - ./config:/config
 ```
+
+The main configuration files include:
+
+- `/config/data/dns-records.json` - Tracking information for all DNS records managed by the application
+
+This approach provides several benefits:
+
+1. **Data Persistence**: All data is stored in a mounted volume that persists across container restarts and updates
+2. **Backup Capability**: The config directory can be easily backed up
+3. **Migration Support**: Moving to a new server is as simple as copying the config directory
+
+The application will automatically migrate any existing data from legacy locations into the new structure.
 
 ## DNS Management Modes
 
@@ -517,6 +588,14 @@ DNS record updates are processed in batches:
 
 This significantly reduces API calls to DNS providers, especially for deployments with many hostnames.
 
+### Timeout Handling
+
+The application includes robust timeout handling for API operations:
+
+- All API calls have a configurable timeout (default: 60 seconds)
+- This can be adjusted with the `API_TIMEOUT` environment variable
+- Timeouts are particularly important when running on lower-powered devices like Raspberry Pi
+
 ## Automatic Apex Domain Handling
 
 The DNS Manager automatically detects apex domains (e.g., `example.com`) and uses A records with your public IP instead of CNAME records, which are not allowed at the apex domain level.
@@ -534,10 +613,10 @@ docker build -t traefik-dns-manager .
 # Run the container
 docker run -d \
   --name traefik-dns-manager \
-  --user 0:0 \
   -e CLOUDFLARE_TOKEN=your_token \
   -e CLOUDFLARE_ZONE=example.com \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v ./config:/config \
   traefik-dns-manager
 ```
 

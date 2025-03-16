@@ -1,0 +1,57 @@
+#!/command/with-contenv bash
+
+PUID=${PUID:-1001}
+PGID=${PGID:-1001}
+LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+echo
+echo "-------------------------------------"
+echo "User/Group Configuration"
+echo "-------------------------------------"
+echo "User uid:    $(id -u abc)"
+echo "User gid:    $(id -g abc)"
+echo "Changing to: uid:$PUID gid:$PGID"
+echo "-------------------------------------"
+echo
+
+# Change UID and GID of abc user
+groupmod -o -g "$PGID" abc
+usermod -o -u "$PUID" abc
+
+# Handle Docker socket permission if present
+if [ -e /var/run/docker.sock ]; then
+  DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
+  echo "Docker socket GID: $DOCKER_GID"
+  
+  # Create docker group with the correct GID
+  if getent group $DOCKER_GID > /dev/null; then
+    # Group with this GID already exists
+    DOCKER_GROUP=$(getent group $DOCKER_GID | cut -d: -f1)
+    echo "Group with GID $DOCKER_GID already exists as $DOCKER_GROUP"
+  else
+    # Create new group
+    addgroup -g $DOCKER_GID docker-external
+    DOCKER_GROUP="docker-external"
+    echo "Created docker-external group with GID: $DOCKER_GID"
+  fi
+  
+  # Add abc user to the docker group
+  echo "Adding abc user to $DOCKER_GROUP group"
+  addgroup abc $DOCKER_GROUP
+  
+  # Verify the setup
+  if [[ "$LOG_LEVEL" == "DEBUG" || "$LOG_LEVEL" == "TRACE" ]]; then
+    echo "Docker socket permissions:"
+    ls -la /var/run/docker.sock
+    echo "Group membership for abc:"
+    id abc
+  fi
+fi
+
+# Fix permissions
+echo "Setting permissions on app and config directories"
+chown -R abc:abc \
+    /app \
+    /config
+
+echo "PUID/PGID setup complete"

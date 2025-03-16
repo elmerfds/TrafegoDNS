@@ -24,7 +24,7 @@ class DigitalOceanProvider extends DNSProvider {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
       },
-      timeout: 10000
+      timeout: config.apiTimeout  // Use the configurable timeout
     });
     
     logger.trace('DigitalOceanProvider.constructor: Axios client initialized');
