@@ -5,13 +5,7 @@ PGID=${PGID:-1001}
 LOG_LEVEL=${LOG_LEVEL:-INFO}
 
 echo
-echo "-------------------------------------"
-echo "User/Group Configuration"
-echo "-------------------------------------"
-echo "User uid:    $(id -u abc)"
-echo "User gid:    $(id -g abc)"
-echo "Changing to: uid:$PUID gid:$PGID"
-echo "-------------------------------------"
+echo "Changing user 'abc' from uid:$(id -u abc)/gid:$(id -g abc) to uid:$PUID/gid:$PGID"
 echo
 
 # Change UID and GID of abc user
@@ -53,5 +47,19 @@ echo "Setting permissions on app and config directories"
 chown -R abc:abc \
     /app \
     /config
+
+# Display configuration after all changes
+echo
+echo "-------------------------------------"
+echo "User/Group Configuration"
+echo "-------------------------------------"
+echo "User:         abc"
+echo "User uid:     $(id -u abc)"
+echo "User gid:     $(id -g abc)"
+echo "Groups:       $(id -Gn abc)"
+echo "Group IDs:    $(id -G abc)"
+echo "Docker access: $(groups abc | grep -q "$DOCKER_GROUP" && echo "Yes" || echo "No")"
+echo "-------------------------------------"
+echo
 
 echo "PUID/PGID setup complete"
