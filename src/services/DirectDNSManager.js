@@ -46,11 +46,17 @@ class DirectDNSManager {
     });
   }
 
+  /**
+   * Initialize the Direct DNS Manager
+   */
   async init() {
     logger.debug('Initialising DirectDNSManager...');
     return true;
   }
 
+  /**
+   * Start the polling process
+   */
   async startPolling() {
     // Perform initial poll
     await this.pollContainers();
@@ -62,6 +68,9 @@ class DirectDNSManager {
     return true;
   }
 
+  /**
+   * Stop the polling process
+   */
   stopPolling() {
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
@@ -70,6 +79,9 @@ class DirectDNSManager {
     }
   }
 
+  /**
+   * Poll containers for DNS labels
+   */
   async pollContainers() {
     // Skip if already polling to prevent parallel execution
     if (this.isPolling) {
@@ -127,6 +139,9 @@ class DirectDNSManager {
     }
   }
   
+  /**
+   * Extract hostnames from container labels
+   */
   extractHostnamesFromLabels(containerLabelsCache) {
     const hostnames = [];
     const containerLabels = {};
