@@ -1,0 +1,90 @@
+name: Version Bump
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type (patch, minor, major)'
+        required: true
+        default: 'minor'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+  push:
+    branches: 
+      - main
+      - master
+    paths-ignore:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'README.md'
+      - '**.md'
+
+jobs:
+  version-bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      new_version: ${{ steps.version.outputs.NEW_VERSION }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Calculate version
+        id: version
+        run: |
+          # Get the current version
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
+          
+          # Determine bump type (default to minor for push events)
+          BUMP_TYPE="${{ github.event.inputs.bump_type || 'minor' }}"
+          
+          # Calculate new version based on bump type
+          MAJOR_VERSION=${VERSION_PARTS[0]}
+          MINOR_VERSION=${VERSION_PARTS[1]}
+          PATCH_VERSION=${VERSION_PARTS[2]}
+          
+          if [ "$BUMP_TYPE" == "major" ]; then
+            MAJOR_VERSION=$((MAJOR_VERSION + 1))
+            MINOR_VERSION=0
+            PATCH_VERSION=0
+          elif [ "$BUMP_TYPE" == "minor" ]; then
+            MINOR_VERSION=$((MINOR_VERSION + 1))
+            PATCH_VERSION=0
+          elif [ "$BUMP_TYPE" == "patch" ]; then
+            PATCH_VERSION=$((PATCH_VERSION + 1))
+          fi
+          
+          NEW_VERSION="${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}"
+          echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_OUTPUT
+          echo "New version will be: ${NEW_VERSION} (${BUMP_TYPE} bump)"
+      
+      - name: Update package.json and package-lock.json
+        run: |
+          # Update version in package.json
+          npm version ${{ steps.version.outputs.NEW_VERSION }} --no-git-tag-version
+          
+          # Update name in package-lock.json
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          jq --arg name "$PACKAGE_NAME" --arg version "${{ steps.version.outputs.NEW_VERSION }}" '.name = $name | .version = $version' package-lock.json > package-lock.tmp
+          mv package-lock.tmp package-lock.json
+      
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add package.json package-lock.json
+          git commit -m "Bump version to ${{ steps.version.outputs.NEW_VERSION }}" || echo "No changes to commit"
+          git push

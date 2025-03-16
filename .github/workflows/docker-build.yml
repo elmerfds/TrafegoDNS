@@ -1,79 +1,24 @@
-name: Version Bump and Docker Build
+name: Build and Publish Docker Image
 
 on:
+  workflow_dispatch:  # Manual trigger
   push:
-    branches: 
-      - main
-      - master
-      - dev
+    branches: [ dev ]
     paths-ignore:
-      - 'package.json'
-      - 'package-lock.json'
       - 'README.md'
       - '**.md'
-      - '.github/workflows/**'      
-  workflow_dispatch:  # Manual trigger
+      - '.github/workflows/**'          
+  # This will make the workflow run after the version bump workflow completes
+  workflow_run:
+    workflows: ["Version Bump"]
+    branches: [main, master]
+    types: 
+      - completed
 
 jobs:
-  version-bump:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    outputs:
-      new_version: ${{ steps.version.outputs.NEW_VERSION }}
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-      
-      - name: Calculate version
-        id: version
-        run: |
-          # Generate date-based version
-          DATE_TAG=$(date +'%Y%m%d')
-          
-          # Get commit count for additional uniqueness
-          COMMIT_COUNT=$(git rev-list --count HEAD)
-          
-          # Create a version like 1.7.0 (increment minor version)
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-          IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
-          
-          MAJOR_VERSION=${VERSION_PARTS[0]}
-          MINOR_VERSION=$((${VERSION_PARTS[1]} + 1))
-          PATCH_VERSION=0
-          
-          NEW_VERSION="${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}"
-          echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_OUTPUT
-          echo "New version will be: ${NEW_VERSION}"
-      
-      - name: Update package.json and package-lock.json
-        run: |
-          # Update version in package.json
-          npm version ${{ steps.version.outputs.NEW_VERSION }} --no-git-tag-version
-          
-          # Update name in package-lock.json
-          PACKAGE_NAME=$(node -p "require('./package.json').name")
-          jq --arg name "$PACKAGE_NAME" --arg version "${{ steps.version.outputs.NEW_VERSION }}" '.name = $name | .version = $version' package-lock.json > package-lock.tmp
-          mv package-lock.tmp package-lock.json
-      
-      - name: Commit changes
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add package.json package-lock.json
-          git commit -m "Bump version to ${{ steps.version.outputs.NEW_VERSION }}" || echo "No changes to commit"
-          git push
-
   build-and-push:
-    needs: version-bump
+    # Only run if the triggering workflow succeeded or if this was triggered directly
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name != 'workflow_run' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
