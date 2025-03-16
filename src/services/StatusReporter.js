@@ -82,6 +82,10 @@ class StatusReporter {
       
       console.log(''); // Empty line for better readability
       logger.info(`🚀 TráfegoDNS v${version}`);
+      
+      // Display operation mode
+      const operationMode = this.config.operationMode || 'traefik';
+      logger.info(`🔄 Operation Mode: ${operationMode.toUpperCase()}`);
       console.log(''); // Empty line for spacing
       
       // DNS Provider Section
@@ -95,9 +99,13 @@ class StatusReporter {
       
       // Connectivity Section
       logger.info('🔄 CONNECTIVITY');
-      logger.info(`  🟢 Traefik API: Connected at ${this.config.traefikApiUrl}`);
-      const authStatus = this.config.traefikApiUsername ? 'Enabled' : 'Disabled';
-      logger.info(`  🔐 Basic Auth: ${authStatus}`);
+      if (operationMode.toLowerCase() === 'traefik') {
+        logger.info(`  🟢 Traefik API: Connected at ${this.config.traefikApiUrl}`);
+        const authStatus = this.config.traefikApiUsername ? 'Enabled' : 'Disabled';
+        logger.info(`  🔐 Basic Auth: ${authStatus}`);
+      } else {
+        logger.info(`  🟢 Docker Labels: Direct access mode (no Traefik)`);
+      }
       logger.info(`  🐳 Docker Socket: Accessible`);
       console.log(''); // Empty line for spacing
       

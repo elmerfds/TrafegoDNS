@@ -17,6 +17,9 @@ class ConfigManager {
       lastCheck: 0
     };
     
+    // Operation mode - traefik or direct
+    this.operationMode = EnvironmentLoader.getString('OPERATION_MODE', 'traefik');
+
     // DNS Provider configuration
     this.dnsProvider = EnvironmentLoader.getString('DNS_PROVIDER', 'cloudflare');
     
