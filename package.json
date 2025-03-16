@@ -1,6 +1,6 @@
 {
   "name": "TráfegoDNS",
-  "version": "1.7.0",
+  "version": "1.6.5",
   "description": "Automatically manage Cloudflare DNS records based on Traefik routing configuration",
   "main": "src/app.js",
   "scripts": {
@@ -11,7 +11,7 @@
   "license": "MIT",
   "dependencies": {
     "axios": "^1.8.2",
-    "@aws-sdk/client-route-53": "^3.540.0",
+    "@aws-sdk/client-route-53": "^3.540.0", 
     "dockerode": "^4.0.4"
   }
 }
