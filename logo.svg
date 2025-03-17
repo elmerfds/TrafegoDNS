@@ -10,17 +10,21 @@
   <!-- Circular background -->
   <circle cx="100" cy="100" r="95" fill="url(#bgGradient)" />
   
-  <!-- Minimal abstract representation of DNS routing -->
-  <!-- Three horizontal lines representing DNS records/layers -->
-  <line x1="60" y1="70" x2="140" y2="70" stroke="#3B82F6" stroke-width="6" stroke-linecap="round" />
-  <line x1="60" y1="100" x2="140" y2="100" stroke="#3B82F6" stroke-width="6" stroke-linecap="round" />
-  <line x1="60" y1="130" x2="140" y2="130" stroke="#3B82F6" stroke-width="6" stroke-linecap="round" />
+  <!-- Main Routes with Varied Colors -->
+  <path d="M45 100 L100 100 L155 60" stroke="#FF0000" stroke-width="5" stroke-linecap="round" />
+  <path d="M100 100 L155 100" stroke="#00A86B" stroke-width="5" stroke-linecap="round" />
+  <path d="M100 100 L155 140" stroke="#0066CC" stroke-width="5" stroke-linecap="round" />
   
-  <!-- Vertical routing path -->
-  <line x1="100" y1="55" x2="100" y2="145" stroke="#F8FAFC" stroke-width="3" stroke-linecap="round" />
+  <!-- DNS Provider Node (Distinctive Yellow) -->
+  <circle cx="45" cy="100" r="10" fill="#FFD700" />
+  <circle cx="45" cy="100" r="5" fill="#F8FAFC" />
   
-  <!-- Connection dots representing the routing intersections with traffic light colors -->
-  <circle cx="100" cy="70" r="5" fill="#EF4444" /> <!-- Red -->
-  <circle cx="100" cy="100" r="5" fill="#EAB308" /> <!-- Yellow -->
-  <circle cx="100" cy="130" r="5" fill="#22C55E" /> <!-- Green -->
+  <!-- Endpoint Dots with Matching Line Colors -->
+  <circle cx="155" cy="60" r="6" fill="#FF0000" />
+  <circle cx="155" cy="100" r="6" fill="#00A86B" />
+  <circle cx="155" cy="140" r="6" fill="#0066CC" />
+  
+  <!-- Central Hub -->
+  <circle cx="100" cy="100" r="15" fill="#F8FAFC" />
+  <circle cx="100" cy="100" r="8" fill="#0F172A" />
 </svg>
