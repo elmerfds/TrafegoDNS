@@ -150,7 +150,7 @@
     <!-- DNS Provider -->
     <Config Name="DNS Provider" Target="DNS_PROVIDER" Default="cloudflare|digitalocean|route53" Mode="" Description="Select DNS provider to use" Type="Variable" Display="always" Required="true" Mask="false">cloudflare</Config>
 
-    <!-- Provider Settings (dynamically shown based on provider selection) -->
+    <!-- Provider Settings -->
     <!-- Cloudflare Settings -->
     <Config Name="Cloudflare Token" Target="CLOUDFLARE_TOKEN" Default="" Mode="" Description="Cloudflare API token (requires DNS edit permissions)" Type="Variable" Display="always" Required="false" Mask="true"></Config>
     <Config Name="Cloudflare Zone" Target="CLOUDFLARE_ZONE" Default="" Mode="" Description="Your domain name managed in Cloudflare (e.g., example.com)" Type="Variable" Display="always" Required="false" Mask="false"></Config>
