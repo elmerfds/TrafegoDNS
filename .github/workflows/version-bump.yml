@@ -12,15 +12,6 @@ on:
           - patch
           - minor
           - major
-  push:
-    branches: 
-      - main
-      - master
-    paths-ignore:
-      - 'package.json'
-      - 'package-lock.json'
-      - 'README.md'
-      - '**.md'
 
 jobs:
   version-bump:
@@ -48,7 +39,7 @@ jobs:
           CURRENT_VERSION=$(node -p "require('./package.json').version")
           IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
           
-          # Determine bump type (default to minor for push events)
+          # Determine bump type from workflow dispatch input
           BUMP_TYPE="${{ github.event.inputs.bump_type || 'minor' }}"
           
           # Calculate new version based on bump type
@@ -88,3 +79,32 @@ jobs:
           git add package.json package-lock.json
           git commit -m "Bump version to ${{ steps.version.outputs.NEW_VERSION }}" || echo "No changes to commit"
           git push
+  
+  create-tag-and-release:
+    needs: version-bump
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main  # Checkout the main branch to get the updated version
+          fetch-depth: 0
+      
+      - name: Create Git tag
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git tag -a v${{ needs.version-bump.outputs.new_version }} -m "Version ${{ needs.version-bump.outputs.new_version }}"
+          git push origin v${{ needs.version-bump.outputs.new_version }}
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.version-bump.outputs.new_version }}
+          name: Release v${{ needs.version-bump.outputs.new_version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
