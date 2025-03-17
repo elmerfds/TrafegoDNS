@@ -374,6 +374,24 @@ class DNSManager {
           continue;
         }
         
+        // Also check if this record is in the managed hostnames list
+        if (this.recordTracker.managedHostnames && 
+            this.recordTracker.managedHostnames.some(h => h.hostname.toLowerCase() === recordFqdn.toLowerCase())) {
+          // Create a unique key for this record for tracking log messages
+          const recordKey = `${recordFqdn}-${record.type}-managed`;
+          
+          // If we haven't logged this record yet, log at INFO level
+          if (!this.loggedPreservedRecords.has(recordKey)) {
+            logger.info(`Preserving DNS record (in managed list): ${recordFqdn} (${record.type})`);
+            this.loggedPreservedRecords.add(recordKey);
+          } else {
+            // We've already logged this one, use DEBUG level to avoid spam
+            logger.debug(`Preserving DNS record (in managed list): ${recordFqdn} (${record.type})`);
+          }
+          
+          continue;
+        }
+        
         // Check if this record is still active
         if (!normalizedActiveHostnames.has(recordFqdn)) {
           logger.debug(`Found orphaned record: ${recordFqdn} (${record.type})`);
