@@ -36,6 +36,9 @@ class RecordTracker {
     
     // Load preserved hostnames from config
     this.loadPreservedHostnames();
+
+    // Load managed hostnames from config
+    this.loadManagedHostnames();    
     
     // Initialise the tracker
     this.loadTrackedRecords();
@@ -277,6 +280,44 @@ class RecordTracker {
       this.trackedRecords.set(key, record);
       this.saveTrackedRecords();
       logger.debug(`Updated tracked DNS record ID: ${oldRecord.name} (${oldRecord.type})`);
+    }
+  }
+  /**
+   * Load managed hostnames from environment variable
+   */
+  loadManagedHostnames() {
+    try {
+      const managedHostnamesStr = this.config.managedHostnames || '';
+      
+      // Split by comma and process each hostname configuration
+      this.managedHostnames = managedHostnamesStr
+        .split(',')
+        .map(hostnameConfig => {
+          const parts = hostnameConfig.trim().split(':');
+          if (parts.length < 1) return null;
+          
+          const hostname = parts[0];
+          
+          // Return basic record with defaults if parts are missing
+          return {
+            hostname: hostname,
+            type: parts[1] || 'A',
+            content: parts[2] || (parts[1] === 'CNAME' ? this.config.getProviderDomain() : this.config.getPublicIPSync()),
+            ttl: parseInt(parts[3] || '3600', 10),
+            proxied: parts[4] ? parts[4].toLowerCase() === 'true' : this.config.defaultProxied
+          };
+        })
+        .filter(config => config && config.hostname && config.hostname.length > 0);
+      
+      if (this.managedHostnames.length === 0) {
+        logger.debug('No managed hostnames configured');
+        this.managedHostnames = [];
+      } else {
+        logger.info(`Loaded ${this.managedHostnames.length} managed hostnames from configuration`);
+      }
+    } catch (error) {
+      logger.error(`Error loading managed hostnames: ${error.message}`);
+      this.managedHostnames = [];
     }
   }
 }

@@ -45,6 +45,10 @@ class DNSManager {
     try {
       logger.debug('Initializing DNS Manager...');
       await this.dnsProvider.init();
+      
+      // Process managed hostnames during initialization
+      await this.processManagedHostnames();
+      
       logger.success('DNS Manager initialised successfully');
       return true;
     } catch (error) {
@@ -52,7 +56,6 @@ class DNSManager {
       throw error;
     }
   }
-  
   /**
    * Set up event subscriptions
    */
@@ -371,6 +374,24 @@ class DNSManager {
           continue;
         }
         
+        // Also check if this record is in the managed hostnames list
+        if (this.recordTracker.managedHostnames && 
+            this.recordTracker.managedHostnames.some(h => h.hostname.toLowerCase() === recordFqdn.toLowerCase())) {
+          // Create a unique key for this record for tracking log messages
+          const recordKey = `${recordFqdn}-${record.type}-managed`;
+          
+          // If we haven't logged this record yet, log at INFO level
+          if (!this.loggedPreservedRecords.has(recordKey)) {
+            logger.info(`Preserving DNS record (in managed list): ${recordFqdn} (${record.type})`);
+            this.loggedPreservedRecords.add(recordKey);
+          } else {
+            // We've already logged this one, use DEBUG level to avoid spam
+            logger.debug(`Preserving DNS record (in managed list): ${recordFqdn} (${record.type})`);
+          }
+          
+          continue;
+        }
+        
         // Check if this record is still active
         if (!normalizedActiveHostnames.has(recordFqdn)) {
           logger.debug(`Found orphaned record: ${recordFqdn} (${record.type})`);
@@ -419,6 +440,78 @@ class DNSManager {
         source: 'DNSManager.cleanupOrphanedRecords',
         error: error.message
       });
+    }
+  }
+  
+  /**
+   * Process managed hostnames and ensure they exist
+   */
+  async processManagedHostnames() {
+    if (!this.recordTracker.managedHostnames || this.recordTracker.managedHostnames.length === 0) {
+      logger.debug('No managed hostnames to process');
+      return;
+    }
+    
+    logger.info(`Processing ${this.recordTracker.managedHostnames.length} manually managed hostnames`);
+    
+    // Collect DNS record configurations
+    const dnsRecordConfigs = [];
+    
+    // Process each managed hostname
+    for (const config of this.recordTracker.managedHostnames) {
+      try {
+        // Create a record configuration
+        const recordConfig = {
+          type: config.type,
+          name: config.hostname,
+          content: config.content,
+          ttl: config.ttl
+        };
+        
+        // Add proxied flag for Cloudflare
+        if (this.config.dnsProvider === 'cloudflare' && ['A', 'AAAA', 'CNAME'].includes(config.type)) {
+          recordConfig.proxied = config.proxied;
+        }
+        
+        // Add to batch process list
+        dnsRecordConfigs.push(recordConfig);
+        
+        logger.debug(`Added managed hostname to processing: ${config.hostname} (${config.type})`);
+      } catch (error) {
+        logger.error(`Error processing managed hostname ${config.hostname}: ${error.message}`);
+      }
+    }
+    
+    // Batch process all DNS records
+    if (dnsRecordConfigs.length > 0) {
+      logger.debug(`Batch processing ${dnsRecordConfigs.length} managed DNS records`);
+      
+      try {
+        const processedRecords = await this.dnsProvider.batchEnsureRecords(dnsRecordConfigs);
+        
+        // Track created/updated records
+        if (processedRecords && processedRecords.length > 0) {
+          for (const record of processedRecords) {
+            // Only track records that have an ID (successfully created/updated)
+            if (record && record.id) {
+              // Check if this is a new record or just an update
+              const isTracked = this.recordTracker.isTracked(record);
+              
+              if (isTracked) {
+                // Update the tracked record with the latest ID
+                this.recordTracker.updateRecordId(record, record);
+              } else {
+                // Track new record
+                this.recordTracker.trackRecord(record);
+              }
+            }
+          }
+        }
+        
+        logger.success(`Successfully processed ${processedRecords.length} managed hostnames`);
+      } catch (error) {
+        logger.error(`Error batch processing managed hostnames: ${error.message}`);
+      }
     }
   }
 }

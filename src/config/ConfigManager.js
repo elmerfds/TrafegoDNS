@@ -20,6 +20,9 @@ class ConfigManager {
     // Operation mode - traefik or direct
     this.operationMode = EnvironmentLoader.getString('OPERATION_MODE', 'traefik');
 
+    // Managed Hostname management
+    this.managedHostnames = EnvironmentLoader.getString('MANAGED_HOSTNAMES', '');    
+
     // DNS Provider configuration
     this.dnsProvider = EnvironmentLoader.getString('DNS_PROVIDER', 'cloudflare');
     
