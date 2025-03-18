@@ -1,7 +1,7 @@
 # TrafegoDNS
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/elmerfds/TrafegoDNS/main/logo/logo.png" alt="TrafegoDNS Logo" width="240" height="200">
+  <img src="https://raw.githubusercontent.com/elmerfds/TrafegoDNS/main/logo/logo.png" alt="TrafegoDNS Logo" width="200" height="200">
 </div>
 
 A service that automatically manages DNS records based on container configuration. Supports both Traefik integration and direct Docker container label mode, making it compatible with any web server or reverse proxy solution.
