@@ -1,14 +1,14 @@
 <?xml version="1.0"?>
 <Container version="2">
-    <Name>TráfegoDNS</Name>
+    <Name>TrafegoDNS</Name>
     <n>trafegodns</n>
-    <Repository>eafxx/traefik-dns-manager:latest</Repository>
-    <Registry>https://hub.docker.com/r/eafxx/traefik-dns-manager/</Registry>
+    <Repository>eafxx/trafegodns:latest</Repository>
+    <Registry>https://hub.docker.com/r/eafxx/trafegodns/</Registry>
     <Network>bridge</Network>
     <Shell>bash</Shell>
     <Privileged>false</Privileged>
-    <Support>https://github.com/elmerfds/traefik-dns-manager/issues</Support>
-    <Project>https://github.com/elmerfds/traefik-dns-manager/</Project>
+    <Support>https://github.com/elmerfds/TrafegoDNS/issues</Support>
+    <Project>https://github.com/elmerfds/TrafegoDNS</Project>
     <Overview>TráfegoDNS automatically manages DNS records based on container configuration. It supports both Traefik integration and direct Docker container label mode, making it compatible with any web server or reverse proxy solution.&#xD;
         &#xD;
         Key Features:&#xD;
@@ -19,15 +19,15 @@
         - Real-time monitoring of Docker container events</Overview>
     <Category>Network:DNS Status:Stable</Category>
     <WebUI/>
-    <TemplateURL>https://raw.githubusercontent.com/elmerfds/traefik-dns-manager/master/unraid/trafegodns.xml</TemplateURL>
+    <TemplateURL>https://raw.githubusercontent.com/elmerfds/TrafegoDNS/refs/heads/main/templates/unraid-TrafegoDNS.yml</TemplateURL>
     <Icon>https://raw.githubusercontent.com/elmerfds/TrafegoDNS/refs/heads/main/logo/logo.png</Icon>
     <ExtraParams/>
     <PostArgs/>
     <CPUset/>
     <DateInstalled>1711297200</DateInstalled>
     <DonateText>If you appreciate my work, please consider donating!</DonateText>
-    <DonateLink>https://github.com/elmerfds/traefik-dns-manager</DonateLink>
-    <Description>TráfegoDNS automatically manages DNS records based on container configuration. It supports both Traefik integration and direct Docker container label mode, making it compatible with any web server or reverse proxy solution.
+    <DonateLink>https://github.com/elmerfds/TrafegoDNS</DonateLink>
+    <Description>TrafegoDNS automatically manages DNS records based on container configuration. It supports both Traefik integration and direct Docker container label mode, making it compatible with any web server or reverse proxy solution.
 
         ## Features
 
