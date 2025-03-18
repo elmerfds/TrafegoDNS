@@ -1,4 +1,4 @@
-# TráfegoDNS
+# TrafegoDNS
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/elmerfds/TrafegoDNS/main/logo/logo.png" alt="TrafegoDNS Logo" width="240" height="200">
@@ -60,11 +60,11 @@ A service that automatically manages DNS records based on container configuratio
 
 ## Operation Modes
 
-TráfegoDNS supports two operation modes:
+TrafegoDNS supports two operation modes:
 
 ### Traefik Mode (Default)
 
-In this mode, TráfegoDNS monitors the Traefik API to detect hostnames from router rules.
+In this mode, TrafegoDNS monitors the Traefik API to detect hostnames from router rules.
 
 ```yaml
 environment:
@@ -86,7 +86,7 @@ services:
 
 ### Direct Mode
 
-In this mode, TráfegoDNS operates independently of Traefik, directly reading hostnames from container labels. This allows it to run completely independently of any web server or reverse proxy, making it compatible with NGINX, Apache, HAProxy, or any other solution - or even with containers that don't use a reverse proxy at all. The only requirement is that services are deployed as Docker containers.
+In this mode, TrafegoDNS operates independently of Traefik, directly reading hostnames from container labels. This allows it to run completely independently of any web server or reverse proxy, making it compatible with NGINX, Apache, HAProxy, or any other solution - or even with containers that don't use a reverse proxy at all. The only requirement is that services are deployed as Docker containers.
 
 ```yaml
 environment:
@@ -150,7 +150,7 @@ All other DNS configuration labels work the same way as in Traefik mode.
 
 ## Supported Architectures
 
-TráfegoDNS supports multiple architectures with multi-arch Docker images:
+TrafegoDNS supports multiple architectures with multi-arch Docker images:
 
 - **amd64**: Standard 64-bit PCs and servers
 - **arm64**: 64-bit ARM devices (Raspberry Pi 4/5, newer ARM servers)
@@ -333,7 +333,7 @@ Required AWS IAM permissions:
 
 ## User/Group Permissions
 
-TráfegoDNS supports running as a specific user and group using the PUID and PGID environment variables:
+TrafegoDNS supports running as a specific user and group using the PUID and PGID environment variables:
 
 ```yaml
 environment:
@@ -680,7 +680,7 @@ Preserved hostnames will be logged during startup and skipped during any cleanup
 
 ## Manual Hostname Management
 
-TráfegoDNS allows you to manually specify hostnames that should be created and maintained regardless of container lifecycle:
+TrafegoDNS allows you to manually specify hostnames that should be created and maintained regardless of container lifecycle:
 
 ```yaml
 environment:
@@ -717,7 +717,7 @@ The application maintains a persistent record of all DNS entries it creates in a
 
 ## Configuration Storage
 
-TráfegoDNS stores its configuration and data files in the `/config` directory within the container, which should be mounted as a volume for persistence:
+TrafegoDNS stores its configuration and data files in the `/config` directory within the container, which should be mounted as a volume for persistence:
 
 ```yaml
 volumes:
@@ -739,7 +739,7 @@ The application will automatically migrate any existing data from legacy locatio
 
 ## DNS Management Modes
 
-TráfegoDNS supports two operational modes for DNS management:
+TrafegoDNS supports two operational modes for DNS management:
 
 ### Opt-out Mode (Default)
 - Set `DNS_DEFAULT_MANAGE=true` or leave it unset
@@ -768,12 +768,12 @@ The default level is `INFO`, which provides a clean, readable output with import
 ### INFO Level Format
 
 ```
-✅ Starting TráfegoDNS
+✅ Starting TrafegoDNS
 ℹ️ Cloudflare Zone: example.com
 ℹ️ Processing 30 hostnames for DNS management
 ✅ Created A record for example.com
 ℹ️ 29 DNS records are up to date
-✅ TráfegoDNS running successfully
+✅ TrafegoDNS running successfully
 ```
 
 ## Performance Optimisation
