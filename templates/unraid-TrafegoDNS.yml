@@ -19,8 +19,8 @@
         - Real-time monitoring of Docker container events</Overview>
     <Category>Network:DNS Status:Stable</Category>
     <WebUI/>
-    <TemplateURL>https://raw.githubusercontent.com/elmerfds/TrafegoDNS/refs/heads/main/templates/unraid-TrafegoDNS.yml</TemplateURL>
-    <Icon>https://raw.githubusercontent.com/elmerfds/TrafegoDNS/refs/heads/main/logo/logo.png</Icon>
+    <TemplateURL>https://raw.githubusercontent.com/elmerfds/TrafegoDNS/main/templates/unraid-TrafegoDNS.yml</TemplateURL>
+    <Icon>https://raw.githubusercontent.com/elmerfds/TrafegoDNS/main/logo/logo.png</Icon>
     <ExtraParams/>
     <PostArgs/>
     <CPUset/>
