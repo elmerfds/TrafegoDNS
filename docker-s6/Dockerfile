@@ -8,9 +8,15 @@ RUN npm install --omit=dev
 # Stage 2: Build the frontend
 FROM node:23-alpine AS webui-build
 WORKDIR /app
+# Copy package.json first to leverage Docker caching
 COPY webui/package.json ./
 RUN npm install
-COPY webui/ ./
+# Create required public directory structure first
+RUN mkdir -p ./public
+COPY webui/public/ ./public/
+# Copy source files
+COPY webui/src/ ./src/
+# Run the build
 RUN npm run build
 
 # Stage 3: Build the application
