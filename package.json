@@ -1,5 +1,5 @@
 {
-  "name": "TráfegoDNS",
+  "name": "TrafegoDNS",
   "version": "1.8.1",
   "description": "Automatically manage DNS records based on Traefik routing configuration or Docker labels",
   "main": "src/app.js",
