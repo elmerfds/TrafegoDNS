@@ -70,7 +70,7 @@ function PreservedHostnames() {
   };
 
   const handleRemoveHostname = async (hostname) => {
-    if (!confirm(`Are you sure you want to remove ${hostname} from preserved hostnames?`)) {
+    if (!window.confirm(`Are you sure you want to remove ${hostname} from preserved hostnames?`)) {
       return;
     }
     

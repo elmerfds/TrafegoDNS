@@ -143,7 +143,7 @@ function ManagedHostnames() {
   };
 
   const handleRemoveHostname = async (hostname) => {
-    if (!confirm(`Are you sure you want to remove ${hostname} from managed hostnames?`)) {
+    if (!window.confirm(`Are you sure you want to remove ${hostname} from managed hostnames?`)) {
       return;
     }
     
