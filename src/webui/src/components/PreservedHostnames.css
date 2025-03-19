@@ -1,0 +1,110 @@
+.preserved-hostnames {
+  max-width: 800px;
+}
+
+.preserved-info {
+  background-color: #e1f5fe;
+  border-left: 4px solid var(--primary-color);
+  padding: 1rem;
+  margin-bottom: 2rem;
+  border-radius: 0 4px 4px 0;
+}
+
+.preserved-info code {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 0.2rem 0.4rem;
+  border-radius: 3px;
+  font-family: monospace;
+}
+
+.add-hostname {
+  margin-bottom: 2rem;
+}
+
+.add-hostname form {
+  display: flex;
+  gap: 1rem;
+}
+
+.add-hostname input {
+  flex: 1;
+  padding: 0.6rem 1rem;
+  font-size: 1rem;
+}
+
+.add-error-message {
+  color: var(--danger-color);
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.hostnames-list {
+  background-color: var(--card-bg);
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.hostnames-list h2 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  font-size: 1.2rem;
+  color: #333;
+}
+
+.no-hostnames {
+  padding: 2rem 0;
+  text-align: center;
+  color: #666;
+}
+
+.hostnames-list ul {
+  list-style: none;
+  padding: 0;
+}
+
+.hostname-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+  transition: background-color 0.2s;
+}
+
+.hostname-item:last-child {
+  border-bottom: none;
+}
+
+.hostname-item:hover {
+  background-color: var(--hover-bg);
+}
+
+.hostname {
+  font-family: monospace;
+  font-size: 1rem;
+}
+
+.wildcard {
+  color: var(--primary-color);
+  font-weight: bold;
+}
+
+.domain {
+  font-weight: 500;
+}
+
+.remove-button {
+  background-color: transparent;
+  color: var(--danger-color);
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  transition: transform 0.2s;
+}
+
+.remove-button:hover {
+  background-color: transparent;
+  transform: scale(1.2);
+}
