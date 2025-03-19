@@ -10,7 +10,7 @@ FROM node:23-alpine AS webui-build
 WORKDIR /app
 COPY src/webui/package.json ./
 RUN npm install
-COPY webui/ ./
+COPY /src/webui/ ./
 RUN npm run build
 
 # Stage 3: Build the application
