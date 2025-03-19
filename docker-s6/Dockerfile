@@ -8,7 +8,7 @@ RUN npm install --omit=dev
 # Stage 2: Build the frontend
 FROM node:23-alpine AS webui-build
 WORKDIR /app
-COPY webui/package.json ./
+COPY src/webui/package.json ./
 RUN npm install
 COPY webui/ ./
 RUN npm run build
