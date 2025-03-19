@@ -10,6 +10,20 @@ function Records() {
   const [typeFilter, setTypeFilter] = useState('');
   const [showTrackedOnly, setShowTrackedOnly] = useState(false);
 
+  // Check if a record is tracked - define this function before using it
+  const isRecordTracked = (record) => {
+    if (trackedRecordIds.has(record.id)) {
+      return true;
+    }
+    
+    // Check composite key for providers that don't have IDs
+    if (record.name && record.type) {
+      return trackedRecordIds.has(`${record.name}:${record.type}`);
+    }
+    
+    return false;
+  };
+
   useEffect(() => {
     // Fetch records data
     fetchRecords();
@@ -74,20 +88,6 @@ function Records() {
     
     return matchesSearch && matchesType && matchesTracked;
   });
-
-  // Check if a record is tracked
-  const isRecordTracked = (record) => {
-    if (trackedRecordIds.has(record.id)) {
-      return true;
-    }
-    
-    // Check composite key for providers that don't have IDs
-    if (record.name && record.type) {
-      return trackedRecordIds.has(`${record.name}:${record.type}`);
-    }
-    
-    return false;
-  };
 
   // Get unique record types for filter dropdown
   const recordTypes = [...new Set(records.map(record => record.type))].sort();
