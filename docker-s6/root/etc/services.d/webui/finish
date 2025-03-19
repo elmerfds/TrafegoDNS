@@ -1,0 +1,10 @@
+#!/command/with-contenv bash
+
+echo
+echo "-------------------------------------"
+echo "TráfegoDNS Web UI has exited with status $?"
+echo "-------------------------------------"
+echo
+
+# Don't exit the container if the Web UI crashes
+exit 0

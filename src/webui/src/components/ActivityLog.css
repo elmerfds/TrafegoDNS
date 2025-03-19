@@ -1,0 +1,78 @@
+.activity-log {
+  max-width: 900px;
+}
+
+.log-controls {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.auto-refresh-note {
+  margin-left: 1rem;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.activities-list {
+  background-color: var(--card-bg);
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  padding: 1rem;
+}
+
+.no-activities {
+  padding: 2rem 0;
+  text-align: center;
+  color: #666;
+}
+
+.activities-list ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.activity-item {
+  padding: 1rem;
+  border-left: 4px solid #ccc;
+  margin-bottom: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 0 4px 4px 0;
+  transition: transform 0.2s;
+}
+
+.activity-item:hover {
+  transform: translateX(2px);
+}
+
+.activity-item.created {
+  border-left-color: var(--success-color);
+  background-color: rgba(46, 204, 113, 0.05);
+}
+
+.activity-item.updated {
+  border-left-color: var(--primary-color);
+  background-color: rgba(52, 152, 219, 0.05);
+}
+
+.activity-item.deleted {
+  border-left-color: var(--warning-color);
+  background-color: rgba(243, 156, 18, 0.05);
+}
+
+.activity-item.error {
+  border-left-color: var(--danger-color);
+  background-color: rgba(231, 76, 60, 0.05);
+}
+
+.activity-timestamp {
+  font-size: 0.85rem;
+  color: #777;
+  margin-bottom: 0.5rem;
+}
+
+.activity-message {
+  font-size: 1rem;
+  line-height: 1.5;
+}
