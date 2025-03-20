@@ -1,9 +1,11 @@
 # docker-s6/Dockerfile
+# Enhanced Dockerfile for TráfegoDNS with Web UI support
 
 # Stage 1: Generate package-lock.json
 FROM node:20-alpine AS dependencies
 WORKDIR /app
 COPY package.json .
+COPY webui/package.json ./webui/
 RUN npm install --package-lock-only
 RUN npm install --omit=dev
 
