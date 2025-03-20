@@ -19,7 +19,8 @@ import Settings from '../../components/settings/Settings';
 import './MainLayout.scss';
 
 const MainLayout = ({ appStatus }) => {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Sidebar closed by default
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
