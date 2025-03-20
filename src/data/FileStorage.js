@@ -19,14 +19,14 @@ class FileStorage {
    */
   async ensureDir(dirPath) {
     try {
-      await fs.mkdir(dirPath, { recursive: true });
-      return true;
-    } catch (error) {
-      // If the directory already exists, that's fine
-      if (error.code !== 'EEXIST') {
-        throw error;
+      if (!fsSync.existsSync(dirPath)) {
+        await fs.mkdir(dirPath, { recursive: true });
+        logger.debug(`Created directory: ${dirPath}`);
       }
       return true;
+    } catch (error) {
+      logger.error(`Failed to create directory ${dirPath}: ${error.message}`);
+      throw error;
     }
   }
   
@@ -37,14 +37,27 @@ class FileStorage {
    */
   async readJsonFile(filePath) {
     try {
+      // First verify the file exists
+      if (!fsSync.existsSync(filePath)) {
+        throw new Error(`File not found: ${filePath}`);
+      }
+      
       const data = await fs.readFile(filePath, 'utf8');
-      return JSON.parse(data);
+      try {
+        return JSON.parse(data);
+      } catch (parseError) {
+        logger.error(`Invalid JSON in file ${filePath}: ${parseError.message}`);
+        throw new Error(`Invalid JSON in file ${filePath}: ${parseError.message}`);
+      }
     } catch (error) {
       if (error.code === 'ENOENT') {
+        logger.error(`File not found: ${filePath}`);
         throw new Error(`File not found: ${filePath}`);
       } else if (error instanceof SyntaxError) {
+        logger.error(`Invalid JSON in file ${filePath}: ${error.message}`);
         throw new Error(`Invalid JSON in file ${filePath}: ${error.message}`);
       }
+      logger.error(`Error reading file ${filePath}: ${error.message}`);
       throw error;
     }
   }
@@ -56,21 +69,29 @@ class FileStorage {
    * @param {boolean} useTemporary - Whether to use a temporary file for atomic writes
    */
   async writeJsonFile(filePath, data, useTemporary = true) {
-    // Ensure parent directory exists
-    await this.ensureDir(path.dirname(filePath));
-    
-    const jsonData = JSON.stringify(data, null, 2);
-    
-    if (useTemporary) {
-      // Write to temporary file first for atomicity
-      const tempPath = `${filePath}.tmp`;
-      await fs.writeFile(tempPath, jsonData, 'utf8');
+    try {
+      // Ensure parent directory exists
+      const dirPath = path.dirname(filePath);
+      await this.ensureDir(dirPath);
       
-      // Rename to target path (atomic on most file systems)
-      await fs.rename(tempPath, filePath);
-    } else {
-      // Direct write
-      await fs.writeFile(filePath, jsonData, 'utf8');
+      const jsonData = JSON.stringify(data, null, 2);
+      
+      if (useTemporary) {
+        // Write to temporary file first for atomicity
+        const tempPath = `${filePath}.tmp`;
+        await fs.writeFile(tempPath, jsonData, 'utf8');
+        
+        // Rename to target path (atomic on most file systems)
+        await fs.rename(tempPath, filePath);
+        logger.debug(`Wrote file: ${filePath} (via temporary file)`);
+      } else {
+        // Direct write
+        await fs.writeFile(filePath, jsonData, 'utf8');
+        logger.debug(`Wrote file: ${filePath} (direct write)`);
+      }
+    } catch (error) {
+      logger.error(`Error writing file ${filePath}: ${error.message}`);
+      throw error;
     }
   }
   
@@ -94,13 +115,19 @@ class FileStorage {
    */
   async deleteFile(filePath) {
     try {
+      if (!fsSync.existsSync(filePath)) {
+        return true; // File already doesn't exist, which is fine
+      }
+      
       await fs.unlink(filePath);
+      logger.debug(`Deleted file: ${filePath}`);
       return true;
     } catch (error) {
       if (error.code === 'ENOENT') {
         // File already doesn't exist, which is fine
         return true;
       }
+      logger.error(`Error deleting file ${filePath}: ${error.message}`);
       throw error;
     }
   }
@@ -165,6 +192,10 @@ class FileStorage {
    */
   async listFiles(dirPath, extension = null) {
     try {
+      if (!fsSync.existsSync(dirPath)) {
+        return [];
+      }
+      
       const files = await fs.readdir(dirPath);
       
       if (extension) {
@@ -177,6 +208,7 @@ class FileStorage {
       if (error.code === 'ENOENT') {
         return [];
       }
+      logger.error(`Error listing files in ${dirPath}: ${error.message}`);
       throw error;
     }
   }
@@ -187,11 +219,22 @@ class FileStorage {
    * @param {string} destPath - Destination path
    */
   async copyFile(sourcePath, destPath) {
-    // Ensure destination directory exists
-    await this.ensureDir(path.dirname(destPath));
-    
-    // Copy file
-    await fs.copyFile(sourcePath, destPath);
+    try {
+      // Ensure source exists
+      if (!fsSync.existsSync(sourcePath)) {
+        throw new Error(`Source file does not exist: ${sourcePath}`);
+      }
+      
+      // Ensure destination directory exists
+      await this.ensureDir(path.dirname(destPath));
+      
+      // Copy file
+      await fs.copyFile(sourcePath, destPath);
+      logger.debug(`Copied ${sourcePath} to ${destPath}`);
+    } catch (error) {
+      logger.error(`Error copying file from ${sourcePath} to ${destPath}: ${error.message}`);
+      throw error;
+    }
   }
 }
 
