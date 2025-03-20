@@ -1,3 +1,4 @@
+// Complete the WebSocketServer.js file by adding the missing shutdown method
 // src/websocket/WebSocketServer.js
 /**
  * WebSocket Server for TráfegoDNS
