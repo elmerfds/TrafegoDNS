@@ -13,9 +13,9 @@ COPY src/webui/package.json ./
 RUN npm install
 # Create required public directory structure first
 RUN mkdir -p ./public
-COPY webui/public/ ./public/
+COPY src/webui/public/ ./public/
 # Copy source files
-COPY webui/src/ ./src/
+COPY src/webui/ ./src/
 # Run the build
 RUN npm run build
 
