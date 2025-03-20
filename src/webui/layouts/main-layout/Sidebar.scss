@@ -1,0 +1,29 @@
+// src/webui/layouts/main-layout/Sidebar.scss
+
+.sidebar {
+  min-height: calc(100vh - 56px);
+  display: flex;
+  flex-direction: column;
+  
+  .nav-link {
+    padding: 0.75rem 1.25rem;
+    color: rgba(255, 255, 255, 0.7);
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+    
+    &:hover {
+      color: #fff;
+      background-color: rgba(255, 255, 255, 0.05);
+    }
+    
+    &.active {
+      color: #FFD700 !important;
+      background-color: rgba(0, 102, 204, 0.2);
+      border-left-color: #FFD700;
+    }
+  }
+  
+  .sidebar-footer {
+    border-top-color: rgba(255, 255, 255, 0.1) !important;
+  }
+}
