@@ -2,38 +2,41 @@
 # Enhanced Dockerfile for TráfegoDNS with Web UI support
 
 # Stage 1: Generate package-lock.json
-FROM node:20-alpine AS dependencies
+FROM node:23-alpine AS dependencies
 WORKDIR /app
 COPY package.json .
-COPY webui/package.json ./webui/
 RUN npm install --package-lock-only
 RUN npm install --omit=dev
 
-# Stage 2: Build the Web UI
-FROM node:20-alpine AS webui-build
+# Stage 2: Build the frontend
+FROM node:23-alpine AS webui-build
 WORKDIR /app
-# Copy package.json files
-COPY package.json ./
-COPY webui/package.json ./webui/
-# Copy React source files
-COPY src/webui/ ./src/webui/
-# Create public directory from setup script
-COPY setup-react-files.sh ./
-RUN chmod +x ./setup-react-files.sh && ./setup-react-files.sh
-# Install dependencies and build
+
+# Copy the setup script and execute it
+# No need to chmod locally - we set permissions in the container
+COPY setup-react-files.sh /app/
+RUN chmod +x /app/setup-react-files.sh && /app/setup-react-files.sh
+
+# Copy package.json first to leverage Docker caching
+COPY webui/package.json /app/webui/
 WORKDIR /app/webui
-RUN npm install && \
-    npm run build || echo "Build failed, but continuing with empty build directory"
+RUN npm install
+
+# Copy source files
+COPY webui/src/ /app/webui/src/
+
+# Run the build
+RUN npm run build
 
 # Stage 3: Build the application
-FROM node:20-alpine AS build
+FROM node:23-alpine AS build
 WORKDIR /app
 COPY --from=dependencies /app/package*.json ./
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY src ./src
 
 # Stage 4: Create the production image with s6-overlay
-FROM node:20-alpine
+FROM node:23-alpine
 WORKDIR /app
 
 # Install s6-overlay v3
@@ -71,11 +74,6 @@ COPY --from=build /app/src ./src
 
 # Copy the web UI build files
 COPY --from=webui-build /app/webui/build ./webui/build
-# If build failed, create a simple placeholder page
-RUN if [ ! -f ./webui/build/index.html ]; then \
-      mkdir -p ./webui/build && \
-      echo '<!DOCTYPE html><html><head><title>TráfegoDNS</title></head><body style="background:#1E293B;color:#F8FAFC;font-family:sans-serif;text-align:center;padding:50px;"><h1>TráfegoDNS Web UI</h1><p>The full Web UI could not be built.</p><p>Check the <a href="/api/status" style="color:#FFD700;">API Status</a> endpoint for basic information.</p></body></html>' > ./webui/build/index.html; \
-    fi
 
 RUN chown -R abc:abc /app
 
