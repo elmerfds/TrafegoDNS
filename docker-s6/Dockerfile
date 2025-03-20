@@ -18,12 +18,12 @@ COPY setup-react-files.sh /app/
 RUN chmod +x /app/setup-react-files.sh && /app/setup-react-files.sh
 
 # Copy package.json first to leverage Docker caching
-COPY webui/package.json /app/webui/
+COPY src/webui/package.json /app/webui/
 WORKDIR /app/webui
 RUN npm install
 
 # Copy source files
-COPY webui/src/ /app/webui/src/
+COPY src/webui/ /app/webui/src/
 
 # Run the build
 RUN npm run build
