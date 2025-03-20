@@ -1,20 +1,23 @@
 /**
- * Web Server Component for TráfegoDNS
+ * src/webserver.js
+ * Enhanced Web Server Component for TrafegoDNS
  * Provides API endpoints and serves the React frontend
  */
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
-const fs = require('fs');
+const fs = require('fs').promises;
 const basicAuth = require('express-basic-auth');
 const logger = require('./utils/logger');
+const EventTypes = require('./events/EventTypes');
 
 class WebServer {
-  constructor(config, eventBus, dnsManager, recordTracker) {
+  constructor(config, eventBus, dnsManager, dataStore, activityLogger) {
     this.config = config;
     this.eventBus = eventBus;
     this.dnsManager = dnsManager;
-    this.recordTracker = recordTracker;
+    this.dataStore = dataStore;
+    this.activityLogger = activityLogger;
     this.app = express();
     this.server = null;
     this.port = process.env.WEB_UI_PORT || 8080;
@@ -78,11 +81,58 @@ class WebServer {
       res.json(status);
     });
 
-    // DNS Records endpoint
+    // Configuration endpoints
+    apiRouter.get('/config', async (req, res) => {
+      try {
+        // Get configuration from dataStore
+        const appConfig = await this.dataStore.getAppConfig();
+        
+        // Sanitize sensitive information
+        const safeConfig = this.config.getFullConfig ? 
+          this.config.getFullConfig() : 
+          this.sanitizeConfig(appConfig);
+        
+        res.json(safeConfig);
+      } catch (error) {
+        logger.error(`Error fetching configuration: ${error.message}`);
+        res.status(500).json({ error: 'Failed to fetch configuration' });
+      }
+    });
+
+    apiRouter.post('/config/log-level', async (req, res) => {
+      try {
+        const { level } = req.body;
+        
+        if (!level) {
+          return res.status(400).json({ error: 'Log level is required' });
+        }
+        
+        const success = logger.setLevel(level);
+        
+        if (!success) {
+          return res.status(400).json({ error: 'Invalid log level' });
+        }
+        
+        // Log the change to activity log
+        if (this.activityLogger) {
+          await this.activityLogger.logConfigChanged('logLevel', logger.levelNames[logger.level], level);
+        }
+        
+        res.json({ 
+          success: true,
+          message: `Log level set to ${level}`
+        });
+      } catch (error) {
+        logger.error(`Error setting log level: ${error.message}`);
+        res.status(500).json({ error: 'Failed to set log level' });
+      }
+    });
+
+    // DNS Records endpoints
     apiRouter.get('/records', async (req, res) => {
       try {
         const records = await this.dnsManager.dnsProvider.getRecordsFromCache();
-        const trackedRecords = this.recordTracker.getAllTrackedRecords();
+        const trackedRecords = this.dnsManager.recordTracker.getAllTrackedRecords();
         
         // Enhance records with tracked information
         const enhancedRecords = records.map(record => {
@@ -93,7 +143,7 @@ class WebServer {
           return {
             ...record,
             managedBy: trackedRecord ? trackedRecord.managedBy : undefined,
-            preserved: this.recordTracker.shouldPreserveHostname(record.name),
+            preserved: this.dnsManager.recordTracker.shouldPreserveHostname(record.name),
             createdAt: trackedRecord ? trackedRecord.createdAt : undefined
           };
         });
@@ -107,16 +157,22 @@ class WebServer {
 
     // Tracked Records endpoint
     apiRouter.get('/records/tracked', (req, res) => {
-      const trackedRecords = this.recordTracker.getAllTrackedRecords();
+      const trackedRecords = this.dnsManager.recordTracker.getAllTrackedRecords();
       res.json({ records: trackedRecords });
     });
 
     // Preserved Hostnames endpoints
-    apiRouter.get('/preserved-hostnames', (req, res) => {
-      res.json({ hostnames: this.recordTracker.preservedHostnames || [] });
+    apiRouter.get('/preserved-hostnames', async (req, res) => {
+      try {
+        const preservedHostnames = await this.dataStore.getPreservedHostnames();
+        res.json({ hostnames: preservedHostnames || [] });
+      } catch (error) {
+        logger.error(`Error fetching preserved hostnames: ${error.message}`);
+        res.status(500).json({ error: 'Failed to fetch preserved hostnames' });
+      }
     });
 
-    apiRouter.post('/preserved-hostnames', (req, res) => {
+    apiRouter.post('/preserved-hostnames', async (req, res) => {
       try {
         const { hostname } = req.body;
         
@@ -124,16 +180,26 @@ class WebServer {
           return res.status(400).json({ error: 'Hostname is required' });
         }
         
+        // Get existing preserved hostnames
+        const preservedHostnames = await this.dataStore.getPreservedHostnames();
+        
         // Check if hostname already exists
-        if (this.recordTracker.preservedHostnames.includes(hostname)) {
+        if (preservedHostnames.includes(hostname)) {
           return res.status(409).json({ error: 'Hostname already exists' });
         }
         
         // Add hostname
-        this.recordTracker.preservedHostnames.push(hostname);
+        await this.dataStore.addPreservedHostname(hostname);
         
-        // Save to environment variable
-        process.env.PRESERVED_HOSTNAMES = this.recordTracker.preservedHostnames.join(',');
+        // Log to activity log
+        if (this.activityLogger) {
+          await this.activityLogger.log({
+            type: 'info',
+            action: 'preserved_hostname_added',
+            message: `Added ${hostname} to preserved hostnames`,
+            details: { hostname }
+          });
+        }
         
         res.json({ 
           success: true,
@@ -145,22 +211,30 @@ class WebServer {
       }
     });
 
-    apiRouter.delete('/preserved-hostnames/:hostname', (req, res) => {
+    apiRouter.delete('/preserved-hostnames/:hostname', async (req, res) => {
       try {
         const { hostname } = req.params;
         
+        // Get existing preserved hostnames
+        const preservedHostnames = await this.dataStore.getPreservedHostnames();
+        
         // Check if hostname exists
-        if (!this.recordTracker.preservedHostnames.includes(hostname)) {
+        if (!preservedHostnames.includes(hostname)) {
           return res.status(404).json({ error: 'Hostname not found' });
         }
         
         // Remove hostname
-        this.recordTracker.preservedHostnames = this.recordTracker.preservedHostnames.filter(
-          h => h !== hostname
-        );
+        await this.dataStore.removePreservedHostname(hostname);
         
-        // Save to environment variable
-        process.env.PRESERVED_HOSTNAMES = this.recordTracker.preservedHostnames.join(',');
+        // Log to activity log
+        if (this.activityLogger) {
+          await this.activityLogger.log({
+            type: 'info',
+            action: 'preserved_hostname_removed',
+            message: `Removed ${hostname} from preserved hostnames`,
+            details: { hostname }
+          });
+        }
         
         res.json({ 
           success: true,
@@ -173,8 +247,14 @@ class WebServer {
     });
 
     // Managed Hostnames endpoints
-    apiRouter.get('/managed-hostnames', (req, res) => {
-      res.json({ hostnames: this.recordTracker.managedHostnames || [] });
+    apiRouter.get('/managed-hostnames', async (req, res) => {
+      try {
+        const managedHostnames = await this.dataStore.getManagedHostnames();
+        res.json({ hostnames: managedHostnames || [] });
+      } catch (error) {
+        logger.error(`Error fetching managed hostnames: ${error.message}`);
+        res.status(500).json({ error: 'Failed to fetch managed hostnames' });
+      }
     });
 
     apiRouter.post('/managed-hostnames', async (req, res) => {
@@ -185,36 +265,23 @@ class WebServer {
           return res.status(400).json({ error: 'Hostname, type, and content are required' });
         }
         
-        // Create a string representation for managed hostnames
-        const hostnameStr = `${hostnameData.hostname}:${hostnameData.type}:${hostnameData.content}:${hostnameData.ttl || 3600}:${hostnameData.proxied === true}`;
-        
         // Add to managed hostnames
-        if (!this.recordTracker.managedHostnames) {
-          this.recordTracker.managedHostnames = [];
-        }
-        
-        // Check if hostname already exists
-        const existingIndex = this.recordTracker.managedHostnames.findIndex(
-          h => h.hostname === hostnameData.hostname && h.type === hostnameData.type
-        );
-        
-        if (existingIndex !== -1) {
-          // Update existing
-          this.recordTracker.managedHostnames[existingIndex] = hostnameData;
-        } else {
-          // Add new
-          this.recordTracker.managedHostnames.push(hostnameData);
-        }
-        
-        // Save to environment variable
-        const managedHostnamesStr = this.recordTracker.managedHostnames.map(h => 
-          `${h.hostname}:${h.type}:${h.content}:${h.ttl || 3600}:${h.proxied === true}`
-        ).join(',');
-        
-        process.env.MANAGED_HOSTNAMES = managedHostnamesStr;
+        await this.dataStore.addManagedHostname(hostnameData);
         
         // Process the managed hostnames
-        await this.dnsManager.processManagedHostnames();
+        if (this.dnsManager.processManagedHostnames) {
+          await this.dnsManager.processManagedHostnames();
+        }
+        
+        // Log to activity log
+        if (this.activityLogger) {
+          await this.activityLogger.log({
+            type: 'info',
+            action: 'managed_hostname_added',
+            message: `Added ${hostnameData.hostname} to managed hostnames`,
+            details: hostnameData
+          });
+        }
         
         res.json({ 
           success: true,
@@ -230,24 +297,18 @@ class WebServer {
       try {
         const { hostname } = req.params;
         
-        // Check if hostname exists
-        const existingIndex = this.recordTracker.managedHostnames.findIndex(
-          h => h.hostname === hostname
-        );
-        
-        if (existingIndex === -1) {
-          return res.status(404).json({ error: 'Hostname not found' });
-        }
-        
         // Remove hostname
-        this.recordTracker.managedHostnames.splice(existingIndex, 1);
+        await this.dataStore.removeManagedHostname(hostname);
         
-        // Save to environment variable
-        const managedHostnamesStr = this.recordTracker.managedHostnames.map(h => 
-          `${h.hostname}:${h.type}:${h.content}:${h.ttl || 3600}:${h.proxied === true}`
-        ).join(',');
-        
-        process.env.MANAGED_HOSTNAMES = managedHostnamesStr;
+        // Log to activity log
+        if (this.activityLogger) {
+          await this.activityLogger.log({
+            type: 'info',
+            action: 'managed_hostname_removed',
+            message: `Removed ${hostname} from managed hostnames`,
+            details: { hostname }
+          });
+        }
         
         res.json({ 
           success: true,
@@ -259,28 +320,31 @@ class WebServer {
       }
     });
 
-    // Log Level endpoint
-    apiRouter.post('/config/log-level', (req, res) => {
+    // Activity Log endpoints
+    apiRouter.get('/activity-log', async (req, res) => {
       try {
-        const { level } = req.body;
-        
-        if (!level) {
-          return res.status(400).json({ error: 'Log level is required' });
+        if (!this.activityLogger) {
+          return res.status(404).json({ error: 'Activity logging is not available' });
         }
         
-        const success = logger.setLevel(level);
+        const { type, action, search, limit = 100, offset = 0 } = req.query;
         
-        if (!success) {
-          return res.status(400).json({ error: 'Invalid log level' });
-        }
+        const filter = {
+          type,
+          action,
+          search
+        };
         
-        res.json({ 
-          success: true,
-          message: `Log level set to ${level}`
-        });
+        const result = await this.activityLogger.getLogs(
+          filter, 
+          parseInt(limit, 10), 
+          parseInt(offset, 10)
+        );
+        
+        res.json(result);
       } catch (error) {
-        logger.error(`Error setting log level: ${error.message}`);
-        res.status(500).json({ error: 'Failed to set log level' });
+        logger.error(`Error fetching activity logs: ${error.message}`);
+        res.status(500).json({ error: 'Failed to fetch activity logs' });
       }
     });
 
@@ -289,8 +353,28 @@ class WebServer {
       try {
         if (this.config.operationMode === 'direct' && global.directDnsManager) {
           await global.directDnsManager.pollContainers();
+          
+          // Log to activity log
+          if (this.activityLogger) {
+            await this.activityLogger.log({
+              type: 'info',
+              action: 'dns_refresh',
+              message: 'DNS records refreshed manually (direct mode)',
+              details: { mode: 'direct' }
+            });
+          }
         } else if (global.traefikMonitor) {
           await global.traefikMonitor.pollTraefikAPI();
+          
+          // Log to activity log
+          if (this.activityLogger) {
+            await this.activityLogger.log({
+              type: 'info',
+              action: 'dns_refresh',
+              message: 'DNS records refreshed manually (traefik mode)',
+              details: { mode: 'traefik' }
+            });
+          }
         } else {
           throw new Error('No active monitor available for refresh');
         }
@@ -302,6 +386,152 @@ class WebServer {
       } catch (error) {
         logger.error(`Error refreshing DNS records: ${error.message}`);
         res.status(500).json({ error: 'Failed to refresh DNS records' });
+      }
+    });
+
+    // Operation mode endpoint
+    apiRouter.post('/operation-mode', async (req, res) => {
+      try {
+        const { mode } = req.body;
+        
+        if (!mode || !['traefik', 'direct'].includes(mode.toLowerCase())) {
+          return res.status(400).json({ error: 'Valid operation mode (traefik or direct) is required' });
+        }
+        
+        const currentMode = this.config.operationMode;
+        
+        // Check if mode is already set
+        if (currentMode.toLowerCase() === mode.toLowerCase()) {
+          return res.json({
+            success: true,
+            message: `Already in ${mode.toUpperCase()} mode`
+          });
+        }
+        
+        // Update mode in configuration
+        if (this.config.updateConfig) {
+          await this.config.updateConfig('operationMode', mode.toLowerCase());
+          
+          // Log to activity log
+          if (this.activityLogger) {
+            await this.activityLogger.log({
+              type: 'info',
+              action: 'operation_mode_changed',
+              message: `Operation mode changed from ${currentMode.toUpperCase()} to ${mode.toUpperCase()}`,
+              details: { oldMode: currentMode, newMode: mode }
+            });
+          }
+          
+          res.json({
+            success: true,
+            message: `Operation mode changed to ${mode.toUpperCase()}`
+          });
+        } else {
+          // If updateConfig is not available, return error
+          throw new Error('Configuration update is not supported');
+        }
+      } catch (error) {
+        logger.error(`Error changing operation mode: ${error.message}`);
+        res.status(500).json({ error: 'Failed to change operation mode' });
+      }
+    });
+
+    // DNS cache management
+    apiRouter.post('/cache/refresh', async (req, res) => {
+      try {
+        // Force refresh of DNS cache
+        await this.dnsManager.dnsProvider.refreshRecordCache();
+        
+        // Log to activity log
+        if (this.activityLogger) {
+          await this.activityLogger.logCacheRefreshed(
+            this.dnsManager.dnsProvider.recordCache.records.length
+          );
+        }
+        
+        res.json({
+          success: true,
+          message: 'DNS cache refreshed successfully',
+          recordCount: this.dnsManager.dnsProvider.recordCache.records.length
+        });
+      } catch (error) {
+        logger.error(`Error refreshing DNS cache: ${error.message}`);
+        res.status(500).json({ error: 'Failed to refresh DNS cache' });
+      }
+    });
+
+    // Cleanup control endpoint
+    apiRouter.post('/cleanup/toggle', async (req, res) => {
+      try {
+        const { enabled } = req.body;
+        
+        if (enabled === undefined) {
+          return res.status(400).json({ error: 'Enabled status is required' });
+        }
+        
+        const currentStatus = this.config.cleanupOrphaned;
+        
+        // Update config
+        if (this.config.updateConfig) {
+          await this.config.updateConfig('cleanupOrphaned', !!enabled);
+          
+          // Log to activity log
+          if (this.activityLogger) {
+            await this.activityLogger.log({
+              type: 'info',
+              action: 'cleanup_status_changed',
+              message: `Cleanup orphaned records ${enabled ? 'enabled' : 'disabled'}`,
+              details: { oldStatus: currentStatus, newStatus: !!enabled }
+            });
+          }
+          
+          res.json({
+            success: true,
+            message: `Cleanup orphaned records ${enabled ? 'enabled' : 'disabled'}`
+          });
+        } else {
+          // If updateConfig is not available, return error
+          throw new Error('Configuration update is not supported');
+        }
+      } catch (error) {
+        logger.error(`Error toggling cleanup status: ${error.message}`);
+        res.status(500).json({ error: 'Failed to toggle cleanup status' });
+      }
+    });
+
+    // Force cleanup endpoint
+    apiRouter.post('/cleanup/run', async (req, res) => {
+      try {
+        if (!this.dnsManager.cleanupOrphanedRecords) {
+          return res.status(404).json({ error: 'Cleanup functionality is not available' });
+        }
+        
+        // Get active hostnames
+        let activeHostnames = [];
+        
+        if (this.config.operationMode === 'direct' && global.directDnsManager) {
+          // Extract hostnames from direct mode
+          const result = await global.directDnsManager.extractHostnamesFromLabels(
+            global.directDnsManager.lastDockerLabels || {}
+          );
+          activeHostnames = result.hostnames || [];
+        } else if (global.traefikMonitor) {
+          // Get routers from Traefik
+          const routers = await global.traefikMonitor.getRouters();
+          const result = global.traefikMonitor.processRouters(routers);
+          activeHostnames = result.hostnames || [];
+        }
+        
+        // Run cleanup with active hostnames
+        await this.dnsManager.cleanupOrphanedRecords(activeHostnames);
+        
+        res.json({
+          success: true,
+          message: 'Orphaned records cleanup completed'
+        });
+      } catch (error) {
+        logger.error(`Error running cleanup: ${error.message}`);
+        res.status(500).json({ error: 'Failed to run cleanup' });
       }
     });
 
@@ -398,7 +628,7 @@ class WebServer {
   getVersion() {
     try {
       const packageJsonPath = path.join(__dirname, '../package.json');
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+      const packageJson = require(packageJsonPath);
       return packageJson.version;
     } catch (error) {
       logger.error(`Error reading package version: ${error.message}`);
@@ -442,6 +672,23 @@ class WebServer {
     } else {
       return `${Math.floor(seconds / 86400)}d ago`;
     }
+  }
+
+  /**
+   * Sanitize configuration to remove sensitive information
+   * @param {Object} config - Configuration object
+   */
+  sanitizeConfig(config) {
+    const sanitized = { ...config };
+    
+    // Remove sensitive fields
+    if (sanitized.cloudflareToken) sanitized.cloudflareToken = '********';
+    if (sanitized.route53AccessKey) sanitized.route53AccessKey = '********';
+    if (sanitized.route53SecretKey) sanitized.route53SecretKey = '********';
+    if (sanitized.digitalOceanToken) sanitized.digitalOceanToken = '********';
+    if (sanitized.traefikApiPassword) sanitized.traefikApiPassword = '********';
+    
+    return sanitized;
   }
 }
 

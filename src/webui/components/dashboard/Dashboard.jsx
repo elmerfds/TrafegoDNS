@@ -8,58 +8,52 @@ import {
   FaServer, 
   FaSync, 
   FaCheckCircle, 
-  FaExclamationTriangle 
+  FaExclamationTriangle,
+  FaCircle 
 } from 'react-icons/fa';
 
 import StatCard from './StatCard';
 import StatusPanel from './StatusPanel';
 import { fetchStatus, fetchRecords, triggerRefresh } from '../../services/apiService';
+// Import WebSocket hooks
+import useWebSocket from '../../hooks/useWebSocket';
+import useAppStatus from '../../hooks/useAppStatus';
 
 const Dashboard = () => {
-  const [status, setStatus] = useState(null);
-  const [records, setRecords] = useState([]);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(null);
-  const [lastRefresh, setLastRefresh] = useState(null);
+  // Replace multiple state hooks with the app status hook
+  const { 
+    status, 
+    records,
+    loading, 
+    refreshing, 
+    error, 
+    lastRefresh,
+    refresh 
+  } = useAppStatus();
+  
+  // Get WebSocket connection status
+  const { status: wsStatus } = useWebSocket();
 
-  useEffect(() => {
-    loadDashboardData();
-  }, []);
-
-  const loadDashboardData = async () => {
-    try {
-      setError(null);
-      const statusData = await fetchStatus();
-      setStatus(statusData);
-
-      const recordsData = await fetchRecords();
-      setRecords(recordsData?.records || []);
-      
-      setLastRefresh(new Date());
-    } catch (err) {
-      console.error('Error loading dashboard data:', err);
-      setError('Failed to load dashboard data. Please try again.');
-    }
-  };
-
+  // Updated refresh handler to use the hook's refresh method
   const handleRefresh = async () => {
-    try {
-      setRefreshing(true);
-      setError(null);
-      
-      await triggerRefresh();
-      await loadDashboardData();
-      
-      setLastRefresh(new Date());
-    } catch (err) {
-      console.error('Error refreshing data:', err);
-      setError('Failed to refresh data. Please try again.');
-    } finally {
-      setRefreshing(false);
-    }
+    refresh();
   };
 
-  if (!status) {
+  // Render WebSocket connection status indicator
+  const renderWebSocketStatus = () => {
+    return (
+      <div className="text-sm mb-2">
+        <span className="me-2">WebSocket:</span>
+        {wsStatus?.connected ? (
+          <Badge bg="success" pill>Connected</Badge>
+        ) : (
+          <Badge bg="danger" pill>Disconnected</Badge>
+        )}
+      </div>
+    );
+  };
+
+  if (loading) {
     return (
       <Container>
         <Alert variant="info">Loading dashboard data...</Alert>
@@ -72,6 +66,7 @@ const Dashboard = () => {
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h1 className="h3 mb-0">Dashboard</h1>
         <div>
+          {renderWebSocketStatus()}
           <Button 
             variant="outline-light" 
             size="sm" 
@@ -101,7 +96,7 @@ const Dashboard = () => {
         <Col md={6} lg={3}>
           <StatCard 
             title="DNS Provider" 
-            value={status.provider || 'Not configured'} 
+            value={status?.provider || 'Not configured'} 
             icon={<FaGlobe />} 
             color="primary"
           />
@@ -109,7 +104,7 @@ const Dashboard = () => {
         <Col md={6} lg={3}>
           <StatCard 
             title="Record Count" 
-            value={records.length || 0} 
+            value={records?.length || 0} 
             icon={<FaServer />} 
             color="success"
           />
@@ -117,7 +112,7 @@ const Dashboard = () => {
         <Col md={6} lg={3}>
           <StatCard 
             title="Public IP" 
-            value={status.publicIp || 'Detecting...'} 
+            value={status?.publicIp || 'Detecting...'} 
             icon={<FaNetworkWired />} 
             color="info"
           />
@@ -125,7 +120,7 @@ const Dashboard = () => {
         <Col md={6} lg={3}>
           <StatCard 
             title="Operation Mode" 
-            value={status.operationMode || 'Unknown'} 
+            value={status?.operationMode || 'Unknown'} 
             icon={<FaCloud />} 
             color="warning"
           />
@@ -143,7 +138,7 @@ const Dashboard = () => {
               <Badge bg="primary" pill>Last 24h</Badge>
             </Card.Header>
             <Card.Body>
-              {status.recentActivity && status.recentActivity.length > 0 ? (
+              {status?.recentActivity && status.recentActivity.length > 0 ? (
                 <div className="activity-list">
                   {status.recentActivity.map((activity, index) => (
                     <div key={index} className="activity-item d-flex align-items-start mb-3">
@@ -179,8 +174,8 @@ const Dashboard = () => {
                 <Col md={4} className="mb-3 mb-md-0">
                   <div className="text-center p-3 border rounded">
                     <h6 className="text-muted mb-2">Cleanup Status</h6>
-                    <div className={`fs-4 fw-bold ${status.cleanupEnabled ? 'text-success' : 'text-warning'}`}>
-                      {status.cleanupEnabled ? 'Enabled' : 'Disabled'}
+                    <div className={`fs-4 fw-bold ${status?.cleanupEnabled ? 'text-success' : 'text-warning'}`}>
+                      {status?.cleanupEnabled ? 'Enabled' : 'Disabled'}
                     </div>
                   </div>
                 </Col>
@@ -188,7 +183,7 @@ const Dashboard = () => {
                   <div className="text-center p-3 border rounded">
                     <h6 className="text-muted mb-2">DNS Cache Age</h6>
                     <div className="fs-4 fw-bold text-info">
-                      {status.cacheFreshness || 'Unknown'}
+                      {status?.cacheFreshness || 'Unknown'}
                     </div>
                   </div>
                 </Col>
@@ -196,7 +191,7 @@ const Dashboard = () => {
                   <div className="text-center p-3 border rounded">
                     <h6 className="text-muted mb-2">Log Level</h6>
                     <div className="fs-4 fw-bold text-primary">
-                      {status.logLevel || 'INFO'}
+                      {status?.logLevel || 'INFO'}
                     </div>
                   </div>
                 </Col>
