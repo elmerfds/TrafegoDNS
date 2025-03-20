@@ -20,9 +20,10 @@ const useDnsRecords = () => {
     search: ''
   });
   const [filteredRecords, setFilteredRecords] = useState([]);
+  const [lastRefresh, setLastRefresh] = useState(null);
   
   // Subscribe to DNS record events via WebSocket
-  const { events, requestRefresh: wsRefresh } = useWebSocket([
+  const { events, requestRefresh: wsRefresh, status: wsStatus } = useWebSocket([
     'dns:records:updated',
     'dns:record:created',
     'dns:record:updated',
@@ -32,11 +33,14 @@ const useDnsRecords = () => {
   // Load records from API
   const loadRecords = useCallback(async () => {
     try {
+      console.log('Loading DNS records from API...');
       setLoading(true);
       setError(null);
       
       const data = await fetchRecords();
+      console.log('DNS records loaded:', data);
       setRecords(data?.records || []);
+      setLastRefresh(new Date());
     } catch (err) {
       console.error('Error loading DNS records:', err);
       setError('Failed to load DNS records. Please try again.');
@@ -48,27 +52,41 @@ const useDnsRecords = () => {
   // Refresh records
   const refresh = useCallback(async () => {
     try {
+      console.log('Refreshing DNS records...');
       setRefreshing(true);
       setError(null);
       
       // Try WebSocket refresh first
-      const wsRefreshSuccess = wsRefresh();
+      let wsRefreshSuccess = false;
+      if (wsStatus && wsStatus.connected) {
+        console.log('Using WebSocket for refresh');
+        wsRefreshSuccess = wsRefresh();
+      }
       
       // Fall back to HTTP API if WebSocket is not connected
       if (!wsRefreshSuccess) {
+        console.log('WebSocket refresh failed or not connected, using HTTP API');
         await triggerRefresh();
         await loadRecords();
+      } else {
+        console.log('WebSocket refresh request sent successfully');
       }
+      
+      setLastRefresh(new Date());
     } catch (err) {
       console.error('Error refreshing records:', err);
       setError('Failed to refresh records. Please try again.');
       
       // Try to load records directly if refresh failed
-      loadRecords();
+      try {
+        await loadRecords();
+      } catch (loadErr) {
+        console.error('Failed to load records after refresh error:', loadErr);
+      }
     } finally {
       setRefreshing(false);
     }
-  }, [loadRecords, wsRefresh]);
+  }, [loadRecords, wsRefresh, wsStatus]);
   
   // Delete record
   const removeRecord = useCallback(async (recordId) => {
@@ -79,13 +97,12 @@ const useDnsRecords = () => {
       
       // Update local state
       setRecords(prev => prev.filter(record => record.id !== recordId));
+      return true;
     } catch (err) {
       console.error('Error deleting record:', err);
       setError(err.response?.data?.error || 'Failed to delete record. Please try again.');
       return false;
     }
-    
-    return true;
   }, []);
   
   // Filter records
@@ -119,17 +136,20 @@ const useDnsRecords = () => {
   
   // Initial load
   useEffect(() => {
+    console.log('Initial DNS records load');
     loadRecords();
   }, [loadRecords]);
   
   // Monitor WebSocket events to update records
   useEffect(() => {
+    console.log('Checking WebSocket events for record updates:', events);
     const recordsUpdated = events['dns:records:updated'];
     const recordCreated = events['dns:record:created'];
     const recordUpdated = events['dns:record:updated'];
     const recordDeleted = events['dns:record:deleted'];
     
     if (recordsUpdated || recordCreated || recordUpdated || recordDeleted) {
+      console.log('WebSocket event triggered records reload');
       loadRecords();
     }
   }, [events, loadRecords]);
@@ -141,6 +161,7 @@ const useDnsRecords = () => {
     refreshing,
     error,
     filters,
+    lastRefresh,
     refresh,
     removeRecord,
     updateFilters
