@@ -15,16 +15,24 @@ const LogLevelSelector = ({ value, onChange, disabled }) => {
   return (
     <div>
       <ButtonGroup className="w-100 mb-2">
-        {logLevels.map((level) => (
-          <Button
-            key={level.value}
-            variant={value === level.value ? level.variant : 'outline-secondary'}
-            disabled={disabled}
-            onClick={() => onChange(level.value)}
-          >
-            {level.value}
-          </Button>
-        ))}
+        {logLevels.map((level) => {
+          const isSelected = value === level.value;
+          return (
+            <Button
+              key={level.value}
+              variant={isSelected ? level.variant : 'outline-secondary'}
+              disabled={disabled}
+              onClick={() => onChange(level.value)}
+              className={isSelected ? `border-${level.variant} border-2` : ''}
+              style={{ 
+                borderColor: isSelected ? undefined : '#6c757d',
+                fontWeight: isSelected ? 'bold' : 'normal'
+              }}
+            >
+              {level.value}
+            </Button>
+          );
+        })}
       </ButtonGroup>
       <div className="d-flex align-items-center mt-2">
         <FaInfo className="text-info me-2" size={14} />
