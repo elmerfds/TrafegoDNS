@@ -5,7 +5,7 @@
  */
 const path = require('path');
 const fs = require('fs').promises;
-const fsSync = require('fs');
+const fsSync = require('fs'); // Add this line for sync operations
 const logger = require('../utils/logger');
 const LogRotation = require('./LogRotation');
 const { debounce } = require('../utils/helpers');
@@ -110,29 +110,27 @@ class ActivityLogger {
   async loadCurrentLog() {
     try {
       // Check if the file exists
-      await fs.access(this.currentLogFile);
-      
-      // Read and parse the file
-      const data = await fs.readFile(this.currentLogFile, 'utf8');
-      const logs = JSON.parse(data);
-      
-      if (Array.isArray(logs)) {
-        this.logBuffer = logs;
-        logger.debug(`Loaded ${logs.length} existing log entries`);
+      if (fsSync.existsSync(this.currentLogFile)) {
+        // Read and parse the file
+        const data = await fs.readFile(this.currentLogFile, 'utf8');
+        const logs = JSON.parse(data);
+        
+        if (Array.isArray(logs)) {
+          this.logBuffer = logs;
+          logger.debug(`Loaded ${logs.length} existing log entries`);
+        } else {
+          logger.warn('Current log file exists but is not a valid array, starting empty');
+          this.logBuffer = [];
+        }
       } else {
-        logger.warn('Current log file exists but is not a valid array, starting empty');
-        this.logBuffer = [];
-      }
-    } catch (error) {
-      if (error.code === 'ENOENT') {
         // File doesn't exist, start with empty buffer
         logger.debug('No existing activity log file, starting empty');
         this.logBuffer = [];
-      } else {
-        logger.error(`Error loading current log file: ${error.message}`);
-        // Start with empty buffer on error
-        this.logBuffer = [];
       }
+    } catch (error) {
+      logger.error(`Error loading current log file: ${error.message}`);
+      // Start with empty buffer on error
+      this.logBuffer = [];
     }
   }
   

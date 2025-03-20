@@ -376,10 +376,11 @@ class LogRotation {
    */
   async fileExists(filePath) {
     try {
-      await fs.access(filePath);
-      return true;
+      return fsSync.existsSync(filePath);
     } catch (error) {
       return false;
     }
   }
 }
+
+module.exports = LogRotation;
