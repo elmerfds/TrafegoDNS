@@ -29,7 +29,9 @@ const useWebSocket = (subscribeToEvents = []) => {
   
   // Request a refresh of DNS records
   const requestRefresh = useCallback(() => {
+    console.log('Requesting refresh from hook...');
     if (!status.connected) {
+      console.log('Cannot refresh - WebSocket not connected');
       return false;
     }
     
@@ -50,6 +52,7 @@ const useWebSocket = (subscribeToEvents = []) => {
   
   // Connect to WebSocket
   const connect = useCallback(() => {
+    console.log('Connecting to WebSocket from hook...');
     websocketService.connect();
   }, []);
   
@@ -60,7 +63,11 @@ const useWebSocket = (subscribeToEvents = []) => {
   
   // Handle WebSocket status updates
   useEffect(() => {
+    console.log('Setting up WebSocket status and error listeners');
+    
     const handleStatus = (statusUpdate) => {
+      console.log('WebSocket status update received:', statusUpdate);
+      
       const newStatus = { ...status };
       
       switch (statusUpdate.status) {
@@ -109,6 +116,7 @@ const useWebSocket = (subscribeToEvents = []) => {
     
     // Handle WebSocket errors
     const handleError = (errorData) => {
+      console.error('WebSocket error received in hook:', errorData);
       setError(errorData.error);
       
       if (errorData.fatal) {
@@ -126,10 +134,12 @@ const useWebSocket = (subscribeToEvents = []) => {
     websocketService.addErrorListener(handleError);
     
     // Connect to WebSocket
+    console.log('Initiating WebSocket connection from hook useEffect');
     websocketService.connect();
     
     // Cleanup function
     return () => {
+      console.log('Removing WebSocket listeners on hook cleanup');
       websocketService.removeStatusListener(handleStatus);
       websocketService.removeErrorListener(handleError);
     };
@@ -142,10 +152,13 @@ const useWebSocket = (subscribeToEvents = []) => {
       return;
     }
     
+    console.log('Setting up listeners for events:', subscribeToEvents);
+    
     // Add event listeners to the service for each event type
     const cleanupFunctions = subscribeToEvents.map(eventType => {
       // Create event handler
       const handleEvent = (data) => {
+        console.log(`Event received in hook: ${eventType}`, data);
         setEvents(prev => ({
           ...prev,
           [eventType]: data
