@@ -13,13 +13,20 @@ import {
 
 import './Sidebar.scss';
 
-const Sidebar = ({ open, appStatus }) => {
+const Sidebar = ({ open, appStatus, toggleSidebar }) => {
+  // Create a safe toggle function that checks if toggleSidebar is available
+  const handleToggle = () => {
+    if (open && window.innerWidth < 992 && typeof toggleSidebar === 'function') {
+      toggleSidebar();
+    }
+  };
+
   return (
     <>
       {/* Overlay for mobile to close sidebar */}
       <div 
         className={`sidebar-overlay ${open ? 'active' : ''}`} 
-        onClick={() => open && window.innerWidth < 992 && toggleSidebar()}
+        onClick={handleToggle}
       />
       
       <div className={`sidebar bg-dark-blue py-3 ${open ? '' : 'collapsed'}`}>
