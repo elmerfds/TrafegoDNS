@@ -7,7 +7,7 @@ import { Routes, Route } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 
-// Page components (will be lazy loaded in a real app)
+// Page components
 import Dashboard from '../../components/dashboard/Dashboard';
 import DNSRecords from '../../components/dns-records/DNSRecords';
 import PreservedHostnames from '../../components/preserved/PreservedHostnames';
@@ -35,7 +35,7 @@ const MainLayout = ({ appStatus }) => {
       
       <Container fluid className="px-0 main-container">
         <Row className="g-0 h-100">
-          <Sidebar open={sidebarOpen} appStatus={appStatus} />
+          <Sidebar open={sidebarOpen} appStatus={appStatus} toggleSidebar={toggleSidebar} />
           
           <Col className={`content-area ${sidebarOpen ? 'with-sidebar' : 'without-sidebar'}`}>
             <div className="content-wrapper p-4">
