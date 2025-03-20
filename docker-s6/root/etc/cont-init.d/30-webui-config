@@ -1,0 +1,44 @@
+#!/command/with-contenv bash
+# docker-s6/root/etc/cont-init.d/30-webui-config
+
+echo
+echo "-------------------------------------"
+echo "Setting up TráfegoDNS Web UI..."
+echo "-------------------------------------"
+
+# Check if Web UI is enabled
+if [ "$ENABLE_WEB_UI" != "true" ]; then
+  echo "Web UI is disabled, skipping setup"
+  echo "To enable, set ENABLE_WEB_UI=true"
+  exit 0
+fi
+
+# Ensure the web UI directory exists
+if [ ! -d /app/webui/build ]; then
+  echo "Warning: Web UI build directory not found!"
+  echo "Creating minimal Web UI directory"
+  mkdir -p /app/webui/build
+  echo '<!DOCTYPE html><html><head><title>TráfegoDNS</title></head><body style="background:#1E293B;color:#F8FAFC;font-family:sans-serif;text-align:center;padding:50px;"><h1>TráfegoDNS Web UI</h1><p>The Web UI is enabled but the build directory was not found.</p><p>Check the <a href="/api/status" style="color:#FFD700;">API Status</a> endpoint for basic information.</p></body></html>' > /app/webui/build/index.html
+  echo "Created minimal Web UI page"
+fi
+
+echo "Web UI build directory found or created"
+
+# Set proper permissions
+echo "Setting permissions on Web UI directory"
+chown -R abc:abc /app/webui
+
+# Set up the port
+WEB_UI_PORT=${WEB_UI_PORT:-8080}
+echo "Web UI will be served on port: $WEB_UI_PORT"
+
+# Check authentication settings
+if [ -n "$WEB_UI_USERNAME" ] && [ -n "$WEB_UI_PASSWORD" ]; then
+  echo "Basic authentication is configured"
+else
+  echo "Warning: No authentication configured for Web UI"
+  echo "Consider setting WEB_UI_USERNAME and WEB_UI_PASSWORD"
+fi
+
+echo "Web UI setup complete"
+echo "-------------------------------------"
