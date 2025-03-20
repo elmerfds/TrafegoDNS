@@ -1,4 +1,5 @@
 #!/command/with-contenv bash
+# /etc/services.d/webui/run
 
 echo
 echo "-------------------------------------"
@@ -25,11 +26,14 @@ else
   echo "Consider setting WEB_UI_USERNAME and WEB_UI_PASSWORD environment variables"
 fi
 
-# The web UI is integrated with the main application
-# It will be started automatically when ENABLE_WEB_UI=true
-# This service just provides logging
+# Output Web UI information
 echo "Web UI will be available at http://localhost:${WEB_UI_PORT}"
+echo "Web UI files are served from: /app/webui/build"
 echo "-------------------------------------"
+
+# The Web UI is integrated with the main application
+# It will be served by the Express server in app.js when ENABLE_WEB_UI=true
+# This service just provides logging and keeps the service running
 
 # Keep the service running
 while true; do
