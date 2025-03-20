@@ -1,12 +1,15 @@
+// src/webui/services/websocketService.js
 /**
  * WebSocket Service for TrafegoDNS Web UI
  * Provides real-time communication with the backend
  */
 
-// Configuration
-const WS_URL = window.location.protocol === 'https:' 
-  ? `wss://${window.location.host}/api/ws` 
-  : `ws://${window.location.host}/api/ws`;
+// Configure WebSocket URL based on current protocol and host
+const getWebSocketUrl = () => {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = window.location.host;
+  return `${protocol}//${host}/api/ws`;
+};
 
 // State
 let socket = null;
@@ -35,6 +38,9 @@ function connect() {
   }
 
   try {
+    // Get the WebSocket URL dynamically
+    const WS_URL = getWebSocketUrl();
+    
     // Explicitly log the WS URL for debugging
     console.log('Connecting to WebSocket server at:', WS_URL);
     
@@ -375,6 +381,9 @@ function notifyError(errorData) {
     }
   });
 }
+
+// Initialize connection when service is loaded
+connect();
 
 // Export the WebSocket service API
 export default {
