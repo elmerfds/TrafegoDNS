@@ -1,5 +1,5 @@
 // src/webui/components/dashboard/Dashboard.jsx
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Container, Row, Col, Card, Alert, Badge, Button } from 'react-bootstrap';
 import { 
   FaGlobe, 
@@ -14,13 +14,12 @@ import {
 
 import StatCard from './StatCard';
 import StatusPanel from './StatusPanel';
-import { fetchStatus, fetchRecords, triggerRefresh } from '../../services/apiService';
 // Import WebSocket hooks
 import useWebSocket from '../../hooks/useWebSocket';
 import useAppStatus from '../../hooks/useAppStatus';
 
 const Dashboard = () => {
-  // Replace multiple state hooks with the app status hook
+  // Use the app status hook to get all the necessary state
   const { 
     status, 
     records,
@@ -36,6 +35,7 @@ const Dashboard = () => {
 
   // Updated refresh handler to use the hook's refresh method
   const handleRefresh = async () => {
+    console.log('Dashboard refresh button clicked');
     refresh();
   };
 
@@ -104,7 +104,7 @@ const Dashboard = () => {
         <Col md={6} lg={3}>
           <StatCard 
             title="Record Count" 
-            value={records?.length || 0} 
+            value={status?.recordCount || records?.length || 0} 
             icon={<FaServer />} 
             color="success"
           />
