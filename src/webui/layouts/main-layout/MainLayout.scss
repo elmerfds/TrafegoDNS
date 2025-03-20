@@ -1,4 +1,4 @@
-// src/webui/layouts/main-layout/MainLayout.scss
+/* /src/webui/layouts/main-layout/MainLayout.scss */
 
 .main-layout {
   min-height: 100vh;
@@ -12,50 +12,53 @@
   overflow: hidden;
 }
 
+/* Adjust sidebar width to be more reasonable */
 .sidebar {
   transition: all 0.3s ease;
   width: 250px;
   min-width: 250px;
+  max-width: 250px;
   z-index: 100;
+  position: fixed;
+  height: calc(100vh - 56px);
 }
 
 .sidebar.collapsed {
-  margin-left: -250px;
+  transform: translateX(-250px);
+  margin-left: 0;
 }
 
+/* Update content area to use the correct spacing */
 .content-area {
   flex: 1;
   transition: all 0.3s ease;
   overflow-y: auto;
-  max-height: calc(100vh - 56px); // Adjust for navbar height
-}
-
-.content-area.with-sidebar {
-  @media (min-width: 992px) {
-    margin-left: 250px;
-    width: calc(100% - 250px);
-  }
+  max-height: calc(100vh - 56px);
+  width: 100%;
+  padding-left: 250px; /* Default padding to accommodate sidebar */
 }
 
 .content-area.without-sidebar {
-  margin-left: 0;
-  width: 100%;
+  padding-left: 0;
 }
 
 .content-wrapper {
   min-height: calc(100vh - 56px);
+  width: 100%;
 }
 
-// Mobile adjustments
+/* Mobile adjustments */
 @media (max-width: 991.98px) {
   .sidebar {
     position: fixed;
+    left: 0;
+    top: 56px;
     height: calc(100vh - 56px);
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
   }
 
-  .content-area.with-sidebar {
-    margin-left: 0;
+  .content-area {
+    padding-left: 0;
     width: 100%;
   }
   

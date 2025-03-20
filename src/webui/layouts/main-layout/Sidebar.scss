@@ -1,9 +1,11 @@
-// src/webui/layouts/main-layout/Sidebar.scss
+/* /src/webui/layouts/main-layout/Sidebar.scss */
 
 .sidebar {
   min-height: calc(100vh - 56px);
   display: flex;
   flex-direction: column;
+  width: 250px;
+  max-width: 250px;
   
   .nav-link {
     padding: 0.75rem 1.25rem;
@@ -25,5 +27,39 @@
   
   .sidebar-footer {
     border-top-color: rgba(255, 255, 255, 0.1) !important;
+    margin-top: auto;
+  }
+}
+
+/* Fix for the collapsed state */
+.sidebar.collapsed {
+  transform: translateX(-250px);
+}
+
+/* Ensure content doesn't overlap with sidebar */
+.content-area {
+  margin-left: 0;
+}
+
+.content-area.with-sidebar {
+  @media (min-width: 992px) {
+    margin-left: 250px;
+  }
+}
+
+/* Fix for mobile view */
+@media (max-width: 991.98px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 56px;
+    height: calc(100vh - 56px);
+    z-index: 1030;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+  
+  .sidebar:not(.collapsed) {
+    transform: translateX(0);
   }
 }
