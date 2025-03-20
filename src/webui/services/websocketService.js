@@ -35,6 +35,9 @@ function connect() {
   }
 
   try {
+    // Explicitly log the WS URL for debugging
+    console.log('Connecting to WebSocket server at:', WS_URL);
+    
     socket = new WebSocket(WS_URL);
     setupSocketListeners();
   } catch (error) {
@@ -64,6 +67,9 @@ function setupSocketListeners() {
 
     // Additional onopen logic
     console.log('WebSocket connection established');
+    
+    // Subscribe to events immediately upon connection
+    subscribe(['dns:records:updated', 'dns:record:created', 'dns:record:updated', 'dns:record:deleted']);
   };
 
   socket.onclose = (event) => {
@@ -73,6 +79,8 @@ function setupSocketListeners() {
       status: 'disconnected'
     });
 
+    console.log('WebSocket connection closed:', event.code, event.reason);
+
     // Attempt to reconnect unless this was a clean close
     if (!event.wasClean) {
       startReconnect();
@@ -80,7 +88,7 @@ function setupSocketListeners() {
   };
 
   socket.onerror = (error) => {
-    console.error('WebSocket error', error);
+    console.error('WebSocket error:', error);
     
     notifyError({
       error: 'Connection error',
@@ -90,6 +98,7 @@ function setupSocketListeners() {
   };
 
   socket.onmessage = (event) => {
+    console.log('WebSocket message received:', event.data);
     handleMessage(event.data);
   };
 }
@@ -148,7 +157,7 @@ function handleWelcomeMessage(message) {
   console.log(`WebSocket connection ready, client ID: ${clientId}`);
   
   // Subscribe to events
-  subscribe(['DNS_RECORDS_UPDATED', 'STATUS_UPDATE']);
+  subscribe(['dns:records:updated', 'dns:record:created', 'dns:record:updated', 'dns:record:deleted', 'status:update']);
 }
 
 /**
@@ -156,6 +165,8 @@ function handleWelcomeMessage(message) {
  */
 function handleEventMessage(message) {
   const eventType = message.eventType;
+  console.log(`WebSocket event received: ${eventType}`, message.data);
+  
   const listeners = eventListeners.get(eventType);
   
   if (listeners && listeners.size > 0) {
@@ -173,6 +184,8 @@ function handleEventMessage(message) {
  * Handle status messages
  */
 function handleStatusMessage(message) {
+  console.log('WebSocket status update:', message.data);
+  
   notifyStatusListeners({
     status: 'status_update',
     data: message.data
@@ -183,6 +196,8 @@ function handleStatusMessage(message) {
  * Handle error messages
  */
 function handleErrorMessage(message) {
+  console.error('WebSocket error message:', message);
+  
   notifyError({
     error: message.message,
     details: message,
@@ -243,7 +258,7 @@ function disconnect() {
  */
 function sendMessage(type, data = {}) {
   if (!socket || socket.readyState !== WebSocket.OPEN) {
-    console.error('WebSocket not connected');
+    console.error('WebSocket not connected, cannot send message of type:', type);
     return false;
   }
   
@@ -254,6 +269,7 @@ function sendMessage(type, data = {}) {
       timestamp: new Date().toISOString()
     };
     
+    console.log('Sending WebSocket message:', message);
     socket.send(JSON.stringify(message));
     return true;
   } catch (error) {
@@ -266,6 +282,7 @@ function sendMessage(type, data = {}) {
  * Subscribe to events
  */
 function subscribe(events) {
+  console.log('Subscribing to events:', events);
   return sendMessage('subscribe', { events });
 }
 
@@ -280,6 +297,7 @@ function unsubscribe(events) {
  * Request a refresh of DNS records
  */
 function requestRefresh() {
+  console.log('Requesting DNS records refresh via WebSocket');
   return sendMessage('refresh');
 }
 
@@ -292,6 +310,7 @@ function addEventListener(eventType, listener) {
   }
   
   eventListeners.get(eventType).add(listener);
+  console.log(`Added event listener for ${eventType}`);
 }
 
 /**
