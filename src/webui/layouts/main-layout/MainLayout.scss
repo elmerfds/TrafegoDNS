@@ -1,4 +1,4 @@
-/* /src/webui/layouts/main-layout/MainLayout.scss */
+/* src/webui/layouts/main-layout/MainLayout.scss */
 
 .main-layout {
   min-height: 100vh;
@@ -12,54 +12,70 @@
   overflow: hidden;
 }
 
-/* Adjust sidebar width to be more reasonable */
+/* Sidebar styling */
 .sidebar {
-  transition: all 0.3s ease;
+  position: fixed;
+  top: 56px;
+  left: 0;
+  bottom: 0;
   width: 250px;
   min-width: 250px;
   max-width: 250px;
-  z-index: 100;
-  position: fixed;
-  height: calc(100vh - 56px);
+  z-index: 1000;
+  transition: transform 0.3s ease;
 }
 
 .sidebar.collapsed {
   transform: translateX(-250px);
-  margin-left: 0;
 }
 
-/* Update content area to use the correct spacing */
+/* Content area styling - key fix for the gap issue */
 .content-area {
   flex: 1;
-  transition: all 0.3s ease;
+  transition: margin-left 0.3s ease;
   overflow-y: auto;
   max-height: calc(100vh - 56px);
-  width: 100%;
-  padding-left: 250px; /* Default padding to accommodate sidebar */
+  margin-left: 250px !important; /* Position right after sidebar */
+  width: calc(100% - 250px) !important; /* Take remaining width */
+  padding-left: 0 !important; /* Remove any padding */
 }
 
 .content-area.without-sidebar {
-  padding-left: 0;
+  margin-left: 0 !important;
+  width: 100% !important;
 }
 
 .content-wrapper {
-  min-height: calc(100vh - 56px);
   width: 100%;
+  min-height: calc(100vh - 56px);
+  padding: 1rem;
+}
+
+/* Fix container padding */
+.container-fluid {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Fix row margins */
+.row {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
 }
 
 /* Mobile adjustments */
 @media (max-width: 991.98px) {
   .sidebar {
-    position: fixed;
-    left: 0;
-    top: 56px;
-    height: calc(100vh - 56px);
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+    transform: translateX(-100%);
   }
-
+  
+  .sidebar:not(.collapsed) {
+    transform: translateX(0);
+  }
+  
   .content-area {
-    padding-left: 0;
-    width: 100%;
+    margin-left: 0 !important;
+    width: 100% !important;
   }
   
   .sidebar-overlay {
@@ -69,7 +85,7 @@
     right: 0;
     bottom: 0;
     background-color: rgba(0, 0, 0, 0.5);
-    z-index: 99;
+    z-index: 999;
     display: none;
   }
   
