@@ -1,6 +1,3 @@
-# docker-s6/Dockerfile
-# Enhanced Dockerfile for TráfegoDNS with Web UI support
-
 # Stage 1: Generate package-lock.json
 FROM node:23-alpine AS dependencies
 WORKDIR /app
@@ -11,20 +8,14 @@ RUN npm install --omit=dev
 # Stage 2: Build the frontend
 FROM node:23-alpine AS webui-build
 WORKDIR /app
-
-# Copy the setup script and execute it
-# No need to chmod locally - we set permissions in the container
-COPY docker-s6/setup-react-files.sh /app/
-RUN chmod +x /app/setup-react-files.sh && /app/setup-react-files.sh
-
 # Copy package.json first to leverage Docker caching
-COPY src/webui/package.json /app/webui/
-WORKDIR /app/webui
+COPY src/webui/package.json ./
 RUN npm install
-
+# Create required public directory structure first
+RUN mkdir -p ./public
+COPY webui/public/ ./public/
 # Copy source files
-COPY src/webui/ /app/webui/src/
-
+COPY webui/src/ ./src/
 # Run the build
 RUN npm run build
 
@@ -73,7 +64,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/src ./src
 
 # Copy the web UI build files
-COPY --from=webui-build /app/webui/build ./webui/build
+COPY --from=webui-build /app/build ./webui/build
 
 RUN chown -R abc:abc /app
 
