@@ -71,6 +71,12 @@ class WebSocketServer {
     
     // Subscribe to application events that should be sent to clients
     this.subscribeToEvents();
+    
+    // Log the number of connected clients periodically
+    setInterval(() => {
+      const clientCount = this.clients.size;
+      logger.debug(`WebSocket server: ${clientCount} client(s) connected`);
+    }, 60000); // Log every minute
   }
   
   /**
@@ -85,12 +91,14 @@ class WebSocketServer {
       EventTypes.TRAEFIK_POLL_COMPLETED,
       EventTypes.STATUS_UPDATE,
       EventTypes.OPERATION_MODE_CHANGED,
-      EventTypes.DNS_PROVIDER_CHANGED
+      EventTypes.DNS_PROVIDER_CHANGED,
+      EventTypes.CONFIG_UPDATED
     ];
     
     for (const eventType of eventsToSubscribe) {
       // Create a bound handler for this event
       const boundHandler = (data) => {
+        logger.debug(`Broadcasting event to WebSocket clients: ${eventType}`);
         this.broadcastEvent(eventType, data);
       };
       
@@ -100,6 +108,8 @@ class WebSocketServer {
       // Subscribe to the event
       this.eventBus.subscribe(eventType, boundHandler);
     }
+    
+    logger.info(`WebSocket server subscribed to ${eventsToSubscribe.length} event types`);
   }
   
   /**
@@ -114,6 +124,8 @@ class WebSocketServer {
     
     // Only handle WebSocket connections to /api/ws
     if (pathname === '/api/ws') {
+      logger.debug('Received WebSocket upgrade request');
+      
       // Optional authentication can be handled here
       const isAuthenticated = this.authenticateRequest(request);
       
@@ -124,6 +136,8 @@ class WebSocketServer {
         // Emit connection event
         this.wss.emit('connection', ws, request);
       });
+    } else {
+      socket.destroy();
     }
   }
   
@@ -185,7 +199,7 @@ class WebSocketServer {
       connectedAt: new Date()
     });
     
-    logger.debug(`WebSocket client connected: ${clientId}`);
+    logger.info(`WebSocket client connected: ${clientId}`);
     
     // Send initial welcome message
     this.sendToClient(ws, {
@@ -220,6 +234,7 @@ class WebSocketServer {
     try {
       // Parse the JSON message
       const data = JSON.parse(message);
+      logger.debug(`WebSocket message from client ${clientId}: ${data.type}`);
       
       // Check if the message has a valid type
       if (!data.type) {
@@ -332,20 +347,27 @@ class WebSocketServer {
       return;
     }
     
-    logger.debug(`Client ${clientId} requested refresh`);
+    logger.info(`Client ${clientId} requested DNS records refresh`);
     
     // Trigger refresh based on mode
-    if (this.config.operationMode === 'direct' && global.directDnsManager) {
-      global.directDnsManager.pollContainers();
-    } else if (global.traefikMonitor) {
-      global.traefikMonitor.pollTraefikAPI();
+    try {
+      if (this.config.operationMode === 'direct' && global.directDnsManager) {
+        global.directDnsManager.pollContainers();
+      } else if (global.traefikMonitor) {
+        global.traefikMonitor.pollTraefikAPI();
+      } else {
+        throw new Error('No active monitor available for refresh');
+      }
+      
+      // Send confirmation
+      this.sendToClient(client.ws, {
+        type: 'refreshing',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      logger.error(`Error refreshing at client request: ${error.message}`);
+      this.sendError(client.ws, `Refresh failed: ${error.message}`);
     }
-    
-    // Send confirmation
-    this.sendToClient(client.ws, {
-      type: 'refreshing',
-      timestamp: new Date().toISOString()
-    });
   }
   
   /**
@@ -362,7 +384,7 @@ class WebSocketServer {
     // Remove client from tracked clients
     this.clients.delete(clientId);
     
-    logger.debug(`WebSocket client disconnected: ${clientId}`);
+    logger.info(`WebSocket client disconnected: ${clientId}`);
   }
   
   /**
@@ -382,7 +404,9 @@ class WebSocketServer {
   sendToClient(ws, data) {
     if (ws.readyState === WebSocket.OPEN) {
       try {
-        ws.send(JSON.stringify(data));
+        const message = JSON.stringify(data);
+        ws.send(message);
+        logger.debug(`Sent WebSocket message: ${data.type}`);
       } catch (error) {
         logger.error(`Error sending message to WebSocket client: ${error.message}`);
       }
@@ -419,20 +443,33 @@ class WebSocketServer {
     // Track number of clients that received the message
     let sentCount = 0;
     
+    // Convert eventType from EventTypes enum to the format used in the frontend
+    const normalizedEventType = this.normalizeEventType(eventType);
+    
     // Send to all subscribed clients
     for (const [clientId, client] of this.clients.entries()) {
-      // Skip clients that are not subscribed to this event
-      if (!client.subscriptions.has(eventType)) {
-        continue;
+      // Check if client is subscribed to this event
+      if (client.subscriptions.has(normalizedEventType) || 
+          client.subscriptions.has(eventType)) {
+        this.sendToClient(client.ws, message);
+        sentCount++;
       }
-      
-      this.sendToClient(client.ws, message);
-      sentCount++;
     }
     
     if (sentCount > 0) {
       logger.debug(`Broadcast ${eventType} event to ${sentCount} WebSocket clients`);
     }
+  }
+  
+  /**
+   * Convert EventTypes enum value to normalized format for frontend
+   * @param {string} eventType - EventTypes enum value
+   * @returns {string} - Normalized event type for frontend
+   */
+  normalizeEventType(eventType) {
+    // Convert from UPPER_CASE to lowercase with colons
+    // E.g., DNS_RECORD_CREATED -> dns:record:created
+    return eventType.toLowerCase().replace(/_/g, ':');
   }
   
   /**
