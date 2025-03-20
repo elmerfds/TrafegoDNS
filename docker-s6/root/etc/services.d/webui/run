@@ -1,44 +1,41 @@
 #!/command/with-contenv bash
-# docker-s6/root/etc/cont-init.d/30-webui-config
+# /etc/services.d/webui/run
 
 echo
 echo "-------------------------------------"
-echo "Setting up TráfegoDNS Web UI..."
+echo "Starting TráfegoDNS Web UI..."
 echo "-------------------------------------"
+echo
 
 # Check if Web UI is enabled
 if [ "$ENABLE_WEB_UI" != "true" ]; then
-  echo "Web UI is disabled, skipping setup"
-  echo "To enable, set ENABLE_WEB_UI=true"
+  echo "Web UI is disabled, set ENABLE_WEB_UI=true to enable"
+  echo "Exiting Web UI service"
   exit 0
 fi
 
-# Ensure the web UI directory exists
-if [ ! -d /app/webui/build ]; then
-  echo "Warning: Web UI build directory not found!"
-  echo "Creating minimal Web UI directory"
-  mkdir -p /app/webui/build
-  echo '<!DOCTYPE html><html><head><title>TráfegoDNS</title></head><body style="background:#1E293B;color:#F8FAFC;font-family:sans-serif;text-align:center;padding:50px;"><h1>TráfegoDNS Web UI</h1><p>The Web UI is enabled but the build directory was not found.</p><p>Check the <a href="/api/status" style="color:#FFD700;">API Status</a> endpoint for basic information.</p></body></html>' > /app/webui/build/index.html
-  echo "Created minimal Web UI page"
-fi
+# Set environment variables for web ui
+export ENABLE_WEB_UI=true
+export WEB_UI_PORT=${WEB_UI_PORT:-8080}
 
-echo "Web UI build directory found or created"
-
-# Set proper permissions
-echo "Setting permissions on Web UI directory"
-chown -R abc:abc /app/webui
-
-# Set up the port
-WEB_UI_PORT=${WEB_UI_PORT:-8080}
-echo "Web UI will be served on port: $WEB_UI_PORT"
-
-# Check authentication settings
+# Check for authentication
 if [ -n "$WEB_UI_USERNAME" ] && [ -n "$WEB_UI_PASSWORD" ]; then
-  echo "Basic authentication is configured"
+  echo "Web UI authentication enabled"
 else
-  echo "Warning: No authentication configured for Web UI"
-  echo "Consider setting WEB_UI_USERNAME and WEB_UI_PASSWORD"
+  echo "Warning: Web UI authentication not configured"
+  echo "Consider setting WEB_UI_USERNAME and WEB_UI_PASSWORD environment variables"
 fi
 
-echo "Web UI setup complete"
+# Output Web UI information
+echo "Web UI will be available at http://localhost:${WEB_UI_PORT}"
+echo "Web UI files are served from: /app/webui/build"
 echo "-------------------------------------"
+
+# The Web UI is integrated with the main application
+# It will be served by the Express server in app.js when ENABLE_WEB_UI=true
+# This service just provides logging and keeps the service running
+
+# Keep the service running
+while true; do
+  sleep 3600
+done
