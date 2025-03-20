@@ -42,7 +42,12 @@ class DataStore {
     };
     
     // Cache for data
-    this.cache = {};
+    this.cache = {
+      dnsRecords: [],
+      preservedHostnames: [],
+      managedHostnames: [],
+      appConfig: {}
+    };
     
     // Track initialization
     this.initialized = false;
@@ -87,16 +92,39 @@ class DataStore {
       
       try {
         // Check if file exists
-        await fs.access(filePath);
-        logger.debug(`Schema file exists: ${schema.filename}`);
+        let exists = false;
+        try {
+          await fs.access(filePath);
+          exists = true;
+        } catch (err) {
+          exists = false;
+        }
         
-        // Load into cache
-        const data = await this.fileStorage.readJsonFile(filePath);
-        this.cache[schemaName] = data;
+        if (exists) {
+          logger.debug(`Schema file exists: ${schema.filename}`);
+          
+          // Load into cache
+          try {
+            const data = await this.fileStorage.readJsonFile(filePath);
+            this.cache[schemaName] = data;
+            logger.debug(`Loaded ${schemaName} from disk: ${JSON.stringify(data).substring(0, 100)}...`);
+          } catch (readError) {
+            logger.error(`Error reading ${schema.filename}: ${readError.message}`);
+            logger.info(`Creating default ${schema.filename} due to read error`);
+            
+            // Create with default value on read error
+            await this.fileStorage.writeJsonFile(filePath, schema.defaultValue);
+            this.cache[schemaName] = schema.defaultValue;
+          }
+        } else {
+          // File doesn't exist, create with default value
+          logger.info(`Creating default schema file: ${schema.filename}`);
+          await this.fileStorage.writeJsonFile(filePath, schema.defaultValue);
+          this.cache[schemaName] = schema.defaultValue;
+        }
       } catch (error) {
-        // File doesn't exist, create with default value
-        logger.info(`Creating default schema file: ${schema.filename}`);
-        await this.fileStorage.writeJsonFile(filePath, schema.defaultValue);
+        logger.error(`Error initializing schema ${schema.filename}: ${error.message}`);
+        // Set to default value on error
         this.cache[schemaName] = schema.defaultValue;
       }
     }
@@ -123,7 +151,18 @@ class DataStore {
     
     try {
       // Check if legacy file exists
-      await fs.access(legacyPath);
+      let exists = false;
+      try {
+        await fs.access(legacyPath);
+        exists = true;
+      } catch (err) {
+        exists = false;
+      }
+      
+      if (!exists) {
+        logger.debug('No legacy DNS records file found, skipping migration');
+        return;
+      }
       
       logger.info('Found legacy DNS records file, migrating...');
       
@@ -231,7 +270,7 @@ class DataStore {
   }
   
   /**
-   * Create a unique key for a DNS record
+   * Create a unique identifier for a DNS record
    */
   getDnsRecordKey(record) {
     return `${record.provider || ''}:${record.domain || ''}:${record.name || ''}:${record.type || ''}`.toLowerCase();
