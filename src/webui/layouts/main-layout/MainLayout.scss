@@ -1,0 +1,76 @@
+// src/webui/layouts/main-layout/MainLayout.scss
+
+.main-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-container {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.sidebar {
+  transition: all 0.3s ease;
+  width: 250px;
+  min-width: 250px;
+  z-index: 100;
+}
+
+.sidebar.collapsed {
+  margin-left: -250px;
+}
+
+.content-area {
+  flex: 1;
+  transition: all 0.3s ease;
+  overflow-y: auto;
+  max-height: calc(100vh - 56px); // Adjust for navbar height
+}
+
+.content-area.with-sidebar {
+  @media (min-width: 992px) {
+    margin-left: 250px;
+    width: calc(100% - 250px);
+  }
+}
+
+.content-area.without-sidebar {
+  margin-left: 0;
+  width: 100%;
+}
+
+.content-wrapper {
+  min-height: calc(100vh - 56px);
+}
+
+// Mobile adjustments
+@media (max-width: 991.98px) {
+  .sidebar {
+    position: fixed;
+    height: calc(100vh - 56px);
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+  }
+
+  .content-area.with-sidebar {
+    margin-left: 0;
+    width: 100%;
+  }
+  
+  .sidebar-overlay {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 99;
+    display: none;
+  }
+  
+  .sidebar-overlay.active {
+    display: block;
+  }
+}
