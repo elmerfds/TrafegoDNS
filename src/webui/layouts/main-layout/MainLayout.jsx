@@ -34,10 +34,23 @@ const MainLayout = ({ appStatus }) => {
       />
       
       <Container fluid className="px-0 main-container">
-        <Row className="g-0 h-100">
-          <Sidebar open={sidebarOpen} appStatus={appStatus} toggleSidebar={toggleSidebar} />
+        {/* Sidebar overlay for mobile */}
+        {sidebarOpen && (
+          <div 
+            className="sidebar-overlay d-lg-none" 
+            onClick={toggleSidebar}
+          />
+        )}
+        
+        {/* Main content with sidebar */}
+        <div className="d-flex flex-grow-1 position-relative">
+          <Sidebar 
+            open={sidebarOpen} 
+            appStatus={appStatus} 
+            toggleSidebar={toggleSidebar} 
+          />
           
-          <Col className={`content-area ${sidebarOpen ? 'with-sidebar' : 'without-sidebar'}`}>
+          <div className={`content-area ${sidebarOpen ? 'with-sidebar' : 'without-sidebar'}`}>
             <div className="content-wrapper p-4">
               <Routes>
                 <Route path="/" element={<Dashboard />} />
@@ -48,8 +61,8 @@ const MainLayout = ({ appStatus }) => {
                 <Route path="/settings" element={<Settings />} />
               </Routes>
             </div>
-          </Col>
-        </Row>
+          </div>
+        </div>
       </Container>
     </div>
   );
