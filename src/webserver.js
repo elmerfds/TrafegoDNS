@@ -6,7 +6,8 @@
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
-const fs = require('fs').promises;
+const fsSync = require('fs'); // Use fs synchronous version for existsSync
+const fs = require('fs').promises; // Use fs.promises for async operations
 const basicAuth = require('express-basic-auth');
 const logger = require('./utils/logger');
 const EventTypes = require('./events/EventTypes');
@@ -546,7 +547,7 @@ class WebServer {
     // Check if we have a built UI
     const webUIPath = path.join(__dirname, '../webui/build');
     
-    if (fs.existsSync(webUIPath)) {
+    if (fsSync.existsSync(webUIPath)) {
       logger.info(`Serving Web UI from ${webUIPath}`);
       
       // Serve static files from React build
