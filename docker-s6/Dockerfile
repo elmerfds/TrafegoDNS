@@ -14,7 +14,7 @@ WORKDIR /app
 
 # Copy the setup script and execute it
 # No need to chmod locally - we set permissions in the container
-COPY setup-react-files.sh /app/
+COPY docker-s6/setup-react-files.sh /app/
 RUN chmod +x /app/setup-react-files.sh && /app/setup-react-files.sh
 
 # Copy package.json first to leverage Docker caching
