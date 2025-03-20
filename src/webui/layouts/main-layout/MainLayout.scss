@@ -63,6 +63,26 @@
   margin-right: 0 !important;
 }
 
+/* Fix for the Log Level selector buttons in settings */
+.btn-group .btn.btn-outline-secondary {
+  border-color: #334155 !important;
+  border-width: 1px !important;
+  opacity: 0.75 !important;
+}
+
+/* Selected button gets green border and full emphasis */
+.btn-group .btn.btn-info {
+  border-color: #00a86b !important;
+  border-width: 2px !important;
+  opacity: 1 !important;
+}
+
+/* Add hover effect for non-selected buttons */
+.btn-group .btn:not(.btn-info):hover {
+  opacity: 0.9 !important;
+  background-color: rgba(51, 65, 85, 0.3) !important;
+}
+
 /* Mobile adjustments */
 @media (max-width: 991.98px) {
   .sidebar {
@@ -92,4 +112,16 @@
   .sidebar-overlay.active {
     display: block;
   }
+}
+
+/* Add border to Public IP dashboard box */
+.card[bg="dark"], 
+.card.bg-dark {
+  border: 1px solid #334155 !important;
+}
+
+/* Ensure specific border colors for dashboard boxes */
+.card[bg="dark"] .card-body,
+.card.bg-dark .card-body {
+  border-color: #334155 !important;
 }
