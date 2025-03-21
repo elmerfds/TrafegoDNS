@@ -321,7 +321,29 @@ class DataStore {
    */
   async getPreservedHostnames() {
     await this.ensureInitialized();
-    return this.cache.preservedHostnames || [];
+    
+    // First try to get from cache
+    if (this.cache && this.cache.preservedHostnames) {
+      return this.cache.preservedHostnames;
+    }
+    
+    // If schema exists, try to load from schema
+    if (this.schemas && this.schemas.preservedHostnames) {
+      try {
+        const filePath = path.join(this.baseDir, this.schemas.preservedHostnames.filename);
+        if (fs.existsSync(filePath)) {
+          const data = await this.fileStorage.readJsonFile(filePath);
+          // Update cache
+          this.cache.preservedHostnames = data;
+          return data;
+        }
+      } catch (error) {
+        logger.error(`Error reading preserved hostnames: ${error.message}`);
+      }
+    }
+    
+    // Fallback to empty array
+    return [];
   }
   
   /**
@@ -403,7 +425,29 @@ class DataStore {
    */
   async getManagedHostnames() {
     await this.ensureInitialized();
-    return this.cache.managedHostnames || [];
+    
+    // First try to get from cache
+    if (this.cache && this.cache.managedHostnames) {
+      return this.cache.managedHostnames;
+    }
+    
+    // If schema exists, try to load from schema
+    if (this.schemas && this.schemas.managedHostnames) {
+      try {
+        const filePath = path.join(this.baseDir, this.schemas.managedHostnames.filename);
+        if (fs.existsSync(filePath)) {
+          const data = await this.fileStorage.readJsonFile(filePath);
+          // Update cache
+          this.cache.managedHostnames = data;
+          return data;
+        }
+      } catch (error) {
+        logger.error(`Error reading managed hostnames: ${error.message}`);
+      }
+    }
+    
+    // Fallback to empty array
+    return [];
   }
   
   /**
