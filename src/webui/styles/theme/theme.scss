@@ -1,0 +1,127 @@
+// src/webui/styles/theme/theme.scss
+
+// Define our custom color variables based on TráfegoDNS logo
+$primary: #0066CC;     // Primary blue
+$secondary: #00A86B;   // Secondary green
+$success: #00A86B;     // Green
+$danger: #FF0000;      // Red
+$warning: #FFD700;     // Gold/Yellow
+$info: #0F172A;        // Dark blue
+$light: #F8FAFC;       // Light gray/white
+$dark: #0F172A;        // Very dark blue
+$body-bg: #1E293B;     // Dark background
+$body-color: #F8FAFC;  // Light text
+
+// Card and component variables
+$card-bg: #0F172A;
+$card-border-color: #334155;
+$border-color: #334155;
+$input-bg: #293548;
+$input-color: #F8FAFC;
+$input-border-color: #475569;
+$input-group-addon-bg: #334155;
+$modal-content-bg: #1E293B;
+$modal-header-border-color: #334155;
+$modal-footer-border-color: #334155;
+$dropdown-bg: #1E293B;
+$dropdown-color: #F8FAFC;
+$dropdown-link-color: #F8FAFC;
+$dropdown-link-hover-bg: #334155;
+$dropdown-link-hover-color: #FFFFFF;
+$table-bg: transparent;
+$table-color: #F8FAFC;
+$table-border-color: #334155;
+$nav-tabs-border-color: #334155;
+$nav-tabs-link-active-color: #F8FAFC;
+$nav-tabs-link-active-bg: #0F172A;
+
+// Import Bootstrap
+@import "~bootstrap/scss/bootstrap";
+
+// Additional custom styles
+.bg-dark-blue {
+  background-color: $dark;
+}
+
+.text-gold {
+  color: $warning;
+}
+
+.btn-primary {
+  &:hover {
+    background-color: darken($primary, 10%);
+  }
+}
+
+.nav-link {
+  color: rgba($light, 0.75);
+  
+  &:hover, &:focus {
+    color: $light;
+  }
+  
+  &.active {
+    color: $warning !important;
+    font-weight: 500;
+    background-color: rgba($primary, 0.2);
+  }
+}
+
+.badge-proxied {
+  background-color: $success;
+  color: $light;
+}
+
+.badge-unproxied {
+  background-color: $secondary;
+  color: $dark;
+}
+
+.badge-managed {
+  background-color: $primary;
+  color: $light;
+}
+
+.badge-unmanaged {
+  background-color: $secondary;
+  color: $dark;
+}
+
+// Sidebar styles
+.sidebar {
+  background-color: $dark;
+  min-height: 100vh;
+  transition: all 0.3s;
+}
+
+// Card overrides
+.card {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+  }
+}
+
+// Table styles
+.table {
+  --bs-table-hover-bg: rgba($primary, 0.1);
+}
+
+.table-responsive {
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+// Form control focus styles
+.form-control:focus {
+  border-color: $primary;
+  box-shadow: 0 0 0 0.25rem rgba($primary, 0.25);
+}
+
+// Loading spinner override
+.spinner-border {
+  color: $primary;
+}

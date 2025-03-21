@@ -5,14 +5,28 @@ COPY package.json .
 RUN npm install --package-lock-only
 RUN npm install --omit=dev
 
-# Stage 2: Build the application
+# Stage 2: Build the frontend
+FROM node:23-alpine AS webui-build
+WORKDIR /app
+# Copy package.json first to leverage Docker caching
+COPY src/webui/package.json ./
+RUN npm install
+# Create required public directory structure first
+RUN mkdir -p ./public
+COPY src/webui/public/ ./public/
+# Copy source files
+COPY src/webui/ ./src/
+# Run the build
+RUN npm run build
+
+# Stage 3: Build the application
 FROM node:23-alpine AS build
 WORKDIR /app
 COPY --from=dependencies /app/package*.json ./
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY src ./src
 
-# Stage 3: Create the production image with s6-overlay
+# Stage 4: Create the production image with s6-overlay
 FROM node:23-alpine
 WORKDIR /app
 
@@ -48,16 +62,20 @@ RUN addgroup -g 1001 abc && \
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/src ./src
+
+# Copy the web UI build files
+COPY --from=webui-build /app/build ./webui/build
+
 RUN chown -R abc:abc /app
 
 # Create necessary directories for s6-overlay scripts
-RUN mkdir -p /etc/cont-init.d /etc/services.d/trafegodns
+RUN mkdir -p /etc/cont-init.d /etc/services.d/trafegodns /etc/services.d/webui
 
 # Copy your prepared scripts
 COPY docker-s6/root/ /
 
 # Update the scripts to use command/with-contenv and fix any issues
-RUN for script in /etc/cont-init.d/* /etc/services.d/trafegodns/*; do \
+RUN for script in /etc/cont-init.d/* /etc/services.d/trafegodns/* /etc/services.d/webui/*; do \
     if [ -f "$script" ]; then \
         # Replace the shebang line correctly \
         sed -i '1s|^#!/usr/bin/with-contenv.*|#!/command/with-contenv bash|' "$script"; \
@@ -69,10 +87,13 @@ RUN for script in /etc/cont-init.d/* /etc/services.d/trafegodns/*; do \
 done
 
 # Verify the scripts have the correct shebang
-RUN head -1 /etc/cont-init.d/* /etc/services.d/trafegodns/*
+RUN head -1 /etc/cont-init.d/* /etc/services.d/trafegodns/* /etc/services.d/webui/*
 
 # Configure volumes
 VOLUME /config
+
+# Expose ports
+EXPOSE 8080
 
 # Set entrypoint to s6-overlay init
 ENTRYPOINT ["/init"]

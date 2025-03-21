@@ -1,0 +1,127 @@
+/* src/webui/layouts/main-layout/MainLayout.scss */
+
+.main-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-container {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Sidebar styling */
+.sidebar {
+  position: fixed;
+  top: 56px;
+  left: 0;
+  bottom: 0;
+  width: 250px;
+  min-width: 250px;
+  max-width: 250px;
+  z-index: 1000;
+  transition: transform 0.3s ease;
+}
+
+.sidebar.collapsed {
+  transform: translateX(-250px);
+}
+
+/* Content area styling - key fix for the gap issue */
+.content-area {
+  flex: 1;
+  transition: margin-left 0.3s ease;
+  overflow-y: auto;
+  max-height: calc(100vh - 56px);
+  margin-left: 250px !important; /* Position right after sidebar */
+  width: calc(100% - 250px) !important; /* Take remaining width */
+  padding-left: 0 !important; /* Remove any padding */
+}
+
+.content-area.without-sidebar {
+  margin-left: 0 !important;
+  width: 100% !important;
+}
+
+.content-wrapper {
+  width: 100%;
+  min-height: calc(100vh - 56px);
+  padding: 1rem;
+}
+
+/* Fix container padding */
+.container-fluid {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Fix row margins */
+.row {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+/* Fix for the Log Level selector buttons in settings */
+.btn-group .btn.btn-outline-secondary {
+  border-color: #334155 !important;
+  border-width: 1px !important;
+  opacity: 0.75 !important;
+}
+
+/* Selected button gets green border and full emphasis */
+.btn-group .btn.btn-info {
+  border-color: #00a86b !important;
+  border-width: 2px !important;
+  opacity: 1 !important;
+}
+
+/* Add hover effect for non-selected buttons */
+.btn-group .btn:not(.btn-info):hover {
+  opacity: 0.9 !important;
+  background-color: rgba(51, 65, 85, 0.3) !important;
+}
+
+/* Mobile adjustments */
+@media (max-width: 991.98px) {
+  .sidebar {
+    transform: translateX(-100%);
+  }
+  
+  .sidebar:not(.collapsed) {
+    transform: translateX(0);
+  }
+  
+  .content-area {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+  
+  .sidebar-overlay {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+    display: none;
+  }
+  
+  .sidebar-overlay.active {
+    display: block;
+  }
+}
+
+/* Add border to Public IP dashboard box */
+.card[bg="dark"], 
+.card.bg-dark {
+  border: 1px solid #334155 !important;
+}
+
+/* Ensure specific border colors for dashboard boxes */
+.card[bg="dark"] .card-body,
+.card.bg-dark .card-body {
+  border-color: #334155 !important;
+}
