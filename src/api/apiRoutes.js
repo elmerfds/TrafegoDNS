@@ -204,10 +204,28 @@ class ApiRoutes {
    */
   async handleGetPreservedHostnames(req, res, next) {
     try {
+      // Check if dataStore has been properly initialized
+      if (!this.dataStore || typeof this.dataStore.getPreservedHostnames !== 'function') {
+        logger.error('DataStore not properly initialized or missing getPreservedHostnames method');
+        
+        // Fallback: If using recordTracker, we can try to get preserved hostnames from there
+        if (this.dnsManager && this.dnsManager.recordTracker && 
+            this.dnsManager.recordTracker.preservedHostnames) {
+          res.json({ hostnames: this.dnsManager.recordTracker.preservedHostnames });
+          return;
+        }
+        
+        // If all else fails, return empty array
+        res.json({ hostnames: [] });
+        return;
+      }
+      
       const preservedHostnames = await this.dataStore.getPreservedHostnames();
       res.json({ hostnames: preservedHostnames });
     } catch (error) {
-      next(error);
+      logger.error(`Error in getPreservedHostnames: ${error.message}`);
+      // Return empty array instead of error to avoid crashing the UI
+      res.json({ hostnames: [] });
     }
   }
   
@@ -278,10 +296,28 @@ class ApiRoutes {
    */
   async handleGetManagedHostnames(req, res, next) {
     try {
+      // Check if dataStore has been properly initialized
+      if (!this.dataStore || typeof this.dataStore.getManagedHostnames !== 'function') {
+        logger.error('DataStore not properly initialized or missing getManagedHostnames method');
+        
+        // Fallback: If using recordTracker, we can try to get managed hostnames from there
+        if (this.dnsManager && this.dnsManager.recordTracker && 
+            this.dnsManager.recordTracker.managedHostnames) {
+          res.json({ hostnames: this.dnsManager.recordTracker.managedHostnames });
+          return;
+        }
+        
+        // If all else fails, return empty array
+        res.json({ hostnames: [] });
+        return;
+      }
+      
       const managedHostnames = await this.dataStore.getManagedHostnames();
       res.json({ hostnames: managedHostnames });
     } catch (error) {
-      next(error);
+      logger.error(`Error in getManagedHostnames: ${error.message}`);
+      // Return empty array instead of error to avoid crashing the UI
+      res.json({ hostnames: [] });
     }
   }
   
