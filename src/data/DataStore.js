@@ -318,32 +318,54 @@ class DataStore {
   
   /**
    * Get preserved hostnames
+   * @returns {Promise<Array<string>>} List of preserved hostnames
    */
   async getPreservedHostnames() {
-    await this.ensureInitialized();
-    
-    // First try to get from cache
-    if (this.cache && this.cache.preservedHostnames) {
-      return this.cache.preservedHostnames;
-    }
-    
-    // If schema exists, try to load from schema
-    if (this.schemas && this.schemas.preservedHostnames) {
-      try {
-        const filePath = path.join(this.baseDir, this.schemas.preservedHostnames.filename);
-        if (fs.existsSync(filePath)) {
-          const data = await this.fileStorage.readJsonFile(filePath);
-          // Update cache
-          this.cache.preservedHostnames = data;
-          return data;
-        }
-      } catch (error) {
-        logger.error(`Error reading preserved hostnames: ${error.message}`);
+    try {
+      await this.ensureInitialized();
+      
+      // First try to get from cache
+      if (this.cache && this.cache.preservedHostnames) {
+        return this.cache.preservedHostnames;
       }
+      
+      // If schema exists, try to load from schema
+      if (this.schemas && this.schemas.preservedHostnames) {
+        try {
+          const filePath = path.join(this.baseDir, this.schemas.preservedHostnames.filename);
+          if (fsSync.existsSync(filePath)) {
+            const data = await this.fileStorage.readJsonFile(filePath);
+            // Update cache
+            this.cache.preservedHostnames = data;
+            return data;
+          }
+        } catch (error) {
+          logger.error(`Error reading preserved hostnames: ${error.message}`);
+        }
+      }
+      
+      // Fallback to environment variable
+      if (process.env.PRESERVED_HOSTNAMES) {
+        logger.info('Falling back to environment variable for preserved hostnames');
+        const preservedHostnames = process.env.PRESERVED_HOSTNAMES
+          .split(',')
+          .map(hostname => hostname.trim())
+          .filter(hostname => hostname.length > 0);
+        
+        // Cache this result
+        if (this.cache) {
+          this.cache.preservedHostnames = preservedHostnames;
+        }
+        
+        return preservedHostnames;
+      }
+      
+      // Fallback to empty array
+      return [];
+    } catch (error) {
+      logger.error(`Error in getPreservedHostnames: ${error.message}`);
+      return [];
     }
-    
-    // Fallback to empty array
-    return [];
   }
   
   /**
@@ -422,32 +444,69 @@ class DataStore {
   
   /**
    * Get managed hostnames
+   * @returns {Promise<Array<Object>>} List of managed hostname objects
    */
   async getManagedHostnames() {
-    await this.ensureInitialized();
-    
-    // First try to get from cache
-    if (this.cache && this.cache.managedHostnames) {
-      return this.cache.managedHostnames;
-    }
-    
-    // If schema exists, try to load from schema
-    if (this.schemas && this.schemas.managedHostnames) {
-      try {
-        const filePath = path.join(this.baseDir, this.schemas.managedHostnames.filename);
-        if (fs.existsSync(filePath)) {
-          const data = await this.fileStorage.readJsonFile(filePath);
-          // Update cache
-          this.cache.managedHostnames = data;
-          return data;
-        }
-      } catch (error) {
-        logger.error(`Error reading managed hostnames: ${error.message}`);
+    try {
+      await this.ensureInitialized();
+      
+      // First try to get from cache
+      if (this.cache && this.cache.managedHostnames) {
+        return this.cache.managedHostnames;
       }
+      
+      // If schema exists, try to load from schema
+      if (this.schemas && this.schemas.managedHostnames) {
+        try {
+          const filePath = path.join(this.baseDir, this.schemas.managedHostnames.filename);
+          if (fsSync.existsSync(filePath)) {
+            const data = await this.fileStorage.readJsonFile(filePath);
+            // Update cache
+            this.cache.managedHostnames = data;
+            return data;
+          }
+        } catch (error) {
+          logger.error(`Error reading managed hostnames: ${error.message}`);
+        }
+      }
+      
+      // Fallback to environment variable
+      if (process.env.MANAGED_HOSTNAMES) {
+        logger.info('Falling back to environment variable for managed hostnames');
+        const managedHostnamesStr = process.env.MANAGED_HOSTNAMES;
+        const managedHostnames = managedHostnamesStr
+          .split(',')
+          .map(hostnameConfig => {
+            const parts = hostnameConfig.trim().split(':');
+            if (parts.length < 1) return null;
+            
+            const hostname = parts[0];
+            
+            // Return basic record with defaults if parts are missing
+            return {
+              hostname: hostname,
+              type: parts[1] || 'A',
+              content: parts[2] || '',
+              ttl: parseInt(parts[3] || '3600', 10),
+              proxied: parts[4] ? parts[4].toLowerCase() === 'true' : false
+            };
+          })
+          .filter(config => config && config.hostname && config.hostname.length > 0);
+        
+        // Cache this result
+        if (this.cache) {
+          this.cache.managedHostnames = managedHostnames;
+        }
+        
+        return managedHostnames;
+      }
+      
+      // Fallback to empty array
+      return [];
+    } catch (error) {
+      logger.error(`Error in getManagedHostnames: ${error.message}`);
+      return [];
     }
-    
-    // Fallback to empty array
-    return [];
   }
   
   /**
