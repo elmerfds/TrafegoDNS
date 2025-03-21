@@ -3,7 +3,6 @@
  */
 const { ListResourceRecordSetsCommand } = require('@aws-sdk/client-route-53');
 const logger = require('../../utils/logger');
-const fs = require('fs'); // Add this for sync operations if needed
 
 /**
  * Fetch all records from Route53, handling pagination
