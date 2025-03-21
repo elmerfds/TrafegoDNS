@@ -198,32 +198,105 @@ class ApiRoutes {
       next(error);
     }
   }
+
+  /**
+   * Get preserved hostnames safely with fallback
+   * @returns {Promise<Array>} List of preserved hostnames
+   */
+  async getPreservedHostnamesInternal() {
+    try {
+      // If dataStore has the method, use it
+      if (this.dataStore && typeof this.dataStore.getPreservedHostnames === 'function') {
+        return await this.dataStore.getPreservedHostnames();
+      }
+      
+      // Fallback 1: Check if we can get it from recordTracker
+      if (this.dnsManager && 
+          this.dnsManager.recordTracker && 
+          Array.isArray(this.dnsManager.recordTracker.preservedHostnames)) {
+        logger.info('Getting preserved hostnames from recordTracker fallback');
+        return this.dnsManager.recordTracker.preservedHostnames;
+      }
+      
+      // Fallback 2: Check if the hostnames are stored in environment variable
+      if (process.env.PRESERVED_HOSTNAMES) {
+        logger.info('Getting preserved hostnames from environment variable fallback');
+        return process.env.PRESERVED_HOSTNAMES
+          .split(',')
+          .map(h => h.trim())
+          .filter(h => h.length > 0);
+      }
+      
+      // Last resort: Return empty array to avoid errors
+      logger.warn('No preserved hostnames source found, returning empty array');
+      return [];
+    } catch (error) {
+      logger.error(`Internal error in getPreservedHostnamesInternal: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get managed hostnames safely with fallback
+   * @returns {Promise<Array>} List of managed hostnames
+   */
+  async getManagedHostnamesInternal() {
+    try {
+      // If dataStore has the method, use it
+      if (this.dataStore && typeof this.dataStore.getManagedHostnames === 'function') {
+        return await this.dataStore.getManagedHostnames();
+      }
+      
+      // Fallback 1: Check if we can get it from recordTracker
+      if (this.dnsManager && 
+          this.dnsManager.recordTracker && 
+          Array.isArray(this.dnsManager.recordTracker.managedHostnames)) {
+        logger.info('Getting managed hostnames from recordTracker fallback');
+        return this.dnsManager.recordTracker.managedHostnames;
+      }
+      
+      // Fallback 2: Check if the hostnames are stored in environment variable
+      if (process.env.MANAGED_HOSTNAMES) {
+        logger.info('Getting managed hostnames from environment variable fallback');
+        const managedHostnamesStr = process.env.MANAGED_HOSTNAMES;
+        return managedHostnamesStr
+          .split(',')
+          .map(hostnameConfig => {
+            const parts = hostnameConfig.trim().split(':');
+            if (parts.length < 1) return null;
+            
+            const hostname = parts[0];
+            
+            // Return basic record with defaults if parts are missing
+            return {
+              hostname: hostname,
+              type: parts[1] || 'A',
+              content: parts[2] || '',
+              ttl: parseInt(parts[3] || '3600', 10),
+              proxied: parts[4] ? parts[4].toLowerCase() === 'true' : false
+            };
+          })
+          .filter(config => config && config.hostname && config.hostname.length > 0);
+      }
+      
+      // Last resort: Return empty array to avoid errors
+      logger.warn('No managed hostnames source found, returning empty array');
+      return [];
+    } catch (error) {
+      logger.error(`Internal error in getManagedHostnamesInternal: ${error.message}`);
+      return [];
+    }
+  }
   
   /**
    * Handle GET /preserved-hostnames
    */
   async handleGetPreservedHostnames(req, res, next) {
     try {
-      // Check if dataStore has been properly initialized
-      if (!this.dataStore || typeof this.dataStore.getPreservedHostnames !== 'function') {
-        logger.error('DataStore not properly initialized or missing getPreservedHostnames method');
-        
-        // Fallback: If using recordTracker, we can try to get preserved hostnames from there
-        if (this.dnsManager && this.dnsManager.recordTracker && 
-            this.dnsManager.recordTracker.preservedHostnames) {
-          res.json({ hostnames: this.dnsManager.recordTracker.preservedHostnames });
-          return;
-        }
-        
-        // If all else fails, return empty array
-        res.json({ hostnames: [] });
-        return;
-      }
-      
-      const preservedHostnames = await this.dataStore.getPreservedHostnames();
+      const preservedHostnames = await this.getPreservedHostnamesInternal();
       res.json({ hostnames: preservedHostnames });
     } catch (error) {
-      logger.error(`Error in getPreservedHostnames: ${error.message}`);
+      logger.error(`Error in handleGetPreservedHostnames: ${error.message}`);
       // Return empty array instead of error to avoid crashing the UI
       res.json({ hostnames: [] });
     }
@@ -240,22 +313,50 @@ class ApiRoutes {
         return res.status(400).json({ error: 'Hostname is required' });
       }
       
-      // Add hostname to preserved list
-      await this.dataStore.addPreservedHostname(hostname);
+      // Get current hostnames
+      const preservedHostnames = await this.getPreservedHostnamesInternal();
+      
+      // Check if already exists
+      if (preservedHostnames.includes(hostname)) {
+        return res.status(409).json({
+          success: false,
+          message: `Hostname ${hostname} is already in the preserved list`,
+          error: 'Hostname already exists'
+        });
+      }
+      
+      // Add the new hostname
+      preservedHostnames.push(hostname);
+      
+      // Try to save back to dataStore if available
+      let saved = false;
+      if (this.dataStore && typeof this.dataStore.setPreservedHostnames === 'function') {
+        await this.dataStore.setPreservedHostnames(preservedHostnames);
+        saved = true;
+      } 
+      // Fallback: Update recordTracker if available
+      else if (this.dnsManager && this.dnsManager.recordTracker) {
+        this.dnsManager.recordTracker.preservedHostnames = preservedHostnames;
+        saved = true;
+      }
       
       // Log the activity
-      await this.activityLogger.log({
-        type: 'info',
-        action: 'preserved_hostname_added',
-        message: `Added ${hostname} to preserved hostnames`,
-        details: { hostname }
-      });
+      if (this.activityLogger) {
+        await this.activityLogger.log({
+          type: 'info',
+          action: 'preserved_hostname_added',
+          message: `Added ${hostname} to preserved hostnames`,
+          details: { hostname }
+        });
+      }
       
       res.json({ 
         success: true,
-        message: `Added ${hostname} to preserved hostnames`
+        message: `Added ${hostname} to preserved hostnames`,
+        persistedToDisk: saved
       });
     } catch (error) {
+      logger.error(`Error in handleAddPreservedHostname: ${error.message}`);
       next(error);
     }
   }
@@ -271,22 +372,50 @@ class ApiRoutes {
         return res.status(400).json({ error: 'Hostname is required' });
       }
       
-      // Remove hostname from preserved list
-      await this.dataStore.removePreservedHostname(hostname);
+      // Get current hostnames
+      const preservedHostnames = await this.getPreservedHostnamesInternal();
+      
+      // Check if hostname exists
+      if (!preservedHostnames.includes(hostname)) {
+        return res.status(404).json({
+          success: false,
+          message: `Hostname ${hostname} not found in the preserved list`,
+          error: 'Hostname not found'
+        });
+      }
+      
+      // Remove the hostname
+      const updatedHostnames = preservedHostnames.filter(h => h !== hostname);
+      
+      // Try to save back to dataStore if available
+      let saved = false;
+      if (this.dataStore && typeof this.dataStore.setPreservedHostnames === 'function') {
+        await this.dataStore.setPreservedHostnames(updatedHostnames);
+        saved = true;
+      } 
+      // Fallback: Update recordTracker if available
+      else if (this.dnsManager && this.dnsManager.recordTracker) {
+        this.dnsManager.recordTracker.preservedHostnames = updatedHostnames;
+        saved = true;
+      }
       
       // Log the activity
-      await this.activityLogger.log({
-        type: 'warning',
-        action: 'preserved_hostname_removed',
-        message: `Removed ${hostname} from preserved hostnames`,
-        details: { hostname }
-      });
+      if (this.activityLogger) {
+        await this.activityLogger.log({
+          type: 'warning',
+          action: 'preserved_hostname_removed',
+          message: `Removed ${hostname} from preserved hostnames`,
+          details: { hostname }
+        });
+      }
       
       res.json({ 
         success: true,
-        message: `Removed ${hostname} from preserved hostnames`
+        message: `Removed ${hostname} from preserved hostnames`,
+        persistedToDisk: saved
       });
     } catch (error) {
+      logger.error(`Error in handleDeletePreservedHostname: ${error.message}`);
       next(error);
     }
   }
@@ -296,26 +425,10 @@ class ApiRoutes {
    */
   async handleGetManagedHostnames(req, res, next) {
     try {
-      // Check if dataStore has been properly initialized
-      if (!this.dataStore || typeof this.dataStore.getManagedHostnames !== 'function') {
-        logger.error('DataStore not properly initialized or missing getManagedHostnames method');
-        
-        // Fallback: If using recordTracker, we can try to get managed hostnames from there
-        if (this.dnsManager && this.dnsManager.recordTracker && 
-            this.dnsManager.recordTracker.managedHostnames) {
-          res.json({ hostnames: this.dnsManager.recordTracker.managedHostnames });
-          return;
-        }
-        
-        // If all else fails, return empty array
-        res.json({ hostnames: [] });
-        return;
-      }
-      
-      const managedHostnames = await this.dataStore.getManagedHostnames();
+      const managedHostnames = await this.getManagedHostnamesInternal();
       res.json({ hostnames: managedHostnames });
     } catch (error) {
-      logger.error(`Error in getManagedHostnames: ${error.message}`);
+      logger.error(`Error in handleGetManagedHostnames: ${error.message}`);
       // Return empty array instead of error to avoid crashing the UI
       res.json({ hostnames: [] });
     }
@@ -333,25 +446,62 @@ class ApiRoutes {
       }
       
       // Validate hostname data
-      this.validateManagedHostname(hostnameData);
+      try {
+        this.validateManagedHostname(hostnameData);
+      } catch (validationError) {
+        return res.status(400).json({ 
+          error: validationError.message,
+          validationError: true
+        });
+      }
       
-      // Add hostname to managed list
-      await this.dataStore.addManagedHostname(hostnameData);
+      // Get current hostnames
+      const managedHostnames = await this.getManagedHostnamesInternal();
       
-      // Process the managed hostnames
-      await this.dnsManager.processManagedHostnames();
+      // Check if hostname already exists with same type
+      const existingIndex = managedHostnames.findIndex(
+        h => h.hostname === hostnameData.hostname && h.type === hostnameData.type
+      );
+      
+      if (existingIndex !== -1) {
+        // Update existing entry
+        managedHostnames[existingIndex] = hostnameData;
+      } else {
+        // Add new entry
+        managedHostnames.push(hostnameData);
+      }
+      
+      // Try to save back to dataStore if available
+      let saved = false;
+      if (this.dataStore && typeof this.dataStore.setManagedHostnames === 'function') {
+        await this.dataStore.setManagedHostnames(managedHostnames);
+        saved = true;
+      } 
+      // Fallback: Update recordTracker if available
+      else if (this.dnsManager && this.dnsManager.recordTracker) {
+        this.dnsManager.recordTracker.managedHostnames = managedHostnames;
+        saved = true;
+      }
+      
+      // Process the managed hostnames if possible
+      if (this.dnsManager && typeof this.dnsManager.processManagedHostnames === 'function') {
+        await this.dnsManager.processManagedHostnames();
+      }
       
       // Log the activity
-      await this.activityLogger.log({
-        type: 'info',
-        action: 'managed_hostname_added',
-        message: `Added ${hostnameData.hostname} to managed hostnames`,
-        details: hostnameData
-      });
+      if (this.activityLogger) {
+        await this.activityLogger.log({
+          type: 'info',
+          action: 'managed_hostname_added',
+          message: `Added ${hostnameData.hostname} to managed hostnames`,
+          details: hostnameData
+        });
+      }
       
       res.json({ 
         success: true,
-        message: `Added ${hostnameData.hostname} to managed hostnames`
+        message: `Added ${hostnameData.hostname} to managed hostnames`,
+        persistedToDisk: saved
       });
     } catch (error) {
       if (error.validationError) {
@@ -372,22 +522,52 @@ class ApiRoutes {
         return res.status(400).json({ error: 'Hostname is required' });
       }
       
-      // Remove hostname from managed list
-      await this.dataStore.removeManagedHostname(hostname);
+      // Get current hostnames
+      const managedHostnames = await this.getManagedHostnamesInternal();
+      
+      // Check if hostname exists
+      const existingIndex = managedHostnames.findIndex(h => h.hostname === hostname);
+      
+      if (existingIndex === -1) {
+        return res.status(404).json({
+          success: false,
+          message: `Hostname ${hostname} not found in the managed list`,
+          error: 'Hostname not found'
+        });
+      }
+      
+      // Remove the hostname
+      const updatedHostnames = managedHostnames.filter(h => h.hostname !== hostname);
+      
+      // Try to save back to dataStore if available
+      let saved = false;
+      if (this.dataStore && typeof this.dataStore.setManagedHostnames === 'function') {
+        await this.dataStore.setManagedHostnames(updatedHostnames);
+        saved = true;
+      } 
+      // Fallback: Update recordTracker if available
+      else if (this.dnsManager && this.dnsManager.recordTracker) {
+        this.dnsManager.recordTracker.managedHostnames = updatedHostnames;
+        saved = true;
+      }
       
       // Log the activity
-      await this.activityLogger.log({
-        type: 'warning',
-        action: 'managed_hostname_removed',
-        message: `Removed ${hostname} from managed hostnames`,
-        details: { hostname }
-      });
+      if (this.activityLogger) {
+        await this.activityLogger.log({
+          type: 'warning',
+          action: 'managed_hostname_removed',
+          message: `Removed ${hostname} from managed hostnames`,
+          details: { hostname }
+        });
+      }
       
       res.json({ 
         success: true,
-        message: `Removed ${hostname} from managed hostnames`
+        message: `Removed ${hostname} from managed hostnames`,
+        persistedToDisk: saved
       });
     } catch (error) {
+      logger.error(`Error in handleDeleteManagedHostname: ${error.message}`);
       next(error);
     }
   }
