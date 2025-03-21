@@ -27,10 +27,14 @@ const usePreservedHostnames = () => {
       setError(null);
       
       const data = await fetchPreservedHostnames();
-      setHostnames(data?.hostnames || []);
+      // Ensure we have an array even if the API returns unexpected data
+      const hostnames = Array.isArray(data?.hostnames) ? data.hostnames : [];
+      setHostnames(hostnames);
     } catch (err) {
       console.error('Error loading preserved hostnames:', err);
       setError('Failed to load preserved hostnames. Please try again.');
+      // Set empty array to prevent UI errors
+      setHostnames([]);
     } finally {
       setLoading(false);
     }
