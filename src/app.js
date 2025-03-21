@@ -4,7 +4,6 @@
  */
 const { ConfigManager } = require('./config');
 const { DNSManager, TraefikMonitor, DockerMonitor, StatusReporter, DirectDNSManager } = require('./services');
-const WebServer = require('./webserver');
 const { EventBus } = require('./events/EventBus');
 const logger = require('./utils/logger');
 
@@ -30,27 +29,13 @@ async function start() {
     if (config.operationMode.toLowerCase() === 'direct') {
       logger.info('🚀 Starting in DIRECT mode (without Traefik)');
       monitor = new DirectDNSManager(config, eventBus);
-      
-      // Make available globally for web UI to trigger polling
-      global.directDnsManager = monitor;
     } else {
       logger.info('🚀 Starting in TRAEFIK mode');
       monitor = new TraefikMonitor(config, eventBus);
-      
-      // Make available globally for web UI to trigger polling
-      global.traefikMonitor = monitor;
     }
     
     // Connect monitors for container name resolution
     monitor.dockerMonitor = dockerMonitor;
-    
-    // Add global stats counter for tracking operations
-    global.statsCounter = {
-      created: 0,
-      updated: 0,
-      upToDate: 0,
-      errors: 0
-    };
     
     // Display startup configuration
     await statusReporter.displaySettings();
@@ -58,13 +43,6 @@ async function start() {
     // Initialize all services
     await dnsManager.init();
     await monitor.init();
-    
-    // Initialize web server if enabled
-    if (process.env.ENABLE_WEB_UI === 'true') {
-      logger.info('Initializing Web UI...');
-      const webServer = new WebServer(config, eventBus, dnsManager, dnsManager.recordTracker);
-      await webServer.start();
-    }
     
     // Start monitoring
     if (config.watchDockerEvents) {
