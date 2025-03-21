@@ -24,7 +24,71 @@ class ApiRoutes {
     this.config = config;
     this.eventBus = eventBus;
     this.dnsManager = dnsManager;
-    this.dataStore = dataStore;
+    
+    // Ensure dataStore has the required methods
+    this.dataStore = dataStore || {};
+    
+    // Add the missing methods to dataStore if they don't exist
+    if (this.dataStore && typeof this.dataStore.getPreservedHostnames !== 'function') {
+      logger.debug('Injecting getPreservedHostnames method into dataStore');
+      this.dataStore.getPreservedHostnames = async () => {
+        // Try to get from dnsManager.recordTracker first
+        if (this.dnsManager && 
+            this.dnsManager.recordTracker && 
+            Array.isArray(this.dnsManager.recordTracker.preservedHostnames)) {
+          return this.dnsManager.recordTracker.preservedHostnames;
+        }
+        
+        // Fallback to environment variable
+        if (process.env.PRESERVED_HOSTNAMES) {
+          return process.env.PRESERVED_HOSTNAMES
+            .split(',')
+            .map(hostname => hostname.trim())
+            .filter(hostname => hostname.length > 0);
+        }
+        
+        // Last resort: empty array
+        return [];
+      };
+    }
+    
+    if (this.dataStore && typeof this.dataStore.getManagedHostnames !== 'function') {
+      logger.debug('Injecting getManagedHostnames method into dataStore');
+      this.dataStore.getManagedHostnames = async () => {
+        // Try to get from dnsManager.recordTracker first
+        if (this.dnsManager && 
+            this.dnsManager.recordTracker && 
+            Array.isArray(this.dnsManager.recordTracker.managedHostnames)) {
+          return this.dnsManager.recordTracker.managedHostnames;
+        }
+        
+        // Fallback to environment variable
+        if (process.env.MANAGED_HOSTNAMES) {
+          return process.env.MANAGED_HOSTNAMES
+            .split(',')
+            .map(hostnameConfig => {
+              const parts = hostnameConfig.trim().split(':');
+              if (parts.length < 1) return null;
+              
+              const hostname = parts[0];
+              
+              // Return basic record with defaults if parts are missing
+              return {
+                hostname: hostname,
+                type: parts[1] || 'A',
+                content: parts[2] || '',
+                ttl: parseInt(parts[3] || '3600', 10),
+                proxied: parts[4] ? parts[4].toLowerCase() === 'true' : false
+              };
+            })
+            .filter(config => config && config.hostname && config.hostname.length > 0);
+        }
+        
+        // Last resort: empty array
+        return [];
+      };
+    }
+    
     this.activityLogger = activityLogger;
     this.router = express.Router();
     
