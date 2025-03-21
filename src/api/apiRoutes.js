@@ -115,7 +115,12 @@ class ApiRoutes {
   async handleGetRecords(req, res, next) {
     try {
       const records = await this.dnsManager.dnsProvider.getRecordsFromCache();
-      const trackedRecords = this.dnsManager.recordTracker.getAllTrackedRecords();
+      
+      // Get tracked records from record tracker or fallback to empty array
+      let trackedRecords = [];
+      if (this.dnsManager && this.dnsManager.recordTracker) {
+        trackedRecords = this.dnsManager.recordTracker.getAllTrackedRecords();
+      }
       
       // Enhance records with tracked information
       const enhancedRecords = records.map(record => {
@@ -123,10 +128,16 @@ class ApiRoutes {
           tr => tr.name === record.name && tr.type === record.type
         );
         
+        // Check if hostname should be preserved
+        let preserved = false;
+        if (this.dnsManager && this.dnsManager.recordTracker) {
+          preserved = this.dnsManager.recordTracker.shouldPreserveHostname(record.name);
+        }
+        
         return {
           ...record,
           managedBy: trackedRecord ? trackedRecord.managedBy : undefined,
-          preserved: this.dnsManager.recordTracker.shouldPreserveHostname(record.name),
+          preserved: preserved,
           createdAt: trackedRecord ? trackedRecord.createdAt : undefined
         };
       });
@@ -142,7 +153,10 @@ class ApiRoutes {
    */
   async handleGetTrackedRecords(req, res, next) {
     try {
-      const trackedRecords = this.dnsManager.recordTracker.getAllTrackedRecords();
+      let trackedRecords = [];
+      if (this.dnsManager && this.dnsManager.recordTracker) {
+        trackedRecords = this.dnsManager.recordTracker.getAllTrackedRecords();
+      }
       res.json({ records: trackedRecords });
     } catch (error) {
       next(error);
@@ -205,20 +219,21 @@ class ApiRoutes {
    */
   async getPreservedHostnamesInternal() {
     try {
-      // If dataStore has the method, use it
-      if (this.dataStore && typeof this.dataStore.getPreservedHostnames === 'function') {
-        return await this.dataStore.getPreservedHostnames();
-      }
-      
-      // Fallback 1: Check if we can get it from recordTracker
+      // First try recordTracker from dnsManager
       if (this.dnsManager && 
           this.dnsManager.recordTracker && 
           Array.isArray(this.dnsManager.recordTracker.preservedHostnames)) {
-        logger.info('Getting preserved hostnames from recordTracker fallback');
+        logger.debug('Getting preserved hostnames from recordTracker');
         return this.dnsManager.recordTracker.preservedHostnames;
       }
       
-      // Fallback 2: Check if the hostnames are stored in environment variable
+      // Next check if dataStore has the method
+      if (this.dataStore && typeof this.dataStore.getPreservedHostnames === 'function') {
+        logger.debug('Getting preserved hostnames from dataStore');
+        return await this.dataStore.getPreservedHostnames();
+      }
+      
+      // Fallback to environment variable
       if (process.env.PRESERVED_HOSTNAMES) {
         logger.info('Getting preserved hostnames from environment variable fallback');
         return process.env.PRESERVED_HOSTNAMES
@@ -242,20 +257,21 @@ class ApiRoutes {
    */
   async getManagedHostnamesInternal() {
     try {
-      // If dataStore has the method, use it
-      if (this.dataStore && typeof this.dataStore.getManagedHostnames === 'function') {
-        return await this.dataStore.getManagedHostnames();
-      }
-      
-      // Fallback 1: Check if we can get it from recordTracker
+      // First try recordTracker from dnsManager
       if (this.dnsManager && 
           this.dnsManager.recordTracker && 
           Array.isArray(this.dnsManager.recordTracker.managedHostnames)) {
-        logger.info('Getting managed hostnames from recordTracker fallback');
+        logger.debug('Getting managed hostnames from recordTracker');
         return this.dnsManager.recordTracker.managedHostnames;
       }
       
-      // Fallback 2: Check if the hostnames are stored in environment variable
+      // Next check if dataStore has the method
+      if (this.dataStore && typeof this.dataStore.getManagedHostnames === 'function') {
+        logger.debug('Getting managed hostnames from dataStore');
+        return await this.dataStore.getManagedHostnames();
+      }
+      
+      // Fallback to environment variable
       if (process.env.MANAGED_HOSTNAMES) {
         logger.info('Getting managed hostnames from environment variable fallback');
         const managedHostnamesStr = process.env.MANAGED_HOSTNAMES;
@@ -578,11 +594,31 @@ class ApiRoutes {
   async handleGetConfig(req, res, next) {
     try {
       // Get sanitized configuration
-      const config = this.config.getFullConfig();
+      const config = this.config.getFullConfig ? 
+        this.config.getFullConfig() : 
+        this.sanitizeConfig(this.config);
+      
       res.json(config);
     } catch (error) {
       next(error);
     }
+  }
+  
+  /**
+   * Sanitize configuration to remove sensitive information
+   * @param {Object} config - Configuration object
+   */
+  sanitizeConfig(config) {
+    const safeConfig = { ...config };
+    
+    // Mask sensitive fields
+    if (safeConfig.cloudflareToken) safeConfig.cloudflareToken = '********';
+    if (safeConfig.route53AccessKey) safeConfig.route53AccessKey = '********';
+    if (safeConfig.route53SecretKey) safeConfig.route53SecretKey = '********';
+    if (safeConfig.digitalOceanToken) safeConfig.digitalOceanToken = '********';
+    if (safeConfig.traefikApiPassword) safeConfig.traefikApiPassword = '********';
+    
+    return safeConfig;
   }
   
   /**
@@ -630,7 +666,12 @@ class ApiRoutes {
       }
       
       // Update cleanup configuration
-      await this.config.updateConfig('cleanupOrphaned', enabled, true);
+      if (this.config.updateConfig) {
+        await this.config.updateConfig('cleanupOrphaned', enabled, true);
+      } else {
+        // Fallback for older config implementation
+        this.config.cleanupOrphaned = enabled;
+      }
       
       // Log the activity
       await this.activityLogger.log({
@@ -654,6 +695,10 @@ class ApiRoutes {
    */
   async handleGetActivityLog(req, res, next) {
     try {
+      if (!this.activityLogger || typeof this.activityLogger.getLogs !== 'function') {
+        return res.json({ logs: [], total: 0, hasMore: false });
+      }
+      
       // Get query parameters for filtering
       const filter = {
         type: req.query.type,
@@ -672,7 +717,8 @@ class ApiRoutes {
       
       res.json(logs);
     } catch (error) {
-      next(error);
+      logger.error(`Error in handleGetActivityLog: ${error.message}`);
+      res.json({ logs: [], total: 0, hasMore: false });
     }
   }
   
@@ -705,14 +751,29 @@ class ApiRoutes {
   async handleGetProviders(req, res, next) {
     try {
       // Get list of available providers
-      const providers = await this.dnsManager.dnsProvider.factory.getAvailableProviders();
+      let providers = [];
+      
+      if (this.dnsManager && this.dnsManager.dnsProvider && this.dnsManager.dnsProvider.factory) {
+        // New style with factory on provider
+        providers = await this.dnsManager.dnsProvider.factory.getAvailableProviders();
+      } else if (this.dnsManager && this.dnsManager.providerFactory) {
+        // Enhanced style with provider factory
+        providers = await this.dnsManager.providerFactory.getAvailableProviders();
+      } else {
+        // Fallback to basic providers
+        providers = ['cloudflare', 'route53', 'digitalocean'];
+      }
       
       res.json({ 
         providers,
         current: this.config.dnsProvider
       });
     } catch (error) {
-      next(error);
+      // Provide at least the current provider on error
+      res.json({
+        providers: [this.config.dnsProvider],
+        current: this.config.dnsProvider
+      });
     }
   }
   
@@ -731,8 +792,13 @@ class ApiRoutes {
         return res.status(400).json({ error: 'Provider credentials are required' });
       }
       
-      // Switch provider
-      await this.config.validateAndSwitchProvider(provider, credentials);
+      // Check if enhanced config is available
+      if (this.config.validateAndSwitchProvider) {
+        // Enhanced config with provider switching
+        await this.config.validateAndSwitchProvider(provider, credentials);
+      } else {
+        return res.status(501).json({ error: 'Provider switching not supported in this version' });
+      }
       
       // Log the activity
       await this.activityLogger.log({
@@ -769,7 +835,12 @@ class ApiRoutes {
       }
       
       // Update operation mode
-      await this.config.updateConfig('operationMode', mode, true);
+      if (this.config.updateConfig) {
+        await this.config.updateConfig('operationMode', mode, true);
+      } else {
+        // Fallback for older config implementation
+        this.config.operationMode = mode;
+      }
       
       // Log the activity
       await this.activityLogger.log({
