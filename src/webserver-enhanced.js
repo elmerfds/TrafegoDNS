@@ -68,17 +68,27 @@ class EnhancedWebServer {
    * Set up API routes
    */
   setupApiRoutes() {
-    const apiRoutes = new ApiRoutes(
-      this.config,
-      this.eventBus,
-      this.dnsManager,
-      this.dataStore,
-      this.activityLogger
-    );
-    
-    // Mount API router at /api
-    this.app.use('/api', apiRoutes.router);
+  // Make sure DataStore is properly initialized before creating ApiRoutes
+  if (!this.dataStore) {
+    logger.warn('DataStore not initialized in WebServer, creating empty instance');
+    const DataStore = require('./data/DataStore');
+    this.dataStore = new DataStore(this.config);
+    // Initialize it
+    this.dataStore.init().catch(err => {
+      logger.error(`Failed to initialize DataStore: ${err.message}`);
+    });
   }
+  
+  const apiRoutes = new ApiRoutes(
+    this.config,
+    this.eventBus,
+    this.dnsManager,
+    this.dataStore,
+    this.activityLogger
+  );
+  
+  // Mount API router at /api
+  this.app.use('/api', apiRoutes.router);
 
   /**
    * Set up React frontend serving
