@@ -90,9 +90,16 @@ export const deleteRecord = async (id) => {
 // Preserved hostnames
 export const fetchPreservedHostnames = async () => {
   console.log('Fetching preserved hostnames');
-  const response = await api.get('/preserved-hostnames');
-  return response.data;
+  try {
+    const response = await api.get('/preserved-hostnames');
+    return response.data;
+  } catch (err) {
+    console.error('Error fetching preserved hostnames:', err);
+    // Return fallback data structure to prevent UI errors
+    return { hostnames: [] };
+  }
 };
+
 
 export const addPreservedHostname = async (hostname) => {
   console.log(`Adding preserved hostname: ${hostname}`);
@@ -109,8 +116,14 @@ export const removePreservedHostname = async (hostname) => {
 // Managed hostnames
 export const fetchManagedHostnames = async () => {
   console.log('Fetching managed hostnames');
-  const response = await api.get('/managed-hostnames');
-  return response.data;
+  try {
+    const response = await api.get('/managed-hostnames');
+    return response.data;
+  } catch (err) {
+    console.error('Error fetching managed hostnames:', err);
+    // Return fallback data structure to prevent UI errors
+    return { hostnames: [] };
+  }
 };
 
 export const addManagedHostname = async (hostnameData) => {
