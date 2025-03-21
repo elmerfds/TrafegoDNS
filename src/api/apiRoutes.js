@@ -1,4 +1,6 @@
 // src/api/apiRoutes.js
+// Modified version with dataStore compatibility fixes
+
 /**
  * API Routes for TráfegoDNS
  * Provides REST API endpoints for the Web UI
@@ -6,6 +8,8 @@
 const express = require('express');
 const logger = require('../utils/logger');
 const EventTypes = require('../events/EventTypes');
+const path = require('path');
+const fsSync = require('fs');
 
 class ApiRoutes {
   /**
@@ -106,6 +110,265 @@ class ApiRoutes {
       res.json(status);
     } catch (error) {
       next(error);
+    }
+  }
+  
+  /**
+   * Handle GET /providers
+   */
+  async handleGetProviders(req, res, next) {
+    try {
+      // Get list of available providers
+      let providers = [];
+      
+      if (this.dnsManager && this.dnsManager.dnsProvider && this.dnsManager.dnsProvider.factory) {
+        // New style with factory on provider
+        providers = await this.dnsManager.dnsProvider.factory.getAvailableProviders();
+      } else if (this.dnsManager && this.dnsManager.providerFactory) {
+        // Enhanced style with provider factory
+        providers = await this.dnsManager.providerFactory.getAvailableProviders();
+      } else {
+        // Fallback to basic providers
+        providers = ['cloudflare', 'route53', 'digitalocean'];
+      }
+      
+      res.json({ 
+        providers,
+        current: this.config.dnsProvider
+      });
+    } catch (error) {
+      // Provide at least the current provider on error
+      res.json({
+        providers: [this.config.dnsProvider],
+        current: this.config.dnsProvider
+      });
+    }
+  }
+  
+  /**
+   * Handle POST /providers/switch
+   */
+  async handleSwitchProvider(req, res, next) {
+    try {
+      const { provider, credentials } = req.body;
+      
+      if (!provider) {
+        return res.status(400).json({ error: 'Provider is required' });
+      }
+      
+      if (!credentials) {
+        return res.status(400).json({ error: 'Provider credentials are required' });
+      }
+      
+      // Check if enhanced config is available
+      if (this.config.validateAndSwitchProvider) {
+        // Enhanced config with provider switching
+        await this.config.validateAndSwitchProvider(provider, credentials);
+      } else {
+        return res.status(501).json({ error: 'Provider switching not supported in this version' });
+      }
+      
+      // Log the activity
+      await this.activityLogger.log({
+        type: 'info',
+        action: 'provider_changed',
+        message: `DNS provider changed to ${provider}`,
+        details: { provider }
+      });
+      
+      res.json({ 
+        success: true,
+        message: `DNS provider changed to ${provider}`,
+        provider
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+  
+  /**
+   * Handle POST /operation-mode
+   */
+  async handleSetOperationMode(req, res, next) {
+    try {
+      const { mode } = req.body;
+      
+      if (!mode) {
+        return res.status(400).json({ error: 'Operation mode is required' });
+      }
+      
+      // Validate mode
+      if (mode !== 'traefik' && mode !== 'direct') {
+        return res.status(400).json({ error: 'Invalid operation mode. Must be "traefik" or "direct"' });
+      }
+      
+      // Update operation mode
+      if (this.config.updateConfig) {
+        await this.config.updateConfig('operationMode', mode, true);
+      } else {
+        // Fallback for older config implementation
+        this.config.operationMode = mode;
+      }
+      
+      // Log the activity
+      await this.activityLogger.log({
+        type: 'info',
+        action: 'operation_mode_changed',
+        message: `Operation mode changed to ${mode}`,
+        details: { mode }
+      });
+      
+      res.json({ 
+        success: true,
+        message: `Operation mode changed to ${mode}`,
+        mode
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+  
+  /**
+   * Validate managed hostname data
+   * @param {Object} hostnameData - Hostname data to validate
+   * @throws {Error} - Validation error
+   */
+  validateManagedHostname(hostnameData) {
+    const validTypes = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA'];
+    
+    // Check required fields
+    if (!hostnameData.hostname || !hostnameData.hostname.includes('.')) {
+      const error = new Error('Hostname must be a valid domain name (e.g., example.com)');
+      error.validationError = true;
+      throw error;
+    }
+    
+    if (!validTypes.includes(hostnameData.type)) {
+      const error = new Error(`Invalid record type. Must be one of: ${validTypes.join(', ')}`);
+      error.validationError = true;
+      throw error;
+    }
+    
+    if (!hostnameData.content) {
+      const error = new Error('Content is required');
+      error.validationError = true;
+      throw error;
+    }
+    
+    // Type-specific validations
+    switch (hostnameData.type) {
+      case 'A':
+        if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(hostnameData.content)) {
+          const error = new Error('A record content must be a valid IPv4 address');
+          error.validationError = true;
+          throw error;
+        }
+        break;
+        
+      case 'AAAA':
+        if (!hostnameData.content.includes(':')) {
+          const error = new Error('AAAA record content must be a valid IPv6 address');
+          error.validationError = true;
+          throw error;
+        }
+        break;
+        
+      case 'MX':
+        if (!hostnameData.content.includes('.')) {
+          const error = new Error('MX record content must be a valid domain name');
+          error.validationError = true;
+          throw error;
+        }
+        
+        // Check priority
+        if (hostnameData.priority !== undefined) {
+          const priority = parseInt(hostnameData.priority, 10);
+          if (isNaN(priority) || priority < 0 || priority > 65535) {
+            const error = new Error('MX priority must be a number between 0 and 65535');
+            error.validationError = true;
+            throw error;
+          }
+        }
+        break;
+        
+      case 'SRV':
+        // Check required SRV fields
+        if (hostnameData.port === undefined) {
+          const error = new Error('SRV record requires a port');
+          error.validationError = true;
+          throw error;
+        }
+        
+        // Validate port
+        const port = parseInt(hostnameData.port, 10);
+        if (isNaN(port) || port < 1 || port > 65535) {
+          const error = new Error('SRV port must be a number between 1 and 65535');
+          error.validationError = true;
+          throw error;
+        }
+        break;
+    }
+    
+    // Validate TTL
+    if (hostnameData.ttl !== undefined) {
+      const ttl = parseInt(hostnameData.ttl, 10);
+      if (isNaN(ttl) || (ttl !== 1 && ttl < 60)) {
+        const error = new Error('TTL must be 1 (Auto) or at least 60 seconds');
+        error.validationError = true;
+        throw error;
+      }
+    }
+    
+    return true;
+  }
+  
+  /**
+   * Get time since a timestamp in human-readable format
+   * @param {number} timestamp - Timestamp in milliseconds
+   * @returns {string} - Human-readable time string
+   */
+  getFreshnessString(timestamp) {
+    if (!timestamp) return 'never';
+    
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    
+    if (seconds < 60) {
+      return `${seconds}s ago`;
+    } else if (seconds < 3600) {
+      return `${Math.floor(seconds / 60)}m ago`;
+    } else if (seconds < 86400) {
+      return `${Math.floor(seconds / 3600)}h ago`;
+    } else {
+      return `${Math.floor(seconds / 86400)}d ago`;
+    }
+  }
+  
+  /**
+   * Generic API error handler
+   */
+  handleApiError(err, req, res, next) {
+    logger.error(`API Error: ${err.message}`);
+    
+    // Log the error
+    if (this.activityLogger) {
+      this.activityLogger.logError(
+        'API',
+        `API error: ${err.message}`,
+        {
+          path: req.path,
+          method: req.method,
+          stack: err.stack
+        }
+      );
+    }
+    
+    // Send error response
+    res.status(err.statusCode || 500).json({
+      error: err.message || 'Internal server error',
+      status: 'error'
+    });
+  }
+}
     }
   }
   
@@ -227,10 +490,19 @@ class ApiRoutes {
         return this.dnsManager.recordTracker.preservedHostnames;
       }
       
-      // Next check if dataStore has the method
-      if (this.dataStore && typeof this.dataStore.getPreservedHostnames === 'function') {
-        logger.debug('Getting preserved hostnames from dataStore');
-        return await this.dataStore.getPreservedHostnames();
+      // Next check if dataStore has the preserved hostnames (checking in a more flexible way)
+      if (this.dataStore) {
+        try {
+          if (typeof this.dataStore.getPreservedHostnames === 'function') {
+            logger.debug('Getting preserved hostnames from dataStore.getPreservedHostnames');
+            return await this.dataStore.getPreservedHostnames();
+          } else if (this.dataStore.preservedHostnames) {
+            logger.debug('Getting preserved hostnames from dataStore.preservedHostnames property');
+            return this.dataStore.preservedHostnames;
+          }
+        } catch (err) {
+          logger.warn(`Error accessing dataStore for preserved hostnames: ${err.message}`);
+        }
       }
       
       // Fallback to environment variable
@@ -242,7 +514,21 @@ class ApiRoutes {
           .filter(h => h.length > 0);
       }
       
-      // Last resort: Return empty array to avoid errors
+      // Last resort: Check if we can read from a file in the config directory
+      try {
+        const configDir = path.join('/config', 'data');
+        const preservedHostnamesPath = path.join(configDir, 'preserved-hostnames.json');
+        
+        if (fsSync.existsSync(preservedHostnamesPath)) {
+          logger.info('Getting preserved hostnames from file fallback');
+          const data = fsSync.readFileSync(preservedHostnamesPath, 'utf8');
+          return JSON.parse(data);
+        }
+      } catch (fileErr) {
+        logger.warn(`Error reading preserved hostnames from file: ${fileErr.message}`);
+      }
+      
+      // If all else fails, return empty array
       logger.warn('No preserved hostnames source found, returning empty array');
       return [];
     } catch (error) {
@@ -265,10 +551,19 @@ class ApiRoutes {
         return this.dnsManager.recordTracker.managedHostnames;
       }
       
-      // Next check if dataStore has the method
-      if (this.dataStore && typeof this.dataStore.getManagedHostnames === 'function') {
-        logger.debug('Getting managed hostnames from dataStore');
-        return await this.dataStore.getManagedHostnames();
+      // Next check if dataStore has the managed hostnames (checking in a more flexible way)
+      if (this.dataStore) {
+        try {
+          if (typeof this.dataStore.getManagedHostnames === 'function') {
+            logger.debug('Getting managed hostnames from dataStore.getManagedHostnames');
+            return await this.dataStore.getManagedHostnames();
+          } else if (this.dataStore.managedHostnames) {
+            logger.debug('Getting managed hostnames from dataStore.managedHostnames property');
+            return this.dataStore.managedHostnames;
+          }
+        } catch (err) {
+          logger.warn(`Error accessing dataStore for managed hostnames: ${err.message}`);
+        }
       }
       
       // Fallback to environment variable
@@ -295,7 +590,21 @@ class ApiRoutes {
           .filter(config => config && config.hostname && config.hostname.length > 0);
       }
       
-      // Last resort: Return empty array to avoid errors
+      // Last resort: Check if we can read from a file in the config directory
+      try {
+        const configDir = path.join('/config', 'data');
+        const managedHostnamesPath = path.join(configDir, 'managed-hostnames.json');
+        
+        if (fsSync.existsSync(managedHostnamesPath)) {
+          logger.info('Getting managed hostnames from file fallback');
+          const data = fsSync.readFileSync(managedHostnamesPath, 'utf8');
+          return JSON.parse(data);
+        }
+      } catch (fileErr) {
+        logger.warn(`Error reading managed hostnames from file: ${fileErr.message}`);
+      }
+      
+      // If all else fails, return empty array
       logger.warn('No managed hostnames source found, returning empty array');
       return [];
     } catch (error) {
@@ -314,7 +623,10 @@ class ApiRoutes {
     } catch (error) {
       logger.error(`Error in handleGetPreservedHostnames: ${error.message}`);
       // Return empty array instead of error to avoid crashing the UI
-      res.json({ hostnames: [] });
+      res.status(500).json({ 
+        error: 'Failed to fetch preserved hostnames', 
+        message: error.message 
+      });
     }
   }
   
@@ -346,12 +658,23 @@ class ApiRoutes {
       
       // Try to save back to dataStore if available
       let saved = false;
-      if (this.dataStore && typeof this.dataStore.setPreservedHostnames === 'function') {
-        await this.dataStore.setPreservedHostnames(preservedHostnames);
-        saved = true;
-      } 
+      if (this.dataStore) {
+        try {
+          if (typeof this.dataStore.setPreservedHostnames === 'function') {
+            await this.dataStore.setPreservedHostnames(preservedHostnames);
+            saved = true;
+          } else {
+            // Try to use dataStore.preservedHostnames property
+            this.dataStore.preservedHostnames = preservedHostnames;
+            saved = true;
+          }
+        } catch (err) {
+          logger.error(`Error saving to dataStore: ${err.message}`);
+        }
+      }
+      
       // Fallback: Update recordTracker if available
-      else if (this.dnsManager && this.dnsManager.recordTracker) {
+      if (!saved && this.dnsManager && this.dnsManager.recordTracker) {
         this.dnsManager.recordTracker.preservedHostnames = preservedHostnames;
         saved = true;
       }
@@ -405,12 +728,23 @@ class ApiRoutes {
       
       // Try to save back to dataStore if available
       let saved = false;
-      if (this.dataStore && typeof this.dataStore.setPreservedHostnames === 'function') {
-        await this.dataStore.setPreservedHostnames(updatedHostnames);
-        saved = true;
-      } 
+      if (this.dataStore) {
+        try {
+          if (typeof this.dataStore.setPreservedHostnames === 'function') {
+            await this.dataStore.setPreservedHostnames(updatedHostnames);
+            saved = true;
+          } else {
+            // Try to use dataStore.preservedHostnames property
+            this.dataStore.preservedHostnames = updatedHostnames;
+            saved = true;
+          }
+        } catch (err) {
+          logger.error(`Error saving to dataStore: ${err.message}`);
+        }
+      }
+      
       // Fallback: Update recordTracker if available
-      else if (this.dnsManager && this.dnsManager.recordTracker) {
+      if (!saved && this.dnsManager && this.dnsManager.recordTracker) {
         this.dnsManager.recordTracker.preservedHostnames = updatedHostnames;
         saved = true;
       }
@@ -446,7 +780,10 @@ class ApiRoutes {
     } catch (error) {
       logger.error(`Error in handleGetManagedHostnames: ${error.message}`);
       // Return empty array instead of error to avoid crashing the UI
-      res.json({ hostnames: [] });
+      res.status(500).json({ 
+        error: 'Failed to fetch managed hostnames',
+        message: error.message
+      });
     }
   }
   
@@ -489,12 +826,23 @@ class ApiRoutes {
       
       // Try to save back to dataStore if available
       let saved = false;
-      if (this.dataStore && typeof this.dataStore.setManagedHostnames === 'function') {
-        await this.dataStore.setManagedHostnames(managedHostnames);
-        saved = true;
-      } 
+      if (this.dataStore) {
+        try {
+          if (typeof this.dataStore.setManagedHostnames === 'function') {
+            await this.dataStore.setManagedHostnames(managedHostnames);
+            saved = true;
+          } else {
+            // Try to use dataStore.managedHostnames property
+            this.dataStore.managedHostnames = managedHostnames;
+            saved = true;
+          }
+        } catch (err) {
+          logger.error(`Error saving to dataStore: ${err.message}`);
+        }
+      }
+      
       // Fallback: Update recordTracker if available
-      else if (this.dnsManager && this.dnsManager.recordTracker) {
+      if (!saved && this.dnsManager && this.dnsManager.recordTracker) {
         this.dnsManager.recordTracker.managedHostnames = managedHostnames;
         saved = true;
       }
@@ -557,12 +905,23 @@ class ApiRoutes {
       
       // Try to save back to dataStore if available
       let saved = false;
-      if (this.dataStore && typeof this.dataStore.setManagedHostnames === 'function') {
-        await this.dataStore.setManagedHostnames(updatedHostnames);
-        saved = true;
+      if (this.dataStore) {
+        try {
+          if (typeof this.dataStore.setManagedHostnames === 'function') {
+            await this.dataStore.setManagedHostnames(updatedHostnames);
+            saved = true;
+          } else {
+            // Try to use dataStore.managedHostnames property
+            this.dataStore.managedHostnames = updatedHostnames;
+            saved = true;
+          }
+        } catch (err) {
+          logger.error(`Error saving to dataStore: ${err.message}`);
+        }
       } 
+      
       // Fallback: Update recordTracker if available
-      else if (this.dnsManager && this.dnsManager.recordTracker) {
+      if (!saved && this.dnsManager && this.dnsManager.recordTracker) {
         this.dnsManager.recordTracker.managedHostnames = updatedHostnames;
         saved = true;
       }
