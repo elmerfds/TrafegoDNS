@@ -11,21 +11,6 @@ const logger = require('./utils/logger');
 // Import integration fixes
 const { applyFixes, replaceWebServer } = require('./integrationFixes');
 
-// Apply fixes after initialization
-initializeComponents(components)
-  .then(async (components) => {
-    // Apply enhanced components
-    const enhancedComponents = await applyFixes(components);
-    
-    // Replace web server with enhanced version
-    await replaceWebServer(components);
-    
-    logger.info('Enhanced components applied successfully');
-  })
-  .catch(error => {
-    logger.error(`Error applying enhanced components: ${error.message}`);
-  });
-
 /**
  * Application startup
  */
@@ -69,6 +54,25 @@ async function start() {
       upToDate: 0,
       errors: 0
     };
+    
+    // Collect all components for enhancements
+    const components = {
+      eventBus,
+      config,
+      statusReporter,
+      dnsManager,
+      dockerMonitor,
+      monitor
+    };
+    
+    // Apply enhanced components
+    try {
+      const enhancedComponents = await applyFixes(components);
+      await replaceWebServer(components);
+      logger.info('Enhanced components applied successfully');
+    } catch (error) {
+      logger.error(`Error applying enhanced components: ${error.message}`);
+    }
     
     // Display startup configuration
     await statusReporter.displaySettings();
