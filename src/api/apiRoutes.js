@@ -480,7 +480,7 @@ class ApiRoutes {
    * Get preserved hostnames safely with fallback
    * @returns {Promise<Array>} List of preserved hostnames
    */
-  async getPreservedHostnamesInternal() {
+    async getPreservedHostnamesInternal() {
     try {
       // First try recordTracker from dnsManager
       if (this.dnsManager && 
@@ -490,18 +490,21 @@ class ApiRoutes {
         return this.dnsManager.recordTracker.preservedHostnames;
       }
       
-      // Next check if dataStore has the preserved hostnames (checking in a more flexible way)
-      if (this.dataStore) {
+      // Check if dataStore exists at all
+      if (!this.dataStore) {
+        logger.warn('dataStore is not available');
+        return process.env.PRESERVED_HOSTNAMES
+          ? process.env.PRESERVED_HOSTNAMES.split(',').map(h => h.trim()).filter(h => h.length > 0)
+          : [];
+      }
+      
+      // Next check if dataStore has the method (safely)
+      if (this.dataStore && typeof this.dataStore.getPreservedHostnames === 'function') {
         try {
-          if (typeof this.dataStore.getPreservedHostnames === 'function') {
-            logger.debug('Getting preserved hostnames from dataStore.getPreservedHostnames');
-            return await this.dataStore.getPreservedHostnames();
-          } else if (this.dataStore.preservedHostnames) {
-            logger.debug('Getting preserved hostnames from dataStore.preservedHostnames property');
-            return this.dataStore.preservedHostnames;
-          }
+          logger.debug('Getting preserved hostnames from dataStore.getPreservedHostnames');
+          return await this.dataStore.getPreservedHostnames();
         } catch (err) {
-          logger.warn(`Error accessing dataStore for preserved hostnames: ${err.message}`);
+          logger.warn(`Error calling dataStore.getPreservedHostnames: ${err.message}`);
         }
       }
       
@@ -514,21 +517,7 @@ class ApiRoutes {
           .filter(h => h.length > 0);
       }
       
-      // Last resort: Check if we can read from a file in the config directory
-      try {
-        const configDir = path.join('/config', 'data');
-        const preservedHostnamesPath = path.join(configDir, 'preserved-hostnames.json');
-        
-        if (fsSync.existsSync(preservedHostnamesPath)) {
-          logger.info('Getting preserved hostnames from file fallback');
-          const data = fsSync.readFileSync(preservedHostnamesPath, 'utf8');
-          return JSON.parse(data);
-        }
-      } catch (fileErr) {
-        logger.warn(`Error reading preserved hostnames from file: ${fileErr.message}`);
-      }
-      
-      // If all else fails, return empty array
+      // Last resort: Return empty array to avoid errors
       logger.warn('No preserved hostnames source found, returning empty array');
       return [];
     } catch (error) {
@@ -541,7 +530,7 @@ class ApiRoutes {
    * Get managed hostnames safely with fallback
    * @returns {Promise<Array>} List of managed hostnames
    */
-  async getManagedHostnamesInternal() {
+    async getManagedHostnamesInternal() {
     try {
       // First try recordTracker from dnsManager
       if (this.dnsManager && 
@@ -551,60 +540,31 @@ class ApiRoutes {
         return this.dnsManager.recordTracker.managedHostnames;
       }
       
-      // Next check if dataStore has the managed hostnames (checking in a more flexible way)
-      if (this.dataStore) {
+      // Check if dataStore exists at all
+      if (!this.dataStore) {
+        logger.warn('dataStore is not available');
+        return process.env.MANAGED_HOSTNAMES
+          ? this.parseManagedHostnames(process.env.MANAGED_HOSTNAMES)
+          : [];
+      }
+      
+      // Next check if dataStore has the method (safely)
+      if (this.dataStore && typeof this.dataStore.getManagedHostnames === 'function') {
         try {
-          if (typeof this.dataStore.getManagedHostnames === 'function') {
-            logger.debug('Getting managed hostnames from dataStore.getManagedHostnames');
-            return await this.dataStore.getManagedHostnames();
-          } else if (this.dataStore.managedHostnames) {
-            logger.debug('Getting managed hostnames from dataStore.managedHostnames property');
-            return this.dataStore.managedHostnames;
-          }
+          logger.debug('Getting managed hostnames from dataStore.getManagedHostnames');
+          return await this.dataStore.getManagedHostnames();
         } catch (err) {
-          logger.warn(`Error accessing dataStore for managed hostnames: ${err.message}`);
+          logger.warn(`Error calling dataStore.getManagedHostnames: ${err.message}`);
         }
       }
       
       // Fallback to environment variable
       if (process.env.MANAGED_HOSTNAMES) {
         logger.info('Getting managed hostnames from environment variable fallback');
-        const managedHostnamesStr = process.env.MANAGED_HOSTNAMES;
-        return managedHostnamesStr
-          .split(',')
-          .map(hostnameConfig => {
-            const parts = hostnameConfig.trim().split(':');
-            if (parts.length < 1) return null;
-            
-            const hostname = parts[0];
-            
-            // Return basic record with defaults if parts are missing
-            return {
-              hostname: hostname,
-              type: parts[1] || 'A',
-              content: parts[2] || '',
-              ttl: parseInt(parts[3] || '3600', 10),
-              proxied: parts[4] ? parts[4].toLowerCase() === 'true' : false
-            };
-          })
-          .filter(config => config && config.hostname && config.hostname.length > 0);
+        return this.parseManagedHostnames(process.env.MANAGED_HOSTNAMES);
       }
       
-      // Last resort: Check if we can read from a file in the config directory
-      try {
-        const configDir = path.join('/config', 'data');
-        const managedHostnamesPath = path.join(configDir, 'managed-hostnames.json');
-        
-        if (fsSync.existsSync(managedHostnamesPath)) {
-          logger.info('Getting managed hostnames from file fallback');
-          const data = fsSync.readFileSync(managedHostnamesPath, 'utf8');
-          return JSON.parse(data);
-        }
-      } catch (fileErr) {
-        logger.warn(`Error reading managed hostnames from file: ${fileErr.message}`);
-      }
-      
-      // If all else fails, return empty array
+      // Last resort: Return empty array to avoid errors
       logger.warn('No managed hostnames source found, returning empty array');
       return [];
     } catch (error) {
@@ -613,6 +573,27 @@ class ApiRoutes {
     }
   }
   
+  // Helper method to parse managed hostnames from env var
+  parseManagedHostnames(managedHostnamesStr) {
+    return managedHostnamesStr
+      .split(',')
+      .map(hostnameConfig => {
+        const parts = hostnameConfig.trim().split(':');
+        if (parts.length < 1) return null;
+        
+        const hostname = parts[0];
+        
+        // Return basic record with defaults if parts are missing
+        return {
+          hostname: hostname,
+          type: parts[1] || 'A',
+          content: parts[2] || '',
+          ttl: parseInt(parts[3] || '3600', 10),
+          proxied: parts[4] ? parts[4].toLowerCase() === 'true' : false
+        };
+      })
+      .filter(config => config && config.hostname && config.hostname.length > 0);
+  }
   /**
    * Handle GET /preserved-hostnames
    */
@@ -623,10 +604,7 @@ class ApiRoutes {
     } catch (error) {
       logger.error(`Error in handleGetPreservedHostnames: ${error.message}`);
       // Return empty array instead of error to avoid crashing the UI
-      res.status(500).json({ 
-        error: 'Failed to fetch preserved hostnames', 
-        message: error.message 
-      });
+      res.json({ hostnames: [] });
     }
   }
   
@@ -773,17 +751,14 @@ class ApiRoutes {
   /**
    * Handle GET /managed-hostnames
    */
-  async handleGetManagedHostnames(req, res, next) {
+    async handleGetManagedHostnames(req, res, next) {
     try {
       const managedHostnames = await this.getManagedHostnamesInternal();
       res.json({ hostnames: managedHostnames });
     } catch (error) {
       logger.error(`Error in handleGetManagedHostnames: ${error.message}`);
       // Return empty array instead of error to avoid crashing the UI
-      res.status(500).json({ 
-        error: 'Failed to fetch managed hostnames',
-        message: error.message
-      });
+      res.json({ hostnames: [] });
     }
   }
   
