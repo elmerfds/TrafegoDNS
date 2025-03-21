@@ -599,8 +599,29 @@ class ApiRoutes {
    */
   async handleGetPreservedHostnames(req, res, next) {
     try {
-      const preservedHostnames = await this.getPreservedHostnamesInternal();
-      res.json({ hostnames: preservedHostnames });
+      logger.debug('Handling GET /preserved-hostnames request');
+      
+      // Check if dnsManager's recordTracker has preservedHostnames
+      if (this.dnsManager && 
+          this.dnsManager.recordTracker && 
+          Array.isArray(this.dnsManager.recordTracker.preservedHostnames)) {
+        logger.debug('Getting preserved hostnames from recordTracker');
+        return res.json({ hostnames: this.dnsManager.recordTracker.preservedHostnames });
+      }
+      
+      // Fallback to environment variable
+      if (process.env.PRESERVED_HOSTNAMES) {
+        logger.info('Getting preserved hostnames from environment variable');
+        const preservedHostnames = process.env.PRESERVED_HOSTNAMES
+          .split(',')
+          .map(hostname => hostname.trim())
+          .filter(hostname => hostname.length > 0);
+        
+        return res.json({ hostnames: preservedHostnames });
+      }
+      
+      // Last resort: Return empty array
+      res.json({ hostnames: [] });
     } catch (error) {
       logger.error(`Error in handleGetPreservedHostnames: ${error.message}`);
       // Return empty array instead of error to avoid crashing the UI
@@ -751,10 +772,46 @@ class ApiRoutes {
   /**
    * Handle GET /managed-hostnames
    */
-    async handleGetManagedHostnames(req, res, next) {
+  async handleGetManagedHostnames(req, res, next) {
     try {
-      const managedHostnames = await this.getManagedHostnamesInternal();
-      res.json({ hostnames: managedHostnames });
+      logger.debug('Handling GET /managed-hostnames request');
+      
+      // Check if dnsManager's recordTracker has managedHostnames
+      if (this.dnsManager && 
+          this.dnsManager.recordTracker && 
+          Array.isArray(this.dnsManager.recordTracker.managedHostnames)) {
+        logger.debug('Getting managed hostnames from recordTracker');
+        return res.json({ hostnames: this.dnsManager.recordTracker.managedHostnames });
+      }
+      
+      // Fallback to environment variable
+      if (process.env.MANAGED_HOSTNAMES) {
+        logger.info('Getting managed hostnames from environment variable');
+        const managedHostnamesStr = process.env.MANAGED_HOSTNAMES;
+        const managedHostnames = managedHostnamesStr
+          .split(',')
+          .map(hostnameConfig => {
+            const parts = hostnameConfig.trim().split(':');
+            if (parts.length < 1) return null;
+            
+            const hostname = parts[0];
+            
+            // Return basic record with defaults if parts are missing
+            return {
+              hostname: hostname,
+              type: parts[1] || 'A',
+              content: parts[2] || '',
+              ttl: parseInt(parts[3] || '3600', 10),
+              proxied: parts[4] ? parts[4].toLowerCase() === 'true' : false
+            };
+          })
+          .filter(config => config && config.hostname && config.hostname.length > 0);
+        
+        return res.json({ hostnames: managedHostnames });
+      }
+      
+      // Last resort: Return empty array
+      res.json({ hostnames: [] });
     } catch (error) {
       logger.error(`Error in handleGetManagedHostnames: ${error.message}`);
       // Return empty array instead of error to avoid crashing the UI
