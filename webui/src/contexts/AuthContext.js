@@ -1,61 +1,82 @@
+// src/contexts/AuthContext.js
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { jwtDecode } from 'jwt-decode';
-import authService from '../services/authService';
+import axios from 'axios';
 
+// Create a context
 const AuthContext = createContext();
 
+// Custom hook to use the auth context
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('token'));
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
   // Check if token is valid on initial load
   useEffect(() => {
-    const verifyToken = async () => {
-      if (token) {
-        try {
-          // Check token expiration
-          const decodedToken = jwtDecode(token);
-          const currentTime = Date.now() / 1000;
-          
-          if (decodedToken.exp < currentTime) {
-            // Token has expired
-            logout();
-            return;
-          }
-          
-          // Get user profile
-          const response = await authService.getProfile(token);
-          setCurrentUser(response.data.user);
-        } catch (error) {
-          console.error('Error verifying token:', error);
-          logout();
-        }
+    const checkAuth = async () => {
+      setIsLoading(true);
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        setCurrentUser(null);
+        setIsLoading(false);
+        return;
       }
-      setIsLoading(false);
+      
+      try {
+        // Verify token expiration
+        const decodedToken = jwtDecode(token);
+        const currentTime = Date.now() / 1000;
+        
+        if (decodedToken.exp < currentTime) {
+          // Token has expired
+          localStorage.removeItem('token');
+          setCurrentUser(null);
+          setIsLoading(false);
+          return;
+        }
+        
+        // Make an API request to validate the token and get user data
+        const response = await axios.get('/api/auth/profile', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        setCurrentUser(response.data.user);
+      } catch (error) {
+        console.error('Auth validation error:', error);
+        localStorage.removeItem('token');
+        setCurrentUser(null);
+      } finally {
+        setIsLoading(false);
+      }
     };
 
-    verifyToken();
-  }, [token]);
+    checkAuth();
+  }, []);
 
   const login = async (username, password) => {
     try {
       setIsLoading(true);
-      const response = await authService.login(username, password);
-      const { token, user } = response.data;
       
-      // Store token and user
-      localStorage.setItem('token', token);
-      setToken(token);
-      setCurrentUser(user);
+      const response = await axios.post('/api/auth/login', {
+        username,
+        password
+      });
       
-      toast.success('Login successful');
-      return true;
+      if (response.data && response.data.token) {
+        localStorage.setItem('token', response.data.token);
+        setCurrentUser(response.data.user);
+        toast.success('Login successful');
+        return true;
+      } else {
+        toast.error('Invalid response from server');
+        return false;
+      }
     } catch (error) {
       console.error('Login error:', error);
       let errorMessage = 'Login failed. Please check your credentials.';
@@ -74,10 +95,9 @@ export const AuthProvider = ({ children }) => {
       setIsLoading(false);
     }
   };
-  
+
   const logout = () => {
     localStorage.removeItem('token');
-    setToken(null);
     setCurrentUser(null);
     navigate('/login');
   };
@@ -100,7 +120,6 @@ export const AuthProvider = ({ children }) => {
 
   const value = {
     currentUser,
-    token,
     isLoading,
     login,
     logout,
