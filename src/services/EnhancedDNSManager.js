@@ -336,8 +336,24 @@ class EnhancedDNSManager {
         });
       }
       
+      // Only log "up to date" records if the count has changed
       if (this.stats.upToDate > 0) {
-        logger.info(`${this.stats.upToDate} DNS records are up to date`);
+        // Store the previous up-to-date count if it doesn't exist
+        if (!this.previousUpToDateCount) {
+          this.previousUpToDateCount = -1;  // Force first log to show
+        }
+        
+        const hasUpToDateChanged = this.previousUpToDateCount !== this.stats.upToDate;
+        
+        if (hasUpToDateChanged) {
+          logger.info(`${this.stats.upToDate} DNS records are up to date`);
+        } else {
+          // Log at debug level instead of info when nothing has changed
+          logger.debug(`${this.stats.upToDate} DNS records are up to date`);
+        }
+        
+        // Update for next comparison
+        this.previousUpToDateCount = this.stats.upToDate;
       }
       
       if (this.stats.errors > 0) {
