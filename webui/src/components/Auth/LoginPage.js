@@ -1,7 +1,8 @@
+// webui/src/components/Auth/LoginPage.js
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Form, Button, Alert, Spinner } from 'react-bootstrap';
 import { useAuth } from '../../contexts/AuthContext';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate, useLocation } from 'react-router-dom';
 import authService from '../../services/authService';
 
 const LoginPage = () => {
@@ -12,6 +13,21 @@ const LoginPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const { currentUser, login, isLoading } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Check for token in URL (for OIDC callback)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const token = params.get('token');
+    
+    if (token) {
+      // Store token and redirect
+      localStorage.setItem('token', token);
+      navigate('/dashboard');
+      window.location.reload(); // Force reload to apply the token
+    }
+  }, [location, navigate]);
 
   useEffect(() => {
     const checkAuthStatus = async () => {
@@ -26,6 +42,7 @@ const LoginPage = () => {
     checkAuthStatus();
   }, []);
   
+  // Redirect if already logged in
   if (currentUser) {
     return <Navigate to="/dashboard" />;
   }
@@ -44,13 +61,31 @@ const LoginPage = () => {
     setIsSubmitting(true);
 
     try {
-      const success = await login(username, password);
-      if (!success) {
-        setError('Login failed. Please check your credentials.');
+      // Call the login API directly to see the response
+      const response = await authService.login(username, password);
+      
+      if (response.data && response.data.token) {
+        // Store token in localStorage
+        localStorage.setItem('token', response.data.token);
+        
+        // Force reload to apply the token and redirect
+        window.location.href = '/dashboard';
+      } else {
+        setError('Login failed. Invalid response from server.');
       }
     } catch (err) {
-      setError('An unexpected error occurred. Please try again.');
-      console.error(err);
+      console.error('Login error:', err);
+      let errorMessage = 'Login failed. Please check your credentials.';
+      
+      if (err.response) {
+        if (err.response.status === 401) {
+          errorMessage = 'Invalid username or password';
+        } else if (err.response.data && err.response.data.message) {
+          errorMessage = err.response.data.message;
+        }
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -76,7 +111,7 @@ const LoginPage = () => {
             <Card.Body className="p-4">
               <div className="text-center mb-4">
                 <img
-                  src="/images/placeholder-120-120.svg"
+                  src="/api/placeholder/120/120"
                   alt="TráfegoDNS Logo"
                   width="80"
                   height="80"
