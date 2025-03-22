@@ -520,3 +520,5 @@ const ManagedHostnamesTab = ({ managedHostnames = [], updateManagedHostnames, pr
     </Card>
   );
 };
+
+export default ManagedHostnamesTab;
