@@ -54,7 +54,7 @@ function createAuthRouter(authService, config) {
   router.post('/register', async (req, res) => {
     try {
       // Check if the current user is an admin
-      if (!req.user || req.user.role !== 'admin') {
+      if (!req.user || !authService.isAdmin(req.user)) {
         return res.status(403).json({
           error: 'Forbidden',
           message: 'Only administrators can register new users'
@@ -70,13 +70,25 @@ function createAuthRouter(authService, config) {
         });
       }
       
-      // Create user
+      // Check if requesting user is super_admin or trying to create restricted roles
+      const isSuperAdmin = authService.isSuperAdmin(req.user);
+      const isRequestingAdminRole = role === 'admin' || role === 'super_admin';
+      
+      // Only super_admin can create admin or super_admin users
+      if (isRequestingAdminRole && !isSuperAdmin) {
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'Only super administrators can create admin users'
+        });
+      }
+      
+      // Create user (the authService will handle role assignment)
       const user = await authService.createUser({
         username,
         password,
         email,
         name,
-        role
+        role: role || 'user'
       });
       
       res.status(201).json({
@@ -144,7 +156,12 @@ function createAuthRouter(authService, config) {
       const frontendUrl = config.frontendUrl || '/';
       const redirectUrl = `${frontendUrl}?token=${encodeURIComponent(result.token)}`;
       
-      res.redirect(redirectUrl);
+      if (result.firstLogin) {
+        // If this is the first login, add a flag to the redirect URL
+        res.redirect(`${redirectUrl}&firstLogin=true`);
+      } else {
+        res.redirect(redirectUrl);
+      }
     } catch (error) {
       logger.error(`Error during OIDC callback: ${error.message}`);
       res.status(500).json({
@@ -175,6 +192,86 @@ function createAuthRouter(authService, config) {
       });
     } catch (error) {
       logger.error(`Error fetching user profile: ${error.message}`);
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: error.message
+      });
+    }
+  });
+  
+  /**
+   * GET /api/auth/users - Get all users (admin only)
+   */
+  router.get('/users', async (req, res) => {
+    try {
+      if (!req.user || !authService.isAdmin(req.user)) {
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'Only administrators can view all users'
+        });
+      }
+      
+      const users = await authService.getAllUsers();
+      res.json({ users });
+    } catch (error) {
+      logger.error(`Error fetching users: ${error.message}`);
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: error.message
+      });
+    }
+  });
+  
+  /**
+   * POST /api/auth/users/:userId/role - Update a user's role (super_admin only)
+   */
+  router.post('/users/:userId/role', async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { role } = req.body;
+      
+      if (!req.user) {
+        return res.status(401).json({
+          error: 'Unauthorized',
+          message: 'Authentication required'
+        });
+      }
+      
+      if (!userId || !role) {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: 'User ID and new role are required'
+        });
+      }
+      
+      // Check appropriate permissions
+      const isSuperAdmin = authService.isSuperAdmin(req.user);
+      const isAdmin = authService.isAdmin(req.user);
+      
+      if (!isAdmin) {
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'Only administrators can update user roles'
+        });
+      }
+      
+      // Super admin roles can only be assigned by super admins
+      if ((role === 'super_admin' || role === 'admin') && !isSuperAdmin) {
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'Only super administrators can assign admin roles'
+        });
+      }
+      
+      // Update the user's role
+      const updatedUser = await authService.updateUserRole(userId, role, req.user.id);
+      
+      res.json({
+        success: true,
+        user: updatedUser
+      });
+    } catch (error) {
+      logger.error(`Error updating user role: ${error.message}`);
       res.status(500).json({
         error: 'Internal Server Error',
         message: error.message

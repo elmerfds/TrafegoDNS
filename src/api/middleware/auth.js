@@ -16,6 +16,18 @@ function verifyAuthToken(req, res, next) {
     return next();
   }
   
+  // Skip authentication check if AUTH_ENABLED is false
+  if (process.env.AUTH_ENABLED === 'false') {
+    logger.debug(`Authentication disabled via environment variable, skipping auth check for ${req.path}`);
+    // Set a dummy admin user for the request
+    req.user = { 
+      id: 'system',
+      username: 'system',
+      role: 'super_admin' 
+    };
+    return next();
+  }
+  
   // Get token from headers
   const authHeader = req.headers.authorization;
   
@@ -55,16 +67,25 @@ function verifyAuthToken(req, res, next) {
   // Set user in request
   req.user = decoded;
   
-  // Check role for admin-only routes
-  if (isAdminRoute(req.path) && decoded.role !== 'admin') {
-    logger.warn(`Unauthorized access attempt to admin route ${req.path} by ${decoded.username}`);
+  // Check if route requires super admin
+  if (isSuperAdminRoute(req.path) && decoded.role !== 'super_admin') {
+    logger.warn(`Unauthorized access attempt to super admin route ${req.path} by ${decoded.username}`);
     return res.status(403).json({
       error: 'Forbidden',
-      message: 'Insufficient permissions'
+      message: 'Only super administrators can access this resource'
     });
   }
   
-  logger.debug(`Authenticated request to ${req.path} by ${decoded.username}`);
+  // Check if route requires admin
+  if (isAdminRoute(req.path) && !['admin', 'super_admin'].includes(decoded.role)) {
+    logger.warn(`Unauthorized access attempt to admin route ${req.path} by ${decoded.username}`);
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Administrator privileges required'
+    });
+  }
+  
+  logger.debug(`Authenticated request to ${req.path} by ${decoded.username} (${decoded.role})`);
   next();
 }
 
@@ -85,6 +106,19 @@ function isPublicRoute(path) {
 }
 
 /**
+ * Check if a route is super admin-only
+ * @param {string} path - Request path
+ * @returns {boolean} Whether the route is super admin-only
+ */
+function isSuperAdminRoute(path) {
+  const superAdminRoutes = [
+    '/auth/users'
+  ];
+  
+  return superAdminRoutes.some(route => path.endsWith(route));
+}
+
+/**
  * Check if a route is admin-only
  * @param {string} path - Request path
  * @returns {boolean} Whether the route is admin-only
@@ -93,7 +127,13 @@ function isAdminRoute(path) {
   const adminRoutes = [
     '/providers/switch',
     '/settings/reset',
-    '/mode/switch'
+    '/mode/switch',
+    '/records/managed',
+    '/records/preserved',
+    '/records/create',
+    '/records/update',
+    '/records/delete',
+    '/records/cleanup'
   ];
   
   return adminRoutes.some(route => path.endsWith(route));

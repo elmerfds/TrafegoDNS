@@ -120,6 +120,33 @@ class AuthDatabase {
   }
   
   /**
+   * Get total user count
+   * @returns {number} Number of users in database
+   */
+  async getUserCount() {
+    try {
+      const result = await this.db.get('SELECT COUNT(*) as count FROM users');
+      return result ? result.count : 0;
+    } catch (error) {
+      logger.error(`Error counting users: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Get all users
+   * @returns {Array} Array of all users
+   */
+  async getAllUsers() {
+    try {
+      return await this.db.all('SELECT * FROM users ORDER BY created_at');
+    } catch (error) {
+      logger.error(`Error fetching all users: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
    * Create a new user
    * @param {Object} userData - User data to insert
    * @returns {Object} Created user object
@@ -136,6 +163,26 @@ class AuthDatabase {
       return this.getUserById(id);
     } catch (error) {
       logger.error(`Error creating user: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Update a user's role
+   * @param {string} userId - User ID to update
+   * @param {string} newRole - New role to assign
+   * @returns {Object} Updated user
+   */
+  async updateUserRole(userId, newRole) {
+    try {
+      await this.db.run(
+        'UPDATE users SET role = ? WHERE id = ?',
+        [newRole, userId]
+      );
+      
+      return this.getUserById(userId);
+    } catch (error) {
+      logger.error(`Error updating user role: ${error.message}`);
       throw error;
     }
   }
@@ -161,6 +208,7 @@ class AuthDatabase {
   /**
    * Store OIDC token for a user
    * @param {string} userId - User ID
+   * @param {string} provider - OIDC provider name
    * @param {Object} tokenData - Token data from OIDC provider
    * @returns {Object} Stored token data
    */

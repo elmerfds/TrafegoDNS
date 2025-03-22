@@ -22,6 +22,18 @@ class AuthService {
     
     // Salt rounds for password hashing
     this.saltRounds = 10;
+    
+    // Get configurable admin username
+    this.defaultAdminUsername = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
+    this.defaultAdminPassword = this.config.defaultAdminPassword || process.env.DEFAULT_ADMIN_PASSWORD;
+    this.defaultAdminEmail = process.env.DEFAULT_ADMIN_EMAIL || 'admin@example.com';
+    
+    // User role constants
+    this.ROLES = {
+      SUPER_ADMIN: 'super_admin',
+      ADMIN: 'admin',
+      USER: 'user'
+    };
   }
   
   /**
@@ -35,24 +47,28 @@ class AuthService {
       // Initialize OIDC client
       await this.oidcClient.initialize();
       
-      // Create default admin user if none exists
-      const adminUser = await this.database.getUserByUsername('admin');
+      // Try to create default super admin user if no users exist
+      const userCount = await this.database.getUserCount();
       
-      if (!adminUser) {
-        const defaultPassword = this.config.defaultAdminPassword || process.env.DEFAULT_ADMIN_PASSWORD;
+      // Only check for user creation needs if no users exist
+      if (userCount === 0) {
+        logger.info('No users found in database, checking for admin credentials');
         
-        if (defaultPassword) {
-          logger.info('Creating default admin user');
+        if (this.defaultAdminPassword) {
+          logger.info(`Creating default super admin user '${this.defaultAdminUsername}'`);
           await this.createUser({
-            username: 'admin',
-            password: defaultPassword,
-            email: 'admin@example.com',
-            name: 'Administrator',
-            role: 'admin'
+            username: this.defaultAdminUsername,
+            password: this.defaultAdminPassword,
+            email: this.defaultAdminEmail,
+            name: 'Super Administrator',
+            role: this.ROLES.SUPER_ADMIN
           });
+          logger.success(`Created super admin user '${this.defaultAdminUsername}'`);
         } else {
-          logger.warn('No default admin password configured, skipping admin creation');
+          logger.warn('No default admin password configured, waiting for first login to create super admin');
         }
+      } else {
+        logger.debug(`Found ${userCount} existing users in database`);
       }
       
       // Set up scheduled session cleanup
@@ -88,6 +104,35 @@ class AuthService {
    */
   async authenticate(username, password) {
     try {
+      // First check if we need to handle first-login super admin creation
+      const userCount = await this.database.getUserCount();
+      
+      // If this is the very first login attempt and no users exist, create super admin
+      if (userCount === 0) {
+        logger.info(`First login attempt detected with username '${username}', creating super admin account`);
+        
+        // Create a super admin user with these credentials
+        const superAdmin = await this.createUser({
+          username: username,
+          password: password,
+          email: `${username}@example.com`, // Placeholder email
+          name: 'Super Administrator',
+          role: this.ROLES.SUPER_ADMIN
+        });
+        
+        // Generate JWT token
+        const token = this.generateToken(superAdmin);
+        
+        logger.success(`First login: Created super admin user '${username}'`);
+        
+        return {
+          token,
+          user: this.sanitizeUser(superAdmin),
+          firstLogin: true
+        };
+      }
+      
+      // Normal authentication flow
       const user = await this.database.getUserByUsername(username);
       if (!user) {
         logger.debug(`Authentication failed: User ${username} not found`);
@@ -128,6 +173,12 @@ class AuthService {
     try {
       const { username, password, email, name, role } = userData;
       
+      // Determine user count for first-user special case
+      const userCount = await this.database.getUserCount();
+      
+      // If this is the first user, always make them a super admin regardless of requested role
+      const finalRole = userCount === 0 ? this.ROLES.SUPER_ADMIN : (role || this.ROLES.USER);
+      
       // Check if username already exists
       const existingUser = await this.database.getUserByUsername(username);
       if (existingUser) {
@@ -152,14 +203,75 @@ class AuthService {
         password_hash,
         email,
         name,
-        role
+        role: finalRole
       });
       
-      logger.info(`Created new user: ${username}`);
+      if (finalRole === this.ROLES.SUPER_ADMIN) {
+        logger.info(`Created new super admin user: ${username}`);
+      } else if (finalRole === this.ROLES.ADMIN) {
+        logger.info(`Created new admin user: ${username}`);
+      } else {
+        logger.info(`Created new user: ${username}`);
+      }
       
       return this.sanitizeUser(user);
     } catch (error) {
       logger.error(`Error creating user: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Update a user's role
+   * @param {string} userId - User ID to update
+   * @param {string} newRole - New role to assign
+   * @param {string} updatedBy - ID of user making the change
+   * @returns {Object} Updated user
+   */
+  async updateUserRole(userId, newRole, updatedBy) {
+    try {
+      // Verify that the requested role is valid
+      if (!Object.values(this.ROLES).includes(newRole)) {
+        throw new Error(`Invalid role: ${newRole}`);
+      }
+      
+      // Get the user to update
+      const userToUpdate = await this.database.getUserById(userId);
+      if (!userToUpdate) {
+        throw new Error(`User not found with ID: ${userId}`);
+      }
+      
+      // Get the user who is making the change
+      const updatingUser = await this.database.getUserById(updatedBy);
+      if (!updatingUser) {
+        throw new Error(`Updating user not found with ID: ${updatedBy}`);
+      }
+      
+      // Only super_admin can assign super_admin role
+      if (newRole === this.ROLES.SUPER_ADMIN && updatingUser.role !== this.ROLES.SUPER_ADMIN) {
+        throw new Error('Only super admins can create other super admins');
+      }
+      
+      // Regular admins can only assign/modify user roles
+      if (updatingUser.role === this.ROLES.ADMIN && 
+          (userToUpdate.role === this.ROLES.SUPER_ADMIN || userToUpdate.role === this.ROLES.ADMIN ||
+           newRole === this.ROLES.SUPER_ADMIN || newRole === this.ROLES.ADMIN)) {
+        throw new Error('Regular admins cannot modify admin or super admin roles');
+      }
+      
+      // Regular users cannot modify roles at all
+      if (updatingUser.role === this.ROLES.USER) {
+        throw new Error('Regular users cannot modify roles');
+      }
+      
+      // Update the role
+      const updatedUser = await this.database.updateUserRole(userId, newRole);
+      
+      logger.info(`User ${updatingUser.username} updated role of ${userToUpdate.username} to ${newRole}`);
+      
+      return this.sanitizeUser(updatedUser);
+    } catch (error) {
+      logger.error(`Error updating user role: ${error.message}`);
       throw error;
     }
   }
@@ -194,12 +306,24 @@ class AuthService {
       // Get user info
       const userInfo = await this.oidcClient.getUserInfo(tokenData.access_token);
       
+      // Check if this is the first login ever
+      const userCount = await this.database.getUserCount();
+      const isFirstLogin = userCount === 0;
+      
       // Check if user exists by email
       let user = await this.database.getUserByEmail(userInfo.email);
       
       if (!user) {
+        // For the first login via OIDC, create a super admin
+        // Otherwise create a regular user
+        const role = isFirstLogin ? this.ROLES.SUPER_ADMIN : this.ROLES.USER;
+        
         // Create new user from OIDC data
-        user = await this.createUserFromOidc(userInfo);
+        user = await this.createUserFromOidc(userInfo, role);
+        
+        if (isFirstLogin) {
+          logger.success(`First login via OIDC: Created super admin user '${user.username}'`);
+        }
       }
       
       // Store token
@@ -219,7 +343,8 @@ class AuthService {
       
       return {
         token,
-        user: this.sanitizeUser(user)
+        user: this.sanitizeUser(user),
+        firstLogin: isFirstLogin
       };
     } catch (error) {
       logger.error(`Error handling OIDC callback: ${error.message}`);
@@ -230,9 +355,10 @@ class AuthService {
   /**
    * Create a user from OIDC data
    * @param {Object} userInfo - User info from OIDC provider
+   * @param {string} role - Role to assign, defaults to 'user'
    * @returns {Object} Created user
    */
-  async createUserFromOidc(userInfo) {
+  async createUserFromOidc(userInfo, role = this.ROLES.USER) {
     try {
       // Generate a username from email if not provided
       let username = userInfo.preferred_username || userInfo.username;
@@ -264,10 +390,17 @@ class AuthService {
         password_hash,
         email: userInfo.email,
         name: userInfo.name,
-        role: 'user' // Default role for OIDC users
+        role: role
       });
       
-      logger.info(`Created new user from OIDC: ${username}`);
+      // Log appropriate message based on role
+      if (role === this.ROLES.SUPER_ADMIN) {
+        logger.info(`Created new super admin from OIDC: ${username}`);
+      } else if (role === this.ROLES.ADMIN) {
+        logger.info(`Created new admin from OIDC: ${username}`);
+      } else {
+        logger.info(`Created new user from OIDC: ${username}`);
+      }
       
       return user;
     } catch (error) {
@@ -317,6 +450,38 @@ class AuthService {
   sanitizeUser(user) {
     const { id, username, email, name, role, created_at, last_login } = user;
     return { id, username, email, name, role, created_at, last_login };
+  }
+  
+  /**
+   * Get all users (admin only)
+   * @returns {Array} List of users
+   */
+  async getAllUsers() {
+    try {
+      const users = await this.database.getAllUsers();
+      return users.map(user => this.sanitizeUser(user));
+    } catch (error) {
+      logger.error(`Error getting all users: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Check if a user has admin privileges
+   * @param {Object} user - User object
+   * @returns {boolean} True if user is admin or super_admin
+   */
+  isAdmin(user) {
+    return user && (user.role === this.ROLES.ADMIN || user.role === this.ROLES.SUPER_ADMIN);
+  }
+  
+  /**
+   * Check if a user is a super admin
+   * @param {Object} user - User object
+   * @returns {boolean} True if user is super_admin
+   */
+  isSuperAdmin(user) {
+    return user && user.role === this.ROLES.SUPER_ADMIN;
   }
   
   /**

@@ -1,0 +1,205 @@
+// Custom theme based on TráfegoDNS logo
+
+// Color scheme derived from logo
+$primary: #0066CC;      // Blue from logo
+$secondary: #6C757D;    // Gray
+$success: #00A86B;      // Green from logo
+$danger: #FF0000;       // Red from logo
+$warning: #FFD700;      // Yellow/gold from logo
+$info: #17a2b8;         // Light blue
+$light: #F8FAFC;        // Very light gray/white
+$dark: #0F172A;         // Very dark blue from logo
+$body-bg: #111827;      // Dark background (slightly lighter than $dark)
+$body-color: #F8FAFC;   // Light text
+
+// Import Bootstrap
+@import "~bootstrap/scss/bootstrap";
+
+// Dark theme customizations
+.bg-dark {
+  background-color: $dark !important;
+}
+
+.bg-body {
+  background-color: $body-bg !important;
+}
+
+.text-light {
+  color: $light !important;
+}
+
+// Card customizations for dark theme
+.card {
+  background-color: darken($body-bg, 3%);
+  border: 1px solid rgba(255, 255, 255, 0.125);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+  
+  .card-header {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.125);
+    font-weight: 600;
+  }
+  
+  .card-footer {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-top: 1px solid rgba(255, 255, 255, 0.125);
+  }
+}
+
+// Table customizations for dark theme
+.table {
+  color: $light;
+  
+  thead th {
+    border-bottom-color: rgba(255, 255, 255, 0.2);
+    background-color: rgba(0, 0, 0, 0.2);
+  }
+  
+  tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+  
+  td, th {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+}
+
+// Form customizations for dark theme
+.form-control, .form-select {
+  background-color: darken($body-bg, 5%);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: $light;
+  
+  &:focus {
+    background-color: darken($body-bg, 3%);
+    color: $light;
+    border-color: $primary;
+    box-shadow: 0 0 0 0.25rem rgba($primary, 0.25);
+  }
+}
+
+// Input group customizations
+.input-group-text {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: $light;
+}
+
+// Nav customizations
+.nav-tabs {
+  border-bottom-color: rgba(255, 255, 255, 0.2);
+  
+  .nav-link {
+    color: rgba(255, 255, 255, 0.7);
+    
+    &:hover, &:focus {
+      border-color: transparent;
+      color: $light;
+    }
+    
+    &.active {
+      background-color: darken($body-bg, 5%);
+      border-color: rgba(255, 255, 255, 0.2);
+      color: $light;
+    }
+  }
+}
+
+// Modal customizations
+.modal-content {
+  background-color: $body-bg;
+  border-color: rgba(255, 255, 255, 0.2);
+  
+  .modal-header {
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+  }
+  
+  .modal-footer {
+    border-top-color: rgba(255, 255, 255, 0.1);
+  }
+}
+
+// Sidebar customizations
+.sidebar {
+  background-color: $dark;
+  min-height: 100vh;
+  
+  .sidebar-link {
+    color: rgba(255, 255, 255, 0.7);
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    
+    &:hover, &.active {
+      color: $light;
+      background-color: rgba(255, 255, 255, 0.05);
+      text-decoration: none;
+    }
+    
+    .sidebar-icon {
+      margin-right: 0.75rem;
+      width: 20px;
+    }
+  }
+}
+
+// Button tweaks
+.btn {
+  border-radius: 0.25rem;
+  
+  &.btn-outline-light {
+    &:hover {
+      color: $dark;
+    }
+  }
+}
+
+// Status indicators
+.status-badge {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 5px;
+  
+  &.status-success {
+    background-color: $success;
+  }
+  
+  &.status-warning {
+    background-color: $warning;
+  }
+  
+  &.status-danger {
+    background-color: $danger;
+  }
+  
+  &.status-info {
+    background-color: $info;
+  }
+}
+
+// Utils
+.cursor-pointer {
+  cursor: pointer;
+}
+
+// Scrollbar styling for webkit browsers
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+}
