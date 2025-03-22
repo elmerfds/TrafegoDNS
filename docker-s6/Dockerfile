@@ -1,19 +1,28 @@
-# Stage 1: Generate package-lock.json
-FROM node:23-alpine AS dependencies
+# Stage 1: Build the WebUI
+FROM node:20-alpine AS webui-build
+WORKDIR /app/webui
+COPY webui/package*.json ./
+RUN npm install
+COPY webui/ ./
+RUN npm run build
+
+# Stage 2: Generate package-lock.json
+FROM node:20-alpine AS dependencies
 WORKDIR /app
 COPY package.json .
 RUN npm install --package-lock-only
 RUN npm install --omit=dev
 
-# Stage 2: Build the application
-FROM node:23-alpine AS build
+# Stage 3: Build the application
+FROM node:20-alpine AS build
 WORKDIR /app
 COPY --from=dependencies /app/package*.json ./
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY src ./src
+COPY --from=webui-build /app/webui/dist ./webui/dist
 
-# Stage 3: Create the production image with s6-overlay
-FROM node:23-alpine
+# Stage 4: Create the production image with s6-overlay
+FROM node:20-alpine
 WORKDIR /app
 
 # Install s6-overlay v3
@@ -49,6 +58,7 @@ RUN addgroup -g 1001 abc && \
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/src ./src
+COPY --from=build /app/webui/dist ./webui/dist
 RUN chown -R abc:abc /app
 
 # Create necessary directories for s6-overlay scripts
@@ -75,10 +85,6 @@ RUN head -1 /etc/cont-init.d/* /etc/services.d/trafegodns/*
 # Create auth database directory
 RUN mkdir -p /config/data && \
     chown -R abc:abc /config/data
-
-# Support for the Web UI (future development)
-RUN mkdir -p /app/webui/dist && \
-    chown -R abc:abc /app/webui
 
 # Set default environment variables
 ENV NODE_ENV=production \
