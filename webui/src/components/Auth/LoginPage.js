@@ -1,52 +1,40 @@
 // src/components/Auth/LoginPage.js
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Form, Button, Alert, Spinner } from 'react-bootstrap';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import axios from 'axios';
 
 const LoginPage = () => {
+  const { currentUser, isLoading } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  // Check if we're already logged in
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      // We have a token, redirect to dashboard
-      window.location.href = '/dashboard';
-    }
-  }, []);
+  // If already logged in, redirect to dashboard
+  if (currentUser) {
+    return <Navigate to="/dashboard" />;
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!username || !password) {
-      setError('Username and password are required');
-      return;
-    }
-
-    setIsLoading(true);
+    setLoginLoading(true);
     setError('');
 
     try {
-      // Direct API call without using the service
+      // Direct API request to avoid context issues
       const response = await axios.post('/api/auth/login', {
         username,
         password
       });
 
       if (response.data && response.data.token) {
-        // Store token in localStorage
+        // Store token
         localStorage.setItem('token', response.data.token);
         
-        // Show success toast
-        toast.success('Login successful');
-        
-        // Redirect to dashboard with full page reload
+        // Force a full page reload to restart the app with the token
         window.location.href = '/dashboard';
       } else {
         setError('Invalid response from server');
@@ -65,12 +53,20 @@ const LoginPage = () => {
       
       setError(errorMessage);
     } finally {
-      setIsLoading(false);
+      setLoginLoading(false);
     }
   };
 
+  if (isLoading) {
+    return (
+      <Container className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
+        <Spinner animation="border" variant="primary" />
+      </Container>
+    );
+  }
+
   return (
-    <Container fluid className="bg-dark d-flex align-items-center justify-content-center" style={{ minHeight: '100vh', padding: '1rem' }}>
+    <Container fluid className="bg-body d-flex align-items-center justify-content-center" style={{ minHeight: '100vh', padding: '1rem' }}>
       <Row className="justify-content-center w-100">
         <Col xs={12} sm={10} md={8} lg={6} xl={4}>
           <Card className="shadow-lg border-0">
@@ -119,9 +115,9 @@ const LoginPage = () => {
                     type="submit" 
                     variant="primary" 
                     size="lg" 
-                    disabled={isLoading}
+                    disabled={loginLoading}
                   >
-                    {isLoading ? (
+                    {loginLoading ? (
                       <>
                         <Spinner
                           as="span"
