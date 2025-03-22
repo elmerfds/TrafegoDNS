@@ -1,27 +1,9 @@
 // src/contexts/AuthContext.js
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { jwtDecode } from 'jwt-decode';
-import api from '../services/apiService';
-
-// Auth debugging function (defined in index.js)
-const logAuthEvent = (event, data) => {
-  try {
-    let logs = JSON.parse(localStorage.getItem('auth_debug_logs') || '[]');
-    logs.push({
-      time: new Date().toISOString(),
-      event,
-      data,
-      path: window.location.pathname
-    });
-    // Keep only the last 20 entries
-    if (logs.length > 20) logs = logs.slice(-20);
-    localStorage.setItem('auth_debug_logs', JSON.stringify(logs));
-  } catch (e) {
-    console.error('Error logging auth event:', e);
-  }
-};
+import authService from '../services/authService';
 
 const AuthContext = createContext();
 
@@ -29,126 +11,72 @@ export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('token'));
   const [isLoading, setIsLoading] = useState(true);
+  const isInitialMount = useRef(true);
   const navigate = useNavigate();
 
-  // Track auth state changes
+  // Check if token is valid on initial load or when token changes
   useEffect(() => {
-    logAuthEvent('auth_state_change', { 
-      currentUser: currentUser ? currentUser.username : null,
-      isLoading
-    });
-  }, [currentUser, isLoading]);
-
-  // Check token and get user profile
-  useEffect(() => {
-    const validateToken = async () => {
-      logAuthEvent('token_validation_start', {});
-      
-      const token = localStorage.getItem('token');
-      
-      if (!token) {
-        logAuthEvent('token_not_found', {});
-        setCurrentUser(null);
-        setIsLoading(false);
-        return;
-      }
-      
-      try {
-        // Check token expiration
-        const decodedToken = jwtDecode(token);
-        logAuthEvent('token_decoded', { 
-          exp: decodedToken.exp,
-          username: decodedToken.username,
-          role: decodedToken.role
-        });
-        
-        const currentTime = Date.now() / 1000;
-        
-        if (decodedToken.exp < currentTime) {
-          // Token expired
-          logAuthEvent('token_expired', { 
-            exp: decodedToken.exp, 
-            now: currentTime 
-          });
-          localStorage.removeItem('token');
-          setCurrentUser(null);
-          setIsLoading(false);
-          return;
-        }
-        
-        // Token is valid, fetch user profile
-        logAuthEvent('profile_fetch_start', {
-          token_length: token.length
-        });
-        
+    const verifyToken = async () => {
+      if (token) {
         try {
-          const response = await api.get('/auth/profile');
-          logAuthEvent('profile_fetch_success', { 
-            user: response.data.user.username,
-            role: response.data.user.role
-          });
+          // Check token expiration
+          const decodedToken = jwtDecode(token);
+          const currentTime = Date.now() / 1000;
           
-          setCurrentUser(response.data.user);
-        } catch (error) {
-          logAuthEvent('profile_fetch_error', { 
-            message: error.message, 
-            status: error.response?.status 
-          });
-          
-          // Only clear token if error is auth-related
-          if (error.response && error.response.status === 401) {
-            localStorage.removeItem('token');
-            setCurrentUser(null);
+          if (decodedToken.exp < currentTime) {
+            // Token has expired
+            logout();
+            return;
           }
+          
+          // Only fetch profile on initial mount
+          if (isInitialMount.current) {
+            // Get user profile
+            const response = await authService.getProfile(token);
+            setCurrentUser(response.data.user);
+          }
+        } catch (error) {
+          console.error('Error verifying token:', error);
+          logout();
         }
-      } catch (error) {
-        logAuthEvent('token_validation_error', { 
-          message: error.message 
-        });
-        
-        // Clear token on validation error
-        localStorage.removeItem('token');
-        setCurrentUser(null);
-      } finally {
-        setIsLoading(false);
       }
+      
+      // Mark loading as complete
+      setIsLoading(false);
     };
 
-    validateToken();
-  }, []);
+    // Track if this is the initial mount
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      verifyToken();
+    } else {
+      // For subsequent token changes, don't show loading screen
+      if (token) {
+        verifyToken();
+      } else {
+        setIsLoading(false);
+      }
+    }
+  }, [token]);
 
   const login = async (username, password) => {
-    logAuthEvent('login_attempt', { username });
-    
     try {
       setIsLoading(true);
+      const response = await authService.login(username, password);
+      const { token, user } = response.data;
       
-      // Use direct axios to avoid any interceptor issues
-      const response = await api.post('/auth/login', { 
-        username, 
-        password 
-      });
-      
-      logAuthEvent('login_success', { 
-        username: response.data.user.username,
-        token_length: response.data.token.length
-      });
-      
-      // Store token in localStorage
-      localStorage.setItem('token', response.data.token);
-      
-      // Update current user
-      setCurrentUser(response.data.user);
+      // Store token and user
+      localStorage.setItem('token', token);
+      setToken(token);
+      setCurrentUser(user);
       
       toast.success('Login successful');
+      navigate('/dashboard', { replace: true }); // Use replace to avoid double redirects
       return true;
     } catch (error) {
-      logAuthEvent('login_error', { 
-        message: error.message,
-        status: error.response?.status
-      });
-      
+      console.error('Login error:', error);
       let errorMessage = 'Login failed. Please check your credentials.';
       
       if (error.response) {
@@ -167,11 +95,10 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    logAuthEvent('logout', {});
-    
     localStorage.removeItem('token');
+    setToken(null);
     setCurrentUser(null);
-    navigate('/login');
+    navigate('/login', { replace: true }); // Use replace to avoid double redirects
   };
 
   const hasRole = (requiredRole) => {
@@ -192,6 +119,7 @@ export const AuthProvider = ({ children }) => {
 
   const value = {
     currentUser,
+    token,
     isLoading,
     login,
     logout,
