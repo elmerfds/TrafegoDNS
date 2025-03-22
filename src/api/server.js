@@ -12,6 +12,19 @@ const { verifyAuthToken } = require('./middleware/auth');
 const AuthService = require('../auth/service');
 const createAuthRouter = require('./routes/auth');
 
+const placeholderImageRouter = require('./middleware/placeholderImage');
+
+// This allows the placeholder to be accessed without auth
+this.app.use('/api', placeholderImageRouter);
+
+// Then add your authentication middleware and other routers
+this.app.use('/api', (req, res, next) => {
+  if (req.path === '/health' || req.path.startsWith('/auth/') || req.path.startsWith('/placeholder/')) {
+    return next();
+  }
+  verifyAuthToken(req, res, next);
+});
+
 class ApiServer {
   constructor(config, eventBus, dnsManager, stateManager) {
     this.config = config;

@@ -20,14 +20,12 @@ const LoginPage = () => {
         setOidcEnabled(response.data.oidc);
       } catch (error) {
         console.error('Failed to check auth status:', error);
-        // Continue anyway, as this is not critical
       }
     };
 
     checkAuthStatus();
   }, []);
   
-  // Redirect if already logged in
   if (currentUser) {
     return <Navigate to="/dashboard" />;
   }
@@ -71,14 +69,14 @@ const LoginPage = () => {
   }
 
   return (
-    <Container fluid className="bg-body d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
-      <Row className="justify-content-center">
-        <Col md={8} lg={6} xl={5}>
+    <Container fluid className="bg-body d-flex align-items-center justify-content-center" style={{ minHeight: '100vh', padding: '1rem' }}>
+      <Row className="justify-content-center w-100">
+        <Col xs={12} sm={10} md={8} lg={6} xl={4}>
           <Card className="shadow-lg border-0">
-            <Card.Body className="p-5">
+            <Card.Body className="p-4">
               <div className="text-center mb-4">
                 <img
-                  src="/api/placeholder/240/240"
+                  src="/api/placeholder/120/120"
                   alt="TráfegoDNS Logo"
                   width="80"
                   height="80"
