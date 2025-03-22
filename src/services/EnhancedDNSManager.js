@@ -43,6 +43,9 @@ class EnhancedDNSManager {
     // Track active hostnames for cleanup
     this.activeHostnames = [];
     
+    // Track which preserved records we've already logged to avoid spam
+    this.loggedPreservedRecords = new Set();
+    
     // Subscribe to events
     this.setupEventSubscriptions();
   }
@@ -303,6 +306,14 @@ class EnhancedDNSManager {
   }
   
   /**
+   * Reset logged preserved records tracking
+   */
+  resetLoggedPreservedRecords() {
+    this.loggedPreservedRecords = new Set();
+    logger.debug('Reset preserved records logging cache');
+  }
+  
+  /**
    * Log statistics about processed DNS records
    */
   logStats() {
@@ -424,14 +435,36 @@ class EnhancedDNSManager {
         
         // Check if this record should be preserved
         if (this.recordTracker.shouldPreserveHostname(recordFqdn)) {
-          logger.info(`Preserving DNS record (in preserved list): ${recordFqdn} (${record.type})`);
+          // Create a unique key for this record for tracking log messages
+          const recordKey = `${recordFqdn}-${record.type}-preserved`;
+          
+          // If we haven't logged this record yet, log at INFO level
+          if (!this.loggedPreservedRecords.has(recordKey)) {
+            logger.info(`Preserving DNS record (in preserved list): ${recordFqdn} (${record.type})`);
+            this.loggedPreservedRecords.add(recordKey);
+          } else {
+            // We've already logged this one, use DEBUG level to avoid spam
+            logger.debug(`Preserving DNS record (in preserved list): ${recordFqdn} (${record.type})`);
+          }
+          
           continue;
         }
         
         // Also check if this record is in the managed hostnames list
         if (this.recordTracker.managedHostnames && 
             this.recordTracker.managedHostnames.some(h => h.hostname.toLowerCase() === recordFqdn.toLowerCase())) {
-          logger.info(`Preserving DNS record (in managed list): ${recordFqdn} (${record.type})`);
+          // Create a unique key for this record for tracking log messages
+          const recordKey = `${recordFqdn}-${record.type}-managed`;
+          
+          // If we haven't logged this record yet, log at INFO level
+          if (!this.loggedPreservedRecords.has(recordKey)) {
+            logger.info(`Preserving DNS record (in managed list): ${recordFqdn} (${record.type})`);
+            this.loggedPreservedRecords.add(recordKey);
+          } else {
+            // We've already logged this one, use DEBUG level to avoid spam
+            logger.debug(`Preserving DNS record (in managed list): ${recordFqdn} (${record.type})`);
+          }
+          
           continue;
         }
         
@@ -482,6 +515,12 @@ class EnhancedDNSManager {
         logger.success(`Removed ${orphanedRecords.length} orphaned DNS records`);
       } else {
         logger.debug('No orphaned DNS records found');
+      }
+      
+      // Reset the logged records cache daily to ensure important changes are logged
+      const now = new Date();
+      if (now.getHours() === 0 && now.getMinutes() < 5) {
+        this.resetLoggedPreservedRecords();
       }
     } catch (error) {
       logger.error(`Error cleaning up orphaned records: ${error.message}`);
@@ -576,6 +615,9 @@ class EnhancedDNSManager {
    */
   async switchProvider(provider) {
     try {
+      // Reset log cache when switching providers
+      this.resetLoggedPreservedRecords();
+      
       // Switch provider using the factory
       this.dnsProvider = await this.providerFactory.switchProvider(provider);
       logger.success(`Switched to ${provider} provider`);
@@ -596,6 +638,9 @@ class EnhancedDNSManager {
    * @param {Object} config - Provider configuration
    */
   updateProviderConfig(provider, config) {
+    // Reset log cache when changing provider config
+    this.resetLoggedPreservedRecords();
+    
     // Update the state
     if (this.stateManager) {
       this.stateManager.updateProviderConfig(provider, config);
