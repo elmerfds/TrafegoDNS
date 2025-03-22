@@ -1,26 +1,37 @@
 // src/components/Auth/PrivateRoute.js
-import React from 'react';
-import { Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import LoadingScreen from '../Layout/LoadingScreen';
 
 const PrivateRoute = ({ children, requiredRole = 'user' }) => {
-  const { currentUser, isLoading, hasRole } = useAuth();
+  const { currentUser, isLoading, isAuthenticated, hasRole } = useAuth();
+  const location = useLocation();
 
+  // Debug logging
+  console.log("PrivateRoute:", { 
+    path: location.pathname,
+    isLoading, 
+    isAuthenticated, 
+    hasUser: !!currentUser 
+  });
+
+  // Only show loading during initial auth check
   if (isLoading) {
     return <LoadingScreen />;
   }
 
-  if (!currentUser) {
-    return <Navigate to="/login" replace />;
+  // If not authenticated, redirect to login
+  if (!isAuthenticated || !currentUser) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
   
   // Check if user has the required role
   if (requiredRole && !hasRole(requiredRole)) {
-    // User is authenticated but doesn't have the required role
     return <Navigate to="/dashboard" replace />;
   }
 
+  // User is authenticated and has the required role
   return children;
 };
 

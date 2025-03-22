@@ -11,69 +11,101 @@ export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
+  // Get token from localStorage immediately
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [isLoading, setIsLoading] = useState(true);
-  const isInitialMount = useRef(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const authCheckComplete = useRef(false);
   const navigate = useNavigate();
 
-  // Check if token is valid on initial load or when token changes
+  // Add this console.log to see what's happening
+  console.log("AuthContext state:", { 
+    hasToken: !!token, 
+    isAuthenticated, 
+    authCheckComplete: authCheckComplete.current, 
+    isLoading 
+  });
+
+  // Check token on mount only
   useEffect(() => {
     const verifyToken = async () => {
-      if (token) {
-        try {
-          // Check token expiration
-          const decodedToken = jwtDecode(token);
-          const currentTime = Date.now() / 1000;
-          
-          if (decodedToken.exp < currentTime) {
-            // Token has expired
-            logout();
-            return;
-          }
-          
-          // Only fetch profile on initial mount
-          if (isInitialMount.current) {
-            // Get user profile
-            const response = await authService.getProfile(token);
-            setCurrentUser(response.data.user);
-          }
-        } catch (error) {
-          console.error('Error verifying token:', error);
-          logout();
-        }
+      setIsLoading(true);
+      
+      if (!token) {
+        console.log("No token found in localStorage");
+        setIsAuthenticated(false);
+        setIsLoading(false);
+        authCheckComplete.current = true;
+        return;
       }
       
-      // Mark loading as complete
-      setIsLoading(false);
-    };
-
-    // Track if this is the initial mount
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      verifyToken();
-    } else {
-      // For subsequent token changes, don't show loading screen
-      if (token) {
-        verifyToken();
-      } else {
+      try {
+        // Check token expiration
+        const decodedToken = jwtDecode(token);
+        const currentTime = Date.now() / 1000;
+        
+        if (decodedToken.exp < currentTime) {
+          console.log("Token expired");
+          // Token has expired - clean up and redirect
+          localStorage.removeItem('token');
+          setToken(null);
+          setCurrentUser(null);
+          setIsAuthenticated(false);
+          authCheckComplete.current = true;
+          setIsLoading(false);
+          return;
+        }
+        
+        // Token is valid, fetch user profile
+        console.log("Fetching user profile with token");
+        const response = await authService.getProfile();
+        console.log("Profile response:", response.data);
+        
+        setCurrentUser(response.data.user);
+        setIsAuthenticated(true);
+      } catch (error) {
+        console.error('Error verifying token:', error);
+        // Clear authentication state on error
+        localStorage.removeItem('token');
+        setToken(null);
+        setCurrentUser(null);
+        setIsAuthenticated(false);
+      } finally {
+        authCheckComplete.current = true;
         setIsLoading(false);
       }
+    };
+
+    // Only verify if we haven't completed a check yet
+    if (!authCheckComplete.current) {
+      verifyToken();
     }
   }, [token]);
 
   const login = async (username, password) => {
     try {
       setIsLoading(true);
+      
+      console.log("Attempting login for user:", username);
       const response = await authService.login(username, password);
-      const { token, user } = response.data;
+      const { token: newToken, user } = response.data;
+      
+      console.log("Login successful, storing token and user data");
       
       // Store token and user
-      localStorage.setItem('token', token);
-      setToken(token);
+      localStorage.setItem('token', newToken);
+      setToken(newToken);
       setCurrentUser(user);
+      setIsAuthenticated(true);
       
       toast.success('Login successful');
-      navigate('/dashboard', { replace: true }); // Use replace to avoid double redirects
+      
+      // Navigate only if we're not already on the dashboard
+      if (window.location.pathname !== '/dashboard') {
+        console.log("Navigating to dashboard");
+        navigate('/dashboard', { replace: true });
+      }
+      
       return true;
     } catch (error) {
       console.error('Login error:', error);
@@ -95,10 +127,16 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    console.log("Logging out user");
     localStorage.removeItem('token');
     setToken(null);
     setCurrentUser(null);
-    navigate('/login', { replace: true }); // Use replace to avoid double redirects
+    setIsAuthenticated(false);
+    
+    // Only navigate if we're not already on the login page
+    if (window.location.pathname !== '/login') {
+      navigate('/login', { replace: true });
+    }
   };
 
   const hasRole = (requiredRole) => {
@@ -121,6 +159,7 @@ export const AuthProvider = ({ children }) => {
     currentUser,
     token,
     isLoading,
+    isAuthenticated,
     login,
     logout,
     hasRole
