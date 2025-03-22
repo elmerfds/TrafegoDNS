@@ -1,8 +1,26 @@
 // src/components/Auth/LoginPage.js
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Form, Button, Alert, Spinner } from 'react-bootstrap';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+
+// Auth debugging function (defined in index.js)
+const logAuthEvent = (event, data) => {
+  try {
+    let logs = JSON.parse(localStorage.getItem('auth_debug_logs') || '[]');
+    logs.push({
+      time: new Date().toISOString(),
+      event,
+      data,
+      path: window.location.pathname
+    });
+    // Keep only the last 20 entries
+    if (logs.length > 20) logs = logs.slice(-20);
+    localStorage.setItem('auth_debug_logs', JSON.stringify(logs));
+  } catch (e) {
+    console.error('Error logging auth event:', e);
+  }
+};
 
 const LoginPage = () => {
   const { currentUser, isLoading, login } = useAuth();
@@ -10,27 +28,55 @@ const LoginPage = () => {
   const [password, setPassword] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
   const [error, setError] = useState('');
+  const navigate = useNavigate();
 
-  // If already logged in, redirect to dashboard
-  if (!isLoading && currentUser) {
-    return <Navigate to="/dashboard" />;
-  }
+  // On first load
+  useEffect(() => {
+    logAuthEvent('login_page_mounted', {
+      hasToken: !!localStorage.getItem('token'),
+      currentUser: currentUser ? currentUser.username : null,
+      isLoading
+    });
+  }, []);
+
+  // If already logged in, redirect to dashboard - but use navigate instead of automatic redirect
+  useEffect(() => {
+    if (!isLoading && currentUser) {
+      logAuthEvent('already_logged_in_redirect', {
+        user: currentUser.username,
+        role: currentUser.role
+      });
+      navigate('/dashboard');
+    }
+  }, [currentUser, isLoading, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoginLoading(true);
     setError('');
+    
+    logAuthEvent('login_form_submit', { username });
 
     try {
-      // Here we're using the auth context login function
+      // Use the login function from auth context
       const success = await login(username, password);
       
       if (success) {
-        // Force page reload to apply the token
-        window.location.href = '/dashboard';
+        logAuthEvent('login_redirect_triggered', {});
+        
+        // Slight delay to ensure state has been updated
+        setTimeout(() => {
+          // Force a full page reload to clean React state
+          window.location.href = '/dashboard';
+        }, 500);
+      } else {
+        setError('Login failed. Please try again.');
       }
     } catch (err) {
-      console.error('Login submission error:', err);
+      logAuthEvent('login_handle_error', { 
+        message: err.message 
+      });
+      
       setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoginLoading(false);

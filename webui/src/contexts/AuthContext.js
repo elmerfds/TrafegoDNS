@@ -5,6 +5,24 @@ import { toast } from 'react-toastify';
 import { jwtDecode } from 'jwt-decode';
 import api from '../services/apiService';
 
+// Auth debugging function (defined in index.js)
+const logAuthEvent = (event, data) => {
+  try {
+    let logs = JSON.parse(localStorage.getItem('auth_debug_logs') || '[]');
+    logs.push({
+      time: new Date().toISOString(),
+      event,
+      data,
+      path: window.location.pathname
+    });
+    // Keep only the last 20 entries
+    if (logs.length > 20) logs = logs.slice(-20);
+    localStorage.setItem('auth_debug_logs', JSON.stringify(logs));
+  } catch (e) {
+    console.error('Error logging auth event:', e);
+  }
+};
+
 const AuthContext = createContext();
 
 export const useAuth = () => useContext(AuthContext);
@@ -14,12 +32,23 @@ export const AuthProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
+  // Track auth state changes
+  useEffect(() => {
+    logAuthEvent('auth_state_change', { 
+      currentUser: currentUser ? currentUser.username : null,
+      isLoading
+    });
+  }, [currentUser, isLoading]);
+
   // Check token and get user profile
   useEffect(() => {
     const validateToken = async () => {
+      logAuthEvent('token_validation_start', {});
+      
       const token = localStorage.getItem('token');
       
       if (!token) {
+        logAuthEvent('token_not_found', {});
         setCurrentUser(null);
         setIsLoading(false);
         return;
@@ -28,11 +57,20 @@ export const AuthProvider = ({ children }) => {
       try {
         // Check token expiration
         const decodedToken = jwtDecode(token);
+        logAuthEvent('token_decoded', { 
+          exp: decodedToken.exp,
+          username: decodedToken.username,
+          role: decodedToken.role
+        });
+        
         const currentTime = Date.now() / 1000;
         
         if (decodedToken.exp < currentTime) {
           // Token expired
-          console.log('Token expired');
+          logAuthEvent('token_expired', { 
+            exp: decodedToken.exp, 
+            now: currentTime 
+          });
           localStorage.removeItem('token');
           setCurrentUser(null);
           setIsLoading(false);
@@ -40,14 +78,36 @@ export const AuthProvider = ({ children }) => {
         }
         
         // Token is valid, fetch user profile
-        console.log('Fetching user profile with token');
-        const response = await api.get('/auth/profile');
-        console.log('Profile response:', response.data);
+        logAuthEvent('profile_fetch_start', {
+          token_length: token.length
+        });
         
-        setCurrentUser(response.data.user);
+        try {
+          const response = await api.get('/auth/profile');
+          logAuthEvent('profile_fetch_success', { 
+            user: response.data.user.username,
+            role: response.data.user.role
+          });
+          
+          setCurrentUser(response.data.user);
+        } catch (error) {
+          logAuthEvent('profile_fetch_error', { 
+            message: error.message, 
+            status: error.response?.status 
+          });
+          
+          // Only clear token if error is auth-related
+          if (error.response && error.response.status === 401) {
+            localStorage.removeItem('token');
+            setCurrentUser(null);
+          }
+        }
       } catch (error) {
-        console.error('Auth validation error:', error);
-        // Clear token on auth error
+        logAuthEvent('token_validation_error', { 
+          message: error.message 
+        });
+        
+        // Clear token on validation error
         localStorage.removeItem('token');
         setCurrentUser(null);
       } finally {
@@ -59,20 +119,36 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (username, password) => {
+    logAuthEvent('login_attempt', { username });
+    
     try {
       setIsLoading(true);
-      const response = await api.post('/auth/login', { username, password });
       
-      const { token, user } = response.data;
+      // Use direct axios to avoid any interceptor issues
+      const response = await api.post('/auth/login', { 
+        username, 
+        password 
+      });
       
-      // Store token and user
-      localStorage.setItem('token', token);
-      setCurrentUser(user);
+      logAuthEvent('login_success', { 
+        username: response.data.user.username,
+        token_length: response.data.token.length
+      });
+      
+      // Store token in localStorage
+      localStorage.setItem('token', response.data.token);
+      
+      // Update current user
+      setCurrentUser(response.data.user);
       
       toast.success('Login successful');
       return true;
     } catch (error) {
-      console.error('Login error:', error);
+      logAuthEvent('login_error', { 
+        message: error.message,
+        status: error.response?.status
+      });
+      
       let errorMessage = 'Login failed. Please check your credentials.';
       
       if (error.response) {
@@ -91,6 +167,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    logAuthEvent('logout', {});
+    
     localStorage.removeItem('token');
     setCurrentUser(null);
     navigate('/login');
