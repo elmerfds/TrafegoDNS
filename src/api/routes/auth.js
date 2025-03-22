@@ -21,7 +21,10 @@ function createAuthRouter(authService, config) {
     try {
       const { username, password } = req.body;
       
+      logger.debug(`Login attempt for user: ${username}`);
+      
       if (!username || !password) {
+        logger.debug('Login failed: Missing username or password');
         return res.status(400).json({
           error: 'Bad Request',
           message: 'Username and password are required'
@@ -31,12 +34,14 @@ function createAuthRouter(authService, config) {
       const result = await authService.authenticate(username, password);
       
       if (!result) {
+        logger.debug(`Login failed: Invalid credentials for ${username}`);
         return res.status(401).json({
           error: 'Unauthorized',
           message: 'Invalid credentials'
         });
       }
       
+      logger.info(`User ${username} authenticated successfully`);
       res.json(result);
     } catch (error) {
       logger.error(`Error during login: ${error.message}`);
@@ -176,12 +181,27 @@ function createAuthRouter(authService, config) {
    */
   router.get('/profile', async (req, res) => {
     try {
+      // Add debug logs to identify what's happening with the profile endpoint
+      logger.debug(`Profile endpoint called - Headers: ${JSON.stringify(req.headers)}`);
+      logger.debug(`Profile endpoint - Auth header present: ${!!req.headers.authorization}`);
+      logger.debug(`Profile endpoint - User object present: ${!!req.user}`);
+      
+      if (req.headers.authorization) {
+        // Extract token and log its length for debugging
+        const token = req.headers.authorization.split(' ')[1];
+        logger.debug(`Profile endpoint - Token length: ${token ? token.length : 0}`);
+      }
+      
       if (!req.user) {
+        logger.debug('Profile endpoint - No user object in request - Authentication failed');
         return res.status(401).json({
           error: 'Unauthorized',
           message: 'Authentication required'
         });
       }
+      
+      // Log success
+      logger.debug(`Profile endpoint - Returning profile for user: ${req.user.username} (${req.user.role})`);
       
       res.json({
         user: {
@@ -192,6 +212,7 @@ function createAuthRouter(authService, config) {
       });
     } catch (error) {
       logger.error(`Error fetching user profile: ${error.message}`);
+      logger.error(`Error stack: ${error.stack}`);
       res.status(500).json({
         error: 'Internal Server Error',
         message: error.message
