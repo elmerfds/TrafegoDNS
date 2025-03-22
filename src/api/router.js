@@ -13,6 +13,7 @@ const settingsRoutes = require('./routes/settings');
 const statusRoutes = require('./routes/status');
 const modeRoutes = require('./routes/mode');
 const placeholderImageMiddleware = require('./middleware/placeholderImage');
+const profileRoutes = require('./routes/profile');
 
 class ApiRouter {
   constructor(app, config, eventBus, dnsManager, stateManager) {
@@ -88,6 +89,7 @@ class ApiRouter {
     this.router.use('/settings', settingsRoutes(this.config, this.stateManager));
     this.router.use('/status', statusRoutes(this.dnsManager, this.stateManager));
     this.router.use('/mode', modeRoutes(this.stateManager, this.config));
+    this.router.use('/profile', profileRoutes());
   }
 }
 

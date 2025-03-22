@@ -13,7 +13,8 @@ const authService = {
   
   // Get current user profile
   getProfile: () => {
-    return api.get('/auth/profile');
+    // return api.get('/auth/profile');
+    return api.get('/profile');
   },
   
   // Get all users (admin only)
