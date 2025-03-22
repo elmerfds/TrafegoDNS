@@ -1,7 +1,8 @@
 # Stage 1: Build the WebUI
 FROM node:20-alpine AS webui-build
+WORKDIR /app
+COPY webui/package*.json ./webui/
 WORKDIR /app/webui
-COPY webui/package*.json ./
 RUN npm install
 COPY webui/ ./
 RUN npm run build
