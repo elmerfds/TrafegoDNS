@@ -1,10 +1,10 @@
 {
-  "name": "TráfegoDNS",
+  "name": "TrafegoDNS",
   "version": "1.8.1",
   "description": "Automatically manage Cloudflare DNS records based on Traefik routing configuration",
-  "main": "src/app.js",
+  "main": "src/app-enhanced.js",
   "scripts": {
-    "start": "node src/app.js",
+    "start": "node src/app-enhanced.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
@@ -12,6 +12,14 @@
   "dependencies": {
     "axios": "^1.8.3",
     "@aws-sdk/client-route-53": "^3.540.0",
-    "dockerode": "^4.0.4"
+    "dockerode": "^4.0.4",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "openid-client": "^5.6.1",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.6",
+    "uuid": "^9.0.1"
   }
 }

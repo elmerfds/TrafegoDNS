@@ -23,8 +23,9 @@ ARG TARGETARCH
 # Switch to root for installation
 USER root
 
-# Install required packages
-RUN apk add --no-cache shadow curl xz tar bash
+# Install required packages - added python3, make, g++, sqlite-dev for bcrypt and sqlite3
+# Added wget for health check
+RUN apk add --no-cache shadow curl xz tar bash python3 make g++ sqlite-dev wget
 
 # Set architecture for s6-overlay download
 RUN case "${TARGETARCH}" in \
@@ -71,8 +72,30 @@ done
 # Verify the scripts have the correct shebang
 RUN head -1 /etc/cont-init.d/* /etc/services.d/trafegodns/*
 
-# Configure volumes
+# Create auth database directory
+RUN mkdir -p /config/data && \
+    chown -R abc:abc /config/data
+
+# Support for the Web UI (future development)
+RUN mkdir -p /app/webui/dist && \
+    chown -R abc:abc /app/webui
+
+# Set default environment variables
+ENV NODE_ENV=production \
+    API_PORT=3000 \
+    LOG_LEVEL=INFO \
+    AUTH_ENABLED=true \
+    JWT_EXPIRES_IN=24h
+
+# Expose the API port
+EXPOSE 3000
+
+# Configure volumes for persistent data
 VOLUME /config
+
+# Add health check using the provided script
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD /etc/services.d/trafegodns/check
 
 # Set entrypoint to s6-overlay init
 ENTRYPOINT ["/init"]
