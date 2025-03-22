@@ -1,7 +1,6 @@
-/**
- * src/api/middleware/auth.js
- * Authentication middleware for API routes
- */
+// src/api/middleware/auth.js
+// Authentication middleware for API routes
+
 const logger = require('../../utils/logger');
 
 /**
@@ -11,14 +10,20 @@ const logger = require('../../utils/logger');
  * @param {Function} next - Express next function
  */
 function verifyAuthToken(req, res, next) {
+  const path = req.path;
+  
+  // More detailed logging to help with debugging
+  logger.debug(`Auth middleware processing request for path: ${path}`);
+  
   // Skip authentication for auth routes and public routes
-  if (req.path.startsWith('/auth') || isPublicRoute(req.path)) {
+  if (path.includes('/auth/') || isPublicRoute(path)) {
+    logger.debug(`Skipping auth check for public route: ${path}`);
     return next();
   }
   
   // Skip authentication check if AUTH_ENABLED is false
-  if (process.env.AUTH_ENABLED === 'false') {
-    logger.debug(`Authentication disabled via environment variable, skipping auth check for ${req.path}`);
+  if (process.env.AUTH_ENABLED && process.env.AUTH_ENABLED.toLowerCase() === 'false') {
+    logger.debug(`Authentication disabled via environment variable, skipping auth check for ${path}`);
     // Set a dummy admin user for the request
     req.user = { 
       id: 'system',
@@ -32,7 +37,7 @@ function verifyAuthToken(req, res, next) {
   const authHeader = req.headers.authorization;
   
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    logger.debug(`Unauthorized access attempt to ${req.path} (no token)`);
+    logger.debug(`Unauthorized access attempt to ${path} (no token or invalid token format)`);
     return res.status(401).json({
       error: 'Unauthorized',
       message: 'Authentication token is required'
@@ -41,6 +46,7 @@ function verifyAuthToken(req, res, next) {
   
   // Extract token
   const token = authHeader.split(' ')[1];
+  logger.debug(`Token received for ${path} (length: ${token.length})`);
   
   // Get auth service from app
   const authService = req.app.get('authService');
@@ -53,40 +59,52 @@ function verifyAuthToken(req, res, next) {
     });
   }
   
-  // Verify token
-  const decoded = authService.verifyToken(token);
-  
-  if (!decoded) {
-    logger.debug(`Unauthorized access attempt to ${req.path} (invalid token)`);
+  try {
+    // Verify token
+    const decoded = authService.verifyToken(token);
+    
+    if (!decoded) {
+      logger.debug(`Token verification failed for ${path} (null result)`);
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Invalid or expired token'
+      });
+    }
+    
+    // Log successful token verification
+    logger.debug(`Token verified successfully for user: ${decoded.username} (${decoded.role})`);
+    
+    // Set user in request
+    req.user = decoded;
+    
+    // Check if route requires super admin
+    if (isSuperAdminRoute(path) && decoded.role !== 'super_admin') {
+      logger.warn(`Unauthorized access attempt to super admin route ${path} by ${decoded.username}`);
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Only super administrators can access this resource'
+      });
+    }
+    
+    // Check if route requires admin
+    if (isAdminRoute(path) && !['admin', 'super_admin'].includes(decoded.role)) {
+      logger.warn(`Unauthorized access attempt to admin route ${path} by ${decoded.username}`);
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Administrator privileges required'
+      });
+    }
+    
+    logger.debug(`Authenticated request to ${path} by ${decoded.username} (${decoded.role})`);
+    next();
+  } catch (error) {
+    // Handle any exceptions during token verification
+    logger.error(`Token verification error for ${path}: ${error.message}`);
     return res.status(401).json({
       error: 'Unauthorized',
-      message: 'Invalid or expired token'
+      message: 'Token verification failed'
     });
   }
-  
-  // Set user in request
-  req.user = decoded;
-  
-  // Check if route requires super admin
-  if (isSuperAdminRoute(req.path) && decoded.role !== 'super_admin') {
-    logger.warn(`Unauthorized access attempt to super admin route ${req.path} by ${decoded.username}`);
-    return res.status(403).json({
-      error: 'Forbidden',
-      message: 'Only super administrators can access this resource'
-    });
-  }
-  
-  // Check if route requires admin
-  if (isAdminRoute(req.path) && !['admin', 'super_admin'].includes(decoded.role)) {
-    logger.warn(`Unauthorized access attempt to admin route ${req.path} by ${decoded.username}`);
-    return res.status(403).json({
-      error: 'Forbidden',
-      message: 'Administrator privileges required'
-    });
-  }
-  
-  logger.debug(`Authenticated request to ${req.path} by ${decoded.username} (${decoded.role})`);
-  next();
 }
 
 /**
@@ -99,10 +117,19 @@ function isPublicRoute(path) {
     '/health',
     '/api/health',
     '/docs',
-    '/api/docs'
+    '/api/docs',
+    '/api/auth/login',
+    '/api/auth/status',
+    '/api/auth/oidc/login',
+    '/api/auth/oidc/callback'
   ];
   
-  return publicRoutes.some(route => path === route || path.startsWith(`${route}/`));
+  return publicRoutes.some(route => 
+    path === route || 
+    path.startsWith(`${route}/`) ||
+    // More flexible matching for query parameters
+    path.split('?')[0] === route
+  );
 }
 
 /**
@@ -112,10 +139,15 @@ function isPublicRoute(path) {
  */
 function isSuperAdminRoute(path) {
   const superAdminRoutes = [
-    '/auth/users'
+    '/auth/users',
+    '/api/auth/users'
   ];
   
-  return superAdminRoutes.some(route => path.endsWith(route));
+  // More flexible matching that works with base path
+  return superAdminRoutes.some(route => 
+    path.endsWith(route) || 
+    path.includes(`${route}/`)
+  );
 }
 
 /**
@@ -133,10 +165,25 @@ function isAdminRoute(path) {
     '/records/create',
     '/records/update',
     '/records/delete',
-    '/records/cleanup'
+    '/records/cleanup',
+    '/api/providers/switch',
+    '/api/settings/reset',
+    '/api/mode/switch',
+    '/api/records/managed',
+    '/api/records/preserved',
+    '/api/records/create',
+    '/api/records/update',
+    '/api/records/delete',
+    '/api/records/cleanup'
   ];
   
-  return adminRoutes.some(route => path.endsWith(route));
+  // More flexible matching that works with path parameters
+  return adminRoutes.some(route => 
+    path.endsWith(route) || 
+    path.includes(`${route}/`) ||
+    // Match paths that might have query parameters
+    path.split('?')[0].endsWith(route)
+  );
 }
 
 module.exports = {
