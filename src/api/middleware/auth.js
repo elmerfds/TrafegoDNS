@@ -1,6 +1,7 @@
-// src/api/middleware/auth.js
-// Authentication middleware for API routes
-
+/**
+ * src/api/middleware/auth.js
+ * Authentication middleware for API routes
+ */
 const logger = require('../../utils/logger');
 
 /**
@@ -15,8 +16,8 @@ function verifyAuthToken(req, res, next) {
   // More detailed logging to help with debugging
   logger.debug(`Auth middleware processing request for path: ${path}`);
   
-  // Skip authentication for auth routes and public routes
-  if (path.includes('/auth/') || isPublicRoute(path)) {
+  // Skip authentication ONLY for specific routes that don't need auth
+  if (isPublicRoute(path)) {
     logger.debug(`Skipping auth check for public route: ${path}`);
     return next();
   }
@@ -122,6 +123,7 @@ function isPublicRoute(path) {
     '/api/auth/status',
     '/api/auth/oidc/login',
     '/api/auth/oidc/callback'
+    // Don't include /api/auth/profile here as it needs authentication
   ];
   
   return publicRoutes.some(route => 
