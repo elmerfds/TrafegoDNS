@@ -1,6 +1,6 @@
 // src/components/DNSRecords/PreservedHostnamesTab.js
 import React, { useState } from 'react';
-import { Card, Form, Button, ListGroup, InputGroup, Alert, Spinner } from 'react-bootstrap';
+import { Card, Form, Button, ListGroup, InputGroup, Alert, Spinner, Badge } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faPlus, 
@@ -9,7 +9,8 @@ import {
   faTimes, 
   faSearch, 
   faInfoCircle, 
-  faExclamationTriangle 
+  faExclamationTriangle,
+  faEdit
 } from '@fortawesome/free-solid-svg-icons';
 import { toast } from 'react-toastify';
 import recordsService from '../../services/recordsService';
@@ -194,9 +195,5 @@ const PreservedHostnamesTab = ({ hostnames = [], updateHostnames, onHostnamesCha
     </Card>
   );
 };
-
-// Add the missing Badge and faEdit imports
-import { Badge } from 'react-bootstrap';
-import { faEdit } from '@fortawesome/free-solid-svg-icons';
 
 export default PreservedHostnamesTab;
