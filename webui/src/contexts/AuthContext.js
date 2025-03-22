@@ -3,12 +3,10 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { jwtDecode } from 'jwt-decode';
-import axios from 'axios';
+import api from '../services/apiService';
 
-// Create a context
 const AuthContext = createContext();
 
-// Custom hook to use the auth context
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
@@ -16,10 +14,9 @@ export const AuthProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Check if token is valid on initial load
+  // Check token and get user profile
   useEffect(() => {
-    const checkAuth = async () => {
-      setIsLoading(true);
+    const validateToken = async () => {
       const token = localStorage.getItem('token');
       
       if (!token) {
@@ -29,26 +26,28 @@ export const AuthProvider = ({ children }) => {
       }
       
       try {
-        // Verify token expiration
+        // Check token expiration
         const decodedToken = jwtDecode(token);
         const currentTime = Date.now() / 1000;
         
         if (decodedToken.exp < currentTime) {
-          // Token has expired
+          // Token expired
+          console.log('Token expired');
           localStorage.removeItem('token');
           setCurrentUser(null);
           setIsLoading(false);
           return;
         }
         
-        // Make an API request to validate the token and get user data
-        const response = await axios.get('/api/auth/profile', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        // Token is valid, fetch user profile
+        console.log('Fetching user profile with token');
+        const response = await api.get('/auth/profile');
+        console.log('Profile response:', response.data);
         
         setCurrentUser(response.data.user);
       } catch (error) {
         console.error('Auth validation error:', error);
+        // Clear token on auth error
         localStorage.removeItem('token');
         setCurrentUser(null);
       } finally {
@@ -56,27 +55,22 @@ export const AuthProvider = ({ children }) => {
       }
     };
 
-    checkAuth();
+    validateToken();
   }, []);
 
   const login = async (username, password) => {
     try {
       setIsLoading(true);
+      const response = await api.post('/auth/login', { username, password });
       
-      const response = await axios.post('/api/auth/login', {
-        username,
-        password
-      });
+      const { token, user } = response.data;
       
-      if (response.data && response.data.token) {
-        localStorage.setItem('token', response.data.token);
-        setCurrentUser(response.data.user);
-        toast.success('Login successful');
-        return true;
-      } else {
-        toast.error('Invalid response from server');
-        return false;
-      }
+      // Store token and user
+      localStorage.setItem('token', token);
+      setCurrentUser(user);
+      
+      toast.success('Login successful');
+      return true;
     } catch (error) {
       console.error('Login error:', error);
       let errorMessage = 'Login failed. Please check your credentials.';

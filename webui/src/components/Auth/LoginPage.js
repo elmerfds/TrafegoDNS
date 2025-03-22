@@ -1,20 +1,18 @@
 // src/components/Auth/LoginPage.js
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Form, Button, Alert, Spinner } from 'react-bootstrap';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import axios from 'axios';
 
 const LoginPage = () => {
-  const { currentUser, isLoading } = useAuth();
+  const { currentUser, isLoading, login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
   const [error, setError] = useState('');
-  const navigate = useNavigate();
 
   // If already logged in, redirect to dashboard
-  if (currentUser) {
+  if (!isLoading && currentUser) {
     return <Navigate to="/dashboard" />;
   }
 
@@ -24,34 +22,16 @@ const LoginPage = () => {
     setError('');
 
     try {
-      // Direct API request to avoid context issues
-      const response = await axios.post('/api/auth/login', {
-        username,
-        password
-      });
-
-      if (response.data && response.data.token) {
-        // Store token
-        localStorage.setItem('token', response.data.token);
-        
-        // Force a full page reload to restart the app with the token
+      // Here we're using the auth context login function
+      const success = await login(username, password);
+      
+      if (success) {
+        // Force page reload to apply the token
         window.location.href = '/dashboard';
-      } else {
-        setError('Invalid response from server');
       }
     } catch (err) {
-      console.error('Login error:', err);
-      
-      let errorMessage = 'Login failed. Please check your credentials.';
-      if (err.response) {
-        if (err.response.status === 401) {
-          errorMessage = 'Invalid username or password';
-        } else if (err.response.data && err.response.data.message) {
-          errorMessage = err.response.data.message;
-        }
-      }
-      
-      setError(errorMessage);
+      console.error('Login submission error:', err);
+      setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoginLoading(false);
     }
