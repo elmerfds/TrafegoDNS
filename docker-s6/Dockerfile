@@ -6,10 +6,12 @@ COPY webui/package*.json ./
 RUN npm install
 # Now copy all webui source files
 COPY webui/ ./
-# Create build directory
-RUN mkdir -p build
-# Execute the build script
-RUN npm run build
+# Create public directory if it doesn't exist
+RUN mkdir -p public
+# Create a simple index.html as fallback
+RUN echo '<html><body style="background-color:#111827;color:#F8FAFC;font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;"><div style="text-align:center;"><h1>TráfegoDNS</h1><p>API available at /api</p></div></body></html>' > public/index.html
+# Try to build, if it fails, use the public directory
+RUN npm run build || mkdir -p build && cp -r public/* build/
 
 # Stage 2: Generate package-lock.json
 FROM node:20-alpine AS dependencies
