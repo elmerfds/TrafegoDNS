@@ -181,38 +181,54 @@ function createAuthRouter(authService, config) {
    */
   router.get('/profile', async (req, res) => {
     try {
-      // Add debug logs to identify what's happening with the profile endpoint
-      logger.debug(`Profile endpoint called - Headers: ${JSON.stringify(req.headers)}`);
-      logger.debug(`Profile endpoint - Auth header present: ${!!req.headers.authorization}`);
-      logger.debug(`Profile endpoint - User object present: ${!!req.user}`);
+      logger.debug(`Profile endpoint called via /api/auth/profile - Manual auth check needed`);
       
-      if (req.headers.authorization) {
-        // Extract token and log its length for debugging
-        const token = req.headers.authorization.split(' ')[1];
-        logger.debug(`Profile endpoint - Token length: ${token ? token.length : 0}`);
-      }
-      
-      if (!req.user) {
-        logger.debug('Profile endpoint - No user object in request - Authentication failed');
-        return res.status(401).json({
-          error: 'Unauthorized',
-          message: 'Authentication required'
+      // Get auth service
+      const authService = req.app.get('authService');
+      if (!authService) {
+        logger.error('Auth service not available');
+        return res.status(500).json({
+          error: 'Internal Server Error',
+          message: 'Authentication service not available'
         });
       }
       
-      // Log success
-      logger.debug(`Profile endpoint - Returning profile for user: ${req.user.username} (${req.user.role})`);
+      // Manual token verification
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        logger.debug('Profile endpoint - No auth header');
+        return res.status(401).json({
+          error: 'Unauthorized',
+          message: 'Authentication token is required'
+        });
+      }
+      
+      const token = authHeader.split(' ')[1];
+      logger.debug(`Profile endpoint - Token length: ${token.length}`);
+      
+      // Verify token
+      const decoded = authService.verifyToken(token);
+      if (!decoded) {
+        logger.debug('Profile endpoint - Token verification failed');
+        return res.status(401).json({
+          error: 'Unauthorized',
+          message: 'Invalid or expired token'
+        });
+      }
+      
+      // Success - return user profile based on decoded token
+      logger.debug(`Profile endpoint - Successfully verified token for ${decoded.username}`);
       
       res.json({
         user: {
-          id: req.user.id,
-          username: req.user.username,
-          role: req.user.role
+          id: decoded.id,
+          username: decoded.username,
+          role: decoded.role
         }
       });
     } catch (error) {
-      logger.error(`Error fetching user profile: ${error.message}`);
-      logger.error(`Error stack: ${error.stack}`);
+      logger.error(`Error in profile endpoint: ${error.message}`);
+      logger.error(error.stack);
       res.status(500).json({
         error: 'Internal Server Error',
         message: error.message
