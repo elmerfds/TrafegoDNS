@@ -178,25 +178,17 @@ function createAuthRouter(authService, config) {
   
   /**
    * GET /api/auth/profile - Get current user profile
+   * This endpoint now has proper manual token validation since many frontends 
+   * will expect this path to work.
    */
   router.get('/profile', async (req, res) => {
     try {
-      logger.debug(`Profile endpoint called via /api/auth/profile - Manual auth check needed`);
+      logger.debug(`Profile endpoint called via /api/auth/profile`);
       
-      // Get auth service
-      const authService = req.app.get('authService');
-      if (!authService) {
-        logger.error('Auth service not available');
-        return res.status(500).json({
-          error: 'Internal Server Error',
-          message: 'Authentication service not available'
-        });
-      }
-      
-      // Manual token verification
+      // Manual token verification to ensure this endpoint works reliably
       const authHeader = req.headers.authorization;
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        logger.debug('Profile endpoint - No auth header');
+        logger.debug('Profile endpoint - No auth header or invalid format');
         return res.status(401).json({
           error: 'Unauthorized',
           message: 'Authentication token is required'
@@ -216,9 +208,10 @@ function createAuthRouter(authService, config) {
         });
       }
       
-      // Success - return user profile based on decoded token
-      logger.debug(`Profile endpoint - Successfully verified token for ${decoded.username}`);
+      // Log success
+      logger.debug(`Profile endpoint - Successfully verified token for ${decoded.username} (${decoded.role})`);
       
+      // Return user profile
       res.json({
         user: {
           id: decoded.id,

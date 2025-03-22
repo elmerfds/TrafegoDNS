@@ -89,7 +89,24 @@ class ApiRouter {
     this.router.use('/settings', settingsRoutes(this.config, this.stateManager));
     this.router.use('/status', statusRoutes(this.dnsManager, this.stateManager));
     this.router.use('/mode', modeRoutes(this.stateManager, this.config));
-    this.router.use('/profile', profileRoutes());
+    
+    // Apply authentication middleware to all auth routes except the ones specified in isPublicRoute
+    this.router.use('/auth', (req, res, next) => {
+      // Skip middleware for login and OIDC-related endpoints
+      if (req.path === '/login' || 
+          req.path === '/status' || 
+          req.path === '/oidc/login' || 
+          req.path === '/oidc/callback') {
+        return next();
+      }
+      
+      // For all other auth routes, apply the auth middleware
+      const { verifyAuthToken } = require('./middleware/auth');
+      verifyAuthToken(req, res, next);
+    });
+    
+    // After middleware setup, register auth routes
+    this.router.use('/auth', authRoutes(this.authService, this.config));
   }
 }
 
