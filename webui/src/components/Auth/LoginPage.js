@@ -76,7 +76,7 @@ const LoginPage = () => {
             <Card.Body className="p-4">
               <div className="text-center mb-4">
                 <img
-                  src="/api/placeholder/120/120"
+                  src="/images/placeholder-120-120.svg"
                   alt="TráfegoDNS Logo"
                   width="80"
                   height="80"
