@@ -1,10 +1,14 @@
 # Stage 1: Build the WebUI
 FROM node:20-alpine AS webui-build
-WORKDIR /app
-COPY webui/package*.json ./webui/
 WORKDIR /app/webui
+# Copy package files first for better caching
+COPY webui/package*.json ./
 RUN npm install
+# Now copy all webui source files
 COPY webui/ ./
+# Create build directory
+RUN mkdir -p build
+# Execute the build script
 RUN npm run build
 
 # Stage 2: Generate package-lock.json
@@ -20,7 +24,8 @@ WORKDIR /app
 COPY --from=dependencies /app/package*.json ./
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY src ./src
-COPY --from=webui-build /app/webui/dist ./webui/dist
+# Copy from the build output directory (React typically uses build, not dist)
+COPY --from=webui-build /app/webui/build ./webui/dist
 
 # Stage 4: Create the production image with s6-overlay
 FROM node:20-alpine
