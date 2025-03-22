@@ -1,17 +1,15 @@
 # Stage 1: Build the WebUI
 FROM node:20-alpine AS webui-build
-WORKDIR /app
-COPY webui/package*.json ./webui/
 WORKDIR /app/webui
+# Copy package files first for better caching
+COPY webui/package*.json ./
 RUN npm install
+# Now copy all webui source files
 COPY webui/ ./
-RUN mkdir -p dist
-# We're creating an empty public folder as a fallback
-RUN mkdir -p public
-# Create a simple index.html if build fails
-RUN echo '<html><body><h1>TráfegoDNS API</h1><p>Web UI not available. API is accessible at /api</p></body></html>' > public/index.html
-# Try to build, but don't fail if it errors
-RUN npm run build || cp -r public dist/
+# Create build directory
+RUN mkdir -p build
+# Execute the build script
+RUN npm run build
 
 # Stage 2: Generate package-lock.json
 FROM node:20-alpine AS dependencies
@@ -26,7 +24,8 @@ WORKDIR /app
 COPY --from=dependencies /app/package*.json ./
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY src ./src
-COPY --from=webui-build /app/webui/dist ./webui/dist
+# Copy from the build output directory (React typically uses build, not dist)
+COPY --from=webui-build /app/webui/build ./webui/dist
 
 # Stage 4: Create the production image with s6-overlay
 FROM node:20-alpine
