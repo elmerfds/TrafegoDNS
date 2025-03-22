@@ -12,6 +12,7 @@ const recordsRoutes = require('./routes/records');
 const settingsRoutes = require('./routes/settings');
 const statusRoutes = require('./routes/status');
 const modeRoutes = require('./routes/mode');
+const placeholderImageMiddleware = require('./middleware/placeholderImage');
 
 class ApiRouter {
   constructor(app, config, eventBus, dnsManager, stateManager) {
@@ -38,6 +39,9 @@ class ApiRouter {
    * Set up middleware for the API
    */
   setupMiddleware() {
+    // Add placeholder image middleware before API auth
+    this.router.use('/placeholder', placeholderImageMiddleware);
+
     // Add API version header to all responses
     this.router.use((req, res, next) => {
       res.setHeader('X-TrafegoDNS-Version', this.config.version);
