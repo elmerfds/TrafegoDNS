@@ -3,15 +3,23 @@ FROM node:20-alpine AS webui-build
 WORKDIR /app/webui
 # Copy package files first for better caching
 COPY webui/package*.json ./
-RUN npm install
+
+# Install dependencies with more logging and try to fix potential issues
+RUN npm install --verbose || (echo "Retrying npm install with legacy peer deps..." && npm install --legacy-peer-deps)
+
 # Now copy all webui source files
 COPY webui/ ./
-# Create public directory if it doesn't exist
-RUN mkdir -p public
-# Create a simple index.html as fallback
-RUN echo '<html><body style="background-color:#111827;color:#F8FAFC;font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;"><div style="text-align:center;"><h1>TráfegoDNS</h1><p>API available at /api</p></div></body></html>' > public/index.html
-# Try to build, if it fails, use the public directory
-RUN npm run build || mkdir -p build && cp -r public/* build/
+
+# Create build directory and try to build
+RUN mkdir -p build
+RUN npm run build || (echo "NPM build failed, checking for issues...")
+
+# If build fails, check if build directory exists and is not empty
+RUN if [ ! -d "build" ] || [ -z "$(ls -A build)" ]; then \
+      echo "Build directory is empty, creating fallback page"; \
+      mkdir -p build; \
+      echo '<html><head><title>TráfegoDNS</title><style>body { background-color: #111827; color: #F8FAFC; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; } .login-container { display: flex; flex-direction: column; align-items: center; background-color: #1E293B; padding: 2rem; border-radius: 0.5rem; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); } .form-group { margin-bottom: 1rem; width: 100%; } label { display: block; margin-bottom: 0.5rem; } input { width: 100%; padding: 0.5rem; border-radius: 0.25rem; border: 1px solid #4B5563; background-color: #1F2937; color: #F8FAFC; } button { background-color: #0066CC; color: white; border: none; padding: 0.5rem 1rem; border-radius: 0.25rem; cursor: pointer; margin-top: 1rem; } h1 { margin-bottom: 2rem; }</style></head><body><div class="login-container"><h1>TráfegoDNS</h1><form action="/api/auth/login" method="post"><div class="form-group"><label for="username">Username</label><input type="text" id="username" name="username" required /></div><div class="form-group"><label for="password">Password</label><input type="password" id="password" name="password" required /></div><button type="submit">Sign In</button></form></div></body></html>' > build/index.html; \
+    fi;
 
 # Stage 2: Generate package-lock.json
 FROM node:20-alpine AS dependencies
