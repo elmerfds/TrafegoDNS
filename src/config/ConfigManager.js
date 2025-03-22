@@ -147,6 +147,21 @@ class ConfigManager {
       logger.debug(`Updated A record defaults with IP: ${this.recordDefaults.A.content}`);
     });
 
+    // Authentication configuration
+    this.authEnabled = process.env.AUTH_ENABLED === 'true' || false;
+    this.jwtSecret = process.env.JWT_SECRET || 'trafegodns-secret-key';
+    this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
+    this.defaultAdminPassword = process.env.DEFAULT_ADMIN_PASSWORD;
+    this.frontendUrl = process.env.FRONTEND_URL || '/';
+
+    // OIDC configuration
+    this.oidcEnabled = process.env.OIDC_ENABLED === 'true' || false;
+    this.oidcProvider = process.env.OIDC_PROVIDER;
+    this.oidcClientId = process.env.OIDC_CLIENT_ID;
+    this.oidcClientSecret = process.env.OIDC_CLIENT_SECRET;
+    this.oidcRedirectUri = process.env.OIDC_REDIRECT_URI;
+    this.oidcScope = process.env.OIDC_SCOPE || 'openid profile email';    
+
     // Set up periodic IP refresh
     if (this.ipRefreshInterval > 0) {
       setInterval(() => this.updatePublicIPs(), this.ipRefreshInterval);
