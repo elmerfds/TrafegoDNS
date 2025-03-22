@@ -24,8 +24,8 @@ const LoginPage = () => {
     if (token) {
       // Store token and redirect
       localStorage.setItem('token', token);
-      navigate('/dashboard');
-      window.location.reload(); // Force reload to apply the token
+      // Force reload to apply the token and reset the app state
+      window.location.href = '/dashboard';
     }
   }, [location, navigate]);
 
@@ -61,14 +61,14 @@ const LoginPage = () => {
     setIsSubmitting(true);
 
     try {
-      // Call the login API directly to see the response
+      // Use authService directly instead of the login function from context
       const response = await authService.login(username, password);
       
       if (response.data && response.data.token) {
         // Store token in localStorage
         localStorage.setItem('token', response.data.token);
         
-        // Force reload to apply the token and redirect
+        // Force a full page reload to restart the app with the new token
         window.location.href = '/dashboard';
       } else {
         setError('Login failed. Invalid response from server.');

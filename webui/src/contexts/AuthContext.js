@@ -55,7 +55,6 @@ export const AuthProvider = ({ children }) => {
       setCurrentUser(user);
       
       toast.success('Login successful');
-      navigate('/dashboard');
       return true;
     } catch (error) {
       console.error('Login error:', error);
@@ -75,7 +74,7 @@ export const AuthProvider = ({ children }) => {
       setIsLoading(false);
     }
   };
-
+  
   const logout = () => {
     localStorage.removeItem('token');
     setToken(null);
