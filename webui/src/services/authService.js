@@ -13,8 +13,19 @@ const authService = {
   
   // Get current user profile
   getProfile: () => {
-    // return api.get('/auth/profile');
-    return api.get('/profile');
+    // Make request to the profile endpoint
+    return api.get('/profile').then(response => {
+      // Add this console log to see the exact response structure
+      console.log("Profile response:", response.data);
+      
+      // Make sure we have the expected structure
+      if (!response.data || !response.data.user) {
+        console.error("Unexpected profile response format:", response.data);
+        throw new Error("Invalid profile response format");
+      }
+      
+      return response;
+    });
   },
   
   // Get all users (admin only)
