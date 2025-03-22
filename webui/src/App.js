@@ -1,6 +1,9 @@
+// src/App.js
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Container } from 'react-bootstrap';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import { AuthProvider } from './contexts/AuthContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import LoginPage from './components/Auth/LoginPage';
@@ -31,25 +34,40 @@ const App = () => {
   }
 
   return (
-    <AuthProvider>
-      <SettingsProvider>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          
-          <Route element={<PrivateRoute><MainLayout /></PrivateRoute>}>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/records" element={<RecordsPage />} />
-            <Route path="/providers" element={<ProvidersPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/users" element={<UsersPage />} />
-            <Route path="/status" element={<StatusPage />} />
-          </Route>
-          
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </SettingsProvider>
-    </AuthProvider>
+    <>
+      <AuthProvider>
+        <SettingsProvider>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            
+            <Route element={<PrivateRoute><MainLayout /></PrivateRoute>}>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/records" element={<RecordsPage />} />
+              <Route path="/providers" element={<ProvidersPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/users" element={<UsersPage />} />
+              <Route path="/status" element={<StatusPage />} />
+            </Route>
+            
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </SettingsProvider>
+      </AuthProvider>
+      
+      <ToastContainer 
+        position="top-right"
+        autoClose={5000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="dark"
+      />
+    </>
   );
 };
 

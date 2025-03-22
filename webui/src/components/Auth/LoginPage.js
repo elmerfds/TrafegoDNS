@@ -1,82 +1,60 @@
-// webui/src/components/Auth/LoginPage.js
+// src/components/Auth/LoginPage.js
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Form, Button, Alert, Spinner } from 'react-bootstrap';
-import { useAuth } from '../../contexts/AuthContext';
-import { Navigate, useNavigate, useLocation } from 'react-router-dom';
-import authService from '../../services/authService';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
+import axios from 'axios';
 
 const LoginPage = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [validated, setValidated] = useState(false);
-  const [oidcEnabled, setOidcEnabled] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const { currentUser, login, isLoading } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
 
-  // Check for token in URL (for OIDC callback)
+  // Check if we're already logged in
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const token = params.get('token');
-    
+    const token = localStorage.getItem('token');
     if (token) {
-      // Store token and redirect
-      localStorage.setItem('token', token);
-      // Force reload to apply the token and reset the app state
+      // We have a token, redirect to dashboard
       window.location.href = '/dashboard';
     }
-  }, [location, navigate]);
-
-  useEffect(() => {
-    const checkAuthStatus = async () => {
-      try {
-        const response = await authService.getAuthStatus();
-        setOidcEnabled(response.data.oidc);
-      } catch (error) {
-        console.error('Failed to check auth status:', error);
-      }
-    };
-
-    checkAuthStatus();
   }, []);
-  
-  // Redirect if already logged in
-  if (currentUser) {
-    return <Navigate to="/dashboard" />;
-  }
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    const form = event.currentTarget;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     
-    if (form.checkValidity() === false) {
-      event.stopPropagation();
-      setValidated(true);
+    if (!username || !password) {
+      setError('Username and password are required');
       return;
     }
 
+    setIsLoading(true);
     setError('');
-    setIsSubmitting(true);
 
     try {
-      // Use authService directly instead of the login function from context
-      const response = await authService.login(username, password);
-      
+      // Direct API call without using the service
+      const response = await axios.post('/api/auth/login', {
+        username,
+        password
+      });
+
       if (response.data && response.data.token) {
         // Store token in localStorage
         localStorage.setItem('token', response.data.token);
         
-        // Force a full page reload to restart the app with the new token
+        // Show success toast
+        toast.success('Login successful');
+        
+        // Redirect to dashboard with full page reload
         window.location.href = '/dashboard';
       } else {
-        setError('Login failed. Invalid response from server.');
+        setError('Invalid response from server');
       }
     } catch (err) {
       console.error('Login error:', err);
-      let errorMessage = 'Login failed. Please check your credentials.';
       
+      let errorMessage = 'Login failed. Please check your credentials.';
       if (err.response) {
         if (err.response.status === 401) {
           errorMessage = 'Invalid username or password';
@@ -87,24 +65,12 @@ const LoginPage = () => {
       
       setError(errorMessage);
     } finally {
-      setIsSubmitting(false);
+      setIsLoading(false);
     }
   };
 
-  const handleOidcLogin = () => {
-    window.location.href = '/api/auth/oidc/login';
-  };
-
-  if (isLoading) {
-    return (
-      <Container className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
-        <Spinner animation="border" variant="primary" />
-      </Container>
-    );
-  }
-
   return (
-    <Container fluid className="bg-body d-flex align-items-center justify-content-center" style={{ minHeight: '100vh', padding: '1rem' }}>
+    <Container fluid className="bg-dark d-flex align-items-center justify-content-center" style={{ minHeight: '100vh', padding: '1rem' }}>
       <Row className="justify-content-center w-100">
         <Col xs={12} sm={10} md={8} lg={6} xl={4}>
           <Card className="shadow-lg border-0">
@@ -123,7 +89,7 @@ const LoginPage = () => {
               
               {error && <Alert variant="danger">{error}</Alert>}
               
-              <Form noValidate validated={validated} onSubmit={handleSubmit}>
+              <Form onSubmit={handleSubmit}>
                 <Form.Group className="mb-3">
                   <Form.Label>Username</Form.Label>
                   <Form.Control
@@ -134,9 +100,6 @@ const LoginPage = () => {
                     placeholder="Enter your username"
                     autoComplete="username"
                   />
-                  <Form.Control.Feedback type="invalid">
-                    Please enter your username.
-                  </Form.Control.Feedback>
                 </Form.Group>
                 
                 <Form.Group className="mb-4">
@@ -149,9 +112,6 @@ const LoginPage = () => {
                     placeholder="Enter your password"
                     autoComplete="current-password"
                   />
-                  <Form.Control.Feedback type="invalid">
-                    Please enter your password.
-                  </Form.Control.Feedback>
                 </Form.Group>
                 
                 <div className="d-grid mb-3">
@@ -159,9 +119,9 @@ const LoginPage = () => {
                     type="submit" 
                     variant="primary" 
                     size="lg" 
-                    disabled={isSubmitting}
+                    disabled={isLoading}
                   >
-                    {isSubmitting ? (
+                    {isLoading ? (
                       <>
                         <Spinner
                           as="span"
@@ -178,19 +138,6 @@ const LoginPage = () => {
                     )}
                   </Button>
                 </div>
-                
-                {oidcEnabled && (
-                  <div className="d-grid">
-                    <Button 
-                      variant="outline-secondary" 
-                      size="lg" 
-                      onClick={handleOidcLogin}
-                      disabled={isSubmitting}
-                    >
-                      Sign in with OIDC
-                    </Button>
-                  </div>
-                )}
               </Form>
             </Card.Body>
           </Card>
