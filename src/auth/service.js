@@ -608,17 +608,23 @@ class AuthService {
    * @returns {boolean} True if user has required role or higher
    */
   hasRole(user, requiredRole) {
-    // If auth is disabled, always return true
+    // If auth is globally disabled, always return true
     if (!this.authEnabled) {
       return true;
     }
     
     if (!user || !user.role) return false;
     
-    const userRoleLevel = this.ROLE_HIERARCHY[user.role] || 0;
-    const requiredRoleLevel = this.ROLE_HIERARCHY[requiredRole] || 0;
+    // Role hierarchy: super_admin > admin > user
+    if (requiredRole === this.ROLES.USER) {
+      return [this.ROLES.USER, this.ROLES.ADMIN, this.ROLES.SUPER_ADMIN].includes(user.role);
+    } else if (requiredRole === this.ROLES.ADMIN) {
+      return [this.ROLES.ADMIN, this.ROLES.SUPER_ADMIN].includes(user.role);
+    } else if (requiredRole === this.ROLES.SUPER_ADMIN) {
+      return user.role === this.ROLES.SUPER_ADMIN;
+    }
     
-    return userRoleLevel >= requiredRoleLevel;
+    return false;
   }
   
   /**
