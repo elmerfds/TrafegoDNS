@@ -37,14 +37,15 @@ const UsersPage = () => {
 
   useEffect(() => {
     // Check if user has permissions to view this page
-    if (!isAdmin) {
+    // Replace isAdmin with the hasRole function that properly checks for both admin and super_admin
+    if (!hasRole('admin')) {
       toast.error("You don't have permission to view this page");
       navigate('/dashboard');
       return;
     }
     
     fetchUsers();
-  }, [isAdmin, navigate]);
+  }, [hasRole, navigate]);
 
   const fetchUsers = async () => {
     setIsLoading(true);
