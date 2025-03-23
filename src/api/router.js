@@ -83,6 +83,10 @@ class ApiRouter {
       res.json({ status: 'ok' });
     });
     
+    // Register auth routes first, with appropriate middleware
+    const authRouter = createAuthRouter(this.authService, this.config);
+    this.router.use('/auth', authRouter);    
+
     // Register API route groups
     this.router.use('/providers', providerRoutes(this.stateManager, this.config));
     this.router.use('/dns', dnsRoutes(this.dnsManager, this.stateManager));
@@ -91,6 +95,9 @@ class ApiRouter {
     this.router.use('/status', statusRoutes(this.dnsManager, this.stateManager));
     this.router.use('/mode', modeRoutes(this.stateManager, this.config));
     this.router.use('/profile', profileRoutes());
+    
+    // Make sure authService is correctly assigned
+    this.router.locals.authService = this.authService;    
     
     // Apply authentication middleware to all auth routes except the ones specified in isPublicRoute
     this.router.use('/auth', (req, res, next) => {

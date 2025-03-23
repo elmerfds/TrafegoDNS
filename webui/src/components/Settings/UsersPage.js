@@ -51,10 +51,18 @@ const UsersPage = () => {
       setUsers(response.data.users || []);
     } catch (error) {
       console.error('Error fetching users:', error);
-      // Only show toast once
-      if (!toast.isActive('users-error')) {
-        toast.error('Failed to load users', { toastId: 'users-error' });
+      
+      // Check if it's a permission error
+      if (error.response && error.response.status === 403) {
+        toast.error("You don't have permission to view this page");
+        navigate('/dashboard');
+      } else {
+        // Only show toast once for other errors
+        if (!toast.isActive('users-error')) {
+          toast.error('Failed to load users', { toastId: 'users-error' });
+        }
       }
+      
       // Set an empty array to prevent undefined errors
       setUsers([]);
     } finally {
