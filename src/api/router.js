@@ -101,10 +101,7 @@ class ApiRouter {
     this.router.use('/settings', verifyAuthToken, settingsRoutes(this.config, this.stateManager));
     this.router.use('/status', verifyAuthToken, statusRoutes(this.dnsManager, this.stateManager));
     this.router.use('/mode', verifyAuthToken, modeRoutes(this.stateManager, this.config));
-    
-    // Protected auth routes (users, profiles, etc.) that need authentication
-    this.router.use('/auth/users', verifyAuthToken, authRoutes(this.authService, this.config));
-    
+      
     // Catch-all error handler - should be last
     this.router.use((err, req, res, next) => {
       logger.error(`API Error: ${err.message}`);
