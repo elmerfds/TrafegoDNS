@@ -30,8 +30,10 @@ const UsersPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const { currentUser, hasRole } = useAuth();
-  const isAdmin = hasRole('admin');
   const navigate = useNavigate();
+  
+  // Check if user is admin or super admin
+  const isAdmin = hasRole('admin');
 
   useEffect(() => {
     // Check if user has permissions to view this page
@@ -47,14 +49,31 @@ const UsersPage = () => {
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
+      // Only try to fetch if we have admin permissions
+      if (!isAdmin) {
+        throw new Error("Insufficient permissions to view users");
+      }
+      
       const response = await authService.getUsers();
-      setUsers(response.data.users || []);
+      if (response.data && response.data.users) {
+        setUsers(response.data.users);
+      } else {
+        // Handle unexpected response format
+        console.warn("Unexpected users response format:", response.data);
+        setUsers([]);
+      }
     } catch (error) {
       console.error('Error fetching users:', error);
       
+      // Set empty array to prevent undefined errors
+      setUsers([]);
+      
       // Check if it's a permission error
       if (error.response && error.response.status === 403) {
-        toast.error("You don't have permission to view this page");
+        // Only show toast once
+        if (!toast.isActive('permission-error')) {
+          toast.error("You don't have permission to view users", { toastId: 'permission-error' });
+        }
         navigate('/dashboard');
       } else {
         // Only show toast once for other errors
@@ -62,9 +81,6 @@ const UsersPage = () => {
           toast.error('Failed to load users', { toastId: 'users-error' });
         }
       }
-      
-      // Set an empty array to prevent undefined errors
-      setUsers([]);
     } finally {
       setIsLoading(false);
     }
@@ -110,6 +126,8 @@ const UsersPage = () => {
       
       if (error.response && error.response.status === 409) {
         toast.error('Username or email already exists');
+      } else if (error.response && error.response.status === 403) {
+        toast.error('You do not have permission to create users');
       } else {
         toast.error('Failed to create user');
       }
@@ -129,7 +147,12 @@ const UsersPage = () => {
       fetchUsers();
     } catch (error) {
       console.error('Error updating user role:', error);
-      toast.error('Failed to update user role');
+      
+      if (error.response && error.response.status === 403) {
+        toast.error('You do not have permission to update this user');
+      } else {
+        toast.error('Failed to update user role');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -144,6 +167,23 @@ const UsersPage = () => {
       default:
         return <Badge bg="info">User</Badge>;
     }
+  };
+
+  // Determine if current user can edit another user based on roles
+  const canEditUser = (user) => {
+    // User can't edit themselves
+    if (user.username === currentUser.username) return false;
+    
+    // Super admins can edit anyone
+    if (hasRole('super_admin')) return true;
+    
+    // Regular admins can't edit other admins or super admins
+    if (hasRole('admin') && !hasRole('super_admin')) {
+      return user.role !== 'admin' && user.role !== 'super_admin';
+    }
+    
+    // Regular users can't edit anyone
+    return false;
   };
 
   if (isLoading) {
@@ -196,15 +236,14 @@ const UsersPage = () => {
                     <td>{user.username}</td>
                     <td>{user.email || '-'}</td>
                     <td>{getRoleBadge(user.role)}</td>
-                    <td>{new Date(user.created_at).toLocaleString()}</td>
+                    <td>{user.created_at ? new Date(user.created_at).toLocaleString() : '-'}</td>
                     <td>{user.last_login ? new Date(user.last_login).toLocaleString() : 'Never'}</td>
                     <td>
-                      {user.username !== currentUser.username && (
+                      {canEditUser(user) && (
                         <Button
                           size="sm"
                           variant="outline-primary"
                           onClick={() => handleEditUser(user)}
-                          disabled={!hasRole('super_admin') && user.role === 'admin'}
                         >
                           <FontAwesomeIcon icon={faEdit} />
                         </Button>
@@ -307,47 +346,47 @@ const UsersPage = () => {
             <Form.Group className="mb-3">
               <Form.Label>Role</Form.Label>
               <Form.Select
-               name="role"
-               value={formData.role}
-               onChange={handleInputChange}
-             >
-               <option value="user">User</option>
-               {hasRole('super_admin') && (
-                 <>
-                   <option value="admin">Admin</option>
-                   <option value="super_admin">Super Admin</option>
-                 </>
-               )}
-             </Form.Select>
-           </Form.Group>
-         </Modal.Body>
-         <Modal.Footer>
-           <Button variant="secondary" onClick={() => setShowEditModal(false)}>
-             <FontAwesomeIcon icon={faTimes} className="me-1" />
-             Cancel
-           </Button>
-           <Button 
-             variant="primary" 
-             type="submit"
-             disabled={isSubmitting}
-           >
-             {isSubmitting ? (
-               <>
-                 <Spinner size="sm" animation="border" className="me-1" />
-                 Updating...
-               </>
-             ) : (
-               <>
-                 <FontAwesomeIcon icon={faSave} className="me-1" />
-                 Update User
-               </>
-             )}
-           </Button>
-         </Modal.Footer>
-       </Form>
-     </Modal>
-   </>
- );
+                name="role"
+                value={formData.role}
+                onChange={handleInputChange}
+              >
+                <option value="user">User</option>
+                {hasRole('super_admin') && (
+                  <>
+                    <option value="admin">Admin</option>
+                    <option value="super_admin">Super Admin</option>
+                  </>
+                )}
+              </Form.Select>
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowEditModal(false)}>
+              <FontAwesomeIcon icon={faTimes} className="me-1" />
+              Cancel
+            </Button>
+            <Button 
+              variant="primary" 
+              type="submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <Spinner size="sm" animation="border" className="me-1" />
+                  Updating...
+                </>
+              ) : (
+                <>
+                  <FontAwesomeIcon icon={faSave} className="me-1" />
+                  Update User
+                </>
+              )}
+            </Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
+    </>
+  );
 };
 
 export default UsersPage;

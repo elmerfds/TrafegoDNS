@@ -143,6 +143,7 @@ export const AuthProvider = ({ children }) => {
     if (!currentUser) return false;
     
     // Role hierarchy: super_admin > admin > user
+    // Make sure to consider both 'admin' and 'super_admin' as valid admin roles
     switch (requiredRole) {
       case 'user':
         return ['user', 'admin', 'super_admin'].includes(currentUser.role);
