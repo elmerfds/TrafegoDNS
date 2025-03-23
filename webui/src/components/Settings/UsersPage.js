@@ -36,24 +36,17 @@ const UsersPage = () => {
   const isAdmin = hasRole('admin');
 
   useEffect(() => {
-    // Check if user has permissions to view this page
-    // Replace isAdmin with the hasRole function that properly checks for both admin and super_admin
-    if (!hasRole('admin')) {
-      toast.error("You don't have permission to view this page");
-      navigate('/dashboard');
-      return;
+    // Only fetch users if we're authenticated
+    if (currentUser) {
+      fetchUsers();
     }
-    
-    fetchUsers();
-  }, [hasRole, navigate]);
-
+  }, [currentUser]);
+  
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
-      // Only try to fetch if we have admin permissions
-      if (!isAdmin) {
-        throw new Error("Insufficient permissions to view users");
-      }
+      console.log('Current user role:', currentUser?.role);
+      console.log('Has admin role:', hasRole('admin'));
       
       const response = await authService.getUsers();
       if (response.data && response.data.users) {
@@ -71,16 +64,9 @@ const UsersPage = () => {
       
       // Check if it's a permission error
       if (error.response && error.response.status === 403) {
-        // Only show toast once
-        if (!toast.isActive('permission-error')) {
-          toast.error("You don't have permission to view users", { toastId: 'permission-error' });
-        }
-        navigate('/dashboard');
+        toast.error("You don't have permission to view users");
       } else {
-        // Only show toast once for other errors
-        if (!toast.isActive('users-error')) {
-          toast.error('Failed to load users', { toastId: 'users-error' });
-        }
+        toast.error('Failed to load users: ' + (error.message || 'Unknown error'));
       }
     } finally {
       setIsLoading(false);

@@ -147,6 +147,9 @@ function isPublicRoute(path) {
 function isSuperAdminRoute(path) {
   // Routes that should only be accessible by super_admin
   const superAdminRoutes = [
+    '/auth/users',
+    '/api/auth/users',
+    '/users',
     '/auth/users/create-admin',
     '/api/auth/users/create-admin'
   ];
@@ -159,7 +162,9 @@ function isSuperAdminRoute(path) {
   // For more specific routes that include parameters
   return superAdminRoutes.some(route => 
     path.endsWith(route) || 
-    path.includes(`${route}/`)
+    path.includes(`${route}/`) ||
+    // Match paths that might have query parameters
+    path.split('?')[0].endsWith(route)
   );
 }
 

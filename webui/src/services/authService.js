@@ -41,9 +41,15 @@ const authService = {
   
   // Get all users (admin only)
   getUsers: () => {
-    return api.get('/auth/users').catch(error => {
+    // Add debug output
+    console.log('Requesting users list with token:', localStorage.getItem('token')?.substring(0, 20) + '...');
+    return api.get('/auth/users').then(response => {
+      console.log('Users response successful:', response.data);
+      return response;
+    }).catch(error => {
       // Log detailed error for debugging
       console.error('Error in getUsers:', error.response?.data || error.message);
+      console.error('Error status:', error.response?.status);
       
       if (error.response?.status === 403) {
         // Handle permission error specifically
