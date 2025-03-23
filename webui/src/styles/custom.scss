@@ -69,6 +69,7 @@ $body-color: #F8FAFC;   // Light text
   td, th {
     border-color: rgba(255, 255, 255, 0.1);
     color: $light !important; // Force light color for all cells
+    padding: 0.5rem 0.75rem !important; // Reduce padding to fit more content
   }
 }
 
@@ -215,4 +216,47 @@ a.sidebar-link {
   &:hover {
     background: rgba(255, 255, 255, 0.3);
   }
+}
+
+// ======================================
+// Layout fixes for content area padding
+// ======================================
+
+// Fix main content area padding
+main.flex-grow-1 {
+  padding: 1.5rem !important; // Smaller, consistent padding
+}
+
+// Make content area use more space
+.content-area-expanded {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+// Ensure equal padding on both sides of the content
+.container-fluid {
+  padding-left: 1rem !important;
+  padding-right: 1rem !important;
+  max-width: 1400px; // Prevent excessive stretching
+  margin: 0 auto; // Center the container
+}
+
+// Responsive adjustments for smaller screens
+@media (max-width: 768px) {
+  .container-fluid {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+}
+
+// Reduce card padding to fit more content
+.card-body {
+  padding: 1rem !important;
+}
+
+// Make footer more compact
+footer.py-3 {
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
 }
