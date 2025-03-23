@@ -12,36 +12,30 @@ const logger = require('../../utils/logger');
  */
 function verifyAuthToken(req, res, next) {
   const path = req.path;
+  const fullPath = req.baseUrl + path; // Get the complete path including base URL
   
-  // Log all authentication requests to help debugging
-  logger.debug(`Auth check for path: ${path}, method: ${req.method}`);
+  logger.debug(`Auth middleware for full path: ${fullPath}, path: ${path}`);
   
-  // More detailed logging to help with debugging
-  logger.debug(`Auth middleware processing request for path: ${path}`);
-  
-  // Only skip authentication for specific public routes
-  if (isPublicRoute(path)) {
-    logger.debug(`Skipping auth check for public route: ${path}`);
-    return next();
-  }
-  
-  // Skip authentication check if AUTH_ENABLED is false
-  if (process.env.AUTH_ENABLED && process.env.AUTH_ENABLED.toLowerCase() === 'false') {
-    logger.debug(`Authentication disabled via environment variable, skipping auth check for ${path}`);
-    // Set a dummy admin user for the request
-    req.user = { 
-      id: 'system',
-      username: 'system',
-      role: 'super_admin' 
-    };
-    return next();
-  }
-  
-  // Get token from headers
+  // Get full authorization header for debugging
   const authHeader = req.headers.authorization;
+  logger.debug(`Auth header present: ${!!authHeader}, for path: ${fullPath}`);
   
+  // Handle public routes
+  if (isPublicRoute(fullPath) || isPublicRoute(path)) {
+    logger.debug(`Skipping auth for public route: ${fullPath}`);
+    return next();
+  }
+  
+  // Skip auth if disabled
+  if (process.env.AUTH_ENABLED && process.env.AUTH_ENABLED.toLowerCase() === 'false') {
+    logger.debug(`Auth disabled via env, skipping check for ${fullPath}`);
+    req.user = { id: 'system', username: 'system', role: 'super_admin' };
+    return next();
+  }
+  
+  // Check for token
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    logger.debug(`Unauthorized access attempt to ${path} (no token or invalid token format)`);
+    logger.debug(`Unauthorized - no/invalid token format for ${fullPath}`);
     return res.status(401).json({
       error: 'Unauthorized',
       message: 'Authentication token is required'
@@ -50,13 +44,13 @@ function verifyAuthToken(req, res, next) {
   
   // Extract token
   const token = authHeader.split(' ')[1];
-  logger.debug(`Token received for ${path} (length: ${token.length})`);
+  logger.debug(`Token length: ${token.length} for path: ${fullPath}`);
   
-  // Get auth service from app
-  const authService = req.app.get('authService');
+  // Get auth service
+  const authService = req.app.get('authService') || req.app.locals.authService;
   
   if (!authService) {
-    logger.error('Auth service not available in middleware');
+    logger.error(`Auth service not available for path: ${fullPath}`);
     return res.status(500).json({
       error: 'Internal Server Error',
       message: 'Authentication service not available'
@@ -64,35 +58,27 @@ function verifyAuthToken(req, res, next) {
   }
   
   try {
-    // Verify token
+    // Very explicitly verify token
     const decoded = authService.verifyToken(token);
-    
     if (!decoded) {
-      logger.debug(`Token verification failed for ${path} (null result)`);
+      logger.warn(`Token verification failed for path: ${fullPath}`);
       return res.status(401).json({
         error: 'Unauthorized',
         message: 'Invalid or expired token'
       });
     }
     
-    // Log successful token verification
-    logger.debug(`Token verified successfully for user: ${decoded.username} (${decoded.role})`);
-    
-    // Set user in request
+    // Set user info
     req.user = decoded;
+    logger.debug(`Auth successful - User: ${decoded.username}, Role: ${decoded.role}, Path: ${fullPath}`);
     
-    // Special logging for users endpoint
-    if (path.includes('/auth/users') || path.includes('/users')) {
-      logger.debug(`User ${decoded.username} with role ${decoded.role} accessing users endpoint`);
-    }
-    
-    next();
+    // Continue
+    return next();
   } catch (error) {
-    // Handle any exceptions during token verification
-    logger.error(`Token verification error for ${path}: ${error.message}`);
+    logger.error(`Token verification error for ${fullPath}: ${error.message}`);
     return res.status(401).json({
       error: 'Unauthorized',
-      message: 'Token verification failed'
+      message: `Token verification failed: ${error.message}`
     });
   }
 }

@@ -79,28 +79,27 @@ class ApiRouter {
       res.json({ status: 'ok' });
     });
     
-    // Public auth routes that don't need authentication
-    this.router.post('/auth/login', authRoutes(this.authService, this.config));
-    this.router.get('/auth/status', authRoutes(this.authService, this.config));
-    this.router.get('/auth/oidc/login', authRoutes(this.authService, this.config));
-    this.router.get('/auth/oidc/callback', authRoutes(this.authService, this.config));
+    // Create a sub-router for auth endpoints for better organization
+    const authRouter = express.Router();
     
-    // IMPORTANT FIX: Create auth router instance once
-    const authRouter = authRoutes(this.authService, this.config);
+    // Public auth routes (no authentication)
+    authRouter.post('/login', (req, res) => authRoutes(this.authService, this.config)(req, res));
+    authRouter.get('/status', (req, res) => authRoutes(this.authService, this.config)(req, res));
+    authRouter.get('/oidc/login', (req, res) => authRoutes(this.authService, this.config)(req, res));
+    authRouter.get('/oidc/callback', (req, res) => authRoutes(this.authService, this.config)(req, res));
     
-    // Add whoami route separately to ensure it works consistently
-    this.router.get('/auth/whoami', verifyAuthToken, (req, res) => {
-      authRouter(req, res);
+    // Protected auth routes with authentication
+    authRouter.get('/users', verifyAuthToken, (req, res) => {
+      // Explicitly handle the users route with clear logging
+      logger.debug(`Users auth route accessed with user: ${req.user?.username}, role: ${req.user?.role}`);
+      // Forward to the auth routes handler
+      authRoutes(this.authService, this.config)(req, res);
     });
     
-    // Add users route with authentication middleware
-    this.router.get('/auth/users', verifyAuthToken, (req, res) => {
-      // This will make sure that the req.user from verifyAuthToken is available
-      // to the users endpoint handler
-      authRouter(req, res);
-    });
-  
-    // Profile routes and authenticated routes with auth middleware
+    // Mount the auth router
+    this.router.use('/auth', authRouter);
+    
+    // Other protected routes
     this.router.use('/profile', verifyAuthToken, profileRoutes());
     this.router.use('/providers', verifyAuthToken, providerRoutes(this.stateManager, this.config));
     this.router.use('/dns', verifyAuthToken, dnsRoutes(this.dnsManager, this.stateManager));

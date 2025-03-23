@@ -233,33 +233,34 @@ function createAuthRouter(authService, config) {
    */
   router.get('/users', async (req, res) => {
     try {
-      // Debug logging
-      logger.debug(`Users endpoint accessed by ${req.user?.username} with role ${req.user?.role}`);
+      // More explicit logging for debugging
+      logger.debug(`Users handler called with req.user: ${JSON.stringify(req.user || 'undefined')}`);
       
-      // Check if the current user exists and has admin/super_admin role
+      // Verify user is authenticated again (belt and suspenders)
       if (!req.user) {
-        logger.warn('Users endpoint attempted access without authentication');
+        logger.warn(`Users endpoint access failed - no authenticated user`);
         return res.status(401).json({
           error: 'Unauthorized',
           message: 'Authentication required to view users'
         });
       }
       
-      // Explicitly check roles - don't rely on middleware for this critical check
+      // Check if user has admin privileges
       if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
-        logger.warn(`User ${req.user.username} with role ${req.user.role} attempted to access users list`);
+        logger.warn(`Users endpoint access denied for ${req.user.username} (${req.user.role})`);
         return res.status(403).json({
           error: 'Forbidden',
           message: 'Only administrators can view all users'
         });
       }
       
+      // If we get here, the user is authenticated and has proper permissions
+      logger.info(`User ${req.user.username} (${req.user.role}) accessing users list`);
       const users = await authService.getAllUsers();
-      logger.debug(`Retrieved ${users.length} users successfully for ${req.user.username}`);
-      res.json({ users });
+      return res.json({ users });
     } catch (error) {
-      logger.error(`Error fetching users: ${error.message}`);
-      res.status(500).json({
+      logger.error(`Error in users endpoint: ${error.message}`);
+      return res.status(500).json({
         error: 'Internal Server Error',
         message: error.message
       });

@@ -46,20 +46,14 @@ const authService = {
   
   // Get all users (admin only)
   getUsers: () => {
-    // Log the token for debugging
-    const token = localStorage.getItem('token');
-    console.log('Token present for users request:', !!token);
-    
-    // Make API call
-    return api.get('/auth/users')
-      .then(response => {
-        console.log('Users response:', response.data);
-        return response;
-      })
-      .catch(error => {
-        console.error('Error fetching users:', error);
-        throw error;
-      });
+    // Note: should be /auth/users not /api/auth/users since baseURL already has /api
+    return api.get('/auth/users').then(response => {
+      console.log('Users response:', response.data);
+      return response;
+    }).catch(error => {
+      console.error('Error fetching users:', error);
+      throw error;
+    });
   },
   
   // Register a new user (admin only)
