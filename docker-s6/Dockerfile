@@ -13,12 +13,12 @@ COPY webui/ ./
 # Build the webui and fail if build fails
 RUN npm run build
 
-# Stage 2: Generate package-lock.json and install dependencies
+# Stage 2: Install dependencies
 FROM node:20-alpine AS dependencies
 WORKDIR /app
 COPY package.json ./
-COPY package-lock.json ./
-RUN npm ci --omit=dev
+# We'll use npm install instead of npm ci since the package-lock.json might not exist
+RUN npm install --omit=dev
 
 # Stage 3: Build the application
 FROM node:20-alpine AS build
@@ -94,14 +94,11 @@ RUN head -1 /etc/cont-init.d/* /etc/services.d/trafegodns/*
 RUN mkdir -p /config/data && \
     chown -R abc:abc /config/data
 
-# Set default environment variables
+# Set non-sensitive environment variables only
 ENV NODE_ENV=production \
     API_PORT=3000 \
     LOG_LEVEL=INFO \
-    AUTH_ENABLED=true \
-    JWT_SECRET=change_this_in_production \
-    JWT_EXPIRES_IN=24h \
-    DEFAULT_ADMIN_PASSWORD=admin
+    JWT_EXPIRES_IN=24h
 
 # Expose the API port
 EXPOSE 3000
