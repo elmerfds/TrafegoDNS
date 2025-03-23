@@ -1,5 +1,4 @@
 // src/styles/custom.scss
-// Custom theme based on TráfegoDNS logo
 
 // Color scheme derived from logo
 $primary: #0066CC;      // Blue from logo
@@ -35,40 +34,43 @@ $body-color: #F8FAFC;   // Light text
   border: 1px solid rgba(255, 255, 255, 0.125);
   border-radius: 0.5rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+  margin-bottom: 1rem !important;
   
   .card-header {
     background-color: rgba(0, 0, 0, 0.2);
     border-bottom: 1px solid rgba(255, 255, 255, 0.125);
     font-weight: 600;
+    padding: 0.75rem 1rem !important;
+  }
+  
+  .card-body {
+    padding: 1rem !important;
   }
   
   .card-footer {
     background-color: rgba(0, 0, 0, 0.2);
     border-top: 1px solid rgba(255, 255, 255, 0.125);
+    padding: 0.5rem 1rem !important;
   }
 }
 
 // Table customizations for dark theme
 .table {
-  color: $light !important;  // Force light text color
+  color: $light;
+  margin-bottom: 0;
   
   thead th {
     border-bottom-color: rgba(255, 255, 255, 0.2);
     background-color: rgba(0, 0, 0, 0.2);
-    color: $light !important; // Force light color for headers
   }
   
-  tbody tr {
-    color: $light !important; // Force light color for all rows
-    
-    &:hover {
-      background-color: rgba(255, 255, 255, 0.05);
-    }
+  tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.05);
   }
   
   td, th {
     border-color: rgba(255, 255, 255, 0.1);
-    color: $light !important; // Force light color for all cells
+    padding: 0.5rem !important;
   }
 }
 
@@ -84,6 +86,11 @@ $body-color: #F8FAFC;   // Light text
     border-color: $primary;
     box-shadow: 0 0 0 0.25rem rgba($primary, 0.25);
   }
+}
+
+// Form group spacing
+.form-group {
+  margin-bottom: 0.75rem !important;
 }
 
 // Input group customizations
@@ -131,18 +138,23 @@ $body-color: #F8FAFC;   // Light text
 .sidebar {
   background-color: $dark;
   min-height: 100vh;
+  width: 220px !important; // Reduced from default
+  transition: width 0.3s ease;
+  
+  &.collapsed {
+    width: 60px !important;
+  }
   
   .sidebar-link {
     color: rgba(255, 255, 255, 0.7);
-    padding: 0.75rem 1rem;
+    padding: 0.5rem 0.75rem;
     display: flex;
     align-items: center;
-    text-decoration: none !important; // Force no text decoration
     
     &:hover, &.active {
       color: $light;
       background-color: rgba(255, 255, 255, 0.05);
-      text-decoration: none !important;
+      text-decoration: none;
     }
     
     .sidebar-icon {
@@ -150,11 +162,6 @@ $body-color: #F8FAFC;   // Light text
       width: 20px;
     }
   }
-}
-
-// React Router NavLink overrides
-a.sidebar-link {
-  text-decoration: none !important;
 }
 
 // Button tweaks
@@ -214,5 +221,78 @@ a.sidebar-link {
   
   &:hover {
     background: rgba(255, 255, 255, 0.3);
+  }
+}
+
+// Layout optimizations
+// Adjust main content area padding
+main.flex-grow-1 {
+  padding: 1rem !important; // Reduce padding all around
+}
+
+// Give more room for content, with even spacing
+.container-fluid {
+  padding-left: 0.75rem !important;
+  padding-right: 0.75rem !important;
+  max-width: 1600px; // Prevent extreme stretching on wide screens
+  margin: 0 auto;
+}
+
+// Reduce space between elements
+.mb-4 {
+  margin-bottom: 1rem !important;
+}
+
+// Make dashboard stats cards more compact
+.row.g-3 {
+  --bs-gutter-y: 0.75rem !important;
+  --bs-gutter-x: 0.75rem !important;
+}
+
+// Row gutter adjustments
+.row.g-2 {
+  --bs-gutter-y: 0.5rem !important;
+  --bs-gutter-x: 0.5rem !important;
+}
+
+// Adjust smaller devices
+@media (max-width: 992px) {
+  .sidebar {
+    width: 60px !important;
+    
+    /* Show text on hover for small screens */
+    &:hover {
+      width: 220px !important;
+    }
+  }
+  
+  main.flex-grow-1 {
+    padding: 0.75rem !important;
+  }
+  
+  .container-fluid {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+  }
+}
+
+// Make headings more compact
+h1 {
+  font-size: 1.75rem !important;
+}
+
+h2 {
+  font-size: 1.5rem !important;
+}
+
+h3 {
+  font-size: 1.25rem !important;
+}
+
+// Add compact table class
+.table-compact {
+  td, th {
+    padding: 0.4rem 0.5rem !important;
+    font-size: 0.9rem;
   }
 }
