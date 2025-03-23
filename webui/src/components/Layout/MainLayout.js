@@ -8,7 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useSettings } from '../../contexts/SettingsContext';
 
 const MainLayout = () => {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const { currentUser, isLoading: authLoading } = useAuth();
   const { isLoading: settingsLoading } = useSettings();
 
