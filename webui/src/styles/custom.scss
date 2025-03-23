@@ -49,19 +49,25 @@ $body-color: #F8FAFC;   // Light text
 
 // Table customizations for dark theme
 .table {
-  color: $light;
+  color: $light; !important;
   
   thead th {
     border-bottom-color: rgba(255, 255, 255, 0.2);
     background-color: rgba(0, 0, 0, 0.2);
+    color: $light !important; // Force light color for headers
   }
   
-  tbody tr:hover {
-    background-color: rgba(255, 255, 255, 0.05);
+  tbody tr {
+    color: $light !important; // Force light color for row text
+    
+    &:hover {
+      background-color: rgba(255, 255, 255, 0.05);
+    }
   }
   
   td, th {
     border-color: rgba(255, 255, 255, 0.1);
+    color: $light !important; // Force light color for all cells
   }
 }
 
@@ -130,6 +136,7 @@ $body-color: #F8FAFC;   // Light text
     padding: 0.75rem 1rem;
     display: flex;
     align-items: center;
+    text-decoration: none;
     
     &:hover, &.active {
       color: $light;
