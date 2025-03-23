@@ -10,6 +10,11 @@ const authService = {
   getAuthStatus: () => {
     return api.get('/auth/status');
   },
+
+  // Get authenticated user info (whoami)
+  getWhoami: () => {
+    return api.get('/auth/whoami');
+  },
   
   // Get current user profile
   getProfile: () => {

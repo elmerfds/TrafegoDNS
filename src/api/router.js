@@ -85,6 +85,14 @@ class ApiRouter {
     this.router.get('/auth/oidc/login', authRoutes(this.authService, this.config));
     this.router.get('/auth/oidc/callback', authRoutes(this.authService, this.config));
     
+    // Important fix: properly register the auth routes for users
+    // Must come before the catch-all /auth/* route
+    this.router.get('/auth/users', verifyAuthToken, (req, res, next) => {
+      // Debug log to see request progress
+      logger.debug(`Auth users route accessed by ${req.user?.username} (${req.user?.role})`);
+      return authRoutes(this.authService, this.config)(req, res, next);
+    });    
+
     // Profile routes and authenticated routes
     this.router.use('/profile', verifyAuthToken, profileRoutes());
     this.router.use('/providers', verifyAuthToken, providerRoutes(this.stateManager, this.config));
@@ -96,7 +104,6 @@ class ApiRouter {
     
     // Protected auth routes (users, profiles, etc.) that need authentication
     this.router.use('/auth/users', verifyAuthToken, authRoutes(this.authService, this.config));
-    this.router.get('/auth/profile', verifyAuthToken, authRoutes(this.authService, this.config));
     
     // Catch-all error handler - should be last
     this.router.use((err, req, res, next) => {
