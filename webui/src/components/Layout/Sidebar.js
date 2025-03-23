@@ -1,3 +1,4 @@
+// src/components/Layout/Sidebar.js
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { Nav } from 'react-bootstrap';
@@ -16,6 +17,10 @@ const Sidebar = ({ collapsed }) => {
   const { hasRole } = useAuth();
   
   const sidebarWidth = collapsed ? '65px' : '250px';
+  
+  // Use this function for NavLink classNames to avoid default underlines
+  const getLinkClassName = ({ isActive }) => 
+    isActive ? "sidebar-link active" : "sidebar-link";
   
   return (
     <div 
@@ -49,33 +54,33 @@ const Sidebar = ({ collapsed }) => {
       </div>
       
       <Nav className="flex-column mt-2">
-        <NavLink to="/dashboard" className="sidebar-link">
+        <NavLink to="/dashboard" className={getLinkClassName}>
           <FontAwesomeIcon icon={faGaugeHigh} className="sidebar-icon" />
           {!collapsed && <span>Dashboard</span>}
         </NavLink>
         
-        <NavLink to="/records" className="sidebar-link">
+        <NavLink to="/records" className={getLinkClassName}>
           <FontAwesomeIcon icon={faNetworkWired} className="sidebar-icon" />
           {!collapsed && <span>DNS Records</span>}
         </NavLink>
         
-        <NavLink to="/providers" className="sidebar-link">
+        <NavLink to="/providers" className={getLinkClassName}>
           <FontAwesomeIcon icon={faGlobe} className="sidebar-icon" />
           {!collapsed && <span>DNS Providers</span>}
         </NavLink>
         
-        <NavLink to="/status" className="sidebar-link">
+        <NavLink to="/status" className={getLinkClassName}>
           <FontAwesomeIcon icon={faServer} className="sidebar-icon" />
           {!collapsed && <span>System Status</span>}
         </NavLink>
         
-        <NavLink to="/settings" className="sidebar-link">
+        <NavLink to="/settings" className={getLinkClassName}>
           <FontAwesomeIcon icon={faGear} className="sidebar-icon" />
           {!collapsed && <span>Settings</span>}
         </NavLink>
         
         {hasRole('admin') && (
-          <NavLink to="/users" className="sidebar-link">
+          <NavLink to="/users" className={getLinkClassName}>
             <FontAwesomeIcon icon={faUsers} className="sidebar-icon" />
             {!collapsed && <span>Users</span>}
           </NavLink>
