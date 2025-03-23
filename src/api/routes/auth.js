@@ -228,13 +228,26 @@ function createAuthRouter(authService, config) {
       });
     }
   });
-  
   /**
    * GET /api/auth/users - Get all users (admin only)
    */
   router.get('/users', async (req, res) => {
     try {
-      if (!req.user || !authService.isAdmin(req.user)) {
+      // Check for valid user and proper debug info
+      if (!req.user) {
+        logger.debug('No user object in request for /users endpoint');
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'Authentication required to view users'
+        });
+      }
+      
+      // Log the current user role to help debug
+      logger.debug(`User role for /users endpoint: ${req.user.role}`);
+      
+      // Check if role is admin or super_admin directly
+      if (!(req.user.role === 'admin' || req.user.role === 'super_admin')) {
+        logger.warn(`User ${req.user.username} with role ${req.user.role} attempted to access users list`);
         return res.status(403).json({
           error: 'Forbidden',
           message: 'Only administrators can view all users'
@@ -242,6 +255,7 @@ function createAuthRouter(authService, config) {
       }
       
       const users = await authService.getAllUsers();
+      logger.debug(`Retrieved ${users.length} users successfully`);
       res.json({ users });
     } catch (error) {
       logger.error(`Error fetching users: ${error.message}`);
@@ -251,7 +265,6 @@ function createAuthRouter(authService, config) {
       });
     }
   });
-  
   /**
    * POST /api/auth/users/:userId/role - Update a user's role (super_admin only)
    */
