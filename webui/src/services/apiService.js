@@ -14,7 +14,7 @@ api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token) {
-      console.log(`Adding auth token for ${config.url}`);
+      console.log(`Adding auth token for ${config.url}, token length: ${token.length}`);
       config.headers.Authorization = `Bearer ${token}`;
     } else {
       console.log(`No token available for ${config.url}`);
@@ -39,15 +39,6 @@ api.interceptors.response.use(
     if (error.response) {
       console.error('Response status:', error.response.status);
       console.error('Response data:', error.response.data);
-    }
-    
-    // Handle 401 Unauthorized
-    if (error.response && error.response.status === 401) {
-      if (!window.location.pathname.includes('/login')) {
-        console.log('Unauthorized, redirecting to login page');
-        localStorage.removeItem('token');
-        window.location.href = '/login';
-      }
     }
     
     return Promise.reject(error);

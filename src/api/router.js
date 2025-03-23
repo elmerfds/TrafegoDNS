@@ -85,15 +85,22 @@ class ApiRouter {
     this.router.get('/auth/oidc/login', authRoutes(this.authService, this.config));
     this.router.get('/auth/oidc/callback', authRoutes(this.authService, this.config));
     
-    // Important fix: properly register the auth routes for users
-    // Must come before the catch-all /auth/* route
-    this.router.get('/auth/users', verifyAuthToken, (req, res, next) => {
-      // Debug log to see request progress
-      logger.debug(`Auth users route accessed by ${req.user?.username} (${req.user?.role})`);
-      return authRoutes(this.authService, this.config)(req, res, next);
-    });    
-
-    // Profile routes and authenticated routes
+    // IMPORTANT FIX: Create auth router instance once
+    const authRouter = authRoutes(this.authService, this.config);
+    
+    // Add whoami route separately to ensure it works consistently
+    this.router.get('/auth/whoami', verifyAuthToken, (req, res) => {
+      authRouter(req, res);
+    });
+    
+    // Add users route with authentication middleware
+    this.router.get('/auth/users', verifyAuthToken, (req, res) => {
+      // This will make sure that the req.user from verifyAuthToken is available
+      // to the users endpoint handler
+      authRouter(req, res);
+    });
+  
+    // Profile routes and authenticated routes with auth middleware
     this.router.use('/profile', verifyAuthToken, profileRoutes());
     this.router.use('/providers', verifyAuthToken, providerRoutes(this.stateManager, this.config));
     this.router.use('/dns', verifyAuthToken, dnsRoutes(this.dnsManager, this.stateManager));
@@ -101,8 +108,8 @@ class ApiRouter {
     this.router.use('/settings', verifyAuthToken, settingsRoutes(this.config, this.stateManager));
     this.router.use('/status', verifyAuthToken, statusRoutes(this.dnsManager, this.stateManager));
     this.router.use('/mode', verifyAuthToken, modeRoutes(this.stateManager, this.config));
-      
-    // Catch-all error handler - should be last
+    
+    // Catch-all error handler
     this.router.use((err, req, res, next) => {
       logger.error(`API Error: ${err.message}`);
       res.status(500).json({
