@@ -84,17 +84,44 @@ function createAuthRouter(authService, config) {
     try {
       logger.debug(`Users endpoint called`);
       
-      // Verify user is admin
-      if (!req.user || !authService.isAdmin(req.user)) {
+      // Debug the request user object
+      console.log('USER REQUEST OBJECT:', JSON.stringify(req.user, null, 2));
+      
+      // Debug the auth service
+      console.log('AUTH SERVICE:', typeof authService, Object.keys(authService));
+      
+      // Check if isAdmin exists and is a function
+      console.log('IS ADMIN FUNCTION:', typeof authService.isAdmin);
+      
+      // Test the isAdmin function directly
+      const adminCheckResult = authService.isAdmin(req.user);
+      console.log('ADMIN CHECK RESULT:', adminCheckResult);
+      
+      // Check the user's role specifically
+      console.log('USER ROLE:', req.user ? req.user.role : 'no user');
+      
+      // Verify user is admin with detailed logging
+      if (!req.user) {
+        console.log('FAILING: No user in request');
         return res.status(403).json({
           error: 'Forbidden',
           message: 'Only administrators can view all users'
         });
       }
       
+      if (!authService.isAdmin(req.user)) {
+        console.log('FAILING: User is not admin. Role:', req.user.role);
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'Only administrators can view all users'
+        });
+      }
+      
+      console.log('SUCCESS: User is admin, fetching users');
       const users = await authService.getAllUsers();
       return res.json({ users });
     } catch (error) {
+      console.error(`Error in users endpoint:`, error);
       logger.error(`Error in users endpoint: ${error.message}`);
       return res.status(500).json({
         error: 'Internal Server Error',
