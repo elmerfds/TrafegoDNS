@@ -24,9 +24,9 @@ class AuthService {
     this.saltRounds = 10;
     
     // Auth enablement flags
-    this.authEnabled = config.authEnabled !== false;
-    this.localAuthEnabled = config.localAuthEnabled !== false;
-    this.oidcOnly = config.oidcOnly === true;
+    this.authEnabled = process.env.AUTH_ENABLED !== 'false';
+    this.localAuthEnabled = process.env.LOCAL_AUTH_ENABLED !== 'false';
+    this.oidcOnly = process.env.OIDC_ONLY === 'true';
     
     // Default admin credentials
     this.defaultAdminUsername = process.env.DEFAULT_ADMIN_USERNAME || 'admin';

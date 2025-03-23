@@ -34,6 +34,9 @@ class AuthDatabase {
         driver: sqlite3.Database
       });
       
+      // Enable foreign keys
+      await this.db.exec('PRAGMA foreign_keys = ON');
+      
       // Create tables if they don't exist
       await this.db.exec(`
         CREATE TABLE IF NOT EXISTS users (
@@ -56,7 +59,7 @@ class AuthDatabase {
           id_token TEXT,
           expires_at INTEGER NOT NULL,
           created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (user_id) REFERENCES users(id)
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
         
         CREATE TABLE IF NOT EXISTS sessions (
@@ -65,7 +68,7 @@ class AuthDatabase {
           created_at INTEGER NOT NULL,
           expires_at INTEGER NOT NULL,
           data TEXT,
-          FOREIGN KEY (user_id) REFERENCES users(id)
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
       `);
       
@@ -183,6 +186,22 @@ class AuthDatabase {
       return this.getUserById(userId);
     } catch (error) {
       logger.error(`Error updating user role: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Delete a user
+   * @param {string} userId - User ID to delete
+   * @returns {boolean} Success status
+   */
+  async deleteUser(userId) {
+    try {
+      // Delete the user (sessions and tokens will cascade delete)
+      const result = await this.db.run('DELETE FROM users WHERE id = ?', userId);
+      return result.changes > 0;
+    } catch (error) {
+      logger.error(`Error deleting user: ${error.message}`);
       throw error;
     }
   }

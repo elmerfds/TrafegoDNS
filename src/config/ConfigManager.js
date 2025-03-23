@@ -1,5 +1,5 @@
 /**
- * Configuration management for Traefik DNS Manager 
+ * Configuration management for TráfegoDNS 
  */
 const axios = require('axios');
 const logger = require('../utils/logger');
@@ -139,6 +139,26 @@ class ConfigManager {
     // IP refresh interval in milliseconds (default: 1 hour)
     this.ipRefreshInterval = EnvironmentLoader.getInt('IP_REFRESH_INTERVAL', 3600000);
     
+    // API authentication settings
+    this.apiAuthEnabled = EnvironmentLoader.getBool('API_AUTH_ENABLED', false);
+    
+    // Authentication configuration
+    this.authEnabled = EnvironmentLoader.getBool('AUTH_ENABLED', true);
+    this.localAuthEnabled = EnvironmentLoader.getBool('LOCAL_AUTH_ENABLED', true);
+    this.oidcOnly = EnvironmentLoader.getBool('OIDC_ONLY', false);
+    this.jwtSecret = EnvironmentLoader.getString('JWT_SECRET', 'trafegodns-secret-key');
+    this.jwtExpiresIn = EnvironmentLoader.getString('JWT_EXPIRES_IN', '24h');
+    this.defaultAdminPassword = EnvironmentLoader.getString('DEFAULT_ADMIN_PASSWORD', '');
+    this.frontendUrl = EnvironmentLoader.getString('FRONTEND_URL', '/');
+
+    // OIDC configuration
+    this.oidcEnabled = EnvironmentLoader.getBool('OIDC_ENABLED', false);
+    this.oidcProvider = EnvironmentLoader.getString('OIDC_PROVIDER', '');
+    this.oidcClientId = EnvironmentLoader.getString('OIDC_CLIENT_ID', '');
+    this.oidcClientSecret = EnvironmentLoader.getString('OIDC_CLIENT_SECRET', '');
+    this.oidcRedirectUri = EnvironmentLoader.getString('OIDC_REDIRECT_URI', '');
+    this.oidcScope = EnvironmentLoader.getString('OIDC_SCOPE', 'openid profile email');
+    
     // Schedule immediate IP update and then periodic refresh
     this.updatePublicIPs().then(() => {
       // Update A record defaults after IP discovery
@@ -146,21 +166,6 @@ class ConfigManager {
       this.recordDefaults.AAAA.content = process.env.DNS_DEFAULT_AAAA_CONTENT || this.ipCache.ipv6 || '';
       logger.debug(`Updated A record defaults with IP: ${this.recordDefaults.A.content}`);
     });
-
-    // Authentication configuration
-    this.authEnabled = process.env.AUTH_ENABLED === 'true' || false;
-    this.jwtSecret = process.env.JWT_SECRET || 'trafegodns-secret-key';
-    this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
-    this.defaultAdminPassword = process.env.DEFAULT_ADMIN_PASSWORD;
-    this.frontendUrl = process.env.FRONTEND_URL || '/';
-
-    // OIDC configuration
-    this.oidcEnabled = process.env.OIDC_ENABLED === 'true' || false;
-    this.oidcProvider = process.env.OIDC_PROVIDER;
-    this.oidcClientId = process.env.OIDC_CLIENT_ID;
-    this.oidcClientSecret = process.env.OIDC_CLIENT_SECRET;
-    this.oidcRedirectUri = process.env.OIDC_REDIRECT_URI;
-    this.oidcScope = process.env.OIDC_SCOPE || 'openid profile email';    
 
     // Set up periodic IP refresh
     if (this.ipRefreshInterval > 0) {
@@ -343,8 +348,7 @@ class ConfigManager {
       
       // Only log once if IP has changed
       if (ipv4 && ipv4 !== oldIpv4) {
-        // Log directly to console to ensure just one message
-        console.log(`${new Date().toISOString()} [INFO] Public IPv4: ${ipv4}`);
+        logger.info(`Public IPv4: ${ipv4}`);
       }
       
       if (ipv6 && ipv6 !== oldIpv6) {

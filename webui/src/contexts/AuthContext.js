@@ -1,5 +1,5 @@
-// src/contexts/AuthContext.js
-import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
+// webui/src/contexts/AuthContext.js
+import React, { createContext, useState, useContext, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { jwtDecode } from 'jwt-decode';
@@ -11,31 +11,38 @@ export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
-  // Get token from localStorage immediately
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const authCheckComplete = useRef(false);
   const navigate = useNavigate();
 
-  // Add this console.log to see what's happening
-  console.log("AuthContext state:", { 
-    hasToken: !!token, 
-    isAuthenticated, 
-    authCheckComplete: authCheckComplete.current, 
-    isLoading 
-  });
-
-  // Check token on mount only
+  // Check token on initial load
   useEffect(() => {
     const verifyToken = async () => {
       const storedToken = localStorage.getItem('token');
-      console.log('Initializing auth context with token:', !!storedToken);
       
       if (storedToken) {
         setToken(storedToken);
         try {
-          // Verify token
+          // Check if token is expired
+          try {
+            const decoded = jwtDecode(storedToken);
+            const currentTime = Date.now() / 1000;
+            
+            if (decoded.exp && decoded.exp < currentTime) {
+              console.log('Token has expired');
+              localStorage.removeItem('token');
+              setToken(null);
+              setCurrentUser(null);
+              setIsAuthenticated(false);
+              setIsLoading(false);
+              return;
+            }
+          } catch (e) {
+            console.error('Error decoding token:', e);
+          }
+          
+          // Verify token with backend
           const response = await authService.getProfile();
           setCurrentUser(response.data.user);
           setIsAuthenticated(true);
@@ -57,11 +64,8 @@ export const AuthProvider = ({ children }) => {
     try {
       setIsLoading(true);
       
-      console.log("Attempting login for user:", username);
       const response = await authService.login(username, password);
       const { token: newToken, user } = response.data;
-      
-      console.log("Login successful, storing token and user data");
       
       // Store token and user
       localStorage.setItem('token', newToken);
@@ -70,12 +74,7 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(true);
       
       toast.success('Login successful');
-      
-      // Navigate only if we're not already on the dashboard
-      if (window.location.pathname !== '/dashboard') {
-        console.log("Navigating to dashboard");
-        navigate('/dashboard', { replace: true });
-      }
+      navigate('/dashboard', { replace: true });
       
       return true;
     } catch (error) {
@@ -98,23 +97,17 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    console.log("Logging out user");
     localStorage.removeItem('token');
     setToken(null);
     setCurrentUser(null);
     setIsAuthenticated(false);
-    
-    // Only navigate if we're not already on the login page
-    if (window.location.pathname !== '/login') {
-      navigate('/login', { replace: true });
-    }
+    navigate('/login', { replace: true });
   };
 
   const hasRole = (requiredRole) => {
     if (!currentUser) return false;
     
     // Role hierarchy: super_admin > admin > user
-    // Make sure to consider both 'admin' and 'super_admin' as valid admin roles
     switch (requiredRole) {
       case 'user':
         return ['user', 'admin', 'super_admin'].includes(currentUser.role);

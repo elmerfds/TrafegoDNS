@@ -1,4 +1,4 @@
-// src/services/apiService.js
+// webui/src/services/apiService.js
 import axios from 'axios';
 
 // Create base axios instance
@@ -6,18 +6,16 @@ const api = axios.create({
   baseURL: '/api',
   headers: {
     'Content-Type': 'application/json'
-  }
+  },
+  timeout: 30000 // 30 second timeout
 });
 
-// Request interceptor with improved debugging
+// Request interceptor
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token) {
-      console.log(`Adding auth token for ${config.url}, token length: ${token.length}`);
       config.headers.Authorization = `Bearer ${token}`;
-    } else {
-      console.log(`No token available for ${config.url}`);
     }
     return config;
   },
@@ -27,18 +25,22 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor with improved debugging
+// Response interceptor
 api.interceptors.response.use(
   (response) => {
-    console.log(`Response from ${response.config.url}:`, response.status);
     return response;
   },
   (error) => {
-    console.error(`API Error for ${error.config?.url}:`, error.message);
-    
-    if (error.response) {
-      console.error('Response status:', error.response.status);
-      console.error('Response data:', error.response.data);
+    // Handle 401 Unauthorized errors
+    if (error.response && error.response.status === 401) {
+      const currentPath = window.location.pathname;
+      
+      // Only redirect to login if not already on login page
+      if (currentPath !== '/login') {
+        // Clear token and redirect to login
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+      }
     }
     
     return Promise.reject(error);

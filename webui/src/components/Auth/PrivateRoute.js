@@ -1,5 +1,5 @@
-// src/components/Auth/PrivateRoute.js
-import React, { useEffect } from 'react';
+// webui/src/components/Auth/PrivateRoute.js
+import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import LoadingScreen from '../Layout/LoadingScreen';
@@ -8,15 +8,7 @@ const PrivateRoute = ({ children, requiredRole = 'user' }) => {
   const { currentUser, isLoading, isAuthenticated, hasRole } = useAuth();
   const location = useLocation();
 
-  // Debug logging
-  console.log("PrivateRoute:", { 
-    path: location.pathname,
-    isLoading, 
-    isAuthenticated, 
-    hasUser: !!currentUser 
-  });
-
-  // Only show loading during initial auth check
+  // Show loading during initial auth check
   if (isLoading) {
     return <LoadingScreen />;
   }
@@ -28,10 +20,11 @@ const PrivateRoute = ({ children, requiredRole = 'user' }) => {
   
   // Check if user has the required role
   if (requiredRole && !hasRole(requiredRole)) {
+    // User is authenticated but doesn't have required role
     return <Navigate to="/dashboard" replace />;
   }
 
-  // User is authenticated and has the required role
+  // User is authenticated and has required role
   return children;
 };
 

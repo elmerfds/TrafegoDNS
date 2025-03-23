@@ -1,13 +1,15 @@
 // webui/src/components/Settings/UsersPage.js
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Modal, Form, Spinner, Badge } from 'react-bootstrap';
+import { Card, Table, Button, Modal, Form, Spinner, Badge, Alert } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faUsers, 
   faUserPlus, 
   faEdit, 
   faSave, 
-  faTimes 
+  faTimes,
+  faTrash,
+  faExclamationTriangle
 } from '@fortawesome/free-solid-svg-icons';
 import authService from '../../services/authService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -20,6 +22,7 @@ const UsersPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [formData, setFormData] = useState({
     username: '',
@@ -28,12 +31,14 @@ const UsersPage = () => {
     role: 'user'
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
   
   const { currentUser, hasRole } = useAuth();
   const navigate = useNavigate();
   
   // Check if user is admin or super admin
   const isAdmin = hasRole('admin');
+  const isSuperAdmin = hasRole('super_admin');
 
   useEffect(() => {
     // Only fetch users if we're authenticated
@@ -44,30 +49,16 @@ const UsersPage = () => {
   
   const fetchUsers = async () => {
     setIsLoading(true);
+    setError('');
+    
     try {
-      // Log current user and role for debugging
-      console.log('Current user:', currentUser);
-      console.log('Current user role:', currentUser?.role);
-      console.log('Has admin role:', hasRole('admin'));
-      console.log('Has super admin role:', currentUser?.role === 'super_admin');
-      
-      // Make a diagnostic call first
-      try {
-        const whoami = await authService.getWhoami();
-        console.log('Whoami response:', whoami.data);
-      } catch (err) {
-        console.error('Whoami check failed:', err);
-      }
-      
-      // Now try to get users
       const response = await authService.getUsers();
       
       if (response.data && response.data.users) {
-        console.log('Users data received:', response.data.users.length, 'users');
         setUsers(response.data.users);
       } else {
         console.warn('Unexpected users response format:', response.data);
-        toast.warning('Received unusual response format from server');
+        setError('Received unexpected data format from server');
         setUsers([]);
       }
     } catch (error) {
@@ -81,21 +72,19 @@ const UsersPage = () => {
         const status = error.response.status;
         const errorMessage = error.response.data?.message || 'Unknown error';
         
-        console.error(`HTTP ${status}: ${errorMessage}`);
-        
         if (status === 403) {
-          toast.error(`Permission denied: ${errorMessage}`);
+          setError(`Permission denied: ${errorMessage}`);
         } else if (status === 401) {
-          toast.error(`Authentication error: ${errorMessage}`);
-          // Maybe redirect to login
-          navigate('/login');
+          setError(`Authentication error: ${errorMessage}`);
+          // Redirect to login after a short delay
+          setTimeout(() => navigate('/login'), 2000);
         } else {
-          toast.error(`Server error (${status}): ${errorMessage}`);
+          setError(`Server error (${status}): ${errorMessage}`);
         }
       } else if (error.request) {
-        toast.error('No response from server. Please check your connection.');
+        setError('No response from server. Please check your connection.');
       } else {
-        toast.error(`Error: ${error.message}`);
+        setError(`Error: ${error.message}`);
       }
     } finally {
       setIsLoading(false);
@@ -126,6 +115,11 @@ const UsersPage = () => {
       role: user.role
     });
     setShowEditModal(true);
+  };
+  
+  const handleDeleteUser = (user) => {
+    setSelectedUser(user);
+    setShowDeleteModal(true);
   };
 
   const handleAddSubmit = async (e) => {
@@ -173,6 +167,27 @@ const UsersPage = () => {
       setIsSubmitting(false);
     }
   };
+  
+  const handleDeleteSubmit = async () => {
+    setIsSubmitting(true);
+    
+    try {
+      await authService.deleteUser(selectedUser.id);
+      toast.success(`User ${selectedUser.username} deleted successfully`);
+      setShowDeleteModal(false);
+      fetchUsers();
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      
+      if (error.response && error.response.status === 403) {
+        toast.error('You do not have permission to delete this user');
+      } else {
+        toast.error('Failed to delete user');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const getRoleBadge = (role) => {
     switch(role) {
@@ -191,14 +206,31 @@ const UsersPage = () => {
     if (user.username === currentUser.username) return false;
     
     // Super admins can edit anyone
-    if (hasRole('super_admin')) return true;
+    if (isSuperAdmin) return true;
     
     // Regular admins can't edit other admins or super admins
-    if (hasRole('admin') && !hasRole('super_admin')) {
+    if (isAdmin && !isSuperAdmin) {
       return user.role !== 'admin' && user.role !== 'super_admin';
     }
     
     // Regular users can't edit anyone
+    return false;
+  };
+  
+  // Determine if current user can delete another user
+  const canDeleteUser = (user) => {
+    // User can't delete themselves
+    if (user.username === currentUser.username) return false;
+    
+    // Super admins can delete anyone
+    if (isSuperAdmin) return true;
+    
+    // Regular admins can only delete regular users
+    if (isAdmin && !isSuperAdmin) {
+      return user.role === 'user';
+    }
+    
+    // Regular users can't delete anyone
     return false;
   };
 
@@ -216,11 +248,18 @@ const UsersPage = () => {
       <PageHeader 
         title="User Management" 
         subtitle="Manage user accounts and permissions"
-        buttonText="Add User"
-        buttonIcon={<FontAwesomeIcon icon={faUserPlus} className="me-1" />}
+        buttonText={isAdmin ? "Add User" : ""}
+        buttonIcon={isAdmin ? <FontAwesomeIcon icon={faUserPlus} className="me-1" /> : null}
         buttonVariant="primary"
-        onButtonClick={handleAddUser}
+        onButtonClick={isAdmin ? handleAddUser : null}
       />
+      
+      {error && (
+        <Alert variant="danger" className="mb-4">
+          <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+          {error}
+        </Alert>
+      )}
 
       <Card>
         <Card.Header>
@@ -255,15 +294,29 @@ const UsersPage = () => {
                     <td>{user.created_at ? new Date(user.created_at).toLocaleString() : '-'}</td>
                     <td>{user.last_login ? new Date(user.last_login).toLocaleString() : 'Never'}</td>
                     <td>
-                      {canEditUser(user) && (
-                        <Button
-                          size="sm"
-                          variant="outline-primary"
-                          onClick={() => handleEditUser(user)}
-                        >
-                          <FontAwesomeIcon icon={faEdit} />
-                        </Button>
-                      )}
+                      <div className="btn-group">
+                        {canEditUser(user) && (
+                          <Button
+                            size="sm"
+                            variant="outline-primary"
+                            onClick={() => handleEditUser(user)}
+                            title="Edit User"
+                            className="me-1"
+                          >
+                            <FontAwesomeIcon icon={faEdit} />
+                          </Button>
+                        )}
+                        {canDeleteUser(user) && (
+                          <Button
+                            size="sm"
+                            variant="outline-danger"
+                            onClick={() => handleDeleteUser(user)}
+                            title="Delete User"
+                          >
+                            <FontAwesomeIcon icon={faTrash} />
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -317,7 +370,7 @@ const UsersPage = () => {
                 onChange={handleInputChange}
               >
                 <option value="user">User</option>
-                {hasRole('super_admin') && (
+                {isSuperAdmin && (
                   <>
                     <option value="admin">Admin</option>
                     <option value="super_admin">Super Admin</option>
@@ -367,7 +420,7 @@ const UsersPage = () => {
                 onChange={handleInputChange}
               >
                 <option value="user">User</option>
-                {hasRole('super_admin') && (
+                {isSuperAdmin && (
                   <>
                     <option value="admin">Admin</option>
                     <option value="super_admin">Super Admin</option>
@@ -400,6 +453,43 @@ const UsersPage = () => {
             </Button>
           </Modal.Footer>
         </Form>
+      </Modal>
+      
+      {/* Delete User Modal */}
+      <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>Confirm User Deletion</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p>Are you sure you want to delete user <strong>{selectedUser?.username}</strong>?</p>
+          <Alert variant="warning">
+            <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+            This action cannot be undone. The user will be permanently removed.
+          </Alert>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowDeleteModal(false)}>
+            <FontAwesomeIcon icon={faTimes} className="me-1" />
+            Cancel
+          </Button>
+          <Button 
+            variant="danger"
+            onClick={handleDeleteSubmit}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <>
+                <Spinner size="sm" animation="border" className="me-1" />
+                Deleting...
+              </>
+            ) : (
+              <>
+                <FontAwesomeIcon icon={faTrash} className="me-1" />
+                Delete User
+              </>
+            )}
+          </Button>
+        </Modal.Footer>
       </Modal>
     </>
   );
