@@ -3,7 +3,7 @@ name: Build and Publish Docker Image
 on:
   workflow_dispatch:  # Manual trigger
   push:
-    branches: [ dev ]
+    branches: [ dev, main, master ]
     paths-ignore:
       - 'README.md'
       - '**.md'
@@ -66,6 +66,12 @@ jobs:
           echo "PACKAGE_VERSION=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
           echo "DATE_TAG=${DATE_TAG}" >> $GITHUB_OUTPUT
           echo "COMMIT_COUNT=${COMMIT_COUNT}" >> $GITHUB_OUTPUT
+
+      # Add a step to invalidate cache for workflow dispatch (manual builds)
+      - name: Invalidate cache for manual builds
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "CACHE_INVALIDATOR=$(date +%s)" >> $GITHUB_ENV
       
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -131,6 +137,10 @@ jobs:
           tags: ${{ steps.meta-main.outputs.tags }}
           labels: ${{ steps.meta-main.outputs.labels }}
           cache-from: type=gha
+          # Force fresh build by setting a different cache key each time
+          cache-to: type=gha,mode=max
+          # No cache for manual builds
+          no-cache: ${{ github.event_name == 'workflow_dispatch' }}
       
       # Build and push x64-only Docker image for dev branch
       - name: Build and push Docker image (Dev branch - x64 only)
@@ -144,3 +154,7 @@ jobs:
           tags: ${{ steps.meta-dev.outputs.tags }}
           labels: ${{ steps.meta-dev.outputs.labels }}
           cache-from: type=gha
+          # Force fresh build by setting a different cache key each time
+          cache-to: type=gha,mode=max
+          # No cache for manual builds
+          no-cache: ${{ github.event_name == 'workflow_dispatch' }}
