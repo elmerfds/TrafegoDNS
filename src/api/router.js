@@ -15,14 +15,16 @@ const modeRoutes = require('./routes/mode');
 const placeholderImageMiddleware = require('./middleware/placeholderImage');
 const authRoutes = require('./routes/auth');
 const profileRoutes = require('./routes/profile');
+const { verifyAuthToken } = require('./middleware/auth');
 
 class ApiRouter {
-  constructor(app, config, eventBus, dnsManager, stateManager) {
+  constructor(app, config, eventBus, dnsManager, stateManager, authService) {
     this.app = app;
     this.config = config;
     this.eventBus = eventBus;
     this.dnsManager = dnsManager;
     this.stateManager = stateManager;
+    this.authService = authService;
     this.router = express.Router();
     
     // Set up middleware
@@ -63,15 +65,6 @@ class ApiRouter {
       logger.debug(`API Request: ${req.method} ${req.originalUrl}`);
       next();
     });
-    
-    // Catch-all error handler
-    this.router.use((err, req, res, next) => {
-      logger.error(`API Error: ${err.message}`);
-      res.status(500).json({
-        error: 'Internal Server Error',
-        message: err.message
-      });
-    });
   }
   
   /**
@@ -83,39 +76,37 @@ class ApiRouter {
       res.json({ status: 'ok' });
     });
     
-    // Register auth routes first, with appropriate middleware
-    const authRouter = createAuthRouter(this.authService, this.config);
-    this.router.use('/auth', authRouter);    
-
-    // Register API route groups
-    this.router.use('/providers', providerRoutes(this.stateManager, this.config));
-    this.router.use('/dns', dnsRoutes(this.dnsManager, this.stateManager));
-    this.router.use('/records', recordsRoutes(this.dnsManager, this.stateManager));
-    this.router.use('/settings', settingsRoutes(this.config, this.stateManager));
-    this.router.use('/status', statusRoutes(this.dnsManager, this.stateManager));
-    this.router.use('/mode', modeRoutes(this.stateManager, this.config));
-    this.router.use('/profile', profileRoutes());
+    // Public auth routes that don't need authentication
+    this.router.use('/auth/login', authRoutes(this.authService, this.config));
+    this.router.use('/auth/status', authRoutes(this.authService, this.config));
+    this.router.use('/auth/oidc/login', authRoutes(this.authService, this.config));
+    this.router.use('/auth/oidc/callback', authRoutes(this.authService, this.config));
+    
+    // Profile routes and authenticated routes
+    this.router.use('/profile', verifyAuthToken, profileRoutes());
+    this.router.use('/providers', verifyAuthToken, providerRoutes(this.stateManager, this.config));
+    this.router.use('/dns', verifyAuthToken, dnsRoutes(this.dnsManager, this.stateManager));
+    this.router.use('/records', verifyAuthToken, recordsRoutes(this.dnsManager, this.stateManager));
+    this.router.use('/settings', verifyAuthToken, settingsRoutes(this.config, this.stateManager));
+    this.router.use('/status', verifyAuthToken, statusRoutes(this.dnsManager, this.stateManager));
+    this.router.use('/mode', verifyAuthToken, modeRoutes(this.stateManager, this.config));
+    
+    // Protected auth routes (users, profiles, etc.) that need authentication
+    this.router.use('/auth/users', verifyAuthToken, authRoutes(this.authService, this.config));
+    this.router.use('/auth/profile', verifyAuthToken, authRoutes(this.authService, this.config));
     
     // Make sure authService is correctly assigned
-    this.router.locals.authService = this.authService;    
+    this.app.locals.authService = this.authService;
+    this.router.locals.authService = this.authService;
     
-    // Apply authentication middleware to all auth routes except the ones specified in isPublicRoute
-    this.router.use('/auth', (req, res, next) => {
-      // Skip middleware for login and OIDC-related endpoints
-      if (req.path === '/login' || 
-          req.path === '/status' || 
-          req.path === '/oidc/login' || 
-          req.path === '/oidc/callback') {
-        return next();
-      }
-      
-      // For all other auth routes, apply the auth middleware
-      const { verifyAuthToken } = require('./middleware/auth');
-      verifyAuthToken(req, res, next);
+    // Catch-all error handler - should be last
+    this.router.use((err, req, res, next) => {
+      logger.error(`API Error: ${err.message}`);
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: err.message
+      });
     });
-    
-    // After middleware setup, register auth routes
-    this.router.use('/auth', authRoutes(this.authService, this.config));
   }
 }
 
