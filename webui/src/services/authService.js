@@ -27,6 +27,17 @@ const authService = {
       return response;
     });
   },
+
+  getAdminStatus: async () => {
+    try {
+      const response = await api.get('/profile');
+      console.log("User profile from API:", response.data);
+      return response.data.user.role === 'admin' || response.data.user.role === 'super_admin';
+    } catch (error) {
+      console.error("Error checking admin status:", error);
+      return false;
+    }
+  },  
   
   // Get all users (admin only)
   getUsers: () => {

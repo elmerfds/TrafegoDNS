@@ -159,6 +159,9 @@ function isSuperAdminRoute(path) {
  */
 function isAdminRoute(path) {
   const adminRoutes = [
+    '/auth/users',
+    '/api/auth/users',
+    '/users',    
     '/providers/switch',
     '/settings/reset',
     '/mode/switch',
@@ -178,7 +181,12 @@ function isAdminRoute(path) {
     '/api/records/delete',
     '/api/records/cleanup'
   ];
-  
+
+  // Check for exact matches first
+  if (adminRoutes.includes(path)) {
+    return true;
+  }
+   
   // More flexible matching that works with path parameters
   return adminRoutes.some(route => 
     path.endsWith(route) || 
