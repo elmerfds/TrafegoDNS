@@ -27,7 +27,7 @@ const Sidebar = ({ collapsed }) => {
     >
       <div className="d-flex align-items-center justify-content-center py-4">
         <img
-          src="/api/placeholder/240/240"
+          src="/logo240.png"
           width="40"
           height="40"
           alt="TráfegoDNS Logo"
@@ -39,7 +39,7 @@ const Sidebar = ({ collapsed }) => {
         </h4>
         {collapsed && (
           <img
-            src="/api/placeholder/240/240"
+            src="/logo240.png"
             width="40"
             height="40"
             alt="TráfegoDNS Logo"
