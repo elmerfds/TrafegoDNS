@@ -1,3 +1,4 @@
+// src/components/Layout/Sidebar.js
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { Nav } from 'react-bootstrap';
@@ -15,7 +16,8 @@ import { useAuth } from '../../contexts/AuthContext';
 const Sidebar = ({ collapsed }) => {
   const { hasRole } = useAuth();
   
-  const sidebarWidth = collapsed ? '65px' : '250px';
+  // Use smaller width to reduce gap between sidebar and content
+  const sidebarWidth = collapsed ? '60px' : '220px';
   
   return (
     <div 
@@ -25,57 +27,57 @@ const Sidebar = ({ collapsed }) => {
         transition: 'width 0.3s ease'
       }}
     >
-      <div className="d-flex align-items-center justify-content-center py-4">
+      <div className="d-flex align-items-center justify-content-center py-3">
         <img
           src="/logo240.png"
-          width="40"
-          height="40"
+          width="32"
+          height="32"
           alt="TráfegoDNS Logo"
           className="me-2"
           style={{ display: collapsed ? 'none' : 'block' }}
         />
-        <h4 className="mb-0" style={{ display: collapsed ? 'none' : 'block' }}>
+        <h5 className="mb-0" style={{ display: collapsed ? 'none' : 'block' }}>
           TráfegoDNS
-        </h4>
+        </h5>
         {collapsed && (
           <img
             src="/logo240.png"
-            width="40"
-            height="40"
+            width="32"
+            height="32"
             alt="TráfegoDNS Logo"
             className="mx-auto"
           />
         )}
       </div>
       
-      <Nav className="flex-column mt-2">
-        <NavLink to="/dashboard" className="sidebar-link">
+      <Nav className="flex-column">
+        <NavLink to="/dashboard" className="sidebar-link py-2">
           <FontAwesomeIcon icon={faGaugeHigh} className="sidebar-icon" />
           {!collapsed && <span>Dashboard</span>}
         </NavLink>
         
-        <NavLink to="/records" className="sidebar-link">
+        <NavLink to="/records" className="sidebar-link py-2">
           <FontAwesomeIcon icon={faNetworkWired} className="sidebar-icon" />
           {!collapsed && <span>DNS Records</span>}
         </NavLink>
         
-        <NavLink to="/providers" className="sidebar-link">
+        <NavLink to="/providers" className="sidebar-link py-2">
           <FontAwesomeIcon icon={faGlobe} className="sidebar-icon" />
           {!collapsed && <span>DNS Providers</span>}
         </NavLink>
         
-        <NavLink to="/status" className="sidebar-link">
+        <NavLink to="/status" className="sidebar-link py-2">
           <FontAwesomeIcon icon={faServer} className="sidebar-icon" />
           {!collapsed && <span>System Status</span>}
         </NavLink>
         
-        <NavLink to="/settings" className="sidebar-link">
+        <NavLink to="/settings" className="sidebar-link py-2">
           <FontAwesomeIcon icon={faGear} className="sidebar-icon" />
           {!collapsed && <span>Settings</span>}
         </NavLink>
         
         {hasRole('admin') && (
-          <NavLink to="/users" className="sidebar-link">
+          <NavLink to="/users" className="sidebar-link py-2">
             <FontAwesomeIcon icon={faUsers} className="sidebar-icon" />
             {!collapsed && <span>Users</span>}
           </NavLink>
