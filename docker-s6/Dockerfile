@@ -4,29 +4,21 @@ WORKDIR /app/webui
 # Copy package files first for better caching
 COPY webui/package*.json ./
 
-# Install dependencies with more logging and try to fix potential issues
-RUN npm install --verbose || (echo "Retrying npm install with legacy peer deps..." && npm install --legacy-peer-deps)
+# Install dependencies with cleaner error handling
+RUN npm install --verbose || (npm cache clean --force && npm install --legacy-peer-deps)
 
 # Now copy all webui source files
 COPY webui/ ./
 
-# Create build directory and try to build
-RUN mkdir -p build
-RUN npm run build || (echo "NPM build failed, checking for issues...")
+# Build the webui and fail if build fails
+RUN npm run build
 
-# If build fails, check if build directory exists and is not empty
-RUN if [ ! -d "build" ] || [ -z "$(ls -A build)" ]; then \
-      echo "Build directory is empty, creating fallback page"; \
-      mkdir -p build; \
-      echo '<html><head><title>TráfegoDNS</title><style>body { background-color: #111827; color: #F8FAFC; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; } .login-container { display: flex; flex-direction: column; align-items: center; background-color: #1E293B; padding: 2rem; border-radius: 0.5rem; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); } .form-group { margin-bottom: 1rem; width: 100%; } label { display: block; margin-bottom: 0.5rem; } input { width: 100%; padding: 0.5rem; border-radius: 0.25rem; border: 1px solid #4B5563; background-color: #1F2937; color: #F8FAFC; } button { background-color: #0066CC; color: white; border: none; padding: 0.5rem 1rem; border-radius: 0.25rem; cursor: pointer; margin-top: 1rem; } h1 { margin-bottom: 2rem; }</style></head><body><div class="login-container"><h1>TráfegoDNS</h1><form action="/api/auth/login" method="post"><div class="form-group"><label for="username">Username</label><input type="text" id="username" name="username" required /></div><div class="form-group"><label for="password">Password</label><input type="password" id="password" name="password" required /></div><button type="submit">Sign In</button></form></div></body></html>' > build/index.html; \
-    fi;
-
-# Stage 2: Generate package-lock.json
+# Stage 2: Generate package-lock.json and install dependencies
 FROM node:20-alpine AS dependencies
 WORKDIR /app
-COPY package.json .
-RUN npm install --package-lock-only
-RUN npm install --omit=dev
+COPY package.json ./
+COPY package-lock.json ./
+RUN npm ci --omit=dev
 
 # Stage 3: Build the application
 FROM node:20-alpine AS build
@@ -34,7 +26,7 @@ WORKDIR /app
 COPY --from=dependencies /app/package*.json ./
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY src ./src
-# Copy from the build output directory (React typically uses build, not dist)
+# Copy from the build output directory to the correctly expected location
 COPY --from=webui-build /app/webui/build ./webui/dist
 
 # Stage 4: Create the production image with s6-overlay
@@ -107,7 +99,9 @@ ENV NODE_ENV=production \
     API_PORT=3000 \
     LOG_LEVEL=INFO \
     AUTH_ENABLED=true \
-    JWT_EXPIRES_IN=24h
+    JWT_SECRET=change_this_in_production \
+    JWT_EXPIRES_IN=24h \
+    DEFAULT_ADMIN_PASSWORD=admin
 
 # Expose the API port
 EXPOSE 3000
