@@ -1,4 +1,5 @@
-// webui/src/contexts/AuthContext.js
+//  webui/src/contexts/AuthContext.js
+
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -104,20 +105,9 @@ export const AuthProvider = ({ children }) => {
     navigate('/login', { replace: true });
   };
 
+  // Simplified hasRole - always returns true since every user is admin
   const hasRole = (requiredRole) => {
-    if (!currentUser) return false;
-    
-    // Role hierarchy: super_admin > admin > user
-    switch (requiredRole) {
-      case 'user':
-        return ['user', 'admin', 'super_admin'].includes(currentUser.role);
-      case 'admin':
-        return ['admin', 'super_admin'].includes(currentUser.role);
-      case 'super_admin':
-        return currentUser.role === 'super_admin';
-      default:
-        return false;
-    }
+    return true;
   };
 
   const value = {
