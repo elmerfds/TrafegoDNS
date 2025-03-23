@@ -231,30 +231,33 @@ function createAuthRouter(authService, config) {
   
   // Debugging endpoint
   router.get('/whoami', (req, res) => {
-    try {
-      if (!req.user) {
-        return res.status(401).json({
-          error: 'Unauthorized',
-          message: 'No authentication found'
-        });
-      }
-      
-      res.json({
-        user: {
-          id: req.user.id,
-          username: req.user.username,
-          role: req.user.role
-        },
-        isAdmin: authService.isAdmin(req.user),
-        isSuperAdmin: authService.isSuperAdmin(req.user)
-      });
-    } catch (error) {
-      logger.error(`Error in whoami endpoint: ${error.message}`);
-      res.status(500).json({
-        error: 'Internal Server Error',
-        message: error.message
+    if (!req.user) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'No authentication found'
       });
     }
+    
+    logger.debug(`User info from token: ${JSON.stringify(req.user)}`);
+    
+    // Check role capabilities
+    const isAdminCheck = authService.isAdmin(req.user);
+    const isSuperAdminCheck = authService.isSuperAdmin(req.user);
+    
+    res.json({
+      user: {
+        id: req.user.id,
+        username: req.user.username,
+        role: req.user.role
+      },
+      roleChecks: {
+        isAdmin: isAdminCheck,
+        isSuperAdmin: isSuperAdminCheck,
+        hasUserRole: authService.hasRole(req.user, authService.ROLES.USER),
+        hasAdminRole: authService.hasRole(req.user, authService.ROLES.ADMIN),
+        hasSuperAdminRole: authService.hasRole(req.user, authService.ROLES.SUPER_ADMIN)
+      }
+    });
   });
   
   router.get('/oidc/login', (req, res) => {
