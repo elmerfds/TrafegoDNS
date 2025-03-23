@@ -12,13 +12,13 @@ const LoadingScreen = () => {
       }}
     >
       <img
-        src="/api/placeholder/240/240"
+        src="/logo240.png"
         alt="TráfegoDNS Logo"
         className="mb-4"
         width="120"
         height="120"
       />
-      <h2 className="text-light mb-4">TráfegoDNS</h2>
+      <h2 className="text-light mb-4">TrafegoDNS</h2>
       <Spinner animation="border" variant="primary" />
       <p className="text-light mt-3">Loading...</p>
     </Container>

@@ -1,117 +1,172 @@
-// src/components/Auth/LoginPage.js
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Container, Form, Button, Card, Alert, Spinner } from 'react-bootstrap';
+import { Container, Row, Col, Card, Form, Button, Alert, Spinner } from 'react-bootstrap';
 import { useAuth } from '../../contexts/AuthContext';
+import { Navigate } from 'react-router-dom';
+import authService from '../../services/authService';
 
 const LoginPage = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [validated, setValidated] = useState(false);
+  const [oidcEnabled, setOidcEnabled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  const { login, currentUser, isLoading } = useAuth();
-  const navigate = useNavigate();
-  
-  // If already logged in, redirect to dashboard
+  const [error, setError] = useState('');
+  const { currentUser, login, isLoading } = useAuth();
+
   useEffect(() => {
-    if (currentUser && !isLoading) {
-      navigate('/dashboard', { replace: true });
-    }
-  }, [currentUser, isLoading, navigate]);
+    const checkAuthStatus = async () => {
+      try {
+        const response = await authService.getAuthStatus();
+        setOidcEnabled(response.data.oidc);
+      } catch (error) {
+        console.error('Failed to check auth status:', error);
+      }
+    };
+
+    checkAuthStatus();
+  }, []);
   
-  // Only show loading state if we're verifying existing authentication
-  if (isLoading && !isSubmitting) {
+  if (currentUser) {
+    return <Navigate to="/dashboard" />;
+  }
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    
+    if (form.checkValidity() === false) {
+      event.stopPropagation();
+      setValidated(true);
+      return;
+    }
+
+    setError('');
+    setIsSubmitting(true);
+
+    try {
+      const success = await login(username, password);
+      if (!success) {
+        setError('Login failed. Please check your credentials.');
+      }
+    } catch (err) {
+      setError('An unexpected error occurred. Please try again.');
+      console.error(err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOidcLogin = () => {
+    window.location.href = '/api/auth/oidc/login';
+  };
+
+  if (isLoading) {
     return (
       <Container className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
         <Spinner animation="border" variant="primary" />
       </Container>
     );
   }
-  
-  // If already logged in, don't render the form - navigation happens in useEffect
-  if (currentUser) {
-    return null;
-  }
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!username || !password) {
-      setError('Username and password are required');
-      return;
-    }
-    
-    setError('');
-    setIsSubmitting(true);
-    
-    try {
-      // The login function will handle navigation on success
-      await login(username, password);
-    } catch (err) {
-      console.error('Login error:', err);
-      setError('Failed to log in. Please check your credentials.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   return (
-    <Container className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
-      <Card className="w-100" style={{ maxWidth: '400px' }}>
-        <Card.Header className="bg-primary text-white">
-          <h3 className="mb-0">TráfegoDNS Login</h3>
-        </Card.Header>
-        <Card.Body>
-          {error && <Alert variant="danger">{error}</Alert>}
-          
-          <Form onSubmit={handleSubmit}>
-            <Form.Group className="mb-3">
-              <Form.Label>Username</Form.Label>
-              <Form.Control
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                disabled={isSubmitting}
-                autoFocus
-              />
-            </Form.Group>
-            
-            <Form.Group className="mb-3">
-              <Form.Label>Password</Form.Label>
-              <Form.Control
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={isSubmitting}
-              />
-            </Form.Group>
-            
-            <Button 
-              type="submit" 
-              variant="primary" 
-              className="w-100" 
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? (
-                <>
-                  <Spinner
-                    as="span"
-                    animation="border"
-                    size="sm"
-                    role="status"
-                    aria-hidden="true"
-                    className="me-2"
+    <Container fluid className="bg-body d-flex align-items-center justify-content-center" style={{ minHeight: '100vh', padding: '1rem' }}>
+      <Row className="justify-content-center w-100">
+        <Col xs={12} sm={10} md={8} lg={6} xl={4}>
+          <Card className="shadow-lg border-0">
+            <Card.Body className="p-4">
+              <div className="text-center mb-4">
+                <img
+                  src="/logo120.png"
+                  alt="TráfegoDNS Logo"
+                  width="80"
+                  height="80"
+                  className="mb-3"
+                />
+                <h2 className="fw-bold">TráfegoDNS</h2>
+                <p className="text-muted">Sign in to access your dashboard</p>
+              </div>
+              
+              {error && <Alert variant="danger">{error}</Alert>}
+              
+              <Form noValidate validated={validated} onSubmit={handleSubmit}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Username</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={username}
+                    onChange={e => setUsername(e.target.value)}
+                    required
+                    placeholder="Enter your username"
+                    autoComplete="username"
                   />
-                  Signing in...
-                </>
-              ) : (
-                'Sign In'
-              )}
-            </Button>
-          </Form>
-        </Card.Body>
-      </Card>
+                  <Form.Control.Feedback type="invalid">
+                    Please enter your username.
+                  </Form.Control.Feedback>
+                </Form.Group>
+                
+                <Form.Group className="mb-4">
+                  <Form.Label>Password</Form.Label>
+                  <Form.Control
+                    type="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    required
+                    placeholder="Enter your password"
+                    autoComplete="current-password"
+                  />
+                  <Form.Control.Feedback type="invalid">
+                    Please enter your password.
+                  </Form.Control.Feedback>
+                </Form.Group>
+                
+                <div className="d-grid mb-3">
+                  <Button 
+                    type="submit" 
+                    variant="primary" 
+                    size="lg" 
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Spinner
+                          as="span"
+                          animation="border"
+                          size="sm"
+                          role="status"
+                          aria-hidden="true"
+                          className="me-2"
+                        />
+                        Signing in...
+                      </>
+                    ) : (
+                      'Sign In'
+                    )}
+                  </Button>
+                </div>
+                
+                {oidcEnabled && (
+                  <div className="d-grid">
+                    <Button 
+                      variant="outline-secondary" 
+                      size="lg" 
+                      onClick={handleOidcLogin}
+                      disabled={isSubmitting}
+                    >
+                      Sign in with OIDC
+                    </Button>
+                  </div>
+                )}
+              </Form>
+            </Card.Body>
+          </Card>
+          
+          <div className="text-center mt-4 text-light">
+            <small>
+              &copy; {new Date().getFullYear()} TráfegoDNS
+            </small>
+          </div>
+        </Col>
+      </Row>
     </Container>
   );
 };
