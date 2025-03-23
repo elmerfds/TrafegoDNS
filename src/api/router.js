@@ -12,10 +12,10 @@ const recordsRoutes = require('./routes/records');
 const settingsRoutes = require('./routes/settings');
 const statusRoutes = require('./routes/status');
 const modeRoutes = require('./routes/mode');
-const placeholderImageMiddleware = require('./middleware/placeholderImage');
-const authRoutes = require('./routes/auth');
+const createAuthRouter = require('./routes/auth');
 const profileRoutes = require('./routes/profile');
 const { verifyAuthToken } = require('./middleware/auth');
+const placeholderImageMiddleware = require('./middleware/placeholderImage');
 
 class ApiRouter {
   constructor(app, config, eventBus, dnsManager, stateManager, authService) {
@@ -27,8 +27,9 @@ class ApiRouter {
     this.authService = authService;
     this.router = express.Router();
     
-    // Make authService available to the app
+    // Make services available globally
     this.app.locals.authService = this.authService;
+    this.app.locals.dnsManager = this.dnsManager;
     
     // Set up middleware
     this.setupMiddleware();
@@ -39,14 +40,14 @@ class ApiRouter {
     // Register the router with the app
     app.use('/api', this.router);
     
-    logger.info('API Router initialised');
+    logger.info('API Router initialized');
   }
   
   /**
    * Set up middleware for the API
    */
   setupMiddleware() {
-    // Add placeholder image middleware before API auth
+    // Add placeholder image middleware (no auth needed)
     this.router.use('/placeholder', placeholderImageMiddleware);
 
     // Add API version header to all responses
@@ -58,7 +59,7 @@ class ApiRouter {
     // JSON body parser
     this.router.use(express.json());
     
-    // API key authentication
+    // API key authentication if enabled
     if (this.config.apiAuthEnabled) {
       this.router.use(validateApiKey);
     }
@@ -74,39 +75,31 @@ class ApiRouter {
    * Register all API routes
    */
   registerRoutes() {
-    // Register health check endpoint
+    // Register health check endpoint (no auth)
     this.router.get('/health', (req, res) => {
       res.json({ status: 'ok' });
     });
     
-    // Create a sub-router for auth endpoints for better organization
-    const authRouter = express.Router();
+    // Register auth routes without JWT verification
+    this.router.use('/auth', createAuthRouter(this.authService, this.config));
     
-    // Public auth routes (no authentication)
-    authRouter.post('/login', (req, res) => authRoutes(this.authService, this.config)(req, res));
-    authRouter.get('/status', (req, res) => authRoutes(this.authService, this.config)(req, res));
-    authRouter.get('/oidc/login', (req, res) => authRoutes(this.authService, this.config)(req, res));
-    authRouter.get('/oidc/callback', (req, res) => authRoutes(this.authService, this.config)(req, res));
-    
-    // Protected auth routes with authentication
-    authRouter.get('/users', verifyAuthToken, (req, res) => {
-      // Explicitly handle the users route with clear logging
-      logger.debug(`Users auth route accessed with user: ${req.user?.username}, role: ${req.user?.role}`);
-      // Forward to the auth routes handler
-      authRoutes(this.authService, this.config)(req, res);
-    });
-    
-    // Mount the auth router
-    this.router.use('/auth', authRouter);
-    
-    // Other protected routes
+    // Profile routes (authenticated)
     this.router.use('/profile', verifyAuthToken, profileRoutes());
-    this.router.use('/providers', verifyAuthToken, providerRoutes(this.stateManager, this.config));
-    this.router.use('/dns', verifyAuthToken, dnsRoutes(this.dnsManager, this.stateManager));
-    this.router.use('/records', verifyAuthToken, recordsRoutes(this.dnsManager, this.stateManager));
-    this.router.use('/settings', verifyAuthToken, settingsRoutes(this.config, this.stateManager));
-    this.router.use('/status', verifyAuthToken, statusRoutes(this.dnsManager, this.stateManager));
-    this.router.use('/mode', verifyAuthToken, modeRoutes(this.stateManager, this.config));
+    
+    // Other authenticated routes
+    const protectedRoutes = [
+      { path: '/providers', handler: providerRoutes(this.stateManager, this.config) },
+      { path: '/dns', handler: dnsRoutes(this.dnsManager, this.stateManager) },
+      { path: '/records', handler: recordsRoutes(this.dnsManager, this.stateManager) },
+      { path: '/settings', handler: settingsRoutes(this.config, this.stateManager) },
+      { path: '/status', handler: statusRoutes(this.dnsManager, this.stateManager) },
+      { path: '/mode', handler: modeRoutes(this.stateManager, this.config) }
+    ];
+    
+    // Register protected routes with authentication
+    protectedRoutes.forEach(route => {
+      this.router.use(route.path, verifyAuthToken, route.handler);
+    });
     
     // Catch-all error handler
     this.router.use((err, req, res, next) => {
