@@ -45,15 +45,29 @@ const UsersPage = () => {
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
+      // Log current user and role for debugging
+      console.log('Current user:', currentUser);
       console.log('Current user role:', currentUser?.role);
       console.log('Has admin role:', hasRole('admin'));
+      console.log('Has super admin role:', currentUser?.role === 'super_admin');
       
+      // Make a diagnostic call first
+      try {
+        const whoami = await authService.getWhoami();
+        console.log('Whoami response:', whoami.data);
+      } catch (err) {
+        console.error('Whoami check failed:', err);
+      }
+      
+      // Now try to get users
       const response = await authService.getUsers();
+      
       if (response.data && response.data.users) {
+        console.log('Users data received:', response.data.users.length, 'users');
         setUsers(response.data.users);
       } else {
-        // Handle unexpected response format
-        console.warn("Unexpected users response format:", response.data);
+        console.warn('Unexpected users response format:', response.data);
+        toast.warning('Received unusual response format from server');
         setUsers([]);
       }
     } catch (error) {
@@ -62,11 +76,26 @@ const UsersPage = () => {
       // Set empty array to prevent undefined errors
       setUsers([]);
       
-      // Check if it's a permission error
-      if (error.response && error.response.status === 403) {
-        toast.error("You don't have permission to view users");
+      // Detailed error handling based on response
+      if (error.response) {
+        const status = error.response.status;
+        const errorMessage = error.response.data?.message || 'Unknown error';
+        
+        console.error(`HTTP ${status}: ${errorMessage}`);
+        
+        if (status === 403) {
+          toast.error(`Permission denied: ${errorMessage}`);
+        } else if (status === 401) {
+          toast.error(`Authentication error: ${errorMessage}`);
+          // Maybe redirect to login
+          navigate('/login');
+        } else {
+          toast.error(`Server error (${status}): ${errorMessage}`);
+        }
+      } else if (error.request) {
+        toast.error('No response from server. Please check your connection.');
       } else {
-        toast.error('Failed to load users: ' + (error.message || 'Unknown error'));
+        toast.error(`Error: ${error.message}`);
       }
     } finally {
       setIsLoading(false);

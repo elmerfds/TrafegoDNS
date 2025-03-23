@@ -233,20 +233,20 @@ function createAuthRouter(authService, config) {
    */
   router.get('/users', async (req, res) => {
     try {
-      // Check for valid user and proper debug info
+      // Debug logging
+      logger.debug(`Users endpoint accessed by ${req.user?.username} with role ${req.user?.role}`);
+      
+      // Check if the current user exists and has admin/super_admin role
       if (!req.user) {
-        logger.debug('No user object in request for /users endpoint');
-        return res.status(403).json({
-          error: 'Forbidden',
+        logger.warn('Users endpoint attempted access without authentication');
+        return res.status(401).json({
+          error: 'Unauthorized',
           message: 'Authentication required to view users'
         });
       }
       
-      // Log the current user role to help debug
-      logger.debug(`User role for /users endpoint: ${req.user.role}`);
-      
-      // Check if role is admin or super_admin directly
-      if (!(req.user.role === 'admin' || req.user.role === 'super_admin')) {
+      // Explicitly check roles - don't rely on middleware for this critical check
+      if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
         logger.warn(`User ${req.user.username} with role ${req.user.role} attempted to access users list`);
         return res.status(403).json({
           error: 'Forbidden',
@@ -255,7 +255,7 @@ function createAuthRouter(authService, config) {
       }
       
       const users = await authService.getAllUsers();
-      logger.debug(`Retrieved ${users.length} users successfully`);
+      logger.debug(`Retrieved ${users.length} users successfully for ${req.user.username}`);
       res.json({ users });
     } catch (error) {
       logger.error(`Error fetching users: ${error.message}`);
@@ -341,6 +341,40 @@ function createAuthRouter(authService, config) {
       });
     }
   });
+
+  /**
+   * GET /api/auth/whoami - Debug endpoint to check user authentication
+   */
+  router.get('/whoami', (req, res) => {
+    try {
+      logger.debug(`Whoami request received with headers: ${JSON.stringify(req.headers)}`);
+      
+      if (!req.user) {
+        return res.status(401).json({
+          error: 'Unauthorized',
+          message: 'No authentication found'
+        });
+      }
+      
+      res.json({
+        user: {
+          id: req.user.id,
+          username: req.user.username,
+          role: req.user.role
+        },
+        isAdmin: req.user.role === 'admin' || req.user.role === 'super_admin',
+        isSuperAdmin: req.user.role === 'super_admin',
+        token: req.headers.authorization ? 'Present' : 'Missing'
+      });
+    } catch (error) {
+      logger.error(`Error in whoami endpoint: ${error.message}`);
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: error.message
+      });
+    }
+  });
+
   
   return router;
 }
