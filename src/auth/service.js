@@ -564,14 +564,18 @@ class AuthService {
    * @returns {string} JWT token
    */
   generateToken(user) {
-    const payload = {
-      id: user.id,
-      username: user.username,
-      role: user.role,
+    // Ensure user has the correct format
+    const userForToken = {
+      id: user.id || 'system',
+      username: user.username || 'system',
+      role: user.role || this.ROLES.USER,
       iat: Math.floor(Date.now() / 1000)
     };
     
-    return jwt.sign(payload, this.jwtSecret, {
+    // Log what we're putting in the token
+    logger.debug(`Generating token for user: ${userForToken.username}, role: ${userForToken.role}`);
+    
+    return jwt.sign(userForToken, this.jwtSecret, {
       expiresIn: this.jwtExpiresIn
     });
   }
@@ -608,17 +612,23 @@ class AuthService {
    * @returns {boolean} True if user has required role or higher
    */
   hasRole(user, requiredRole) {
-    // If auth is disabled, always return true
+    // If auth is globally disabled, always return true
     if (!this.authEnabled) {
       return true;
     }
     
     if (!user || !user.role) return false;
     
-    const userRoleLevel = this.ROLE_HIERARCHY[user.role] || 0;
-    const requiredRoleLevel = this.ROLE_HIERARCHY[requiredRole] || 0;
+    // Role hierarchy: super_admin > admin > user
+    if (requiredRole === this.ROLES.USER) {
+      return [this.ROLES.USER, this.ROLES.ADMIN, this.ROLES.SUPER_ADMIN].includes(user.role);
+    } else if (requiredRole === this.ROLES.ADMIN) {
+      return [this.ROLES.ADMIN, this.ROLES.SUPER_ADMIN].includes(user.role);
+    } else if (requiredRole === this.ROLES.SUPER_ADMIN) {
+      return user.role === this.ROLES.SUPER_ADMIN;
+    }
     
-    return userRoleLevel >= requiredRoleLevel;
+    return false;
   }
   
   /**
@@ -627,7 +637,7 @@ class AuthService {
    * @returns {boolean} True if user is admin
    */
   isAdmin(user) {
-    return this.hasRole(user, this.ROLES.ADMIN);
+    return user && (user.role === this.ROLES.ADMIN || user.role === this.ROLES.SUPER_ADMIN);
   }
   
   /**
