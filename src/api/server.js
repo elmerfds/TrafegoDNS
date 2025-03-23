@@ -68,7 +68,8 @@ class ApiServer {
     
     // Make auth service available to middleware
     this.app.set('authService', this.authService);
-    
+    this.app.locals.authService = this.authService;
+        
     // Set up middleware
     this.setupMiddleware();
     
