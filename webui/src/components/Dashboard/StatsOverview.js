@@ -1,3 +1,4 @@
+// src/components/Dashboard/StatsOverview.js
 import React from 'react';
 import { Row, Col, Card } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -49,63 +50,63 @@ const StatsOverview = ({ status, stats }) => {
   const memoryInfo = calculateMemoryUsage();
 
   return (
-    <Row className="g-3 mb-4">
-      <Col sm={6} md={3}>
-        <Card className="text-white bg-primary">
-          <Card.Body>
+    <Row className="g-2 mb-3">
+      <Col xs={6} md={3}>
+        <Card className="text-white bg-primary h-100">
+          <Card.Body className="p-2">
             <div className="d-flex justify-content-between align-items-center">
               <div>
-                <h6 className="mb-0">Created</h6>
-                <h2 className="mt-2 mb-0">{stats.created}</h2>
+                <div className="small fw-bold">Created</div>
+                <h3 className="mt-1 mb-0">{stats.created}</h3>
               </div>
-              <FontAwesomeIcon icon={faCloudUploadAlt} size="2x" opacity="0.6" />
+              <FontAwesomeIcon icon={faCloudUploadAlt} size="lg" opacity="0.6" />
             </div>
-            <div className="mt-2 small">DNS records created</div>
+            <div className="mt-1 small">DNS records created</div>
           </Card.Body>
         </Card>
       </Col>
 
-      <Col sm={6} md={3}>
-        <Card className="text-white bg-success">
-          <Card.Body>
+      <Col xs={6} md={3}>
+        <Card className="text-white bg-success h-100">
+          <Card.Body className="p-2">
             <div className="d-flex justify-content-between align-items-center">
               <div>
-                <h6 className="mb-0">Updated</h6>
-                <h2 className="mt-2 mb-0">{stats.updated}</h2>
+                <div className="small fw-bold">Updated</div>
+                <h3 className="mt-1 mb-0">{stats.updated}</h3>
               </div>
-              <FontAwesomeIcon icon={faCloudDownloadAlt} size="2x" opacity="0.6" />
+              <FontAwesomeIcon icon={faCloudDownloadAlt} size="lg" opacity="0.6" />
             </div>
-            <div className="mt-2 small">DNS records updated</div>
+            <div className="mt-1 small">DNS records updated</div>
           </Card.Body>
         </Card>
       </Col>
 
-      <Col sm={6} md={3}>
-        <Card className="text-white bg-danger">
-          <Card.Body>
+      <Col xs={6} md={3}>
+        <Card className="text-white bg-danger h-100">
+          <Card.Body className="p-2">
             <div className="d-flex justify-content-between align-items-center">
               <div>
-                <h6 className="mb-0">Deleted</h6>
-                <h2 className="mt-2 mb-0">{stats.deleted}</h2>
+                <div className="small fw-bold">Deleted</div>
+                <h3 className="mt-1 mb-0">{stats.deleted}</h3>
               </div>
-              <FontAwesomeIcon icon={faTrashAlt} size="2x" opacity="0.6" />
+              <FontAwesomeIcon icon={faTrashAlt} size="lg" opacity="0.6" />
             </div>
-            <div className="mt-2 small">DNS records deleted</div>
+            <div className="mt-1 small">DNS records deleted</div>
           </Card.Body>
         </Card>
       </Col>
 
-      <Col sm={6} md={3}>
-        <Card className="text-white bg-warning">
-          <Card.Body>
+      <Col xs={6} md={3}>
+        <Card className="text-white bg-warning h-100">
+          <Card.Body className="p-2">
             <div className="d-flex justify-content-between align-items-center">
               <div>
-                <h6 className="mb-0">Errors</h6>
-                <h2 className="mt-2 mb-0">{stats.errors}</h2>
+                <div className="small fw-bold">Errors</div>
+                <h3 className="mt-1 mb-0">{stats.errors}</h3>
               </div>
-              <FontAwesomeIcon icon={faExclamationTriangle} size="2x" opacity="0.6" />
+              <FontAwesomeIcon icon={faExclamationTriangle} size="lg" opacity="0.6" />
             </div>
-            <div className="mt-2 small">Processing errors</div>
+            <div className="mt-1 small">Processing errors</div>
           </Card.Body>
         </Card>
       </Col>
