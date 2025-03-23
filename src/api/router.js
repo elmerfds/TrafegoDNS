@@ -1,7 +1,7 @@
 /**
  * src/api/router.js
  * API Router for TráfegoDNS
- * Handles all API routes and operations
+ * Handles all API routes and operations - simplified for single admin auth
  */
 const express = require('express');
 const logger = require('../utils/logger');

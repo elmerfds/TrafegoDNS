@@ -1,5 +1,4 @@
 // webui/src/components/Auth/LoginPage.js
-
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Form, Button, Alert, Spinner } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -15,7 +14,20 @@ const LoginPage = () => {
   const [error, setError] = useState('');
   const { currentUser, login, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
+  useEffect(() => {
+    // Check for query parameters (token from OIDC)
+    const params = new URLSearchParams(location.search);
+    const token = params.get('token');
+    
+    if (token) {
+      // Store token and redirect
+      localStorage.setItem('token', token);
+      navigate('/dashboard', { replace: true });
+    }
+  }, [navigate, location]);
+  
   // Redirect to dashboard if already logged in
   if (currentUser) {
     return navigate('/dashboard', { replace: true });

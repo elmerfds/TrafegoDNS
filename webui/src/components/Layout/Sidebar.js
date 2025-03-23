@@ -7,14 +7,10 @@ import {
   faNetworkWired, 
   faGlobe, 
   faGear, 
-  faUsers,
   faServer
 } from '@fortawesome/free-solid-svg-icons';
-import { useAuth } from '../../contexts/AuthContext';
 
 const Sidebar = ({ collapsed }) => {
-  const { hasRole } = useAuth();
-  
   const sidebarWidth = collapsed ? '65px' : '250px';
   
   return (
@@ -73,13 +69,6 @@ const Sidebar = ({ collapsed }) => {
           <FontAwesomeIcon icon={faGear} className="sidebar-icon" />
           {!collapsed && <span>Settings</span>}
         </NavLink>
-        
-        {hasRole('admin') && (
-          <NavLink to="/users" className="sidebar-link">
-            <FontAwesomeIcon icon={faUsers} className="sidebar-icon" />
-            {!collapsed && <span>Users</span>}
-          </NavLink>
-        )}
       </Nav>
     </div>
   );

@@ -4,17 +4,9 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import LoadingScreen from '../Layout/LoadingScreen';
 
-const PrivateRoute = ({ children, requiredRole = 'user' }) => {
-  const { currentUser, isLoading, isAuthenticated, hasRole } = useAuth();
+const PrivateRoute = ({ children }) => {
+  const { currentUser, isLoading, isAuthenticated } = useAuth();
   const location = useLocation();
-
-  console.log("PrivateRoute check:", { 
-    path: location.pathname,
-    user: currentUser?.username,
-    role: currentUser?.role,
-    requiredRole,
-    hasRequiredRole: hasRole(requiredRole)
-  });
 
   // Only show loading during initial auth check
   if (isLoading) {
@@ -25,16 +17,8 @@ const PrivateRoute = ({ children, requiredRole = 'user' }) => {
   if (!isAuthenticated || !currentUser) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
-  
-  // Check if user has the required role
-  if (requiredRole && !hasRole(requiredRole)) {
-    // Redirect to dashboard with error message in state
-    return <Navigate to="/dashboard" replace state={{ 
-      error: `Access denied: You need ${requiredRole} permissions to access this page` 
-    }} />;
-  }
 
-  // User is authenticated and has required role
+  // User is authenticated - all users have full access in simplified version
   return children;
 };
 

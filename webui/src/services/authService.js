@@ -1,5 +1,4 @@
 // webui/src/services/authService.js
-
 import api from './apiService';
 
 const authService = {
@@ -13,15 +12,19 @@ const authService = {
     return api.get('/auth/status');
   },
 
+  // Get authenticated user info (whoami)
+  getWhoami: () => {
+    return api.get('/auth/whoami');
+  },
+  
   // Get current user profile
   getProfile: () => {
+    // Try both endpoints for maximum compatibility
     return api.get('/profile').catch(error => {
       console.log('Primary profile endpoint failed, trying alternative');
       return api.get('/auth/profile');
     });
   }
 };
-
-export default authService;
 
 export default authService;

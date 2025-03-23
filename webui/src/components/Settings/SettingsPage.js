@@ -6,11 +6,9 @@ import { faSave, faRedo, faExchangeAlt } from '@fortawesome/free-solid-svg-icons
 import { useSettings } from '../../contexts/SettingsContext';
 import { toast } from 'react-toastify';
 import PageHeader from '../Layout/PageHeader';
-import { useAuth } from '../../contexts/AuthContext';
 
 const SettingsPage = () => {
   const { settings, operationMode, updateSettings, resetSettings, switchOperationMode } = useSettings();
-  const { hasRole } = useAuth();
   const [formData, setFormData] = useState({});
   const [selectedMode, setSelectedMode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -90,8 +88,6 @@ const SettingsPage = () => {
     }
   };
 
-  const isAdmin = hasRole('admin');
-
   if (!settings || !operationMode) {
     return (
       <div className="text-center py-5">
@@ -117,7 +113,7 @@ const SettingsPage = () => {
                 <Form.Select 
                   value={selectedMode} 
                   onChange={handleModeChange}
-                  disabled={isSwitchingMode || !isAdmin}
+                  disabled={isSwitchingMode}
                 >
                   {operationMode.available && operationMode.available.map(mode => (
                     <option key={mode} value={mode}>
@@ -131,29 +127,23 @@ const SettingsPage = () => {
               </Form.Group>
             </Col>
             <Col md={6} className="mt-3 mt-md-0">
-              {isAdmin ? (
-                <Button 
-                  variant="primary"
-                  onClick={handleSwitchMode}
-                  disabled={isSwitchingMode || selectedMode === operationMode.current}
-                >
-                  {isSwitchingMode ? (
-                    <>
-                      <Spinner size="sm" animation="border" className="me-2" />
-                      Switching...
-                    </>
-                  ) : (
-                    <>
-                      <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
-                      Switch Mode
-                    </>
-                  )}
-                </Button>
-              ) : (
-                <Alert variant="info">
-                  Admin privileges required to change operation mode
-                </Alert>
-              )}
+              <Button 
+                variant="primary"
+                onClick={handleSwitchMode}
+                disabled={isSwitchingMode || selectedMode === operationMode.current}
+              >
+                {isSwitchingMode ? (
+                  <>
+                    <Spinner size="sm" animation="border" className="me-2" />
+                    Switching...
+                  </>
+                ) : (
+                  <>
+                    <FontAwesomeIcon icon={faExchangeAlt} className="me-2" />
+                    Switch Mode
+                  </>
+                )}
+              </Button>
             </Col>
           </Row>
         </Card.Body>
@@ -162,26 +152,24 @@ const SettingsPage = () => {
       <Card>
         <Card.Header className="d-flex justify-content-between align-items-center">
           <h5 className="mb-0">Application Settings</h5>
-          {isAdmin && (
-            <Button 
-              variant="outline-secondary" 
-              size="sm"
-              onClick={handleReset}
-              disabled={isResetting}
-            >
-              {isResetting ? (
-                <>
-                  <Spinner size="sm" animation="border" className="me-1" />
-                  Resetting...
-                </>
-              ) : (
-                <>
-                  <FontAwesomeIcon icon={faRedo} className="me-1" />
-                  Reset to Defaults
-                </>
-              )}
-            </Button>
-          )}
+          <Button 
+            variant="outline-secondary" 
+            size="sm"
+            onClick={handleReset}
+            disabled={isResetting}
+          >
+            {isResetting ? (
+              <>
+                <Spinner size="sm" animation="border" className="me-1" />
+                Resetting...
+              </>
+            ) : (
+              <>
+                <FontAwesomeIcon icon={faRedo} className="me-1" />
+                Reset to Defaults
+              </>
+            )}
+          </Button>
         </Card.Header>
         <Card.Body>
           <Form onSubmit={handleSubmit}>
@@ -194,7 +182,6 @@ const SettingsPage = () => {
                     name="pollInterval"
                     value={formData.pollInterval || ''}
                     onChange={handleInputChange}
-                    disabled={!isAdmin}
                     min="5000"
                   />
                   <Form.Text className="text-muted">
@@ -209,7 +196,6 @@ const SettingsPage = () => {
                     name="logLevel"
                     value={formData.logLevel || ''}
                     onChange={handleInputChange}
-                    disabled={!isAdmin}
                   >
                     <option value="ERROR">ERROR</option>
                     <option value="WARN">WARN</option>
@@ -233,7 +219,6 @@ const SettingsPage = () => {
                     name="watchDockerEvents"
                     checked={formData.watchDockerEvents || false}
                     onChange={handleInputChange}
-                    disabled={!isAdmin}
                   />
                   <Form.Text className="text-muted">
                     Automatically detect container changes via Docker events
@@ -248,7 +233,6 @@ const SettingsPage = () => {
                     name="cleanupOrphaned"
                     checked={formData.cleanupOrphaned || false}
                     onChange={handleInputChange}
-                    disabled={!isAdmin}
                   />
                   <Form.Text className="text-muted">
                     Automatically remove DNS records for deleted containers
@@ -257,31 +241,25 @@ const SettingsPage = () => {
               </Col>
             </Row>
 
-            {isAdmin ? (
-              <div className="d-flex justify-content-end">
-                <Button 
-                  type="submit" 
-                  variant="primary"
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Spinner size="sm" animation="border" className="me-2" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <FontAwesomeIcon icon={faSave} className="me-2" />
-                      Save Settings
-                    </>
-                  )}
-                </Button>
-              </div>
-            ) : (
-              <Alert variant="info">
-                Admin privileges required to edit settings
-              </Alert>
-            )}
+            <div className="d-flex justify-content-end">
+              <Button 
+                type="submit" 
+                variant="primary"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Spinner size="sm" animation="border" className="me-2" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <FontAwesomeIcon icon={faSave} className="me-2" />
+                    Save Settings
+                  </>
+                )}
+              </Button>
+            </div>
           </Form>
         </Card.Body>
       </Card>
