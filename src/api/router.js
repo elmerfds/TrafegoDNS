@@ -27,6 +27,9 @@ class ApiRouter {
     this.authService = authService;
     this.router = express.Router();
     
+    // Make authService available to the app
+    this.app.locals.authService = this.authService;
+    
     // Set up middleware
     this.setupMiddleware();
     
@@ -77,10 +80,10 @@ class ApiRouter {
     });
     
     // Public auth routes that don't need authentication
-    this.router.use('/auth/login', authRoutes(this.authService, this.config));
-    this.router.use('/auth/status', authRoutes(this.authService, this.config));
-    this.router.use('/auth/oidc/login', authRoutes(this.authService, this.config));
-    this.router.use('/auth/oidc/callback', authRoutes(this.authService, this.config));
+    this.router.post('/auth/login', authRoutes(this.authService, this.config));
+    this.router.get('/auth/status', authRoutes(this.authService, this.config));
+    this.router.get('/auth/oidc/login', authRoutes(this.authService, this.config));
+    this.router.get('/auth/oidc/callback', authRoutes(this.authService, this.config));
     
     // Profile routes and authenticated routes
     this.router.use('/profile', verifyAuthToken, profileRoutes());
@@ -93,11 +96,7 @@ class ApiRouter {
     
     // Protected auth routes (users, profiles, etc.) that need authentication
     this.router.use('/auth/users', verifyAuthToken, authRoutes(this.authService, this.config));
-    this.router.use('/auth/profile', verifyAuthToken, authRoutes(this.authService, this.config));
-    
-    // Make sure authService is correctly assigned
-    this.app.locals.authService = this.authService;
-    this.router.locals.authService = this.authService;
+    this.router.get('/auth/profile', verifyAuthToken, authRoutes(this.authService, this.config));
     
     // Catch-all error handler - should be last
     this.router.use((err, req, res, next) => {
