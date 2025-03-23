@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// src/components/Layout/MainLayout.js
+import React, { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Container, Row, Col } from 'react-bootstrap';
 import Sidebar from './Sidebar';
@@ -8,9 +9,21 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useSettings } from '../../contexts/SettingsContext';
 
 const MainLayout = () => {
+  // Set initial state to true for collapsed sidebar
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const { currentUser, isLoading: authLoading } = useAuth();
   const { isLoading: settingsLoading } = useSettings();
+
+  // Force sidebar collapsed on component mount
+  useEffect(() => {
+    setSidebarCollapsed(true);
+    console.log("Sidebar state initialized:", sidebarCollapsed ? "Collapsed" : "Expanded");
+  }, []);
+
+  // Add logging when sidebar state changes
+  useEffect(() => {
+    console.log("Sidebar state changed:", sidebarCollapsed ? "Collapsed" : "Expanded");
+  }, [sidebarCollapsed]);
 
   const toggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed);
