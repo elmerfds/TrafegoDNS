@@ -23,7 +23,12 @@ class AuthService {
     // Salt rounds for password hashing
     this.saltRounds = 10;
     
-    // Get configurable admin username
+    // Auth enablement flags
+    this.authEnabled = config.authEnabled !== false;
+    this.localAuthEnabled = config.localAuthEnabled !== false;
+    this.oidcOnly = config.oidcOnly === true;
+    
+    // Default admin credentials
     this.defaultAdminUsername = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
     this.defaultAdminPassword = this.config.defaultAdminPassword || process.env.DEFAULT_ADMIN_PASSWORD;
     this.defaultAdminEmail = process.env.DEFAULT_ADMIN_EMAIL || 'admin@example.com';
@@ -34,6 +39,15 @@ class AuthService {
       ADMIN: 'admin',
       USER: 'user'
     };
+    
+    // Role hierarchy (for permission checks)
+    this.ROLE_HIERARCHY = {
+      super_admin: 3,
+      admin: 2,
+      user: 1
+    };
+    
+    logger.debug(`Auth service initialized with authEnabled=${this.authEnabled}, localAuthEnabled=${this.localAuthEnabled}, oidcOnly=${this.oidcOnly}`);
   }
   
   /**
@@ -45,7 +59,9 @@ class AuthService {
       await this.database.initialize();
       
       // Initialize OIDC client
-      await this.oidcClient.initialize();
+      if (this.config.oidcEnabled) {
+        await this.oidcClient.initialize();
+      }
       
       // Try to create default super admin user if no users exist
       const userCount = await this.database.getUserCount();
@@ -63,7 +79,7 @@ class AuthService {
             name: 'Super Administrator',
             role: this.ROLES.SUPER_ADMIN
           });
-          logger.success(`Created super admin user '${this.defaultAdminUsername}'`);
+          logger.info(`Created super admin user '${this.defaultAdminUsername}'`);
         } else {
           logger.warn('No default admin password configured, waiting for first login to create super admin');
         }
@@ -80,6 +96,20 @@ class AuthService {
       logger.error(`Failed to initialize authentication service: ${error.message}`);
       throw error;
     }
+  }
+  
+  /**
+   * Check if authentication is enabled
+   */
+  isAuthEnabled() {
+    return this.authEnabled;
+  }
+  
+  /**
+   * Check if local authentication is enabled
+   */
+  isLocalAuthEnabled() {
+    return this.localAuthEnabled && !this.oidcOnly;
   }
   
   /**
@@ -103,6 +133,29 @@ class AuthService {
    * @returns {Object|null} User data and token if authenticated, null otherwise
    */
   async authenticate(username, password) {
+    // Check if auth is disabled entirely
+    if (!this.authEnabled) {
+      logger.debug('Authentication is disabled, creating dummy super admin session');
+      return {
+        token: this.generateToken({
+          id: 'system',
+          username: 'system',
+          role: this.ROLES.SUPER_ADMIN
+        }),
+        user: {
+          id: 'system',
+          username: 'system',
+          role: this.ROLES.SUPER_ADMIN
+        }
+      };
+    }
+    
+    // Check if local auth is disabled
+    if (!this.isLocalAuthEnabled()) {
+      logger.warn('Local authentication is disabled');
+      return null;
+    }
+    
     try {
       // First check if we need to handle first-login super admin creation
       const userCount = await this.database.getUserCount();
@@ -156,7 +209,8 @@ class AuthService {
       
       return {
         token,
-        user: this.sanitizeUser(user)
+        user: this.sanitizeUser(user),
+        firstLogin: false
       };
     } catch (error) {
       logger.error(`Error during authentication: ${error.message}`);
@@ -214,7 +268,7 @@ class AuthService {
         logger.info(`Created new user: ${username}`);
       }
       
-      return this.sanitizeUser(user);
+      return user;
     } catch (error) {
       logger.error(`Error creating user: ${error.message}`);
       throw error;
@@ -247,21 +301,9 @@ class AuthService {
         throw new Error(`Updating user not found with ID: ${updatedBy}`);
       }
       
-      // Only super_admin can assign super_admin role
-      if (newRole === this.ROLES.SUPER_ADMIN && updatingUser.role !== this.ROLES.SUPER_ADMIN) {
-        throw new Error('Only super admins can create other super admins');
-      }
-      
-      // Regular admins can only assign/modify user roles
-      if (updatingUser.role === this.ROLES.ADMIN && 
-          (userToUpdate.role === this.ROLES.SUPER_ADMIN || userToUpdate.role === this.ROLES.ADMIN ||
-           newRole === this.ROLES.SUPER_ADMIN || newRole === this.ROLES.ADMIN)) {
-        throw new Error('Regular admins cannot modify admin or super admin roles');
-      }
-      
-      // Regular users cannot modify roles at all
-      if (updatingUser.role === this.ROLES.USER) {
-        throw new Error('Regular users cannot modify roles');
+      // Check if updater has sufficient privileges
+      if (!this.canManageRole(updatingUser, userToUpdate, newRole)) {
+        throw new Error(`Insufficient permissions: User ${updatingUser.username} cannot change role of ${userToUpdate.username} to ${newRole}`);
       }
       
       // Update the role
@@ -272,6 +314,89 @@ class AuthService {
       return this.sanitizeUser(updatedUser);
     } catch (error) {
       logger.error(`Error updating user role: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Check if a user can manage another user's role
+   * @param {Object} manager - User trying to manage roles
+   * @param {Object} target - User being managed
+   * @param {string} newRole - New role to assign
+   * @returns {boolean} Whether the manager can change the target's role
+   */
+  canManageRole(manager, target, newRole) {
+    // Can't manage your own role
+    if (manager.id === target.id) {
+      return false;
+    }
+    
+    const managerLevel = this.ROLE_HIERARCHY[manager.role] || 0;
+    const targetLevel = this.ROLE_HIERARCHY[target.role] || 0;
+    const newRoleLevel = this.ROLE_HIERARCHY[newRole] || 0;
+    
+    // Super admin can manage any role
+    if (manager.role === this.ROLES.SUPER_ADMIN) {
+      return true;
+    }
+    
+    // Only super_admin can manage admin or super_admin roles
+    if (targetLevel >= this.ROLE_HIERARCHY.admin || newRoleLevel >= this.ROLE_HIERARCHY.admin) {
+      return false;
+    }
+    
+    // Regular admins can only manage user roles
+    return managerLevel >= this.ROLE_HIERARCHY.admin;
+  }
+  
+  /**
+   * Delete a user
+   * @param {string} userId - User ID to delete
+   * @param {string} deletedBy - ID of user performing the deletion
+   * @returns {boolean} Success status
+   */
+  async deleteUser(userId, deletedBy) {
+    try {
+      // Get user to delete
+      const userToDelete = await this.database.getUserById(userId);
+      if (!userToDelete) {
+        throw new Error(`User not found with ID: ${userId}`);
+      }
+      
+      // Get user performing deletion
+      const deletingUser = await this.database.getUserById(deletedBy);
+      if (!deletingUser) {
+        throw new Error(`Deleting user not found with ID: ${deletedBy}`);
+      }
+      
+      // Check if deleter has sufficient privileges
+      if (deletingUser.id === userId) {
+        throw new Error("Users cannot delete themselves");
+      }
+      
+      const deleterLevel = this.ROLE_HIERARCHY[deletingUser.role] || 0;
+      const targetLevel = this.ROLE_HIERARCHY[userToDelete.role] || 0;
+      
+      // Super admin can delete anyone
+      if (deletingUser.role === this.ROLES.SUPER_ADMIN) {
+        // Allow deletion
+      } 
+      // Admin can only delete users
+      else if (deletingUser.role === this.ROLES.ADMIN && targetLevel < this.ROLE_HIERARCHY.admin) {
+        // Allow deletion of regular users
+      }
+      else {
+        throw new Error(`Insufficient permissions: User ${deletingUser.username} cannot delete ${userToDelete.username}`);
+      }
+      
+      // Delete the user
+      await this.database.deleteUser(userId);
+      
+      logger.info(`User ${deletingUser.username} deleted user ${userToDelete.username}`);
+      
+      return true;
+    } catch (error) {
+      logger.error(`Error deleting user: ${error.message}`);
       throw error;
     }
   }
@@ -415,6 +540,15 @@ class AuthService {
    * @returns {Object|null} Decoded token payload or null if invalid
    */
   verifyToken(token) {
+    // If auth is disabled, return a system super admin user
+    if (!this.authEnabled) {
+      return {
+        id: 'system',
+        username: 'system',
+        role: this.ROLES.SUPER_ADMIN
+      };
+    }
+    
     try {
       const decoded = jwt.verify(token, this.jwtSecret);
       return decoded;
@@ -448,12 +582,13 @@ class AuthService {
    * @returns {Object} Sanitized user object
    */
   sanitizeUser(user) {
+    if (!user) return null;
     const { id, username, email, name, role, created_at, last_login } = user;
     return { id, username, email, name, role, created_at, last_login };
   }
   
   /**
-   * Get all users (admin only)
+   * Get all users
    * @returns {Array} List of users
    */
   async getAllUsers() {
@@ -467,16 +602,36 @@ class AuthService {
   }
   
   /**
-   * Check if a user has admin privileges
+   * Check if a user has at least the specified role
    * @param {Object} user - User object
-   * @returns {boolean} True if user is admin or super_admin
+   * @param {string} requiredRole - Role to check for
+   * @returns {boolean} True if user has required role or higher
    */
-  isAdmin(user) {
-    return user && (user.role === this.ROLES.ADMIN || user.role === this.ROLES.SUPER_ADMIN);
+  hasRole(user, requiredRole) {
+    // If auth is disabled, always return true
+    if (!this.authEnabled) {
+      return true;
+    }
+    
+    if (!user || !user.role) return false;
+    
+    const userRoleLevel = this.ROLE_HIERARCHY[user.role] || 0;
+    const requiredRoleLevel = this.ROLE_HIERARCHY[requiredRole] || 0;
+    
+    return userRoleLevel >= requiredRoleLevel;
   }
   
   /**
-   * Check if a user is a super admin
+   * Check if user is an admin (admin or super_admin)
+   * @param {Object} user - User object
+   * @returns {boolean} True if user is admin
+   */
+  isAdmin(user) {
+    return this.hasRole(user, this.ROLES.ADMIN);
+  }
+  
+  /**
+   * Check if user is a super admin
    * @param {Object} user - User object
    * @returns {boolean} True if user is super_admin
    */
@@ -490,6 +645,19 @@ class AuthService {
    */
   isOidcEnabled() {
     return this.oidcClient.isEnabled();
+  }
+  
+  /**
+   * Get authentication status
+   * @returns {Object} Auth status details
+   */
+  getAuthStatus() {
+    return {
+      enabled: this.authEnabled,
+      local: this.isLocalAuthEnabled(),
+      oidc: this.isOidcEnabled(),
+      oidcOnly: this.oidcOnly
+    };
   }
   
   /**
