@@ -1,4 +1,4 @@
-// src/components/Settings/UsersPage.js
+// webui/src/components/Settings/UsersPage.js
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Button, Modal, Form, Spinner, Badge } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -11,6 +11,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import authService from '../../services/authService';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import PageHeader from '../Layout/PageHeader';
 
@@ -29,9 +30,11 @@ const UsersPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const { currentUser, hasRole } = useAuth();
-  const isSuperAdmin = hasRole('super_admin');
+  const isAdmin = hasRole('admin');
+  const navigate = useNavigate();
 
   useEffect(() => {
+    // Check if user has permissions to view this page
     if (!isAdmin) {
       toast.error("You don't have permission to view this page");
       navigate('/dashboard');
@@ -39,7 +42,7 @@ const UsersPage = () => {
     }
     
     fetchUsers();
-  }, [isAdmin]);
+  }, [isAdmin, navigate]);
 
   const fetchUsers = async () => {
     setIsLoading(true);
@@ -193,7 +196,7 @@ const UsersPage = () => {
                           size="sm"
                           variant="outline-primary"
                           onClick={() => handleEditUser(user)}
-                          disabled={!isSuperAdmin && user.role === 'admin'}
+                          disabled={!hasRole('super_admin') && user.role === 'admin'}
                         >
                           <FontAwesomeIcon icon={faEdit} />
                         </Button>
