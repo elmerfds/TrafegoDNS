@@ -32,28 +32,17 @@ const UsersPage = () => {
   const isSuperAdmin = hasRole('super_admin');
 
   useEffect(() => {
-    if (!isAdmin) {
-      toast.error("You don't have permission to view this page");
-      navigate('/dashboard');
-      return;
-    }
-    
     fetchUsers();
-  }, [isAdmin]);
+  }, []);
 
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
       const response = await authService.getUsers();
-      setUsers(response.data.users || []);
+      setUsers(response.data.users);
     } catch (error) {
       console.error('Error fetching users:', error);
-      // Only show toast once
-      if (!toast.isActive('users-error')) {
-        toast.error('Failed to load users', { toastId: 'users-error' });
-      }
-      // Set an empty array to prevent undefined errors
-      setUsers([]);
+      toast.error('Failed to load users');
     } finally {
       setIsLoading(false);
     }

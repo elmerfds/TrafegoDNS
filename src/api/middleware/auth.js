@@ -146,9 +146,8 @@ function isSuperAdminRoute(path) {
   
   // More flexible matching that works with base path
   return superAdminRoutes.some(route => 
-    path === route || // Exact match
-    path.endsWith(route) || // Ends with route
-    path.includes(`${route}/`) // Route with additional path
+    path.endsWith(route) || 
+    path.includes(`${route}/`)
   );
 }
 
