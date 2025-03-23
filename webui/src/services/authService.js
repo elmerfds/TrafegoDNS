@@ -46,22 +46,20 @@ const authService = {
   
   // Get all users (admin only)
   getUsers: () => {
-    // Add debug output
-    console.log('Requesting users list with token:', localStorage.getItem('token')?.substring(0, 20) + '...');
-    return api.get('/auth/users').then(response => {
-      console.log('Users response successful:', response.data);
-      return response;
-    }).catch(error => {
-      // Log detailed error for debugging
-      console.error('Error in getUsers:', error.response?.data || error.message);
-      console.error('Error status:', error.response?.status);
-      
-      if (error.response?.status === 403) {
-        // Handle permission error specifically
-        throw new Error("Insufficient permissions to view users");
-      }
-      throw error;
-    });
+    // Log the token for debugging
+    const token = localStorage.getItem('token');
+    console.log('Token present for users request:', !!token);
+    
+    // Make API call
+    return api.get('/auth/users')
+      .then(response => {
+        console.log('Users response:', response.data);
+        return response;
+      })
+      .catch(error => {
+        console.error('Error fetching users:', error);
+        throw error;
+      });
   },
   
   // Register a new user (admin only)

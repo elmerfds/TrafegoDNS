@@ -29,58 +29,29 @@ export const AuthProvider = ({ children }) => {
   // Check token on mount only
   useEffect(() => {
     const verifyToken = async () => {
-      setIsLoading(true);
+      const storedToken = localStorage.getItem('token');
+      console.log('Initializing auth context with token:', !!storedToken);
       
-      if (!token) {
-        console.log("No token found in localStorage");
-        setIsAuthenticated(false);
-        setIsLoading(false);
-        authCheckComplete.current = true;
-        return;
-      }
-      
-      try {
-        // Check token expiration
-        const decodedToken = jwtDecode(token);
-        const currentTime = Date.now() / 1000;
-        
-        if (decodedToken.exp < currentTime) {
-          console.log("Token expired");
-          // Token has expired - clean up and redirect
+      if (storedToken) {
+        setToken(storedToken);
+        try {
+          // Verify token
+          const response = await authService.getProfile();
+          setCurrentUser(response.data.user);
+          setIsAuthenticated(true);
+        } catch (error) {
+          console.error('Error verifying token:', error);
           localStorage.removeItem('token');
           setToken(null);
           setCurrentUser(null);
           setIsAuthenticated(false);
-          authCheckComplete.current = true;
-          setIsLoading(false);
-          return;
         }
-        
-        // Token is valid, fetch user profile
-        console.log("Fetching user profile with token");
-        const response = await authService.getProfile();
-        console.log("Profile response:", response.data);
-        
-        setCurrentUser(response.data.user);
-        setIsAuthenticated(true);
-      } catch (error) {
-        console.error('Error verifying token:', error);
-        // Clear authentication state on error
-        localStorage.removeItem('token');
-        setToken(null);
-        setCurrentUser(null);
-        setIsAuthenticated(false);
-      } finally {
-        authCheckComplete.current = true;
-        setIsLoading(false);
       }
+      setIsLoading(false);
     };
-
-    // Only verify if we haven't completed a check yet
-    if (!authCheckComplete.current) {
-      verifyToken();
-    }
-  }, [token]);
+    
+    verifyToken();
+  }, []);
 
   const login = async (username, password) => {
     try {
