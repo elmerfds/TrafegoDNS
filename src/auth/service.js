@@ -564,14 +564,18 @@ class AuthService {
    * @returns {string} JWT token
    */
   generateToken(user) {
-    const payload = {
-      id: user.id,
-      username: user.username,
-      role: user.role,
+    // Ensure user has the correct format
+    const userForToken = {
+      id: user.id || 'system',
+      username: user.username || 'system',
+      role: user.role || this.ROLES.USER,
       iat: Math.floor(Date.now() / 1000)
     };
     
-    return jwt.sign(payload, this.jwtSecret, {
+    // Log what we're putting in the token
+    logger.debug(`Generating token for user: ${userForToken.username}, role: ${userForToken.role}`);
+    
+    return jwt.sign(userForToken, this.jwtSecret, {
       expiresIn: this.jwtExpiresIn
     });
   }
