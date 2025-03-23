@@ -143,12 +143,18 @@ function isSuperAdminRoute(path) {
     '/auth/users',
     '/api/auth/users'
   ];
+
+  // Check for exact matches first
+  if (superAdminRoutes.includes(path)) {
+    return true;
+  }  
   
   // More flexible matching that works with base path
   return superAdminRoutes.some(route => 
-    path === route || // Exact match
-    path.endsWith(route) || // Ends with route
-    path.includes(`${route}/`) // Route with additional path
+    path.endsWith(route) || 
+    path.includes(`${route}/`) ||
+    // Handle paths with query parameters
+    path.split('?')[0] === route
   );
 }
 
