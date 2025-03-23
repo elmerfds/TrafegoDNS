@@ -128,7 +128,9 @@ function isAdminRoute(path) {
     '/records/create',
     '/records/update',
     '/records/delete',
-    '/records/cleanup'
+    '/records/cleanup',
+    '/auth/users',
+    '/api/auth/users'     
   ];
   
   return adminRoutes.some(route => 

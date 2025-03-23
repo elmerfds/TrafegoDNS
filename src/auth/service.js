@@ -627,7 +627,7 @@ class AuthService {
    * @returns {boolean} True if user is admin
    */
   isAdmin(user) {
-    return this.hasRole(user, this.ROLES.ADMIN);
+    return user && (user.role === this.ROLES.ADMIN || user.role === this.ROLES.SUPER_ADMIN);
   }
   
   /**
