@@ -19,26 +19,23 @@ const authService = {
   
   // Get current user profile
   getProfile: () => {
-    // Try both profile endpoints for maximum compatibility
+    // Try both endpoints for maximum compatibility
     return api.get('/profile').catch(error => {
-      // If the main profile endpoint fails, try the alternative one
       console.log('Primary profile endpoint failed, trying alternative');
       return api.get('/auth/profile');
-    }).then(response => {
-      console.log("Profile response:", response.data);
-      
-      if (!response.data || !response.data.user) {
-        console.error("Unexpected profile response format:", response.data);
-        throw new Error("Invalid profile response format");
-      }
-      
-      return response;
     });
   },
   
   // Get all users (admin only)
   getUsers: () => {
-    return api.get('/auth/users');
+    return api.get('/auth/users').catch(error => {
+      console.error('Error fetching users:', error);
+      // If we get a 403, we should handle this gracefully
+      if (error.response && error.response.status === 403) {
+        return { data: { users: [] }, status: 403, statusText: "Forbidden" };
+      }
+      throw error;
+    });
   },
   
   // Register a new user (admin only)
@@ -49,6 +46,11 @@ const authService = {
   // Update user role (admin only)
   updateUserRole: (userId, role) => {
     return api.post(`/auth/users/${userId}/role`, { role });
+  },
+  
+  // Delete a user (admin/super_admin only)
+  deleteUser: (userId) => {
+    return api.post(`/auth/users/${userId}/delete`);
   }
 };
 

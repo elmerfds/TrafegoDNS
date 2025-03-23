@@ -145,6 +145,76 @@ function createAuthRouter(authService, config) {
       });
     }
   });
+
+  // POST /api/auth/users/:userId/delete - Delete a user (admin/super_admin only)
+  router.post('/users/:userId/delete', async (req, res) => {
+    try {
+      const { userId } = req.params;
+      
+      if (!req.user) {
+        return res.status(401).json({
+          error: 'Unauthorized',
+          message: 'Authentication required'
+        });
+      }
+      
+      // Get user to delete
+      const userToDelete = await authService.database.getUserById(userId);
+      if (!userToDelete) {
+        return res.status(404).json({
+          error: 'Not Found',
+          message: 'User not found'
+        });
+      }
+      
+      // Check permissions - only super_admin can delete admins, admins can delete regular users
+      const isSuperAdmin = authService.isSuperAdmin(req.user);
+      const isAdmin = authService.isAdmin(req.user);
+      
+      if (!isAdmin) {
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'Only administrators can delete users'
+        });
+      }
+      
+      if (userToDelete.role === 'super_admin' && !isSuperAdmin) {
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'Only super administrators can delete super admin users'
+        });
+      }
+      
+      if (userToDelete.role === 'admin' && !isSuperAdmin) {
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'Only super administrators can delete admin users'
+        });
+      }
+      
+      // Cannot delete yourself
+      if (userToDelete.id === req.user.id) {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: 'Cannot delete your own account'
+        });
+      }
+      
+      // Delete the user
+      await authService.database.deleteUser(userId);
+      
+      res.json({
+        success: true,
+        message: `User ${userToDelete.username} deleted successfully`
+      });
+    } catch (error) {
+      logger.error(`Error deleting user: ${error.message}`);
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: error.message
+      });
+    }
+  });  
   
   router.get('/status', (req, res) => {
     try {

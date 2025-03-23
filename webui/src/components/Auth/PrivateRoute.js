@@ -8,7 +8,15 @@ const PrivateRoute = ({ children, requiredRole = 'user' }) => {
   const { currentUser, isLoading, isAuthenticated, hasRole } = useAuth();
   const location = useLocation();
 
-  // Show loading during initial auth check
+  console.log("PrivateRoute check:", { 
+    path: location.pathname,
+    user: currentUser?.username,
+    role: currentUser?.role,
+    requiredRole,
+    hasRequiredRole: hasRole(requiredRole)
+  });
+
+  // Only show loading during initial auth check
   if (isLoading) {
     return <LoadingScreen />;
   }
@@ -20,8 +28,10 @@ const PrivateRoute = ({ children, requiredRole = 'user' }) => {
   
   // Check if user has the required role
   if (requiredRole && !hasRole(requiredRole)) {
-    // User is authenticated but doesn't have required role
-    return <Navigate to="/dashboard" replace />;
+    // Redirect to dashboard with error message in state
+    return <Navigate to="/dashboard" replace state={{ 
+      error: `Access denied: You need ${requiredRole} permissions to access this page` 
+    }} />;
   }
 
   // User is authenticated and has required role
