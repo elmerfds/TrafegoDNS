@@ -1,6 +1,10 @@
 /**
- * Simplified AuthService - Everyone is an admin
+ * src/auth/service.js
+ * Simplified Authentication Service for TráfegoDNS
  */
+const jwt = require('jsonwebtoken');
+const logger = require('../utils/logger');
+
 class AuthService {
   constructor(config, eventBus) {
     this.config = config;
@@ -18,6 +22,13 @@ class AuthService {
       username: this.defaultUsername,
       password: this.defaultPassword,
       role: 'admin'
+    };
+    
+    // User role constants
+    this.ROLES = {
+      SUPER_ADMIN: 'super_admin',
+      ADMIN: 'admin',
+      USER: 'user'
     };
     
     logger.info(`Auth service initialized with single admin user: ${this.adminUser.username}`);
@@ -132,6 +143,14 @@ class AuthService {
       oidc: false,
       oidcOnly: false
     };
+  }
+  
+  /**
+   * Close database connection
+   */
+  async close() {
+    // No database to close in simplified version
+    logger.debug('Auth service closed');
   }
 }
 
