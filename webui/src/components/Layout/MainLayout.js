@@ -1,3 +1,4 @@
+// src/components/Layout/MainLayout.js
 import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Container, Row, Col } from 'react-bootstrap';
@@ -24,20 +25,20 @@ const MainLayout = () => {
     <div className="d-flex min-vh-100 bg-body">
       <Sidebar collapsed={sidebarCollapsed} />
       
-      <div className="flex-grow-1 d-flex flex-column overflow-hidden">
+      <div className="flex-grow-1 d-flex flex-column overflow-hidden content-area-expanded">
         <Topbar 
           toggleSidebar={toggleSidebar} 
           sidebarCollapsed={sidebarCollapsed}
           user={currentUser}
         />
         
-        <main className="flex-grow-1 overflow-auto p-4">
+        <main className="flex-grow-1 overflow-auto">
           <Container fluid>
             <Outlet />
           </Container>
         </main>
         
-        <footer className="py-3 px-4 border-top text-center text-muted">
+        <footer className="py-2 px-3 border-top text-center text-muted">
           <small>&copy; {new Date().getFullYear()} TráfegoDNS</small>
         </footer>
       </div>
