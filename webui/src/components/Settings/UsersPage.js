@@ -54,6 +54,13 @@ const UsersPage = () => {
     try {
       const response = await authService.getUsers();
       
+      // Check if we got a 403 response (handled specially in authService)
+      if (response.status === 403) {
+        setError('You do not have permission to view users. Only administrators can access this page.');
+        setUsers([]);
+        return;
+      }
+      
       if (response.data && response.data.users) {
         setUsers(response.data.users);
       } else {
@@ -63,29 +70,9 @@ const UsersPage = () => {
       }
     } catch (error) {
       console.error('Error fetching users:', error);
-      
-      // Set empty array to prevent undefined errors
       setUsers([]);
       
-      // Detailed error handling based on response
-      if (error.response) {
-        const status = error.response.status;
-        const errorMessage = error.response.data?.message || 'Unknown error';
-        
-        if (status === 403) {
-          setError(`Permission denied: ${errorMessage}`);
-        } else if (status === 401) {
-          setError(`Authentication error: ${errorMessage}`);
-          // Redirect to login after a short delay
-          setTimeout(() => navigate('/login'), 2000);
-        } else {
-          setError(`Server error (${status}): ${errorMessage}`);
-        }
-      } else if (error.request) {
-        setError('No response from server. Please check your connection.');
-      } else {
-        setError(`Error: ${error.message}`);
-      }
+      // Handle other errors...
     } finally {
       setIsLoading(false);
     }

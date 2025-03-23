@@ -37,21 +37,21 @@ const App = () => {
     <>
       <AuthProvider>
         <SettingsProvider>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            
-            <Route element={<PrivateRoute><MainLayout /></PrivateRoute>}>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/records" element={<RecordsPage />} />
-              <Route path="/providers" element={<ProvidersPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/users" element={<UsersPage />} />
-              <Route path="/status" element={<StatusPage />} />
-            </Route>
-            
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          
+          <Route element={<PrivateRoute><MainLayout /></PrivateRoute>}>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/records" element={<RecordsPage />} />
+            <Route path="/providers" element={<ProvidersPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/users" element={<PrivateRoute requiredRole="admin"><UsersPage /></PrivateRoute>} />
+            <Route path="/status" element={<StatusPage />} />
+          </Route>
+          
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
         </SettingsProvider>
       </AuthProvider>
       
