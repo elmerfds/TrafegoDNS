@@ -30,7 +30,16 @@ const authService = {
   
   // Get all users (admin only)
   getUsers: () => {
-    return api.get('/auth/users');
+    return api.get('/auth/users').catch(error => {
+      // Log detailed error for debugging
+      console.error('Error in getUsers:', error.response?.data || error.message);
+      
+      if (error.response?.status === 403) {
+        // Handle permission error specifically
+        throw new Error("Insufficient permissions to view users");
+      }
+      throw error;
+    });
   },
   
   // Register a new user (admin only)
