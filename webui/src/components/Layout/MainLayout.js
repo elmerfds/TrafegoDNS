@@ -1,3 +1,4 @@
+// src/components/Layout/MainLayout.js
 import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Container, Row, Col } from 'react-bootstrap';
@@ -31,8 +32,8 @@ const MainLayout = () => {
           user={currentUser}
         />
         
-        <main className="flex-grow-1 overflow-auto p-4">
-          <Container fluid>
+        <main className="flex-grow-1 overflow-auto p-3">
+          <Container fluid className="px-2">
             <Outlet />
           </Container>
         </main>
