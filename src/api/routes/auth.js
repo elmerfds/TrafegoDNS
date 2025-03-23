@@ -1,4 +1,6 @@
 // src/api/routes/auth.js
+const express = require('express');
+const logger = require('../../utils/logger');
 
 function createAuthRouter(authService, config) {
   const router = express.Router();
@@ -39,7 +41,9 @@ function createAuthRouter(authService, config) {
   
   router.get('/profile', async (req, res) => {
     try {
-      // Manual token verification
+      logger.debug(`Profile endpoint called`);
+      
+      // Manual token verification for reliability
       const authHeader = req.headers.authorization;
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return res.status(401).json({
@@ -97,6 +101,8 @@ function createAuthRouter(authService, config) {
       });
     }
     
+    logger.debug(`User info from token: ${JSON.stringify(req.user)}`);
+    
     res.json({
       user: {
         id: req.user.id,
@@ -105,7 +111,10 @@ function createAuthRouter(authService, config) {
       },
       roleChecks: {
         isAdmin: true,
-        isSuperAdmin: true
+        isSuperAdmin: true,
+        hasUserRole: true,
+        hasAdminRole: true,
+        hasSuperAdminRole: true
       }
     });
   });

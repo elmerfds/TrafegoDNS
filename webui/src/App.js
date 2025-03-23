@@ -13,7 +13,6 @@ import Dashboard from './components/Dashboard/Dashboard';
 import RecordsPage from './components/DNSRecords/RecordsPage';
 import ProvidersPage from './components/Providers/ProvidersPage';
 import SettingsPage from './components/Settings/SettingsPage';
-import UsersPage from './components/Settings/UsersPage';
 import StatusPage from './components/Dashboard/StatusPage';
 import LoadingScreen from './components/Layout/LoadingScreen';
 
@@ -46,7 +45,6 @@ const App = () => {
             <Route path="/records" element={<RecordsPage />} />
             <Route path="/providers" element={<ProvidersPage />} />
             <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/users" element={<PrivateRoute requiredRole="admin"><UsersPage /></PrivateRoute>} />
             <Route path="/status" element={<StatusPage />} />
           </Route>
           

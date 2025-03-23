@@ -16,7 +16,7 @@ function verifyAuthToken(req, res, next) {
   // Skip auth if disabled globally via env variable
   if (process.env.AUTH_ENABLED === 'false') {
     logger.debug(`Auth disabled via env, skipping check for ${fullPath}`);
-    req.user = { id: 'system', username: 'system', role: 'super_admin' };
+    req.user = { id: 'admin', username: 'admin', role: 'admin' };
     return next();
   }
   
@@ -59,23 +59,6 @@ function verifyAuthToken(req, res, next) {
     req.user = decoded;
     logger.debug(`Auth successful - User: ${decoded.username}, Role: ${decoded.role}`);
     
-    // Check user role for protected routes
-    if (isAdminRoute(fullPath) && !authService.isAdmin(req.user)) {
-      logger.warn(`Admin access attempted by non-admin user: ${req.user.username}`);
-      return res.status(403).json({
-        error: 'Forbidden',
-        message: 'Administrator privileges required'
-      });
-    }
-    
-    if (isSuperAdminRoute(fullPath) && !authService.isSuperAdmin(req.user)) {
-      logger.warn(`Super admin access attempted by non-super-admin user: ${req.user.username}`);
-      return res.status(403).json({
-        error: 'Forbidden',
-        message: 'Super Administrator privileges required'
-      });
-    }
-    
     // Continue
     return next();
   } catch (error) {
@@ -107,36 +90,13 @@ function isPublicRoute(path) {
 }
 
 function isSuperAdminRoute(path) {
-  const superAdminRoutes = [
-    '/auth/users',
-    '/api/auth/users/create-admin'
-  ];
-  
-  return superAdminRoutes.some(route => 
-    path.endsWith(route) || 
-    path.includes(`${route}/`)
-  );
+  // In simplified auth, there are no super admin routes
+  return false;
 }
 
 function isAdminRoute(path) {
-  const adminRoutes = [
-    '/providers/switch',
-    '/settings/reset',
-    '/mode/switch',
-    '/records/managed',
-    '/records/preserved',
-    '/records/create',
-    '/records/update',
-    '/records/delete',
-    '/records/cleanup',
-    '/auth/users',
-    '/api/auth/users'     
-  ];
-  
-  return adminRoutes.some(route => 
-    path.endsWith(route) || 
-    path.includes(`${route}/`)
-  );
+  // In simplified auth, there are no restricted admin routes
+  return false;
 }
 
 module.exports = {
