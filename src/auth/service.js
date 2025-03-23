@@ -619,13 +619,19 @@ class AuthService {
     
     if (!user || !user.role) return false;
     
+    console.log(`Checking if user ${user.username} has role ${requiredRole}`);
+    
+    // Normalize roles for comparison
+    const userRole = user.role.toLowerCase();
+    const required = requiredRole.toLowerCase();
+    
     // Role hierarchy: super_admin > admin > user
-    if (requiredRole === this.ROLES.USER) {
-      return [this.ROLES.USER, this.ROLES.ADMIN, this.ROLES.SUPER_ADMIN].includes(user.role);
-    } else if (requiredRole === this.ROLES.ADMIN) {
-      return [this.ROLES.ADMIN, this.ROLES.SUPER_ADMIN].includes(user.role);
-    } else if (requiredRole === this.ROLES.SUPER_ADMIN) {
-      return user.role === this.ROLES.SUPER_ADMIN;
+    if (required === 'user') {
+      return ['user', 'admin', 'super_admin'].includes(userRole);
+    } else if (required === 'admin') {
+      return ['admin', 'super_admin'].includes(userRole);
+    } else if (required === 'super_admin') {
+      return userRole === 'super_admin';
     }
     
     return false;
@@ -637,7 +643,17 @@ class AuthService {
    * @returns {boolean} True if user is admin
    */
   isAdmin(user) {
-    return user && (user.role === this.ROLES.ADMIN || user.role === this.ROLES.SUPER_ADMIN);
+    // Debug log to see what's being checked
+    console.log('Checking admin status for user:', user);
+    
+    if (!user) return false;
+    
+    // Check log to see the value of user.role
+    console.log('User role:', user.role);
+    
+    // Handle string case issues and multiple admin types
+    const role = user.role ? user.role.toLowerCase() : '';
+    return role === 'admin' || role === 'super_admin';
   }
   
   /**
