@@ -122,11 +122,17 @@ function isPublicRoute(path) {
     '/api/auth/login',
     '/api/auth/status',
     '/api/auth/oidc/login',
-    '/api/auth/oidc/callback'
+    '/api/auth/oidc/callback',
+    '/api/placeholder'
   ];
   
+  // Check for exact matches
+  if (publicRoutes.includes(path)) {
+    return true;
+  }
+  
+  // Check for path prefixes
   return publicRoutes.some(route => 
-    path === route || 
     path.startsWith(`${route}/`) ||
     // More flexible matching for query parameters
     path.split('?')[0] === route
@@ -139,22 +145,21 @@ function isPublicRoute(path) {
  * @returns {boolean} Whether the route is super admin-only
  */
 function isSuperAdminRoute(path) {
+  // Routes that should only be accessible by super_admin
   const superAdminRoutes = [
-    '/auth/users',
-    '/api/auth/users'
+    '/auth/users/create-admin',
+    '/api/auth/users/create-admin'
   ];
-
+  
   // Check for exact matches first
   if (superAdminRoutes.includes(path)) {
     return true;
-  }  
+  }
   
-  // More flexible matching that works with base path
+  // For more specific routes that include parameters
   return superAdminRoutes.some(route => 
     path.endsWith(route) || 
-    path.includes(`${route}/`) ||
-    // Handle paths with query parameters
-    path.split('?')[0] === route
+    path.includes(`${route}/`)
   );
 }
 
@@ -203,5 +208,8 @@ function isAdminRoute(path) {
 }
 
 module.exports = {
-  verifyAuthToken
+  verifyAuthToken,
+  isPublicRoute,
+  isAdminRoute,
+  isSuperAdminRoute
 };
