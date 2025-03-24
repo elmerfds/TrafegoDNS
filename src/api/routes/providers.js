@@ -124,11 +124,23 @@ function createProvidersRouter(stateManager, config) {
       // Get provider config
       const config = state.providers.configs[provider] || {};
       
-      // Mask sensitive data
+      // Apply partial masking to sensitive data
       const maskedConfig = { ...config };
-      if (maskedConfig.token) maskedConfig.token = '***';
-      if (maskedConfig.apiKey) maskedConfig.apiKey = '***';
-      if (maskedConfig.secretKey) maskedConfig.secretKey = '***';
+      
+      // Helper function for partial masking
+      const partialMask = (value) => {
+        if (!value) return value;
+        if (value === 'CONFIGURED_FROM_ENV') return value; // Keep special values intact
+        const visibleChars = 4; // Number of characters to keep visible at the end
+        return '*'.repeat(Math.max(0, value.length - visibleChars)) + value.slice(-visibleChars);
+      };
+      
+      // Apply to sensitive fields
+      if (maskedConfig.token) maskedConfig.token = partialMask(maskedConfig.token);
+      if (maskedConfig.apiKey) maskedConfig.apiKey = partialMask(maskedConfig.apiKey);
+      if (maskedConfig.secretKey) maskedConfig.secretKey = partialMask(maskedConfig.secretKey);
+      if (maskedConfig.accessKey) maskedConfig.accessKey = partialMask(maskedConfig.accessKey);
+      if (maskedConfig.password) maskedConfig.password = partialMask(maskedConfig.password);
       
       res.json({
         provider,
@@ -143,7 +155,6 @@ function createProvidersRouter(stateManager, config) {
       });
     }
   });
-  
   /**
    * POST /api/providers/{provider}/config - Update provider configuration
    */
