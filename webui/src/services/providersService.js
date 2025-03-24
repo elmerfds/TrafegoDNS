@@ -73,48 +73,68 @@ const providersService = {
     }
   },
   
+  // Helper functions for dealing with masked values and environment variables
+  
   // Check if a provider has configuration from environment variables
   checkEnvironmentConfig: (provider, config) => {
-    // No need to make an API call - check if any values are marked as env variables
     if (!config) return false;
-    
     return Object.values(config).some(value => value === 'CONFIGURED_FROM_ENV');
   },
   
-  // Add this helper function to check if a specific field is from an env variable
+  // Check if a specific field is from an env variable
   isFromEnvironment: (config, field) => {
     if (!config || !config[field]) return false;
     return config[field] === 'CONFIGURED_FROM_ENV';
   },
   
-  // Helper function to determine if a value is masked in the API response
+  // Check if a value is masked in the API response
   isMaskedValue: (value) => {
+    if (typeof value !== 'string') return false;
     return value === '***' || value === '********' || /^\*+$/.test(value);
   },
   
-  // Helper function to detect environment variable configuration
+  // Check if a value is configured from an environment variable
   isEnvironmentValue: (value) => {
     return value === 'CONFIGURED_FROM_ENV';
   },
   
+  // Partially unmask a sensitive value (show last few characters)
+  partiallyUnmaskValue: (value, charsToShow = 4) => {
+    if (!value || typeof value !== 'string') return value;
+    
+    // For environment values, use a special indicator
+    if (value === 'CONFIGURED_FROM_ENV') return '•••ENV';
+    
+    // For fully masked values from API, return a partial mask
+    if (value === '***' || value === '********' || /^\*+$/.test(value)) {
+      // If it's already a mask, create a partial mask with sample digits
+      return '•••' + Array(charsToShow).fill(0).map(() => Math.floor(Math.random() * 10)).join('');
+    }
+    
+    // For actual values, only show the last few characters
+    return '•'.repeat(Math.max(0, value.length - charsToShow)) + value.slice(-charsToShow);
+  },
+  
   // Process provider configuration to handle masked and environment values
-  processProviderConfig: (provider, config, fromEnv = false) => {
+  processProviderConfig: (provider, config) => {
     // Create a processed copy
     const processed = { ...config };
     
-    // Check for sensitive fields that might be masked
+    // List of sensitive fields that might be masked
     const sensitiveFields = ['token', 'apiKey', 'secretKey', 'accessKey', 'password'];
     
-    sensitiveFields.forEach(field => {
-      if (processed[field]) {
-        // If it's masked in the API response
-        if (providersService.isMaskedValue(processed[field])) {
-          processed[field] = 'CONFIGURED';
-        }
-        
-        // If it's from environment variables
-        if (fromEnv) {
+    // Process each field
+    Object.keys(processed).forEach(field => {
+      const value = processed[field];
+      
+      // For sensitive fields
+      if (sensitiveFields.includes(field)) {
+        if (providersService.isEnvironmentValue(value)) {
+          // Keep environment variable indicator
           processed[field] = 'CONFIGURED_FROM_ENV';
+        } else if (providersService.isMaskedValue(value)) {
+          // For masked values, create a partial mask
+          processed[field] = providersService.partiallyUnmaskValue(value);
         }
       }
     });
