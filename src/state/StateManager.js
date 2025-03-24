@@ -60,6 +60,9 @@ class StateManager {
       }
     };
     
+    // Initialize provider configs from environment variables
+    this.initializeProviderConfigsFromEnv(config);
+    
     // Load state from file
     this.loadState();
     
@@ -70,6 +73,52 @@ class StateManager {
     this.setupEventSubscriptions();
     
     logger.info('State Manager initialised');
+  }
+  
+  /**
+   * Initialize provider configs from environment variables
+   */
+  initializeProviderConfigsFromEnv(config) {
+    // Create provider configs object if it doesn't exist
+    if (!this.state.providers.configs) {
+      this.state.providers.configs = {};
+    }
+    
+    // Cloudflare
+    if (config.cloudflareToken || config.cloudflareZone) {
+      this.state.providers.configs.cloudflare = {
+        ...(this.state.providers.configs.cloudflare || {}),
+        token: config.cloudflareToken ? 'CONFIGURED_FROM_ENV' : undefined,
+        zone: config.cloudflareZone || undefined
+      };
+    }
+    
+    // DigitalOcean
+    if (config.digitalOceanToken || config.digitalOceanDomain) {
+      this.state.providers.configs.digitalocean = {
+        ...(this.state.providers.configs.digitalocean || {}),
+        token: config.digitalOceanToken ? 'CONFIGURED_FROM_ENV' : undefined,
+        domain: config.digitalOceanDomain || undefined
+      };
+    }
+    
+    // Route53
+    if (config.route53AccessKey || config.route53SecretKey || config.route53Zone || config.route53ZoneId) {
+      this.state.providers.configs.route53 = {
+        ...(this.state.providers.configs.route53 || {}),
+        accessKey: config.route53AccessKey ? 'CONFIGURED_FROM_ENV' : undefined,
+        secretKey: config.route53SecretKey ? 'CONFIGURED_FROM_ENV' : undefined,
+        zone: config.route53Zone || undefined,
+        zoneId: config.route53ZoneId || undefined,
+        region: config.route53Region || 'eu-west-2'
+      };
+    }
+    
+    // Log initialization of environment variables
+    const providers = Object.keys(this.state.providers.configs);
+    if (providers.length > 0) {
+      logger.info(`Initialized provider configs from environment variables: ${providers.join(', ')}`);
+    }
   }
   
   /**
@@ -283,8 +332,30 @@ class StateManager {
    * @param {Object} config - Provider configuration
    */
   updateProviderConfig(provider, config) {
-    this.state.providers.configs[provider] = config;
+    // Get existing config
+    const existingConfig = this.state.providers.configs[provider] || {};
+    
+    // Create new config object while preserving environment variable settings
+    const newConfig = { ...existingConfig };
+    
+    // For each field in the new config
+    Object.keys(config).forEach(key => {
+      // Only update if not configured from environment
+      if (existingConfig[key] !== 'CONFIGURED_FROM_ENV') {
+        newConfig[key] = config[key];
+      } else {
+        // Log attempt to override environment variable
+        logger.warn(`Attempted to override ${provider}.${key} which is configured via environment variable`);
+      }
+    });
+    
+    // Update the state
+    this.state.providers.configs[provider] = newConfig;
+    
+    // Save state to disk
     this.debouncedSave();
+    
+    return this.state.providers.configs[provider];
   }
   
   /**
