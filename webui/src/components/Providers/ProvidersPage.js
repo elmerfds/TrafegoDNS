@@ -161,33 +161,59 @@ const ProvidersPage = () => {
   // helper function
   const isEnvironmentVariable = (provider, field) => {
     if (!providers.configs || !providers.configs[provider]) return false;
-    return providers.configs[provider][field] === 'CONFIGURED_FROM_ENV';
-  }; 
+    
+    // Check if the value is explicitly marked as from environment
+    const value = providers.configs[provider][field];
+    return value === 'CONFIGURED_FROM_ENV' || 
+           (providers.configs[provider][`${field}_from_env`] === true);
+  };
 
   // Render field display value (sensitive fields show "Configured" or "Not configured")
   const getFieldDisplayValue = (provider, field) => {
     if (!providerConfigs[provider]) return '';
     
-    const value = providerConfigs[provider][field];
+    // Get the current configuration value
+    const configValue = providers.configs?.[provider]?.[field];
     
-    // If it's an environment variable
+    // For environment variables
     if (isEnvironmentVariable(provider, field)) {
-      // For sensitive fields, use a placeholder or leave empty
       if (isSensitiveField(field)) {
-        // If the value has a masked format (contains asterisks), return it
-        if (typeof value === 'string' && value.includes('*')) {
-          return value; // Return the partially masked value from the backend
-        }
-        return ''; // Empty for sensitive env vars without masked format
+        // For sensitive fields from env vars, show a placeholder
+        return '[env value]';
       } else {
-        // For non-sensitive fields from environment variables,
-        // return the actual value (which should be there for non-sensitive fields)
-        return value !== 'CONFIGURED_FROM_ENV' ? value : '';
+        // For non-sensitive fields, the actual value should be in configValue
+        return configValue || '';
       }
     }
+
+    // debugging code temporarily
+    console.log("Providers data:", providers);
+    console.log("Provider configs:", providerConfigs);
     
-    // For regular values, return the value if it exists
-    return value || '';
+    // Add this helper to visualize what's happening
+    const debugEnvironmentVariables = () => {
+      const debug = {};
+      if (providers && providers.available) {
+        providers.available.forEach(provider => {
+          debug[provider] = {};
+          const config = providers.configs[provider] || {};
+          Object.keys(config).forEach(field => {
+            debug[provider][field] = {
+              value: config[field],
+              isEnv: isEnvironmentVariable(provider, field),
+              isSensitive: isSensitiveField(field),
+              display: getFieldDisplayValue(provider, field)
+            };
+          });
+        });
+      }
+      console.log("Debug environment variables:", debug);
+    };
+    
+    debugEnvironmentVariables();    
+    
+    // For regular values
+    return providerConfigs[provider][field] || '';
   };
 
   // renderFormField helper function
@@ -196,6 +222,9 @@ const ProvidersPage = () => {
     const fieldValue = getFieldDisplayValue(provider, field);
     const providerInput = inputValues[provider] || {};
     const isShowingPassword = showTokens[provider]?.[field] || false;
+    
+    // Debug log to help troubleshoot
+    console.log(`Field: ${field}, isEnvVar: ${isEnvVar}, fieldValue: "${fieldValue}"`);
     
     return (
       <Form.Group className="mb-3">
@@ -222,7 +251,8 @@ const ProvidersPage = () => {
           <Form.Control 
             type="text"
             placeholder={placeholder}
-            value={isEnvVar ? fieldValue : (providerInput[field] || '')}
+            // This is the key change - show the actual value for non-sensitive env var fields
+            value={isEnvVar ? (fieldValue || '') : (providerInput[field] || '')}
             onChange={(e) => handleInputChange(provider, field, e.target.value)}
             className="bg-dark text-white border-secondary"
             disabled={isEnvVar} // Disable if from env var
