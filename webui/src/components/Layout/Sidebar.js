@@ -30,8 +30,10 @@ const Sidebar = ({ collapsed, toggleSidebar }) => {
         width: sidebarWidth,
         transition: 'width 0.3s ease',
         height: '100vh',
-        position: 'sticky',
-        top: 0
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        zIndex: 1030
       }}
     >
       {/* Toggle Button */}
@@ -77,7 +79,7 @@ const Sidebar = ({ collapsed, toggleSidebar }) => {
       {/* Fixed logout button at bottom */}
       <div className="mt-auto mb-3">
         <div 
-          className="sidebar-link text-danger cursor-pointer"
+          className="sidebar-link cursor-pointer"
           onClick={handleLogout}
           style={{ cursor: 'pointer' }}
         >
