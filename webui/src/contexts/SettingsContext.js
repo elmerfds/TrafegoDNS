@@ -96,16 +96,34 @@ export const SettingsProvider = ({ children }) => {
 
   const updateProviderConfig = async (provider, config) => {
     try {
+      // Call the API to update the provider config
       await providersService.updateProviderConfig(provider, config);
       
-      // Update the local state
-      setProviders({
-        ...providers,
+      // Update the local state with the new config
+      setProviders(prevProviders => ({
+        ...prevProviders,
         configs: {
-          ...providers.configs,
+          ...prevProviders.configs,
           [provider]: config
         }
-      });
+      }));
+      
+      // Save to localStorage for persistence (optional)
+      try {
+        const storedSettings = JSON.parse(localStorage.getItem('appSettings') || '{}');
+        localStorage.setItem('appSettings', JSON.stringify({
+          ...storedSettings,
+          providers: {
+            ...storedSettings.providers,
+            configs: {
+              ...(storedSettings.providers?.configs || {}),
+              [provider]: config
+            }
+          }
+        }));
+      } catch (storageError) {
+        console.error('Error saving provider config to localStorage:', storageError);
+      }
       
       toast.success(`Updated ${provider} configuration`);
       return true;
@@ -113,6 +131,32 @@ export const SettingsProvider = ({ children }) => {
       console.error('Error updating provider config:', error);
       toast.error('Failed to update provider configuration');
       return false;
+    }
+  };
+  
+  // Fetch provider configurations during initialization
+  const fetchProviderConfigs = async () => {
+    try {
+      const providers = await providersService.getAllProviders();
+      
+      // Store the provider configs centrally
+      setProviders(providers.data);
+      
+      // Also store in localStorage for persistence between sessions
+      try {
+        const storedSettings = JSON.parse(localStorage.getItem('appSettings') || '{}');
+        localStorage.setItem('appSettings', JSON.stringify({
+          ...storedSettings,
+          providers: providers.data
+        }));
+      } catch (storageError) {
+        console.error('Error saving provider configs to localStorage:', storageError);
+      }
+      
+      return providers.data;
+    } catch (error) {
+      console.error('Error fetching provider configs:', error);
+      return null;
     }
   };
 
