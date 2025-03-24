@@ -185,32 +185,6 @@ const ProvidersPage = () => {
         return configValue || '';
       }
     }
-
-    // debugging code temporarily
-    console.log("Providers data:", providers);
-    console.log("Provider configs:", providerConfigs);
-    
-    // Add this helper to visualize what's happening
-    const debugEnvironmentVariables = () => {
-      const debug = {};
-      if (providers && providers.available) {
-        providers.available.forEach(provider => {
-          debug[provider] = {};
-          const config = providers.configs[provider] || {};
-          Object.keys(config).forEach(field => {
-            debug[provider][field] = {
-              value: config[field],
-              isEnv: isEnvironmentVariable(provider, field),
-              isSensitive: isSensitiveField(field),
-              display: getFieldDisplayValue(provider, field)
-            };
-          });
-        });
-      }
-      console.log("Debug environment variables:", debug);
-    };
-    
-    debugEnvironmentVariables();    
     
     // For regular values
     return providerConfigs[provider][field] || '';
