@@ -220,7 +220,8 @@ a.sidebar-link {
 /* Sidebar styling */
 .sidebar {
   min-height: 100vh;
-  z-index: 1000;
+  z-index: 1030;
+  box-shadow: 0 0 10px rgba(0,0,0,0.2);
 }
 
 .sidebar-link {
@@ -251,27 +252,25 @@ a.sidebar-link {
   font-size: 1.1rem;
 }
 
-/* Status badges styling */
-.badge-label {
-  display: inline-block;
-  font-size: 0.75rem;
+/* Status bar styling */
+.status-bar {
+  border-bottom: 1px solid rgba(0,0,0,0.1);
+}
+
+.mode-pill button, .provider-pill button {
+  border-radius: 4px;
   font-weight: 600;
   letter-spacing: 0.5px;
+  font-size: 0.75rem;
+  border: none;
 }
 
-.bg-info {
-  background-color: #17a2b8 !important;
+.btn-info {
+  background-color: #17a2b8;
 }
 
-.bg-primary {
-  background-color: #0d6efd !important;
-}
-
-/* Status section styling */
-.status-section {
-  background-color: #ffffff;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  border-radius: 4px;
+.btn-primary {
+  background-color: #0d6efd;
 }
 
 /* Brand styling in Navbar */
@@ -293,21 +292,23 @@ a.sidebar-link {
   background-color: rgba(255, 255, 255, 0.1);
 }
 
-/* Responsive adjustments */
+/* Main content area */
+.main-content {
+  padding-left: 65px;
+  transition: padding-left 0.3s ease;
+}
+
+.main-content.expanded {
+  padding-left: 250px;
+}
+
+/* Responsive adjustments for mobile */
 @media (max-width: 768px) {
-  .sidebar {
-    width: 65px !important;
+  body {
+    overflow-x: hidden;
   }
   
-  .sidebar .sidebar-link span {
-    display: none;
-  }
-  
-  .status-section {
-    flex-direction: column;
-  }
-  
-  .mode-badge, .provider-badge {
-    margin-bottom: 0.5rem;
+  .main-content {
+    padding-left: 65px !important;
   }
 }
