@@ -168,21 +168,26 @@ const ProvidersPage = () => {
   const getFieldDisplayValue = (provider, field) => {
     if (!providerConfigs[provider]) return '';
     
-    // If environment variable, return the actual value (even for sensitive fields)
+    const value = providerConfigs[provider][field];
+    
+    // If it's an environment variable
     if (isEnvironmentVariable(provider, field)) {
-      const value = providerConfigs[provider][field];
-      
-      // If it's a sensitive field, we still want to mask it
+      // For sensitive fields, use a placeholder or leave empty
       if (isSensitiveField(field)) {
-        return ''; // Don't show any value for sensitive fields from env vars
+        // If the value has a masked format (contains asterisks), return it
+        if (typeof value === 'string' && value.includes('*')) {
+          return value; // Return the partially masked value from the backend
+        }
+        return ''; // Empty for sensitive env vars without masked format
+      } else {
+        // For non-sensitive fields from environment variables,
+        // return the actual value (which should be there for non-sensitive fields)
+        return value !== 'CONFIGURED_FROM_ENV' ? value : '';
       }
-      
-      // For non-sensitive fields, return the actual value
-      return value !== 'CONFIGURED_FROM_ENV' ? value : '';
     }
     
     // For regular values, return the value if it exists
-    return providerConfigs[provider][field] || '';
+    return value || '';
   };
 
   // renderFormField helper function
@@ -200,7 +205,7 @@ const ProvidersPage = () => {
             <Form.Control 
               type={isShowingPassword ? "text" : "password"}
               placeholder={placeholder}
-              value={providerInput[field] || ''}
+              value={isEnvVar ? fieldValue : (providerInput[field] || '')}
               onChange={(e) => handleInputChange(provider, field, e.target.value)}
               className="bg-dark text-white border-secondary"
               disabled={isEnvVar} // Disable if from env var
@@ -239,7 +244,7 @@ const ProvidersPage = () => {
         )}
       </Form.Group>
     );
-  };  
+  };
 
   const renderProviderConfig = (provider) => {
     switch (provider.toLowerCase()) {
