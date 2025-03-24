@@ -1,50 +1,74 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
-import { Nav } from 'react-bootstrap';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { Nav, Button } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faGaugeHigh, 
   faNetworkWired, 
   faGlobe, 
   faGear, 
-  faServer
+  faServer,
+  faSignOutAlt,
+  faBars
 } from '@fortawesome/free-solid-svg-icons';
+import { useAuth } from '../../contexts/AuthContext';
 
-const Sidebar = ({ collapsed }) => {
+const Sidebar = ({ collapsed, toggleSidebar }) => {
   const sidebarWidth = collapsed ? '65px' : '250px';
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+  
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
   
   return (
     <div 
-      className="sidebar bg-dark text-white" 
+      className="sidebar bg-dark text-white d-flex flex-column" 
       style={{ 
         width: sidebarWidth,
-        transition: 'width 0.3s ease'
+        transition: 'width 0.3s ease',
+        height: '100vh',
+        position: 'sticky',
+        top: 0
       }}
     >
-      <div className="d-flex align-items-center justify-content-center py-4">
-        <img
-          src="/logo240.png"
-          width="40"
-          height="40"
-          alt="TráfegoDNS Logo"
-          className="me-2"
-          style={{ display: collapsed ? 'none' : 'block' }}
-        />
-        <h4 className="mb-0" style={{ display: collapsed ? 'none' : 'block' }}>
-          TráfegoDNS
-        </h4>
+      {/* Header with logo and toggle button */}
+      <div className="d-flex align-items-center py-3 px-2">
+        <Button 
+          variant="link" 
+          className="text-light p-1" 
+          onClick={toggleSidebar}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          <FontAwesomeIcon icon={faBars} />
+        </Button>
+        
+        <div className="d-flex align-items-center ms-2" style={{ display: collapsed ? 'none' : 'flex' }}>
+          <img
+            src="/logo240.png"
+            width="40"
+            height="40"
+            alt="TráfegoDNS Logo"
+            className="me-2"
+          />
+          <h5 className="mb-0">TráfegoDNS</h5>
+        </div>
+        
         {collapsed && (
           <img
             src="/logo240.png"
             width="40"
             height="40"
             alt="TráfegoDNS Logo"
-            className="mx-auto"
+            className="ms-1"
           />
         )}
       </div>
       
-      <Nav className="flex-column mt-2">
+      {/* Main navigation items */}
+      <Nav className="flex-column mt-3 flex-grow-1">
         <NavLink to="/dashboard" className="sidebar-link">
           <FontAwesomeIcon icon={faGaugeHigh} className="sidebar-icon" />
           {!collapsed && <span>Dashboard</span>}
@@ -70,6 +94,19 @@ const Sidebar = ({ collapsed }) => {
           {!collapsed && <span>Settings</span>}
         </NavLink>
       </Nav>
+      
+      {/* Fixed logout button at bottom */}
+      <div className="mt-auto mb-3 px-3">
+        <Button 
+          variant="outline-light" 
+          size="sm" 
+          className="w-100 d-flex align-items-center justify-content-center"
+          onClick={handleLogout}
+        >
+          <FontAwesomeIcon icon={faSignOutAlt} className="sidebar-icon" />
+          {!collapsed && <span>Logout</span>}
+        </Button>
+      </div>
     </div>
   );
 };
