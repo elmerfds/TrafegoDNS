@@ -121,9 +121,6 @@ const LoginPage = () => {
                   <Form.Control.Feedback type="invalid">
                     Please enter your password.
                   </Form.Control.Feedback>
-                  <Form.Text className="text-muted">
-                    Default password is "trafegodns" unless customised via environment variables
-                  </Form.Text>
                 </Form.Group>
                 
                 <div className="d-grid mb-3">
