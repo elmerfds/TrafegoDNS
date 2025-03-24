@@ -35,48 +35,19 @@ export const SettingsProvider = ({ children }) => {
   const fetchAllSettings = async () => {
     setIsLoading(true);
     try {
-      // Fetch all settings and data in parallel
-      const [settingsResponse, modeResponse] = await Promise.all([
+      // Fetch settings and data in parallel
+      const [settingsResponse, providersResponse, modeResponse] = await Promise.all([
         settingsService.getSettings(),
+        providersService.getAllProviders(), // This will get all the providers including env var info
         settingsService.getOperationMode()
       ]);
-
-      // Use the enhanced method to get detailed provider configs
-      const providersData = await providersService.fetchAllProviderConfigs();
-
+  
       setSettings(settingsResponse.data);
+      setProviders(providersResponse.data);
       setOperationMode(modeResponse.data);
-      setProviders(providersData);
-
-      // Check for environment variables for each provider
-      if (providersData.available && providersData.available.length > 0) {
-        const envStatuses = await Promise.all(
-          providersData.available.map(async provider => {
-            const isFromEnv = await providersService.checkEnvironmentConfig(provider);
-            return { provider, isFromEnv };
-          })
-        );
-
-        // Mark providers configured via environment variables
-        const updatedConfigs = { ...providersData.configs };
-        
-        envStatuses.forEach(({ provider, isFromEnv }) => {
-          if (isFromEnv && updatedConfigs[provider]) {
-            // Process config to mark env variables
-            updatedConfigs[provider] = providersService.processProviderConfig(
-              provider,
-              updatedConfigs[provider],
-              true
-            );
-          }
-        });
-
-        // Update providers with environment variable information
-        setProviders(prev => ({
-          ...prev,
-          configs: updatedConfigs
-        }));
-      }
+      
+      // No need to check for environment variables separately
+      // The API already tells us which values come from environment variables
     } catch (error) {
       console.error('Error fetching settings:', error);
       toast.error('Failed to load settings');
