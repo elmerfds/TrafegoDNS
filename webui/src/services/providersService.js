@@ -13,8 +13,15 @@ const providersService = {
   },
   
   // Get provider configuration
-  getProviderConfig: (provider) => {
-    return api.get(`/providers/${provider}`);
+  getProviderConfig: (provider, showSensitive = false) => {
+    return api.get(`/providers/${provider}`, {
+      params: { showSensitive: showSensitive ? 'true' : 'false' }
+    });
+  },
+  
+  // Get sensitive information for a provider
+  getSensitiveInfo: (provider) => {
+    return api.get(`/providers/${provider}/sensitive`);
   },
   
   // Switch to a different provider
@@ -35,7 +42,7 @@ const providersService = {
   },
   
   // Fetch all provider configurations
-  fetchAllProviderConfigs: async () => {
+  fetchAllProviderConfigs: async (showSensitive = false) => {
     try {
       // Get all available providers first
       const providersResponse = await api.get('/providers');
@@ -44,7 +51,9 @@ const providersService = {
       // For each provider, get its specific configuration
       if (providers && providers.available && Array.isArray(providers.available)) {
         const configPromises = providers.available.map(provider => 
-          api.get(`/providers/${provider}`)
+          api.get(`/providers/${provider}`, {
+            params: { showSensitive: showSensitive ? 'true' : 'false' }
+          })
             .then(response => ({ provider, config: response.data.config }))
             .catch(error => {
               console.error(`Error fetching config for ${provider}:`, error);
@@ -98,48 +107,18 @@ const providersService = {
     return value === 'CONFIGURED_FROM_ENV';
   },
   
-  // Partially unmask a sensitive value (show last few characters)
-  partiallyUnmaskValue: (value, charsToShow = 4) => {
-    if (!value || typeof value !== 'string') return value;
-    
-    // For environment values, use a special indicator
-    if (value === 'CONFIGURED_FROM_ENV') return '•••ENV';
-    
-    // For fully masked values from API, return a partial mask
-    if (value === '***' || value === '********' || /^\*+$/.test(value)) {
-      // If it's already a mask, create a partial mask with sample digits
-      return '•••' + Array(charsToShow).fill(0).map(() => Math.floor(Math.random() * 10)).join('');
-    }
-    
-    // For actual values, only show the last few characters
-    return '•'.repeat(Math.max(0, value.length - charsToShow)) + value.slice(-charsToShow);
-  },
-  
-  // Process provider configuration to handle masked and environment values
-  processProviderConfig: (provider, config) => {
-    // Create a processed copy
-    const processed = { ...config };
-    
-    // List of sensitive fields that might be masked
-    const sensitiveFields = ['token', 'apiKey', 'secretKey', 'accessKey', 'password'];
-    
-    // Process each field
-    Object.keys(processed).forEach(field => {
-      const value = processed[field];
-      
-      // For sensitive fields
-      if (sensitiveFields.includes(field)) {
-        if (providersService.isEnvironmentValue(value)) {
-          // Keep environment variable indicator
-          processed[field] = 'CONFIGURED_FROM_ENV';
-        } else if (providersService.isMaskedValue(value)) {
-          // For masked values, create a partial mask
-          processed[field] = providersService.partiallyUnmaskValue(value);
-        }
+  // Get the real value for a sensitive field (includes calling sensitive API)
+  getSensitiveValue: async (provider, field) => {
+    try {
+      const response = await api.get(`/providers/${provider}/sensitive`);
+      if (response.data && response.data.sensitiveFields && response.data.sensitiveFields[field]) {
+        return response.data.sensitiveFields[field];
       }
-    });
-    
-    return processed;
+      return null;
+    } catch (error) {
+      console.error(`Error fetching sensitive value for ${provider}.${field}:`, error);
+      return null;
+    }
   }
 };
 
