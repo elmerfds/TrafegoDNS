@@ -172,9 +172,14 @@ const ProvidersPage = () => {
 
   // Partially unmask sensitive values (e.g., show last 4 characters)
   const partiallyUnmask = (value, showFull = false) => {
-    if (!value || value === 'CONFIGURED_FROM_ENV') return value;
+    // Special handling for environment variables
+    if (value === 'CONFIGURED_FROM_ENV') {
+      return showFull ? 'Set by environment variable' : '******ENV';
+    }
     
-    // If not a sensitive value or showing full value, return as is
+    if (!value) return value;
+    
+    // If showing full value, return as is
     if (showFull) return value;
     
     // For 'CONFIGURED' or masked values, show a partial mask
@@ -191,7 +196,11 @@ const ProvidersPage = () => {
   const getDisplayValue = (provider, field, showFull = false) => {
     // Check if from environment variable
     if (isEnvironmentVariable(provider, field)) {
-      return isSensitiveField(field) ? '******ENV' : providers.configs[provider][field] || '';
+      if (isSensitiveField(field)) {
+        return showFull ? 'Set by environment variable' : '******ENV';
+      } else {
+        return providers.configs[provider][field] || '';
+      }
     }
     
     // For form inputs, get value from inputValues if available
@@ -261,13 +270,9 @@ const ProvidersPage = () => {
             disabled={isEnvVar} // Disable if from env var
           />
         )}
-        {isEnvVar ? (
+        {isEnvVar && (
           <Form.Text className="text-info">
             Configured via environment variable
-          </Form.Text>
-        ) : (
-          <Form.Text className="text-muted">
-            Current: {getCurrentDisplayValue(provider, field)}
           </Form.Text>
         )}
         {description && (
