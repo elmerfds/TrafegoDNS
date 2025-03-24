@@ -1,4 +1,4 @@
-// src/components/Providers/ProvidersPage.js - With masked value handling
+// src/components/Providers/ProvidersPage.js - With partial masking
 import React, { useState, useEffect } from 'react';
 import { Row, Col, Card, Form, Button, Spinner, Alert } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -30,15 +30,24 @@ const ProvidersPage = () => {
       // Important: Clone the data to avoid reference issues
       setProviderConfigs(providers.configs ? JSON.parse(JSON.stringify(providers.configs)) : {});
       
-      // Initialize input values as empty objects for each provider
+      // Initialize input values with actual values from provider configs
       const initialInputs = {};
-      if (providers.available) {
+      if (providers.available && providers.configs) {
         providers.available.forEach(provider => {
           initialInputs[provider] = {};
+          
+          // For each field in the provider config, set the input value
+          const config = providers.configs[provider] || {};
+          Object.keys(config).forEach(field => {
+            // Only set non-sensitive fields as input values
+            if (!isSensitiveField(field) && config[field] !== 'CONFIGURED_FROM_ENV') {
+              initialInputs[provider][field] = config[field];
+            }
+          });
         });
       }
-      setInputValues(initialInputs);
       
+      setInputValues(initialInputs);
       setIsLoading(false);
     }
   }, [providers]);
@@ -86,20 +95,14 @@ const ProvidersPage = () => {
       await providersService.updateProviderConfig(provider, inputValues[provider]);
       
       // After successful save, update our local providerConfigs state
-      // to show that values are configured (even if they're masked)
       setProviderConfigs(prev => {
         const updated = { ...prev };
         if (!updated[provider]) updated[provider] = {};
         
-        // For each saved field, mark it as configured in our local state
+        // For each saved field, update our local state
         Object.keys(inputValues[provider]).forEach(field => {
           if (inputValues[provider][field]) {
-            // For sensitive fields, just store "configured" indicator
-            if (isSensitiveField(field)) {
-              updated[provider][field] = 'CONFIGURED';
-            } else {
-              updated[provider][field] = inputValues[provider][field];
-            }
+            updated[provider][field] = inputValues[provider][field];
           }
         });
         
@@ -158,47 +161,74 @@ const ProvidersPage = () => {
     return value === '***' || value === '********' || value === 'CONFIGURED';
   };
 
-  // helper function
+  // Helper function to check if a field is configured via environment variable
   const isEnvironmentVariable = (provider, field) => {
     if (!providers.configs || !providers.configs[provider]) return false;
     
     // Check if the value is explicitly marked as from environment
     const value = providers.configs[provider][field];
-    return value === 'CONFIGURED_FROM_ENV' || 
-           (providers.configs[provider][`${field}_from_env`] === true);
+    return value === 'CONFIGURED_FROM_ENV';
   };
 
-  // Render field display value (sensitive fields show "Configured" or "Not configured")
-  const getFieldDisplayValue = (provider, field) => {
-    if (!providerConfigs[provider]) return '';
+  // Partially unmask sensitive values (e.g., show last 4 characters)
+  const partiallyUnmask = (value, showFull = false) => {
+    if (!value || value === 'CONFIGURED_FROM_ENV') return value;
     
-    // Get the current configuration value
-    const configValue = providers.configs?.[provider]?.[field];
+    // If not a sensitive value or showing full value, return as is
+    if (showFull) return value;
     
-    // For environment variables
-    if (isEnvironmentVariable(provider, field)) {
-      if (isSensitiveField(field)) {
-        // For sensitive fields from env vars, show a placeholder
-        return '[env value]';
-      } else {
-        // For non-sensitive fields, the actual value should be in configValue
-        return configValue || '';
-      }
+    // For 'CONFIGURED' or masked values, show a partial mask
+    if (value === 'CONFIGURED' || value === '***' || value === '********' || /^\*+$/.test(value)) {
+      return '******1234'; // Example partial mask with last 4 digits
     }
     
-    // For regular values
-    return providerConfigs[provider][field] || '';
+    // For actual values, mask except last 4 characters
+    const visibleChars = 4; // Number of characters to show
+    return '*'.repeat(Math.max(0, value.length - visibleChars)) + value.slice(-visibleChars);
   };
 
-  // renderFormField helper function
+  // Get the field value to display (handles partial masking for sensitive fields)
+  const getDisplayValue = (provider, field, showFull = false) => {
+    // Check if from environment variable
+    if (isEnvironmentVariable(provider, field)) {
+      return isSensitiveField(field) ? '******ENV' : providers.configs[provider][field] || '';
+    }
+    
+    // For form inputs, get value from inputValues if available
+    if (inputValues[provider] && inputValues[provider][field] !== undefined) {
+      return isSensitiveField(field) ? partiallyUnmask(inputValues[provider][field], showFull) : inputValues[provider][field];
+    }
+    
+    // Otherwise get from provider configs
+    const configValue = providers.configs?.[provider]?.[field];
+    return isSensitiveField(field) ? partiallyUnmask(configValue, showFull) : configValue || '';
+  };
+
+  // Get the current value to show below form inputs
+  const getCurrentDisplayValue = (provider, field) => {
+    const configValue = providers.configs?.[provider]?.[field];
+    
+    if (isEnvironmentVariable(provider, field)) {
+      return isSensitiveField(field) ? 'Configured via environment' : configValue || 'Not configured';
+    }
+    
+    if (isSensitiveField(field)) {
+      // For sensitive fields, show "Configured" or partial mask
+      if (configValue && configValue !== '***' && configValue !== '********') {
+        return 'Configured (partially masked)';
+      }
+      return 'Not configured';
+    }
+    
+    // For non-sensitive fields, show the actual value
+    return configValue || 'Not configured';
+  };
+
+  // Render a form field
   const renderFormField = (provider, field, label, placeholder, description, isSensitive = false) => {
     const isEnvVar = isEnvironmentVariable(provider, field);
-    const fieldValue = getFieldDisplayValue(provider, field);
-    const providerInput = inputValues[provider] || {};
+    const actualValue = getDisplayValue(provider, field, showTokens[provider]?.[field]);
     const isShowingPassword = showTokens[provider]?.[field] || false;
-    
-    // Debug log to help troubleshoot
-    console.log(`Field: ${field}, isEnvVar: ${isEnvVar}, fieldValue: "${fieldValue}"`);
     
     return (
       <Form.Group className="mb-3">
@@ -208,7 +238,7 @@ const ProvidersPage = () => {
             <Form.Control 
               type={isShowingPassword ? "text" : "password"}
               placeholder={placeholder}
-              value={isEnvVar ? fieldValue : (providerInput[field] || '')}
+              value={isEnvVar ? actualValue : (inputValues[provider]?.[field] || '')}
               onChange={(e) => handleInputChange(provider, field, e.target.value)}
               className="bg-dark text-white border-secondary"
               disabled={isEnvVar} // Disable if from env var
@@ -216,7 +246,7 @@ const ProvidersPage = () => {
             <Button 
               variant="outline-secondary"
               onClick={() => toggleShowToken(provider, field)}
-              disabled={isEnvVar && !fieldValue} // Disable if from env var with no value
+              disabled={isEnvVar && !actualValue} // Disable if from env var with no value
             >
               <FontAwesomeIcon icon={isShowingPassword ? faEyeSlash : faEye} />
             </Button>
@@ -225,8 +255,7 @@ const ProvidersPage = () => {
           <Form.Control 
             type="text"
             placeholder={placeholder}
-            // This is the key change - show the actual value for non-sensitive env var fields
-            value={isEnvVar ? (fieldValue || '') : (providerInput[field] || '')}
+            value={isEnvVar ? actualValue : (inputValues[provider]?.[field] || '')}
             onChange={(e) => handleInputChange(provider, field, e.target.value)}
             className="bg-dark text-white border-secondary"
             disabled={isEnvVar} // Disable if from env var
@@ -238,7 +267,7 @@ const ProvidersPage = () => {
           </Form.Text>
         ) : (
           <Form.Text className="text-muted">
-            Current: {fieldValue || 'Not configured'}
+            Current: {getCurrentDisplayValue(provider, field)}
           </Form.Text>
         )}
         {description && (
