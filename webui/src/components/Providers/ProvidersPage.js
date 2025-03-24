@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Row, Col, Card, Form, Button, Spinner, Alert, Table } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSyncAlt, faSave, faExchangeAlt } from '@fortawesome/free-solid-svg-icons';
+import { faSyncAlt, faSave, faExchangeAlt, faEye, faEyeSlash } from '@fortawesome/free-solid-svg-icons';
 import { useSettings } from '../../contexts/SettingsContext';
 import { toast } from 'react-toastify';
 import providersService from '../../services/providersService';
@@ -14,12 +14,14 @@ const ProvidersPage = () => {
   const [isSwitching, setIsSwitching] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState('');
   const [providerConfigs, setProviderConfigs] = useState({});
+  const [showTokens, setShowTokens] = useState({});
 
   // Initialize form when providers are loaded
   useEffect(() => {
     if (providers && providers.current) {
       setSelectedProvider(providers.current);
-      setProviderConfigs(providers.configs || {});
+      // Create a deep copy to avoid modifying the original
+      setProviderConfigs(JSON.parse(JSON.stringify(providers.configs || {})));
     }
   }, [providers]);
 
@@ -67,8 +69,32 @@ const ProvidersPage = () => {
     }
   };
 
+  const toggleShowToken = (provider, field) => {
+    setShowTokens(prev => ({
+      ...prev,
+      [provider]: {
+        ...(prev[provider] || {}),
+        [field]: !(prev[provider] && prev[provider][field])
+      }
+    }));
+  };
+
+  // Mask sensitive values (show first 4 and last 4 characters)
+  const maskValue = (value, show = false) => {
+    if (!value) return '';
+    if (show) return value;
+    
+    if (value.length <= 8) {
+      return '*'.repeat(value.length);
+    }
+    
+    return `${value.substring(0, 4)}${'*'.repeat(value.length - 8)}${value.substring(value.length - 4)}`;
+  };
+
   const renderProviderConfig = (provider) => {
     const config = providerConfigs[provider] || {};
+    const currentConfig = providers.configs && providers.configs[provider] ? providers.configs[provider] : {};
+    const isShowingToken = showTokens[provider] || {};
     
     switch (provider.toLowerCase()) {
       case 'cloudflare':
@@ -76,13 +102,26 @@ const ProvidersPage = () => {
           <div>
             <Form.Group className="mb-3">
               <Form.Label>API Token</Form.Label>
-              <Form.Control 
-                type="password" 
-                placeholder="Cloudflare API Token"
-                value={config.token || ''}
-                onChange={(e) => handleConfigChange(provider, 'token', e.target.value)}
-              />
+              <div className="input-group">
+                <Form.Control 
+                  type={isShowingToken.token ? "text" : "password"} 
+                  placeholder="Cloudflare API Token"
+                  value={config.token || ''}
+                  onChange={(e) => handleConfigChange(provider, 'token', e.target.value)}
+                />
+                <Button 
+                  variant="outline-secondary"
+                  onClick={() => toggleShowToken(provider, 'token')}
+                >
+                  <FontAwesomeIcon icon={isShowingToken.token ? faEyeSlash : faEye} />
+                </Button>
+              </div>
               <Form.Text className="text-muted">
+                {currentConfig.token ? 
+                  `Current: ${maskValue(currentConfig.token, isShowingToken.token)}` : 
+                  'No token configured'}
+              </Form.Text>
+              <Form.Text className="text-muted d-block mt-1">
                 API token with Zone:DNS:Edit permissions for your domain
               </Form.Text>
             </Form.Group>
@@ -95,6 +134,11 @@ const ProvidersPage = () => {
                 onChange={(e) => handleConfigChange(provider, 'zone', e.target.value)}
               />
               <Form.Text className="text-muted">
+                {currentConfig.zone ? 
+                  `Current: ${currentConfig.zone}` : 
+                  'No zone configured'}
+              </Form.Text>
+              <Form.Text className="text-muted d-block mt-1">
                 Your domain name (e.g., example.com)
               </Form.Text>
             </Form.Group>
@@ -105,13 +149,26 @@ const ProvidersPage = () => {
           <div>
             <Form.Group className="mb-3">
               <Form.Label>API Token</Form.Label>
-              <Form.Control 
-                type="password" 
-                placeholder="DigitalOcean API Token"
-                value={config.token || ''}
-                onChange={(e) => handleConfigChange(provider, 'token', e.target.value)}
-              />
+              <div className="input-group">
+                <Form.Control 
+                  type={isShowingToken.token ? "text" : "password"} 
+                  placeholder="DigitalOcean API Token"
+                  value={config.token || ''}
+                  onChange={(e) => handleConfigChange(provider, 'token', e.target.value)}
+                />
+                <Button 
+                  variant="outline-secondary"
+                  onClick={() => toggleShowToken(provider, 'token')}
+                >
+                  <FontAwesomeIcon icon={isShowingToken.token ? faEyeSlash : faEye} />
+                </Button>
+              </div>
               <Form.Text className="text-muted">
+                {currentConfig.token ? 
+                  `Current: ${maskValue(currentConfig.token, isShowingToken.token)}` : 
+                  'No token configured'}
+              </Form.Text>
+              <Form.Text className="text-muted d-block mt-1">
                 DigitalOcean API token with write access
               </Form.Text>
             </Form.Group>
@@ -124,6 +181,11 @@ const ProvidersPage = () => {
                 onChange={(e) => handleConfigChange(provider, 'domain', e.target.value)}
               />
               <Form.Text className="text-muted">
+                {currentConfig.domain ? 
+                  `Current: ${currentConfig.domain}` : 
+                  'No domain configured'}
+              </Form.Text>
+              <Form.Text className="text-muted d-block mt-1">
                 Your domain name (e.g., example.com)
               </Form.Text>
             </Form.Group>
@@ -134,21 +196,47 @@ const ProvidersPage = () => {
           <div>
             <Form.Group className="mb-3">
               <Form.Label>Access Key</Form.Label>
-              <Form.Control 
-                type="text" 
-                placeholder="AWS Access Key"
-                value={config.accessKey || ''}
-                onChange={(e) => handleConfigChange(provider, 'accessKey', e.target.value)}
-              />
+              <div className="input-group">
+                <Form.Control 
+                  type={isShowingToken.accessKey ? "text" : "password"} 
+                  placeholder="AWS Access Key"
+                  value={config.accessKey || ''}
+                  onChange={(e) => handleConfigChange(provider, 'accessKey', e.target.value)}
+                />
+                <Button 
+                  variant="outline-secondary"
+                  onClick={() => toggleShowToken(provider, 'accessKey')}
+                >
+                  <FontAwesomeIcon icon={isShowingToken.accessKey ? faEyeSlash : faEye} />
+                </Button>
+              </div>
+              <Form.Text className="text-muted">
+                {currentConfig.accessKey ? 
+                  `Current: ${maskValue(currentConfig.accessKey, isShowingToken.accessKey)}` : 
+                  'No access key configured'}
+              </Form.Text>
             </Form.Group>
             <Form.Group className="mb-3">
               <Form.Label>Secret Key</Form.Label>
-              <Form.Control 
-                type="password" 
-                placeholder="AWS Secret Key"
-                value={config.secretKey || ''}
-                onChange={(e) => handleConfigChange(provider, 'secretKey', e.target.value)}
-              />
+              <div className="input-group">
+                <Form.Control 
+                  type={isShowingToken.secretKey ? "text" : "password"} 
+                  placeholder="AWS Secret Key"
+                  value={config.secretKey || ''}
+                  onChange={(e) => handleConfigChange(provider, 'secretKey', e.target.value)}
+                />
+                <Button 
+                  variant="outline-secondary"
+                  onClick={() => toggleShowToken(provider, 'secretKey')}
+                >
+                  <FontAwesomeIcon icon={isShowingToken.secretKey ? faEyeSlash : faEye} />
+                </Button>
+              </div>
+              <Form.Text className="text-muted">
+                {currentConfig.secretKey ? 
+                  `Current: ${maskValue(currentConfig.secretKey, isShowingToken.secretKey)}` : 
+                  'No secret key configured'}
+              </Form.Text>
             </Form.Group>
             <Form.Group className="mb-3">
               <Form.Label>Zone</Form.Label>
@@ -159,6 +247,11 @@ const ProvidersPage = () => {
                 onChange={(e) => handleConfigChange(provider, 'zone', e.target.value)}
               />
               <Form.Text className="text-muted">
+                {currentConfig.zone ? 
+                  `Current: ${currentConfig.zone}` : 
+                  'No zone configured'}
+              </Form.Text>
+              <Form.Text className="text-muted d-block mt-1">
                 Your domain name (e.g., example.com)
               </Form.Text>
             </Form.Group>
@@ -171,6 +264,11 @@ const ProvidersPage = () => {
                 onChange={(e) => handleConfigChange(provider, 'zoneId', e.target.value)}
               />
               <Form.Text className="text-muted">
+                {currentConfig.zoneId ? 
+                  `Current: ${currentConfig.zoneId}` : 
+                  'No zone ID configured'}
+              </Form.Text>
+              <Form.Text className="text-muted d-block mt-1">
                 Your Route53 hosted zone ID (alternative to Zone)
               </Form.Text>
             </Form.Group>
@@ -183,6 +281,11 @@ const ProvidersPage = () => {
                 onChange={(e) => handleConfigChange(provider, 'region', e.target.value)}
               />
               <Form.Text className="text-muted">
+                {currentConfig.region ? 
+                  `Current: ${currentConfig.region}` : 
+                  'Default: eu-west-2'}
+              </Form.Text>
+              <Form.Text className="text-muted d-block mt-1">
                 AWS region for API calls (default: eu-west-2)
               </Form.Text>
             </Form.Group>
@@ -204,8 +307,8 @@ const ProvidersPage = () => {
         subtitle="Configure and manage your DNS providers" 
       />
 
-      <Card className="mb-4">
-        <Card.Header>
+      <Card className="mb-4 bg-dark text-white">
+        <Card.Header className="border-bottom border-secondary">
           <h5 className="mb-0">Active Provider</h5>
         </Card.Header>
         <Card.Body>
@@ -218,6 +321,7 @@ const ProvidersPage = () => {
                     value={selectedProvider} 
                     onChange={handleProviderChange}
                     disabled={isSwitching}
+                    className="bg-dark text-white border-secondary"
                   >
                     {providers.available && providers.available.map(provider => (
                       <option key={provider} value={provider}>
@@ -257,8 +361,8 @@ const ProvidersPage = () => {
       </Card>
 
       {providers && providers.available && providers.available.map(provider => (
-        <Card key={provider} className="mb-4">
-          <Card.Header>
+        <Card key={provider} className="mb-4 bg-dark text-white">
+          <Card.Header className="border-bottom border-secondary">
             <h5 className="mb-0">{provider.charAt(0).toUpperCase() + provider.slice(1)} Configuration</h5>
           </Card.Header>
           <Card.Body>
@@ -288,13 +392,13 @@ const ProvidersPage = () => {
         </Card>
       ))}
 
-      <Card>
-        <Card.Header>
+      <Card className="bg-dark text-white">
+        <Card.Header className="border-bottom border-secondary">
           <h5 className="mb-0">Active DNS Provider Information</h5>
         </Card.Header>
         <Card.Body>
           {providers && providers.current ? (
-            <Table responsive striped>
+            <Table responsive striped variant="dark">
               <thead>
                 <tr>
                   <th>Property</th>
