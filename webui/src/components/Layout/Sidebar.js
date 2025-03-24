@@ -37,7 +37,7 @@ const Sidebar = ({ collapsed, toggleSidebar }) => {
       }}
     >
       {/* Toggle Button */}
-      <div className="d-flex align-items-center justify-content-center py-3">
+      <div className={`d-flex py-3 ${collapsed ? 'justify-content-center' : 'ps-3'}`}>
         <div
           className="text-light p-1 cursor-pointer"
           onClick={toggleSidebar}
