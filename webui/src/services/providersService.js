@@ -1,9 +1,8 @@
-// src/services/providersService.js - Enhanced version
-
+// src/services/providersService.js
 import api from './apiService';
 
 const providersService = {
-  // Get all available providers and current provider with configs
+  // Get all available providers and current provider
   getAllProviders: () => {
     return api.get('/providers');
   },
@@ -13,7 +12,7 @@ const providersService = {
     return api.get('/providers/current');
   },
   
-  // Get specific provider configuration
+  // Get provider configuration
   getProviderConfig: (provider) => {
     return api.get(`/providers/${provider}`);
   },
@@ -72,6 +71,52 @@ const providersService = {
       console.error('Error fetching all provider configs:', error);
       throw error;
     }
+  },
+  
+  // Check if a provider has configuration from environment variables
+  checkEnvironmentConfig: async (provider) => {
+    try {
+      const response = await api.get(`/providers/${provider}/env-status`);
+      return response.data.fromEnv || false;
+    } catch (error) {
+      console.error(`Error checking environment config for ${provider}:`, error);
+      return false;
+    }
+  },
+  
+  // Helper function to determine if a value is masked in the API response
+  isMaskedValue: (value) => {
+    return value === '***' || value === '********' || /^\*+$/.test(value);
+  },
+  
+  // Helper function to detect environment variable configuration
+  isEnvironmentValue: (value) => {
+    return value === 'CONFIGURED_FROM_ENV';
+  },
+  
+  // Process provider configuration to handle masked and environment values
+  processProviderConfig: (provider, config, fromEnv = false) => {
+    // Create a processed copy
+    const processed = { ...config };
+    
+    // Check for sensitive fields that might be masked
+    const sensitiveFields = ['token', 'apiKey', 'secretKey', 'accessKey', 'password'];
+    
+    sensitiveFields.forEach(field => {
+      if (processed[field]) {
+        // If it's masked in the API response
+        if (providersService.isMaskedValue(processed[field])) {
+          processed[field] = 'CONFIGURED';
+        }
+        
+        // If it's from environment variables
+        if (fromEnv) {
+          processed[field] = 'CONFIGURED_FROM_ENV';
+        }
+      }
+    });
+    
+    return processed;
   }
 };
 

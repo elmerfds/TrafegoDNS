@@ -1,3 +1,4 @@
+// src/contexts/SettingsContext.js
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import settingsService from '../services/settingsService';
@@ -34,16 +35,48 @@ export const SettingsProvider = ({ children }) => {
   const fetchAllSettings = async () => {
     setIsLoading(true);
     try {
-      // Fetch settings, providers, and mode in parallel
-      const [settingsResponse, providersResponse, modeResponse] = await Promise.all([
+      // Fetch all settings and data in parallel
+      const [settingsResponse, modeResponse] = await Promise.all([
         settingsService.getSettings(),
-        providersService.getAllProviders(),
         settingsService.getOperationMode()
       ]);
 
+      // Use the enhanced method to get detailed provider configs
+      const providersData = await providersService.fetchAllProviderConfigs();
+
       setSettings(settingsResponse.data);
-      setProviders(providersResponse.data);
       setOperationMode(modeResponse.data);
+      setProviders(providersData);
+
+      // Check for environment variables for each provider
+      if (providersData.available && providersData.available.length > 0) {
+        const envStatuses = await Promise.all(
+          providersData.available.map(async provider => {
+            const isFromEnv = await providersService.checkEnvironmentConfig(provider);
+            return { provider, isFromEnv };
+          })
+        );
+
+        // Mark providers configured via environment variables
+        const updatedConfigs = { ...providersData.configs };
+        
+        envStatuses.forEach(({ provider, isFromEnv }) => {
+          if (isFromEnv && updatedConfigs[provider]) {
+            // Process config to mark env variables
+            updatedConfigs[provider] = providersService.processProviderConfig(
+              provider,
+              updatedConfigs[provider],
+              true
+            );
+          }
+        });
+
+        // Update providers with environment variable information
+        setProviders(prev => ({
+          ...prev,
+          configs: updatedConfigs
+        }));
+      }
     } catch (error) {
       console.error('Error fetching settings:', error);
       toast.error('Failed to load settings');
@@ -96,34 +129,53 @@ export const SettingsProvider = ({ children }) => {
 
   const updateProviderConfig = async (provider, config) => {
     try {
-      // Call the API to update the provider config
-      await providersService.updateProviderConfig(provider, config);
+      // Don't allow updating environment variable configs
+      const updatedConfig = { ...config };
+      const existingConfig = providers.configs[provider] || {};
       
-      // Update the local state with the new config
-      setProviders(prevProviders => ({
-        ...prevProviders,
-        configs: {
-          ...prevProviders.configs,
-          [provider]: config
+      // Check for environment variables
+      Object.keys(updatedConfig).forEach(key => {
+        if (existingConfig[key] === 'CONFIGURED_FROM_ENV') {
+          delete updatedConfig[key]; // Remove fields configured by env vars
+          console.warn(`Skipping update for ${provider}.${key} which is set by environment variable`);
         }
-      }));
+      });
       
-      // Save to localStorage for persistence (optional)
-      try {
-        const storedSettings = JSON.parse(localStorage.getItem('appSettings') || '{}');
-        localStorage.setItem('appSettings', JSON.stringify({
-          ...storedSettings,
-          providers: {
-            ...storedSettings.providers,
-            configs: {
-              ...(storedSettings.providers?.configs || {}),
-              [provider]: config
+      // If there's nothing left to update, don't make the API call
+      if (Object.keys(updatedConfig).length === 0) {
+        toast.info('No changes to save - fields are configured via environment variables');
+        return true;
+      }
+      
+      // Update via API
+      await providersService.updateProviderConfig(provider, updatedConfig);
+      
+      // Update the local state
+      setProviders(prev => {
+        const newConfigs = { ...prev.configs };
+        
+        // Create provider config object if it doesn't exist
+        if (!newConfigs[provider]) {
+          newConfigs[provider] = {};
+        }
+        
+        // Update each field, preserving environment variable configs
+        Object.keys(updatedConfig).forEach(key => {
+          // Only update if it's not from an environment variable
+          if (newConfigs[provider][key] !== 'CONFIGURED_FROM_ENV') {
+            if (providersService.isMaskedValue(updatedConfig[key])) {
+              newConfigs[provider][key] = 'CONFIGURED';
+            } else {
+              newConfigs[provider][key] = updatedConfig[key];
             }
           }
-        }));
-      } catch (storageError) {
-        console.error('Error saving provider config to localStorage:', storageError);
-      }
+        });
+        
+        return {
+          ...prev,
+          configs: newConfigs
+        };
+      });
       
       toast.success(`Updated ${provider} configuration`);
       return true;
@@ -131,32 +183,6 @@ export const SettingsProvider = ({ children }) => {
       console.error('Error updating provider config:', error);
       toast.error('Failed to update provider configuration');
       return false;
-    }
-  };
-  
-  // Fetch provider configurations during initialization
-  const fetchProviderConfigs = async () => {
-    try {
-      const providers = await providersService.getAllProviders();
-      
-      // Store the provider configs centrally
-      setProviders(providers.data);
-      
-      // Also store in localStorage for persistence between sessions
-      try {
-        const storedSettings = JSON.parse(localStorage.getItem('appSettings') || '{}');
-        localStorage.setItem('appSettings', JSON.stringify({
-          ...storedSettings,
-          providers: providers.data
-        }));
-      } catch (storageError) {
-        console.error('Error saving provider configs to localStorage:', storageError);
-      }
-      
-      return providers.data;
-    } catch (error) {
-      console.error('Error fetching provider configs:', error);
-      return null;
     }
   };
 
@@ -195,3 +221,5 @@ export const SettingsProvider = ({ children }) => {
     </SettingsContext.Provider>
   );
 };
+
+export default SettingsContext;
