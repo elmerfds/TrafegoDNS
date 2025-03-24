@@ -1,7 +1,7 @@
 // src/components/Layout/MainLayout.js
 import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
-import { Container, Card, Badge } from 'react-bootstrap';
+import { Container } from 'react-bootstrap';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import LoadingScreen from './LoadingScreen';
@@ -34,35 +34,30 @@ const MainLayout = () => {
         <main className="flex-grow-1 overflow-auto p-3">
           <Container fluid className="px-2">
             {/* Mode and Provider status info */}
-            <Card className="mb-3 border-0 bg-light">
-              <Card.Body className="py-2">
-                <div className="d-flex align-items-center">
-                  <div className="me-3">
-                    <span className="text-muted me-2">Operation Mode:</span>
-                    {operationMode && operationMode.current && (
-                      <Badge bg="info" className="text-uppercase">
-                        {operationMode.current} Mode
-                      </Badge>
-                    )}
-                  </div>
-                  <div>
-                    <span className="text-muted me-2">Provider:</span>
-                    {providers && providers.current && (
-                      <Badge bg="primary" className="text-uppercase">
-                        {providers.current}
-                      </Badge>
-                    )}
-                  </div>
+            <div className="status-section bg-white rounded mb-3 p-2 d-flex">
+              {operationMode && operationMode.current && (
+                <div className="mode-badge me-3">
+                  <span className="badge-label text-uppercase py-1 px-3 rounded bg-info text-white">
+                    {operationMode.current} MODE
+                  </span>
                 </div>
-              </Card.Body>
-            </Card>
+              )}
+              
+              {providers && providers.current && (
+                <div className="provider-badge">
+                  <span className="badge-label text-uppercase py-1 px-3 rounded bg-primary text-white">
+                    {providers.current}
+                  </span>
+                </div>
+              )}
+            </div>
             
             {/* Main content */}
             <Outlet />
           </Container>
         </main>
         
-        <footer className="py-3 px-4 border-top text-center text-muted">
+        <footer className="py-2 px-4 border-top text-center text-muted">
           <small>&copy; {new Date().getFullYear()} TráfegoDNS</small>
         </footer>
       </div>
