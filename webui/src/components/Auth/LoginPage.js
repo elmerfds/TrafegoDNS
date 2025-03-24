@@ -7,7 +7,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
 const LoginPage = () => {
-  const [username, setUsername] = useState('admin');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [validated, setValidated] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -100,7 +100,7 @@ const LoginPage = () => {
                     value={username}
                     onChange={e => setUsername(e.target.value)}
                     required
-                    placeholder="Enter username (default: admin)"
+                    placeholder="Enter username"
                     autoComplete="username"
                   />
                   <Form.Control.Feedback type="invalid">
