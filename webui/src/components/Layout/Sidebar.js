@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Nav, Button } from 'react-bootstrap';
+import { Nav } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faGaugeHigh, 
@@ -34,37 +34,16 @@ const Sidebar = ({ collapsed, toggleSidebar }) => {
         top: 0
       }}
     >
-      {/* Header with logo and toggle button */}
-      <div className="d-flex align-items-center py-3 px-2">
-        <Button 
-          variant="link" 
-          className="text-light p-1" 
+      {/* Toggle Button */}
+      <div className="d-flex align-items-center justify-content-center py-3">
+        <div
+          className="text-light p-1 cursor-pointer"
           onClick={toggleSidebar}
+          style={{ cursor: 'pointer' }}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           <FontAwesomeIcon icon={faBars} />
-        </Button>
-        
-        <div className="d-flex align-items-center ms-2" style={{ display: collapsed ? 'none' : 'flex' }}>
-          <img
-            src="/logo240.png"
-            width="40"
-            height="40"
-            alt="TráfegoDNS Logo"
-            className="me-2"
-          />
-          <h5 className="mb-0">TráfegoDNS</h5>
         </div>
-        
-        {collapsed && (
-          <img
-            src="/logo240.png"
-            width="40"
-            height="40"
-            alt="TráfegoDNS Logo"
-            className="ms-1"
-          />
-        )}
       </div>
       
       {/* Main navigation items */}
@@ -96,16 +75,15 @@ const Sidebar = ({ collapsed, toggleSidebar }) => {
       </Nav>
       
       {/* Fixed logout button at bottom */}
-      <div className="mt-auto mb-3 px-3">
-        <Button 
-          variant="outline-light" 
-          size="sm" 
-          className="w-100 d-flex align-items-center justify-content-center"
+      <div className="mt-auto mb-3">
+        <div 
+          className="sidebar-link text-danger cursor-pointer"
           onClick={handleLogout}
+          style={{ cursor: 'pointer' }}
         >
           <FontAwesomeIcon icon={faSignOutAlt} className="sidebar-icon" />
           {!collapsed && <span>Logout</span>}
-        </Button>
+        </div>
       </div>
     </div>
   );

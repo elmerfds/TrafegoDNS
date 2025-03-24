@@ -3,7 +3,8 @@ import { Navbar, Nav, Button } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faSync,
-  faCheckCircle
+  faCheckCircle,
+  faUser
 } from '@fortawesome/free-solid-svg-icons';
 import dnsService from '../../services/dnsService';
 import statusService from '../../services/statusService';
@@ -34,10 +35,23 @@ const Topbar = ({ user }) => {
 
   return (
     <Navbar bg="dark" variant="dark" expand className="px-3 py-2 border-bottom">
-      <Navbar.Brand className="me-auto">
-        {/* Company/App name or welcome message */}
-        <span>Welcome, {user ? user.username : 'User'}</span>
+      <Navbar.Brand className="d-flex align-items-center">
+        <img
+          src="/logo240.png"
+          width="30"
+          height="30"
+          alt="TráfegoDNS Logo"
+          className="me-2"
+        />
+        <span>TráfegoDNS</span>
       </Navbar.Brand>
+      
+      <Nav className="ms-auto me-2">
+        <div className="d-flex align-items-center text-light me-3">
+          <FontAwesomeIcon icon={faUser} className="me-2" />
+          <span>{user ? user.username : 'User'}</span>
+        </div>
+      </Nav>
       
       <Nav>
         <Button 
@@ -54,7 +68,6 @@ const Topbar = ({ user }) => {
         <Button 
           variant="outline-light" 
           size="sm" 
-          className="me-3"
           onClick={handleRefreshIP}
           title="Refresh IP Address"
         >
