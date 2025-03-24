@@ -107,6 +107,7 @@ function createProvidersRouter(stateManager, config) {
   
   /**
    * GET /api/providers/{provider} - Get provider configuration
+   * Modified to support partial revealing of sensitive environment values
    */
   router.get('/:provider', (req, res) => {
     try {
@@ -124,23 +125,72 @@ function createProvidersRouter(stateManager, config) {
       // Get provider config
       const config = state.providers.configs[provider] || {};
       
+      // Get the showSensitive option from query parameters (defaults to false)
+      const showSensitive = req.query.showSensitive === 'true';
+      
       // Apply partial masking to sensitive data
       const maskedConfig = { ...config };
       
       // Helper function for partial masking
-      const partialMask = (value) => {
+      const partialMask = (value, field) => {
         if (!value) return value;
-        if (value === 'CONFIGURED_FROM_ENV') return value; // Keep special values intact
+        
+        // Return full value if explicitly requested
+        if (showSensitive) return value;
+        
+        // For environment variables, extract the actual value
+        if (value === 'CONFIGURED_FROM_ENV') {
+          // Get the real env variable value
+          const envValue = getEnvVariableValue(provider, field);
+          if (!envValue) return 'ENV_VALUE_UNAVAILABLE';
+          
+          // Apply partial masking to the real value
+          const visibleChars = 4; // Number of characters to show at the end
+          return '*'.repeat(Math.max(0, envValue.length - visibleChars)) + 
+                 envValue.slice(-visibleChars);
+        }
+        
+        // For regular stored values, apply standard partial masking
         const visibleChars = 4; // Number of characters to keep visible at the end
-        return '*'.repeat(Math.max(0, value.length - visibleChars)) + value.slice(-visibleChars);
+        return '*'.repeat(Math.max(0, value.length - visibleChars)) + 
+               value.slice(-visibleChars);
       };
       
-      // Apply to sensitive fields
-      if (maskedConfig.token) maskedConfig.token = partialMask(maskedConfig.token);
-      if (maskedConfig.apiKey) maskedConfig.apiKey = partialMask(maskedConfig.apiKey);
-      if (maskedConfig.secretKey) maskedConfig.secretKey = partialMask(maskedConfig.secretKey);
-      if (maskedConfig.accessKey) maskedConfig.accessKey = partialMask(maskedConfig.accessKey);
-      if (maskedConfig.password) maskedConfig.password = partialMask(maskedConfig.password);
+      // Helper function to get environment variable value
+      const getEnvVariableValue = (provider, field) => {
+        // Map of provider fields to environment variables
+        const envMappings = {
+          'cloudflare': {
+            'token': process.env.CLOUDFLARE_TOKEN,
+            'zone': process.env.CLOUDFLARE_ZONE
+          },
+          'digitalocean': {
+            'token': process.env.DO_TOKEN,
+            'domain': process.env.DO_DOMAIN
+          },
+          'route53': {
+            'accessKey': process.env.ROUTE53_ACCESS_KEY,
+            'secretKey': process.env.ROUTE53_SECRET_KEY,
+            'zone': process.env.ROUTE53_ZONE,
+            'zoneId': process.env.ROUTE53_ZONE_ID,
+            'region': process.env.ROUTE53_REGION
+          }
+        };
+        
+        // Return the env value if available
+        return envMappings[provider] && envMappings[provider][field] 
+          ? envMappings[provider][field] 
+          : null;
+      };
+      
+      // Apply masking to sensitive fields
+      const sensitiveFields = ['token', 'apiKey', 'secretKey', 'accessKey', 'password'];
+      
+      sensitiveFields.forEach(field => {
+        if (field in maskedConfig) {
+          maskedConfig[field] = partialMask(maskedConfig[field], field);
+        }
+      });
       
       res.json({
         provider,
@@ -155,6 +205,93 @@ function createProvidersRouter(stateManager, config) {
       });
     }
   });
+  
+  /**
+   * GET /api/providers/{provider}/sensitive - Get provider sensitive information (new endpoint)
+   * Returns actual unmasked values for sensitive fields
+   */
+  router.get('/:provider/sensitive', (req, res) => {
+    try {
+      const { provider } = req.params;
+      const state = stateManager.getState();
+      
+      // Check if provider exists
+      if (!state.providers.available.includes(provider)) {
+        return res.status(404).json({
+          error: 'Not Found',
+          message: `Provider '${provider}' not found`
+        });
+      }
+      
+      // Check if user is authenticated as admin
+      if (!req.user || req.user.role !== 'admin') {
+        logger.warn(`Unauthorized attempt to access sensitive information for ${provider}`);
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'Administrator access required to view sensitive information'
+        });
+      }
+      
+      // Get provider config
+      const config = state.providers.configs[provider] || {};
+      
+      // Create a new object for sensitive fields only
+      const sensitiveFields = {};
+      
+      // Helper function to get environment variable value
+      const getEnvVariableValue = (provider, field) => {
+        // Map of provider fields to environment variables
+        const envMappings = {
+          'cloudflare': {
+            'token': process.env.CLOUDFLARE_TOKEN,
+            'zone': process.env.CLOUDFLARE_ZONE
+          },
+          'digitalocean': {
+            'token': process.env.DO_TOKEN,
+            'domain': process.env.DO_DOMAIN
+          },
+          'route53': {
+            'accessKey': process.env.ROUTE53_ACCESS_KEY,
+            'secretKey': process.env.ROUTE53_SECRET_KEY,
+            'zone': process.env.ROUTE53_ZONE,
+            'zoneId': process.env.ROUTE53_ZONE_ID,
+            'region': process.env.ROUTE53_REGION
+          }
+        };
+        
+        // Return the env value if available
+        return envMappings[provider] && envMappings[provider][field] 
+          ? envMappings[provider][field] 
+          : 'ENV_VALUE_UNAVAILABLE';
+      };
+      
+      // List of sensitive fields to process
+      const sensitiveFieldsList = ['token', 'apiKey', 'secretKey', 'accessKey', 'password'];
+      
+      // Get values for sensitive fields
+      sensitiveFieldsList.forEach(field => {
+        if (field in config) {
+          sensitiveFields[field] = config[field] === 'CONFIGURED_FROM_ENV' ? 
+            getEnvVariableValue(provider, field) : config[field];
+        }
+      });
+      
+      // Log access for security auditing
+      logger.info(`Sensitive information accessed for provider ${provider} by user ${req.user.username}`);
+      
+      res.json({
+        provider,
+        sensitiveFields
+      });
+    } catch (error) {
+      logger.error(`Error getting provider sensitive info: ${error.message}`);
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: error.message
+      });
+    }
+  });
+  
   /**
    * POST /api/providers/{provider}/config - Update provider configuration
    */

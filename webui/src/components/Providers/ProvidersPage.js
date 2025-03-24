@@ -1,8 +1,16 @@
-// src/components/Providers/ProvidersPage.js - With partial masking
+// src/components/Providers/ProvidersPage.js - Improved version
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Form, Button, Spinner, Alert } from 'react-bootstrap';
+import { Row, Col, Card, Form, Button, Spinner, Alert, Badge } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSave, faExchangeAlt, faEye, faEyeSlash } from '@fortawesome/free-solid-svg-icons';
+import { 
+  faSave, 
+  faExchangeAlt, 
+  faEye, 
+  faEyeSlash, 
+  faCheckCircle, 
+  faExclamationTriangle,
+  faLock
+} from '@fortawesome/free-solid-svg-icons';
 import { useSettings } from '../../contexts/SettingsContext';
 import { toast } from 'react-toastify';
 import providersService from '../../services/providersService';
@@ -14,6 +22,9 @@ const ProvidersPage = () => {
   const [isSwitching, setIsSwitching] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState('');
   const [showTokens, setShowTokens] = useState({});
+  const [sensitiveValues, setSensitiveValues] = useState({});
+  const [showFullValues, setShowFullValues] = useState(false);
+  const [isLoadingSensitive, setIsLoadingSensitive] = useState(false);
   
   // Provider data states - separate from settings context
   const [providerConfigs, setProviderConfigs] = useState({});
@@ -51,6 +62,43 @@ const ProvidersPage = () => {
       setIsLoading(false);
     }
   }, [providers]);
+
+  // Toggle showing all sensitive values
+  const toggleShowFullValues = async () => {
+    // If turning on full values, fetch sensitive data
+    if (!showFullValues) {
+      await loadSensitiveValues();
+    }
+    setShowFullValues(!showFullValues);
+  };
+
+  // Load sensitive values from API
+  const loadSensitiveValues = async () => {
+    try {
+      setIsLoadingSensitive(true);
+      
+      // Fetch sensitive values for all providers
+      const values = {};
+      
+      for (const provider of providers.available) {
+        try {
+          const response = await providersService.getSensitiveInfo(provider);
+          values[provider] = response.data.sensitiveFields || {};
+        } catch (error) {
+          console.error(`Error fetching sensitive values for ${provider}:`, error);
+          // Continue with other providers
+        }
+      }
+      
+      setSensitiveValues(values);
+      toast.success('Sensitive values loaded successfully');
+    } catch (error) {
+      console.error('Error loading sensitive values:', error);
+      toast.error('Failed to load sensitive values');
+    } finally {
+      setIsLoadingSensitive(false);
+    }
+  };
 
   const handleProviderChange = (e) => {
     setSelectedProvider(e.target.value);
@@ -153,15 +201,7 @@ const ProvidersPage = () => {
            value !== '********';
   };
 
-  // Helper to check if a field has a masked value
-  const hasMaskedValue = (provider, field) => {
-    if (!providers?.configs || !providers.configs[provider]) return false;
-    
-    const value = providers.configs[provider][field];
-    return value === '***' || value === '********' || value === 'CONFIGURED';
-  };
-
-  // Helper function to check if a field is configured via environment variable
+  // Helper to check if a field is configured via environment variable
   const isEnvironmentVariable = (provider, field) => {
     if (!providers.configs || !providers.configs[provider]) return false;
     
@@ -170,73 +210,73 @@ const ProvidersPage = () => {
     return value === 'CONFIGURED_FROM_ENV';
   };
 
-  // Partially unmask sensitive values (e.g., show last 4 characters)
-  const partiallyUnmask = (value, showFull = false) => {
-    // Special handling for environment variables
-    if (value === 'CONFIGURED_FROM_ENV') {
-      return showFull ? 'Set by environment variable' : '******ENV';
+  // Get the display value for a field
+  const getDisplayValue = (provider, field) => {
+    const isEnvVar = isEnvironmentVariable(provider, field);
+    const isSensitive = isSensitiveField(field);
+    const isShowingField = showTokens[provider]?.[field] || false;
+    
+    // For full value display mode, show complete values
+    if (showFullValues && isSensitive) {
+      // Get from sensitive values cache
+      if (sensitiveValues?.[provider]?.[field]) {
+        return sensitiveValues[provider][field];
+      }
+      
+      // If not yet loaded
+      return 'Loading...';
     }
     
-    if (!value) return value;
-    
-    // If showing full value, return as is
-    if (showFull) return value;
-    
-    // For 'CONFIGURED' or masked values, show a partial mask
-    if (value === 'CONFIGURED' || value === '***' || value === '********' || /^\*+$/.test(value)) {
-      return '******1234'; // Example partial mask with last 4 digits
+    // For environment variables - they come from API partially masked already
+    if (isEnvVar) {
+      const value = providers.configs[provider][field];
+      // If it's sensitive and being shown, show the partial value from API
+      if (isSensitive) {
+        return isShowingField ? '*******' : '*******'; // Backend will provide partially masked
+      }
+      
+      // Non-sensitive env vars are shown directly
+      return value;
     }
     
-    // For actual values, mask except last 4 characters
-    const visibleChars = 4; // Number of characters to show
-    return '*'.repeat(Math.max(0, value.length - visibleChars)) + value.slice(-visibleChars);
-  };
-
-  // Get the field value to display (handles partial masking for sensitive fields)
-  const getDisplayValue = (provider, field, showFull = false) => {
-    // Check if from environment variable
-    if (isEnvironmentVariable(provider, field)) {
-      if (isSensitiveField(field)) {
-        return showFull ? 'Set by environment variable' : '******ENV';
-      } else {
-        return providers.configs[provider][field] || '';
+    // For non-env vars, regular inputs
+    if (inputValues[provider]?.[field] !== undefined) {
+      if (isSensitive) {
+        if (isShowingField) {
+          return inputValues[provider][field];
+        } else {
+          // Mask with last 4 chars visible for sensitive fields
+          const value = inputValues[provider][field];
+          if (!value) return value;
+          const visibleChars = 4;
+          return '*'.repeat(Math.max(0, value.length - visibleChars)) + value.slice(-visibleChars);
+        }
+      }
+      return inputValues[provider][field];
+    }
+    
+    // Default - get from provider configs
+    const configValue = providers.configs?.[provider]?.[field];
+    if (isSensitive && !isShowingField) {
+      // For sensitive values that are masked, keep them masked
+      if (configValue && typeof configValue === 'string' && configValue.includes('*')) {
+        return configValue;
+      }
+      
+      // Otherwise mask with last 4 chars visible
+      if (configValue) {
+        const visibleChars = 4;
+        return '*'.repeat(Math.max(0, configValue.length - visibleChars)) + configValue.slice(-visibleChars);
       }
     }
     
-    // For form inputs, get value from inputValues if available
-    if (inputValues[provider] && inputValues[provider][field] !== undefined) {
-      return isSensitiveField(field) ? partiallyUnmask(inputValues[provider][field], showFull) : inputValues[provider][field];
-    }
-    
-    // Otherwise get from provider configs
-    const configValue = providers.configs?.[provider]?.[field];
-    return isSensitiveField(field) ? partiallyUnmask(configValue, showFull) : configValue || '';
-  };
-
-  // Get the current value to show below form inputs
-  const getCurrentDisplayValue = (provider, field) => {
-    const configValue = providers.configs?.[provider]?.[field];
-    
-    if (isEnvironmentVariable(provider, field)) {
-      return isSensitiveField(field) ? 'Configured via environment' : configValue || 'Not configured';
-    }
-    
-    if (isSensitiveField(field)) {
-      // For sensitive fields, show "Configured" or partial mask
-      if (configValue && configValue !== '***' && configValue !== '********') {
-        return 'Configured (partially masked)';
-      }
-      return 'Not configured';
-    }
-    
-    // For non-sensitive fields, show the actual value
-    return configValue || 'Not configured';
+    return configValue || '';
   };
 
   // Render a form field
   const renderFormField = (provider, field, label, placeholder, description, isSensitive = false) => {
     const isEnvVar = isEnvironmentVariable(provider, field);
-    const actualValue = getDisplayValue(provider, field, showTokens[provider]?.[field]);
+    const value = getDisplayValue(provider, field);
     const isShowingPassword = showTokens[provider]?.[field] || false;
     
     return (
@@ -247,7 +287,7 @@ const ProvidersPage = () => {
             <Form.Control 
               type={isShowingPassword ? "text" : "password"}
               placeholder={placeholder}
-              value={isEnvVar ? actualValue : (inputValues[provider]?.[field] || '')}
+              value={value}
               onChange={(e) => handleInputChange(provider, field, e.target.value)}
               className="bg-dark text-white border-secondary"
               disabled={isEnvVar} // Disable if from env var
@@ -255,7 +295,7 @@ const ProvidersPage = () => {
             <Button 
               variant="outline-secondary"
               onClick={() => toggleShowToken(provider, field)}
-              disabled={isEnvVar && !actualValue} // Disable if from env var with no value
+              disabled={isEnvVar && !value} // Disable if from env var with no value
             >
               <FontAwesomeIcon icon={isShowingPassword ? faEyeSlash : faEye} />
             </Button>
@@ -264,7 +304,7 @@ const ProvidersPage = () => {
           <Form.Control 
             type="text"
             placeholder={placeholder}
-            value={isEnvVar ? actualValue : (inputValues[provider]?.[field] || '')}
+            value={value}
             onChange={(e) => handleInputChange(provider, field, e.target.value)}
             className="bg-dark text-white border-secondary"
             disabled={isEnvVar} // Disable if from env var
@@ -404,6 +444,37 @@ const ProvidersPage = () => {
           <h1 className="mb-0 text-white">DNS Providers</h1>
           <p className="text-muted mb-0">Configure and manage your DNS providers</p>
         </div>
+        <div>
+          <Button
+            variant={showFullValues ? "warning" : "outline-warning"}
+            size="sm"
+            onClick={toggleShowFullValues}
+            disabled={isLoadingSensitive}
+            className="me-2"
+          >
+            {isLoadingSensitive ? (
+              <>
+                <Spinner size="sm" animation="border" className="me-2" />
+                Loading...
+              </>
+            ) : (
+              <>
+                <FontAwesomeIcon 
+                  icon={showFullValues ? faLock : faEye} 
+                  className="me-2" 
+                />
+                {showFullValues ? 'Hide Sensitive Values' : 'Show Sensitive Values'}
+              </>
+            )}
+          </Button>
+          
+          {showFullValues && (
+            <Badge bg="danger" className="ms-2">
+              <FontAwesomeIcon icon={faExclamationTriangle} className="me-1" />
+              Sensitive Mode
+            </Badge>
+          )}
+        </div>
       </div>
 
       <Card className="mb-4 bg-dark text-white">
@@ -457,6 +528,21 @@ const ProvidersPage = () => {
           )}
         </Card.Body>
       </Card>
+
+      {showFullValues && (
+        <Alert variant="warning" className="mb-4">
+          <div className="d-flex align-items-center">
+            <FontAwesomeIcon icon={faExclamationTriangle} size="lg" className="me-3" />
+            <div>
+              <h5 className="mb-1">Sensitive Information Visible</h5>
+              <p className="mb-0">
+                You are viewing sensitive information like API tokens and keys. This mode is intended for administrators only.
+                Click "Hide Sensitive Values" when finished to return to normal mode.
+              </p>
+            </div>
+          </div>
+        </Alert>
+      )}
 
       {providers?.available?.map(provider => (
         <Card key={provider} className="mb-4 bg-dark text-white">
