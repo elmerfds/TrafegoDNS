@@ -216,3 +216,61 @@ a.sidebar-link {
     background: rgba(255, 255, 255, 0.3);
   }
 }
+
+/* Sidebar styling */
+.sidebar {
+  min-height: 100vh;
+  z-index: 1000;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  color: rgba(255, 255, 255, 0.8);
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.sidebar-link:hover, 
+.sidebar-link:focus {
+  color: #fff;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-link.active {
+  color: #fff;
+  background-color: rgba(13, 110, 253, 0.7);
+}
+
+.sidebar-icon {
+  width: 18px;
+  text-align: center;
+  margin-right: 12px;
+}
+
+/* Status badges styling */
+.badge.bg-info {
+  background-color: #17a2b8 !important;
+}
+
+.badge.bg-primary {
+  background-color: #0d6efd !important;
+}
+
+/* Style for the status card */
+.card.bg-light {
+  background-color: #f8f9fa !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 65px !important;
+  }
+  
+  .sidebar .sidebar-link span {
+    display: none;
+  }
+}
