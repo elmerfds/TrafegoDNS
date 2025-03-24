@@ -74,14 +74,17 @@ const providersService = {
   },
   
   // Check if a provider has configuration from environment variables
-  checkEnvironmentConfig: async (provider) => {
-    try {
-      const response = await api.get(`/providers/${provider}/env-status`);
-      return response.data.fromEnv || false;
-    } catch (error) {
-      console.error(`Error checking environment config for ${provider}:`, error);
-      return false;
-    }
+  checkEnvironmentConfig: (provider, config) => {
+    // No need to make an API call - check if any values are marked as env variables
+    if (!config) return false;
+    
+    return Object.values(config).some(value => value === 'CONFIGURED_FROM_ENV');
+  },
+  
+  // Add this helper function to check if a specific field is from an env variable
+  isFromEnvironment: (config, field) => {
+    if (!config || !config[field]) return false;
+    return config[field] === 'CONFIGURED_FROM_ENV';
   },
   
   // Helper function to determine if a value is masked in the API response

@@ -158,8 +158,18 @@ const ProvidersPage = () => {
     return value === '***' || value === '********' || value === 'CONFIGURED';
   };
 
+  // helper function
+  const isEnvironmentVariable = (provider, field) => {
+    if (!providers.configs || !providers.configs[provider]) return false;
+    return providers.configs[provider][field] === 'CONFIGURED_FROM_ENV';
+  };  
+
   // Render field display value (sensitive fields show "Configured" or "Not configured")
   const getFieldDisplayValue = (provider, field) => {
+    if (isEnvironmentVariable(provider, field)) {
+      return 'Configured via environment variable';
+    }
+    
     if (isSensitiveField(field)) {
       if (hasConfiguredValue(provider, field) || hasMaskedValue(provider, field)) {
         return 'Configured';
@@ -192,15 +202,17 @@ const ProvidersPage = () => {
                   value={providerInput.token || ''}
                   onChange={(e) => handleInputChange(provider, 'token', e.target.value)}
                   className="bg-dark text-white border-secondary"
+                  disabled={isEnvironmentVariable(provider, 'token')}
                 />
                 <Button 
                   variant="outline-secondary"
                   onClick={() => toggleShowToken(provider, 'token')}
+                  disabled={isEnvironmentVariable(provider, 'token')}
                 >
                   <FontAwesomeIcon icon={isShowingToken.token ? faEyeSlash : faEye} />
                 </Button>
               </div>
-              <Form.Text className="text-muted">
+              <Form.Text className={isEnvironmentVariable(provider, 'token') ? 'text-info' : 'text-muted'}>
                 Current: {getFieldDisplayValue(provider, 'token')}
               </Form.Text>
               <Form.Text className="text-muted d-block mt-2">
