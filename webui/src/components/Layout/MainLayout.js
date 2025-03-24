@@ -4,6 +4,7 @@ import { Outlet } from 'react-router-dom';
 import { Container } from 'react-bootstrap';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
+import StatusBar from './StatusBar';
 import LoadingScreen from './LoadingScreen';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSettings } from '../../contexts/SettingsContext';
@@ -28,31 +29,23 @@ const MainLayout = () => {
         toggleSidebar={toggleSidebar} 
       />
       
-      <div className="flex-grow-1 d-flex flex-column overflow-hidden">
+      <div 
+        className="flex-grow-1 d-flex flex-column overflow-hidden" 
+        style={{ 
+          marginLeft: sidebarCollapsed ? '65px' : '250px',
+          transition: 'margin-left 0.3s ease'
+        }}
+      >
         <Topbar user={currentUser} />
+        
+        {/* Status bar showing operation mode and provider */}
+        <StatusBar 
+          mode={operationMode?.current} 
+          provider={providers?.current} 
+        />
         
         <main className="flex-grow-1 overflow-auto p-3">
           <Container fluid className="px-2">
-            {/* Mode and Provider status info */}
-            <div className="status-section bg-white rounded mb-3 p-2 d-flex">
-              {operationMode && operationMode.current && (
-                <div className="mode-badge me-3">
-                  <span className="badge-label text-uppercase py-1 px-3 rounded bg-info text-white">
-                    {operationMode.current} MODE
-                  </span>
-                </div>
-              )}
-              
-              {providers && providers.current && (
-                <div className="provider-badge">
-                  <span className="badge-label text-uppercase py-1 px-3 rounded bg-primary text-white">
-                    {providers.current}
-                  </span>
-                </div>
-              )}
-            </div>
-            
-            {/* Main content */}
             <Outlet />
           </Container>
         </main>
