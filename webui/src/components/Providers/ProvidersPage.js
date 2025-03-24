@@ -1,42 +1,80 @@
-// src/components/Providers/ProvidersPage.js
+// src/components/Providers/ProvidersPage.js - Fixed version
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Form, Button, Spinner, Alert, Table } from 'react-bootstrap';
+import { Row, Col, Card, Form, Button, Spinner, Alert } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSyncAlt, faSave, faExchangeAlt, faEye, faEyeSlash } from '@fortawesome/free-solid-svg-icons';
+import { faSave, faExchangeAlt, faEye, faEyeSlash } from '@fortawesome/free-solid-svg-icons';
 import { useSettings } from '../../contexts/SettingsContext';
 import { toast } from 'react-toastify';
 import providersService from '../../services/providersService';
-import PageHeader from '../Layout/PageHeader';
 
 const ProvidersPage = () => {
-  const { providers, switchProvider, updateProviderConfig } = useSettings();
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState('');
-  const [providerConfigs, setProviderConfigs] = useState({});
   const [showTokens, setShowTokens] = useState({});
-
-  // Initialize form when providers are loaded
+  
+  // Provider data states
+  const [providerData, setProviderData] = useState({
+    current: '',
+    available: [],
+    configs: {}
+  });
+  
+  // Form input states
+  const [inputValues, setInputValues] = useState({});
+  
+  // Load provider data directly from API
   useEffect(() => {
-    if (providers && providers.current) {
-      setSelectedProvider(providers.current);
-      // Create a deep copy to avoid modifying the original
-      setProviderConfigs(JSON.parse(JSON.stringify(providers.configs || {})));
+    fetchProviderData();
+  }, []);
+  
+  const fetchProviderData = async () => {
+    setIsLoading(true);
+    try {
+      // Use the enhanced service method to get detailed provider configs
+      const response = await providersService.fetchAllProviderConfigs();
+      console.log('Provider data loaded:', response);
+      
+      setProviderData(response);
+      setSelectedProvider(response.current || '');
+      
+      // Initialize input values from current configs
+      const initialInputs = {};
+      if (response.configs) {
+        Object.keys(response.configs).forEach(provider => {
+          initialInputs[provider] = { ...response.configs[provider] };
+        });
+      }
+      setInputValues(initialInputs);
+      
+    } catch (error) {
+      console.error('Error fetching provider data:', error);
+      toast.error('Failed to load provider configurations');
+    } finally {
+      setIsLoading(false);
     }
-  }, [providers]);
+  };
 
   const handleProviderChange = (e) => {
     setSelectedProvider(e.target.value);
   };
 
   const handleSwitchProvider = async () => {
-    if (!selectedProvider || selectedProvider === providers.current) {
+    if (!selectedProvider || selectedProvider === providerData.current) {
       return;
     }
 
     setIsSwitching(true);
     try {
-      await switchProvider(selectedProvider);
+      await providersService.switchProvider(selectedProvider);
+      
+      // Update local state
+      setProviderData(prev => ({
+        ...prev,
+        current: selectedProvider
+      }));
+      
       toast.success(`Switched to ${selectedProvider} provider successfully`);
     } catch (error) {
       console.error('Error switching provider:', error);
@@ -46,8 +84,8 @@ const ProvidersPage = () => {
     }
   };
 
-  const handleConfigChange = (provider, field, value) => {
-    setProviderConfigs(prev => ({
+  const handleInputChange = (provider, field, value) => {
+    setInputValues(prev => ({
       ...prev,
       [provider]: {
         ...(prev[provider] || {}),
@@ -57,15 +95,27 @@ const ProvidersPage = () => {
   };
 
   const handleSaveConfig = async (provider) => {
-    setIsLoading(true);
+    if (!inputValues[provider]) return;
+    
+    setIsSaving(true);
     try {
-      await updateProviderConfig(provider, providerConfigs[provider] || {});
+      await providersService.updateProviderConfig(provider, inputValues[provider]);
+      
+      // Update local provider data state
+      setProviderData(prev => ({
+        ...prev,
+        configs: {
+          ...prev.configs,
+          [provider]: inputValues[provider]
+        }
+      }));
+      
       toast.success(`${provider} configuration updated successfully`);
     } catch (error) {
       console.error('Error updating provider config:', error);
       toast.error(`Failed to update ${provider} configuration`);
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
     }
   };
 
@@ -77,6 +127,24 @@ const ProvidersPage = () => {
         [field]: !(prev[provider] && prev[provider][field])
       }
     }));
+  };
+
+  // Helper to safely get current config value
+  const getCurrentValue = (provider, field) => {
+    if (
+      providerData.configs && 
+      providerData.configs[provider] && 
+      providerData.configs[provider][field] !== undefined
+    ) {
+      return providerData.configs[provider][field];
+    }
+    return null;
+  };
+
+  // Helper to check if a field has a configured value
+  const hasConfiguredValue = (provider, field) => {
+    const value = getCurrentValue(provider, field);
+    return value !== null && value !== undefined && value !== '';
   };
 
   // Mask sensitive values (show first 4 and last 4 characters)
@@ -92,22 +160,23 @@ const ProvidersPage = () => {
   };
 
   const renderProviderConfig = (provider) => {
-    const config = providerConfigs[provider] || {};
-    const currentConfig = providers.configs && providers.configs[provider] ? providers.configs[provider] : {};
+    const config = providerData.configs?.[provider] || {};
     const isShowingToken = showTokens[provider] || {};
+    const providerInput = inputValues[provider] || {};
     
     switch (provider.toLowerCase()) {
       case 'cloudflare':
         return (
           <div>
             <Form.Group className="mb-3">
-              <Form.Label>API Token</Form.Label>
+              <Form.Label className="text-white">API Token</Form.Label>
               <div className="input-group">
                 <Form.Control 
                   type={isShowingToken.token ? "text" : "password"} 
                   placeholder="Cloudflare API Token"
-                  value={config.token || ''}
-                  onChange={(e) => handleConfigChange(provider, 'token', e.target.value)}
+                  value={providerInput.token || ''}
+                  onChange={(e) => handleInputChange(provider, 'token', e.target.value)}
+                  className="bg-dark text-white border-secondary"
                 />
                 <Button 
                   variant="outline-secondary"
@@ -117,28 +186,29 @@ const ProvidersPage = () => {
                 </Button>
               </div>
               <Form.Text className="text-muted">
-                {currentConfig.token ? 
-                  `Current: ${maskValue(currentConfig.token, isShowingToken.token)}` : 
+                {hasConfiguredValue(provider, 'token') ? 
+                  `Current: ${maskValue(config.token, isShowingToken.token)}` : 
                   'No token configured'}
               </Form.Text>
-              <Form.Text className="text-muted d-block mt-1">
+              <Form.Text className="text-muted d-block mt-2">
                 API token with Zone:DNS:Edit permissions for your domain
               </Form.Text>
             </Form.Group>
             <Form.Group className="mb-3">
-              <Form.Label>Zone</Form.Label>
+              <Form.Label className="text-white">Zone</Form.Label>
               <Form.Control 
                 type="text" 
                 placeholder="example.com"
-                value={config.zone || ''}
-                onChange={(e) => handleConfigChange(provider, 'zone', e.target.value)}
+                value={providerInput.zone || ''}
+                onChange={(e) => handleInputChange(provider, 'zone', e.target.value)}
+                className="bg-dark text-white border-secondary"
               />
               <Form.Text className="text-muted">
-                {currentConfig.zone ? 
-                  `Current: ${currentConfig.zone}` : 
+                {hasConfiguredValue(provider, 'zone') ? 
+                  `Current: ${config.zone}` : 
                   'No zone configured'}
               </Form.Text>
-              <Form.Text className="text-muted d-block mt-1">
+              <Form.Text className="text-muted d-block mt-2">
                 Your domain name (e.g., example.com)
               </Form.Text>
             </Form.Group>
@@ -148,13 +218,14 @@ const ProvidersPage = () => {
         return (
           <div>
             <Form.Group className="mb-3">
-              <Form.Label>API Token</Form.Label>
+              <Form.Label className="text-white">API Token</Form.Label>
               <div className="input-group">
                 <Form.Control 
                   type={isShowingToken.token ? "text" : "password"} 
                   placeholder="DigitalOcean API Token"
-                  value={config.token || ''}
-                  onChange={(e) => handleConfigChange(provider, 'token', e.target.value)}
+                  value={providerInput.token || ''}
+                  onChange={(e) => handleInputChange(provider, 'token', e.target.value)}
+                  className="bg-dark text-white border-secondary"
                 />
                 <Button 
                   variant="outline-secondary"
@@ -164,28 +235,29 @@ const ProvidersPage = () => {
                 </Button>
               </div>
               <Form.Text className="text-muted">
-                {currentConfig.token ? 
-                  `Current: ${maskValue(currentConfig.token, isShowingToken.token)}` : 
+                {hasConfiguredValue(provider, 'token') ? 
+                  `Current: ${maskValue(config.token, isShowingToken.token)}` : 
                   'No token configured'}
               </Form.Text>
-              <Form.Text className="text-muted d-block mt-1">
+              <Form.Text className="text-muted d-block mt-2">
                 DigitalOcean API token with write access
               </Form.Text>
             </Form.Group>
             <Form.Group className="mb-3">
-              <Form.Label>Domain</Form.Label>
+              <Form.Label className="text-white">Domain</Form.Label>
               <Form.Control 
                 type="text" 
                 placeholder="example.com"
-                value={config.domain || ''}
-                onChange={(e) => handleConfigChange(provider, 'domain', e.target.value)}
+                value={providerInput.domain || ''}
+                onChange={(e) => handleInputChange(provider, 'domain', e.target.value)}
+                className="bg-dark text-white border-secondary"
               />
               <Form.Text className="text-muted">
-                {currentConfig.domain ? 
-                  `Current: ${currentConfig.domain}` : 
+                {hasConfiguredValue(provider, 'domain') ? 
+                  `Current: ${config.domain}` : 
                   'No domain configured'}
               </Form.Text>
-              <Form.Text className="text-muted d-block mt-1">
+              <Form.Text className="text-muted d-block mt-2">
                 Your domain name (e.g., example.com)
               </Form.Text>
             </Form.Group>
@@ -195,13 +267,14 @@ const ProvidersPage = () => {
         return (
           <div>
             <Form.Group className="mb-3">
-              <Form.Label>Access Key</Form.Label>
+              <Form.Label className="text-white">Access Key</Form.Label>
               <div className="input-group">
                 <Form.Control 
                   type={isShowingToken.accessKey ? "text" : "password"} 
                   placeholder="AWS Access Key"
-                  value={config.accessKey || ''}
-                  onChange={(e) => handleConfigChange(provider, 'accessKey', e.target.value)}
+                  value={providerInput.accessKey || ''}
+                  onChange={(e) => handleInputChange(provider, 'accessKey', e.target.value)}
+                  className="bg-dark text-white border-secondary"
                 />
                 <Button 
                   variant="outline-secondary"
@@ -211,19 +284,20 @@ const ProvidersPage = () => {
                 </Button>
               </div>
               <Form.Text className="text-muted">
-                {currentConfig.accessKey ? 
-                  `Current: ${maskValue(currentConfig.accessKey, isShowingToken.accessKey)}` : 
+                {hasConfiguredValue(provider, 'accessKey') ? 
+                  `Current: ${maskValue(config.accessKey, isShowingToken.accessKey)}` : 
                   'No access key configured'}
               </Form.Text>
             </Form.Group>
             <Form.Group className="mb-3">
-              <Form.Label>Secret Key</Form.Label>
+              <Form.Label className="text-white">Secret Key</Form.Label>
               <div className="input-group">
                 <Form.Control 
                   type={isShowingToken.secretKey ? "text" : "password"} 
                   placeholder="AWS Secret Key"
-                  value={config.secretKey || ''}
-                  onChange={(e) => handleConfigChange(provider, 'secretKey', e.target.value)}
+                  value={providerInput.secretKey || ''}
+                  onChange={(e) => handleInputChange(provider, 'secretKey', e.target.value)}
+                  className="bg-dark text-white border-secondary"
                 />
                 <Button 
                   variant="outline-secondary"
@@ -233,59 +307,62 @@ const ProvidersPage = () => {
                 </Button>
               </div>
               <Form.Text className="text-muted">
-                {currentConfig.secretKey ? 
-                  `Current: ${maskValue(currentConfig.secretKey, isShowingToken.secretKey)}` : 
+                {hasConfiguredValue(provider, 'secretKey') ? 
+                  `Current: ${maskValue(config.secretKey, isShowingToken.secretKey)}` : 
                   'No secret key configured'}
               </Form.Text>
             </Form.Group>
             <Form.Group className="mb-3">
-              <Form.Label>Zone</Form.Label>
+              <Form.Label className="text-white">Zone</Form.Label>
               <Form.Control 
                 type="text" 
                 placeholder="example.com"
-                value={config.zone || ''}
-                onChange={(e) => handleConfigChange(provider, 'zone', e.target.value)}
+                value={providerInput.zone || ''}
+                onChange={(e) => handleInputChange(provider, 'zone', e.target.value)}
+                className="bg-dark text-white border-secondary"
               />
               <Form.Text className="text-muted">
-                {currentConfig.zone ? 
-                  `Current: ${currentConfig.zone}` : 
+                {hasConfiguredValue(provider, 'zone') ? 
+                  `Current: ${config.zone}` : 
                   'No zone configured'}
               </Form.Text>
-              <Form.Text className="text-muted d-block mt-1">
+              <Form.Text className="text-muted d-block mt-2">
                 Your domain name (e.g., example.com)
               </Form.Text>
             </Form.Group>
             <Form.Group className="mb-3">
-              <Form.Label>Zone ID (optional)</Form.Label>
+              <Form.Label className="text-white">Zone ID (optional)</Form.Label>
               <Form.Control 
                 type="text" 
                 placeholder="Z1234567890ABC"
-                value={config.zoneId || ''}
-                onChange={(e) => handleConfigChange(provider, 'zoneId', e.target.value)}
+                value={providerInput.zoneId || ''}
+                onChange={(e) => handleInputChange(provider, 'zoneId', e.target.value)}
+                className="bg-dark text-white border-secondary"
               />
               <Form.Text className="text-muted">
-                {currentConfig.zoneId ? 
-                  `Current: ${currentConfig.zoneId}` : 
+                {hasConfiguredValue(provider, 'zoneId') ? 
+                  `Current: ${config.zoneId}` : 
                   'No zone ID configured'}
               </Form.Text>
-              <Form.Text className="text-muted d-block mt-1">
+              <Form.Text className="text-muted d-block mt-2">
                 Your Route53 hosted zone ID (alternative to Zone)
               </Form.Text>
             </Form.Group>
             <Form.Group className="mb-3">
-              <Form.Label>Region</Form.Label>
+              <Form.Label className="text-white">Region</Form.Label>
               <Form.Control 
                 type="text" 
                 placeholder="eu-west-2"
-                value={config.region || ''}
-                onChange={(e) => handleConfigChange(provider, 'region', e.target.value)}
+                value={providerInput.region || ''}
+                onChange={(e) => handleInputChange(provider, 'region', e.target.value)}
+                className="bg-dark text-white border-secondary"
               />
               <Form.Text className="text-muted">
-                {currentConfig.region ? 
-                  `Current: ${currentConfig.region}` : 
+                {hasConfiguredValue(provider, 'region') ? 
+                  `Current: ${config.region}` : 
                   'Default: eu-west-2'}
               </Form.Text>
-              <Form.Text className="text-muted d-block mt-1">
+              <Form.Text className="text-muted d-block mt-2">
                 AWS region for API calls (default: eu-west-2)
               </Form.Text>
             </Form.Group>
@@ -300,19 +377,30 @@ const ProvidersPage = () => {
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="text-center py-5">
+        <Spinner animation="border" variant="primary" />
+        <p className="mt-3 text-white">Loading provider configurations...</p>
+      </div>
+    );
+  }
+
   return (
     <>
-      <PageHeader 
-        title="DNS Providers" 
-        subtitle="Configure and manage your DNS providers" 
-      />
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <h1 className="mb-0 text-white">DNS Providers</h1>
+          <p className="text-muted mb-0">Configure and manage your DNS providers</p>
+        </div>
+      </div>
 
       <Card className="mb-4 bg-dark text-white">
         <Card.Header className="border-bottom border-secondary">
           <h5 className="mb-0">Active Provider</h5>
         </Card.Header>
         <Card.Body>
-          {providers ? (
+          {providerData.available && providerData.available.length > 0 ? (
             <Row className="align-items-center">
               <Col md={6}>
                 <Form.Group>
@@ -323,7 +411,7 @@ const ProvidersPage = () => {
                     disabled={isSwitching}
                     className="bg-dark text-white border-secondary"
                   >
-                    {providers.available && providers.available.map(provider => (
+                    {providerData.available.map(provider => (
                       <option key={provider} value={provider}>
                         {provider.charAt(0).toUpperCase() + provider.slice(1)}
                       </option>
@@ -335,7 +423,7 @@ const ProvidersPage = () => {
                 <Button 
                   variant="primary"
                   onClick={handleSwitchProvider}
-                  disabled={isSwitching || selectedProvider === providers.current}
+                  disabled={isSwitching || selectedProvider === providerData.current}
                 >
                   {isSwitching ? (
                     <>
@@ -352,15 +440,14 @@ const ProvidersPage = () => {
               </Col>
             </Row>
           ) : (
-            <div className="text-center py-3">
-              <Spinner animation="border" variant="primary" />
-              <p className="mt-2">Loading providers...</p>
-            </div>
+            <Alert variant="warning">
+              No DNS providers available. Check your server configuration.
+            </Alert>
           )}
         </Card.Body>
       </Card>
 
-      {providers && providers.available && providers.available.map(provider => (
+      {providerData.available && providerData.available.map(provider => (
         <Card key={provider} className="mb-4 bg-dark text-white">
           <Card.Header className="border-bottom border-secondary">
             <h5 className="mb-0">{provider.charAt(0).toUpperCase() + provider.slice(1)} Configuration</h5>
@@ -372,9 +459,9 @@ const ProvidersPage = () => {
                 <Button 
                   variant="primary" 
                   onClick={() => handleSaveConfig(provider)}
-                  disabled={isLoading}
+                  disabled={isSaving}
                 >
-                  {isLoading ? (
+                  {isSaving ? (
                     <>
                       <Spinner size="sm" animation="border" className="me-2" />
                       Saving...
@@ -391,46 +478,6 @@ const ProvidersPage = () => {
           </Card.Body>
         </Card>
       ))}
-
-      <Card className="bg-dark text-white">
-        <Card.Header className="border-bottom border-secondary">
-          <h5 className="mb-0">Active DNS Provider Information</h5>
-        </Card.Header>
-        <Card.Body>
-          {providers && providers.current ? (
-            <Table responsive striped variant="dark">
-              <thead>
-                <tr>
-                  <th>Property</th>
-                  <th>Value</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Current Provider</td>
-                  <td><strong>{providers.current}</strong></td>
-                </tr>
-                <tr>
-                  <td>Domain/Zone</td>
-                  <td>
-                    {providers.configs && providers.configs[providers.current] ? (
-                      providers.configs[providers.current].zone || 
-                      providers.configs[providers.current].domain || 
-                      'Not configured'
-                    ) : (
-                      'Not configured'
-                    )}
-                  </td>
-                </tr>
-              </tbody>
-            </Table>
-          ) : (
-            <Alert variant="warning">
-              No DNS provider is currently active. Please configure and select a provider.
-            </Alert>
-          )}
-        </Card.Body>
-      </Card>
     </>
   );
 };
