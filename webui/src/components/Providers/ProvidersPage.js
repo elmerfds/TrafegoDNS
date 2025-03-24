@@ -162,219 +162,178 @@ const ProvidersPage = () => {
   const isEnvironmentVariable = (provider, field) => {
     if (!providers.configs || !providers.configs[provider]) return false;
     return providers.configs[provider][field] === 'CONFIGURED_FROM_ENV';
-  };  
+  }; 
 
   // Render field display value (sensitive fields show "Configured" or "Not configured")
   const getFieldDisplayValue = (provider, field) => {
+    if (!providerConfigs[provider]) return '';
+    
+    // If environment variable, return the actual value (even for sensitive fields)
     if (isEnvironmentVariable(provider, field)) {
-      return 'Configured via environment variable';
-    }
-    
-    if (isSensitiveField(field)) {
-      if (hasConfiguredValue(provider, field) || hasMaskedValue(provider, field)) {
-        return 'Configured';
+      const value = providerConfigs[provider][field];
+      
+      // If it's a sensitive field, we still want to mask it
+      if (isSensitiveField(field)) {
+        return ''; // Don't show any value for sensitive fields from env vars
       }
-      return 'Not configured';
+      
+      // For non-sensitive fields, return the actual value
+      return value !== 'CONFIGURED_FROM_ENV' ? value : '';
     }
     
-    // For non-sensitive fields, return the actual value if it exists
-    if (providerConfigs[provider] && providerConfigs[provider][field]) {
-      return providerConfigs[provider][field];
-    }
-    
-    return 'Not configured';
+    // For regular values, return the value if it exists
+    return providerConfigs[provider][field] || '';
   };
 
-  const renderProviderConfig = (provider) => {
-    const isShowingToken = showTokens[provider] || {};
+  // renderFormField helper function
+  const renderFormField = (provider, field, label, placeholder, description, isSensitive = false) => {
+    const isEnvVar = isEnvironmentVariable(provider, field);
+    const fieldValue = getFieldDisplayValue(provider, field);
     const providerInput = inputValues[provider] || {};
+    const isShowingPassword = showTokens[provider]?.[field] || false;
     
+    return (
+      <Form.Group className="mb-3">
+        <Form.Label className="text-white">{label}</Form.Label>
+        {isSensitive ? (
+          <div className="input-group">
+            <Form.Control 
+              type={isShowingPassword ? "text" : "password"}
+              placeholder={placeholder}
+              value={providerInput[field] || ''}
+              onChange={(e) => handleInputChange(provider, field, e.target.value)}
+              className="bg-dark text-white border-secondary"
+              disabled={isEnvVar} // Disable if from env var
+            />
+            <Button 
+              variant="outline-secondary"
+              onClick={() => toggleShowToken(provider, field)}
+              disabled={isEnvVar && !fieldValue} // Disable if from env var with no value
+            >
+              <FontAwesomeIcon icon={isShowingPassword ? faEyeSlash : faEye} />
+            </Button>
+          </div>
+        ) : (
+          <Form.Control 
+            type="text"
+            placeholder={placeholder}
+            value={isEnvVar ? fieldValue : (providerInput[field] || '')}
+            onChange={(e) => handleInputChange(provider, field, e.target.value)}
+            className="bg-dark text-white border-secondary"
+            disabled={isEnvVar} // Disable if from env var
+          />
+        )}
+        {isEnvVar ? (
+          <Form.Text className="text-info">
+            Configured via environment variable
+          </Form.Text>
+        ) : (
+          <Form.Text className="text-muted">
+            Current: {fieldValue || 'Not configured'}
+          </Form.Text>
+        )}
+        {description && (
+          <Form.Text className="text-muted d-block mt-2">
+            {description}
+          </Form.Text>
+        )}
+      </Form.Group>
+    );
+  };  
+
+  const renderProviderConfig = (provider) => {
     switch (provider.toLowerCase()) {
       case 'cloudflare':
         return (
           <div>
-            <Form.Group className="mb-3">
-              <Form.Label className="text-white">API Token</Form.Label>
-              <div className="input-group">
-                <Form.Control 
-                  type={isShowingToken.token ? "text" : "password"} 
-                  placeholder="Cloudflare API Token"
-                  value={providerInput.token || ''}
-                  onChange={(e) => handleInputChange(provider, 'token', e.target.value)}
-                  className="bg-dark text-white border-secondary"
-                  disabled={isEnvironmentVariable(provider, 'token')}
-                />
-                <Button 
-                  variant="outline-secondary"
-                  onClick={() => toggleShowToken(provider, 'token')}
-                  disabled={isEnvironmentVariable(provider, 'token')}
-                >
-                  <FontAwesomeIcon icon={isShowingToken.token ? faEyeSlash : faEye} />
-                </Button>
-              </div>
-              <Form.Text className={isEnvironmentVariable(provider, 'token') ? 'text-info' : 'text-muted'}>
-                Current: {getFieldDisplayValue(provider, 'token')}
-              </Form.Text>
-              <Form.Text className="text-muted d-block mt-2">
-                API token with Zone:DNS:Edit permissions for your domain
-              </Form.Text>
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label className="text-white">Zone</Form.Label>
-              <Form.Control 
-                type="text" 
-                placeholder="example.com"
-                value={providerInput.zone || ''}
-                onChange={(e) => handleInputChange(provider, 'zone', e.target.value)}
-                className="bg-dark text-white border-secondary"
-              />
-              <Form.Text className="text-muted">
-                Current: {getFieldDisplayValue(provider, 'zone')}
-              </Form.Text>
-              <Form.Text className="text-muted d-block mt-2">
-                Your domain name (e.g., example.com)
-              </Form.Text>
-            </Form.Group>
+            {renderFormField(
+              provider, 
+              'token', 
+              'API Token', 
+              'Cloudflare API Token',
+              'API token with Zone:DNS:Edit permissions for your domain', 
+              true // is sensitive
+            )}
+            
+            {renderFormField(
+              provider, 
+              'zone', 
+              'Zone', 
+              'example.com',
+              'Your domain name (e.g., example.com)', 
+              false // not sensitive
+            )}
           </div>
         );
       case 'digitalocean':
         return (
           <div>
-            <Form.Group className="mb-3">
-              <Form.Label className="text-white">API Token</Form.Label>
-              <div className="input-group">
-                <Form.Control 
-                  type={isShowingToken.token ? "text" : "password"} 
-                  placeholder="DigitalOcean API Token"
-                  value={providerInput.token || ''}
-                  onChange={(e) => handleInputChange(provider, 'token', e.target.value)}
-                  className="bg-dark text-white border-secondary"
-                />
-                <Button 
-                  variant="outline-secondary"
-                  onClick={() => toggleShowToken(provider, 'token')}
-                >
-                  <FontAwesomeIcon icon={isShowingToken.token ? faEyeSlash : faEye} />
-                </Button>
-              </div>
-              <Form.Text className="text-muted">
-                Current: {getFieldDisplayValue(provider, 'token')}
-              </Form.Text>
-              <Form.Text className="text-muted d-block mt-2">
-                DigitalOcean API token with write access
-              </Form.Text>
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label className="text-white">Domain</Form.Label>
-              <Form.Control 
-                type="text" 
-                placeholder="example.com"
-                value={providerInput.domain || ''}
-                onChange={(e) => handleInputChange(provider, 'domain', e.target.value)}
-                className="bg-dark text-white border-secondary"
-              />
-              <Form.Text className="text-muted">
-                Current: {getFieldDisplayValue(provider, 'domain')}
-              </Form.Text>
-              <Form.Text className="text-muted d-block mt-2">
-                Your domain name (e.g., example.com)
-              </Form.Text>
-            </Form.Group>
+            {renderFormField(
+              provider, 
+              'token', 
+              'API Token', 
+              'DigitalOcean API Token',
+              'DigitalOcean API token with write access', 
+              true // is sensitive
+            )}
+            
+            {renderFormField(
+              provider, 
+              'domain', 
+              'Domain', 
+              'example.com',
+              'Your domain name (e.g., example.com)', 
+              false // not sensitive
+            )}
           </div>
         );
       case 'route53':
         return (
           <div>
-            <Form.Group className="mb-3">
-              <Form.Label className="text-white">Access Key</Form.Label>
-              <div className="input-group">
-                <Form.Control 
-                  type={isShowingToken.accessKey ? "text" : "password"} 
-                  placeholder="AWS Access Key"
-                  value={providerInput.accessKey || ''}
-                  onChange={(e) => handleInputChange(provider, 'accessKey', e.target.value)}
-                  className="bg-dark text-white border-secondary"
-                />
-                <Button 
-                  variant="outline-secondary"
-                  onClick={() => toggleShowToken(provider, 'accessKey')}
-                >
-                  <FontAwesomeIcon icon={isShowingToken.accessKey ? faEyeSlash : faEye} />
-                </Button>
-              </div>
-              <Form.Text className="text-muted">
-                Current: {getFieldDisplayValue(provider, 'accessKey')}
-              </Form.Text>
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label className="text-white">Secret Key</Form.Label>
-              <div className="input-group">
-                <Form.Control 
-                  type={isShowingToken.secretKey ? "text" : "password"} 
-                  placeholder="AWS Secret Key"
-                  value={providerInput.secretKey || ''}
-                  onChange={(e) => handleInputChange(provider, 'secretKey', e.target.value)}
-                  className="bg-dark text-white border-secondary"
-                />
-                <Button 
-                  variant="outline-secondary"
-                  onClick={() => toggleShowToken(provider, 'secretKey')}
-                >
-                  <FontAwesomeIcon icon={isShowingToken.secretKey ? faEyeSlash : faEye} />
-                </Button>
-              </div>
-              <Form.Text className="text-muted">
-                Current: {getFieldDisplayValue(provider, 'secretKey')}
-              </Form.Text>
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label className="text-white">Zone</Form.Label>
-              <Form.Control 
-                type="text" 
-                placeholder="example.com"
-                value={providerInput.zone || ''}
-                onChange={(e) => handleInputChange(provider, 'zone', e.target.value)}
-                className="bg-dark text-white border-secondary"
-              />
-              <Form.Text className="text-muted">
-                Current: {getFieldDisplayValue(provider, 'zone')}
-              </Form.Text>
-              <Form.Text className="text-muted d-block mt-2">
-                Your domain name (e.g., example.com)
-              </Form.Text>
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label className="text-white">Zone ID (optional)</Form.Label>
-              <Form.Control 
-                type="text" 
-                placeholder="Z1234567890ABC"
-                value={providerInput.zoneId || ''}
-                onChange={(e) => handleInputChange(provider, 'zoneId', e.target.value)}
-                className="bg-dark text-white border-secondary"
-              />
-              <Form.Text className="text-muted">
-                Current: {getFieldDisplayValue(provider, 'zoneId')}
-              </Form.Text>
-              <Form.Text className="text-muted d-block mt-2">
-                Your Route53 hosted zone ID (alternative to Zone)
-              </Form.Text>
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label className="text-white">Region</Form.Label>
-              <Form.Control 
-                type="text" 
-                placeholder="eu-west-2"
-                value={providerInput.region || ''}
-                onChange={(e) => handleInputChange(provider, 'region', e.target.value)}
-                className="bg-dark text-white border-secondary"
-              />
-              <Form.Text className="text-muted">
-                Current: {getFieldDisplayValue(provider, 'region') || 'Default: eu-west-2'}
-              </Form.Text>
-              <Form.Text className="text-muted d-block mt-2">
-                AWS region for API calls (default: eu-west-2)
-              </Form.Text>
-            </Form.Group>
+            {renderFormField(
+              provider, 
+              'accessKey', 
+              'Access Key', 
+              'AWS Access Key',
+              null, 
+              true // is sensitive
+            )}
+            
+            {renderFormField(
+              provider, 
+              'secretKey', 
+              'Secret Key', 
+              'AWS Secret Key',
+              null, 
+              true // is sensitive
+            )}
+            
+            {renderFormField(
+              provider, 
+              'zone', 
+              'Zone', 
+              'example.com',
+              'Your domain name (e.g., example.com)', 
+              false // not sensitive
+            )}
+            
+            {renderFormField(
+              provider, 
+              'zoneId', 
+              'Zone ID (optional)', 
+              'Z1234567890ABC',
+              'Your Route53 hosted zone ID (alternative to Zone)', 
+              false // not sensitive
+            )}
+            
+            {renderFormField(
+              provider, 
+              'region', 
+              'Region', 
+              'eu-west-2',
+              'AWS region for API calls (default: eu-west-2)', 
+              false // not sensitive
+            )}
           </div>
         );
       default:
