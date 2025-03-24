@@ -3,7 +3,7 @@ import React from 'react';
 
 const StatusBar = ({ mode, provider }) => {
   return (
-    <div className="status-bar bg-white">
+    <div className="status-bar bg-dark border-bottom border-secondary">
       <div className="container-fluid px-2">
         <div className="py-2">
           <div className="d-flex flex-wrap">
