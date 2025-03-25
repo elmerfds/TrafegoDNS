@@ -8,8 +8,7 @@ import {
   faSearch, 
   faExclamationTriangle, 
   faCheck, 
-  faShieldAlt,
-  faServer
+  faShieldAlt 
 } from '@fortawesome/free-solid-svg-icons';
 import { toast } from 'react-toastify';
 import recordsService from '../../services/recordsService';
@@ -24,7 +23,6 @@ const TrackedRecordsTab = ({ records = [], updateRecords, providerName, onRecord
   const [currentRecord, setCurrentRecord] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [recordFilter, setRecordFilter] = useState('all');
-  const [providerFilter, setProviderFilter] = useState('all');
 
   const handleSearchChange = (e) => {
     setSearchTerm(e.target.value.toLowerCase());
@@ -34,26 +32,14 @@ const TrackedRecordsTab = ({ records = [], updateRecords, providerName, onRecord
     setRecordFilter(e.target.value);
   };
 
-  const handleProviderFilterChange = (e) => {
-    setProviderFilter(e.target.value);
-  };
-
-  // Get unique record types for filter
-  const recordTypes = ['all', ...new Set(records.map(record => record.type))];
-  
-  // Get unique providers for filter
-  const uniqueProviders = ['all', ...new Set(records.map(record => record.provider).filter(Boolean))];
-
   const filteredRecords = records.filter(record => {
     const matchesSearch = !searchTerm || 
       record.name.toLowerCase().includes(searchTerm) || 
       record.type.toLowerCase().includes(searchTerm) || 
       (record.content && record.content.toLowerCase().includes(searchTerm));
     
-    const matchesType = recordFilter === 'all' || record.type === recordFilter;
-    const matchesProvider = providerFilter === 'all' || record.provider === providerFilter;
-    
-    return matchesSearch && matchesType && matchesProvider;
+    if (recordFilter === 'all') return matchesSearch;
+    return matchesSearch && record.type === recordFilter;
   });
 
   const handleDeleteClick = (record) => {
@@ -94,6 +80,9 @@ const TrackedRecordsTab = ({ records = [], updateRecords, providerName, onRecord
     }
   };
 
+  // Get unique record types for filter
+  const recordTypes = ['all', ...new Set(records.map(record => record.type))];
+
   const handleRecordCreated = (newRecord) => {
     // Call the parent component's refresh function
     onRecordsChanged();
@@ -110,7 +99,7 @@ const TrackedRecordsTab = ({ records = [], updateRecords, providerName, onRecord
         <Card.Header>
           <div className="d-flex justify-content-between align-items-center">
             <span>Tracked DNS Records</span>
-            <div className="d-flex gap-2 flex-wrap">
+            <div className="d-flex gap-2">
               <Form.Select 
                 size="sm" 
                 className="me-2" 
@@ -124,24 +113,6 @@ const TrackedRecordsTab = ({ records = [], updateRecords, providerName, onRecord
                   </option>
                 ))}
               </Form.Select>
-              
-              {/* Provider Filter Dropdown */}
-              {uniqueProviders.length > 1 && (
-                <Form.Select 
-                  size="sm" 
-                  className="me-2" 
-                  style={{ width: 'auto' }}
-                  value={providerFilter}
-                  onChange={handleProviderFilterChange}
-                >
-                  {uniqueProviders.map(provider => (
-                    <option key={provider} value={provider}>
-                      {provider === 'all' ? 'All Providers' : provider}
-                    </option>
-                  ))}
-                </Form.Select>
-              )}
-              
               <InputGroup size="sm" style={{ width: 'auto' }}>
                 <InputGroup.Text>
                   <FontAwesomeIcon icon={faSearch} />
@@ -155,102 +126,94 @@ const TrackedRecordsTab = ({ records = [], updateRecords, providerName, onRecord
             </div>
           </div>
         </Card.Header>
-        <Card.Body className="p-0">
-          <div className="table-responsive">
-            <Table hover className="mb-0">
-              <thead>
+      <Card.Body className="p-0">
+        <div className="table-responsive">
+          <Table hover className="mb-0">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Content</th>
+                <th>TTL</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRecords.length === 0 ? (
                 <tr>
-                  <th>Name</th>
-                  <th>Type</th>
-                  <th>Content</th>
-                  <th>TTL</th>
-                  <th>Provider</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                  <td colSpan="6" className="text-center py-4">
+                    {searchTerm || recordFilter !== 'all' ? (
+                      <div>
+                        <FontAwesomeIcon icon={faExclamationTriangle} className="text-warning mb-2" size="lg" />
+                        <p className="mb-0">No matching records found. Try adjusting your search or filter.</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="mb-0">No DNS records are currently being tracked.</p>
+                      </div>
+                    )}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {filteredRecords.length === 0 ? (
-                  <tr>
-                    <td colSpan="7" className="text-center py-4">
-                      {searchTerm || recordFilter !== 'all' || providerFilter !== 'all' ? (
-                        <div>
-                          <FontAwesomeIcon icon={faExclamationTriangle} className="text-warning mb-2" size="lg" />
-                          <p className="mb-0">No matching records found. Try adjusting your search or filters.</p>
-                        </div>
+              ) : (
+                filteredRecords.map((record) => (
+                  <tr key={`${record.id}-${record.type}`}>
+                    <td>
+                      <div className="fw-medium">{record.name}</div>
+                      <small className="text-muted">{record.id}</small>
+                    </td>
+                    <td>
+                      <RecordTypeBadge type={record.type} />
+                    </td>
+                    <td className="text-truncate" style={{ maxWidth: '200px' }}>
+                      {record.content || <small className="text-muted">Not specified</small>}
+                    </td>
+                    <td>{record.ttl || 'Auto'}</td>
+                    <td>
+                      {record.proxied ? (
+                        <Badge bg="success">
+                          <FontAwesomeIcon icon={faShieldAlt} className="me-1" />
+                          Proxied
+                        </Badge>
                       ) : (
-                        <div>
-                          <p className="mb-0">No DNS records are currently being tracked.</p>
-                        </div>
+                        <Badge bg="secondary">
+                          <FontAwesomeIcon icon={faCheck} className="me-1" />
+                          Direct
+                        </Badge>
                       )}
                     </td>
+                    <td>
+                      <Button 
+                        size="sm" 
+                        variant="outline-primary"
+                        className="me-1"
+                        onClick={() => handleEditClick(record)}
+                      >
+                        <FontAwesomeIcon icon={faEdit} />
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline-danger"
+                        onClick={() => handleDeleteClick(record)}
+                      >
+                        <FontAwesomeIcon icon={faTrash} />
+                      </Button>
+                    </td>
                   </tr>
-                ) : (
-                  filteredRecords.map((record) => (
-                    <tr key={`${record.id}-${record.type}`}>
-                      <td>
-                        <div className="fw-medium">{record.name}</div>
-                        <small className="text-muted">{record.id}</small>
-                      </td>
-                      <td>
-                        <RecordTypeBadge type={record.type} />
-                      </td>
-                      <td className="text-truncate" style={{ maxWidth: '200px' }}>
-                        {record.content || <small className="text-muted">Not specified</small>}
-                      </td>
-                      <td>{record.ttl || 'Auto'}</td>
-                      <td>
-                        <Badge bg="secondary">
-                          <FontAwesomeIcon icon={faServer} className="me-1" />
-                          {record.provider || providerName}
-                        </Badge>
-                      </td>
-                      <td>
-                        {record.proxied ? (
-                          <Badge bg="success">
-                            <FontAwesomeIcon icon={faShieldAlt} className="me-1" />
-                            Proxied
-                          </Badge>
-                        ) : (
-                          <Badge bg="secondary">
-                            <FontAwesomeIcon icon={faCheck} className="me-1" />
-                            Direct
-                          </Badge>
-                        )}
-                      </td>
-                      <td>
-                        <Button 
-                          size="sm" 
-                          variant="outline-primary"
-                          className="me-1"
-                          onClick={() => handleEditClick(record)}
-                        >
-                          <FontAwesomeIcon icon={faEdit} />
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline-danger"
-                          onClick={() => handleDeleteClick(record)}
-                        >
-                          <FontAwesomeIcon icon={faTrash} />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </Table>
-          </div>
-        </Card.Body>
-        <Card.Footer>
-          <small className="text-muted">
-            Showing {filteredRecords.length} of {records.length} records
-            {searchTerm && ` • Filtered by "${searchTerm}"`}
-            {recordFilter !== 'all' && ` • Type: ${recordFilter}`}
-            {providerFilter !== 'all' && ` • Provider: ${providerFilter}`}
-          </small>
-        </Card.Footer>
-      </Card>
+                ))
+              )}
+            </tbody>
+          </Table>
+        </div>
+      </Card.Body>
+      <Card.Footer>
+        <small className="text-muted">
+          Showing {filteredRecords.length} of {records.length} records
+          {searchTerm && ` • Filtered by "${searchTerm}"`}
+          {recordFilter !== 'all' && ` • Type: ${recordFilter}`}
+        </small>
+      </Card.Footer>
+    </Card>
 
       {/* Delete Confirmation Modal */}
       <Modal show={!!confirmDelete} onHide={() => setConfirmDelete(null)}>
