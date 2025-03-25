@@ -815,15 +815,15 @@ The DNS Manager automatically detects apex domains (e.g., `example.com`) and use
 
 ```bash
 # Clone the repository
-git clone https://github.com/elmerfds/traefik-dns-manager.git
-cd traefik-dns-manager
+git clone https://github.com/elmerfds/TrafegoDNS.git
+cd TrafegoDNS
 
 # Build the Docker image
-docker build -t traefik-dns-manager .
+docker build -t TrafegoDNS .
 
 # Run the container
 docker run -d \
-  --name traefik-dns-manager \
+  --name TrafegoDNS \
   -e CLOUDFLARE_TOKEN=your_token \
   -e CLOUDFLARE_ZONE=example.com \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
