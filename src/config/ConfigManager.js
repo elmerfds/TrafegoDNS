@@ -1,8 +1,3 @@
-# Complete ConfigManager.js File
-
-Here's the complete, corrected version of the ConfigManager.js file with all the fixes applied:
-
-```javascript
 /**
  * Configuration management for TráfegoDNS 
  */
