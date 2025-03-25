@@ -99,6 +99,23 @@ function createStatusRouter(dnsManager, stateManager) {
       // Force refresh of IP addresses
       const ipInfo = await dnsManager.config.updatePublicIPs();
       
+      // Explicitly update the state with the new IPs
+      if (stateManager) {
+        stateManager.updateState('status.ipv4', ipInfo.ipv4);
+        stateManager.updateState('status.ipv6', ipInfo.ipv6);
+        
+        // Log the update for debugging
+        logger.info(`Updated IP addresses in state: IPv4=${ipInfo.ipv4}, IPv6=${ipInfo.ipv6}`);
+      }
+      
+      // Also notify via event bus if available
+      if (dnsManager.eventBus) {
+        dnsManager.eventBus.publish(EventTypes.IP_UPDATED, {
+          ipv4: ipInfo.ipv4,
+          ipv6: ipInfo.ipv6
+        });
+      }
+      
       res.json({
         ipv4: ipInfo.ipv4,
         ipv6: ipInfo.ipv6,

@@ -27,6 +27,14 @@ const StatusPage = () => {
   const fetchStatus = async () => {
     try {
       setIsLoading(true);
+      
+      // First refresh IP addresses
+      await statusService.getPublicIPs();
+      
+      // Short delay to ensure state updates propagate
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Then get full status
       const response = await statusService.getStatus();
       setStatus(response.data);
     } catch (error) {

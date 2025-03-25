@@ -207,11 +207,52 @@ class StateManager {
       this.debouncedSave();
     });
     
-    // Subscribe to IP updates
+    // Subscribe to IP updates with improved error handling
     this.eventBus.subscribe(EventTypes.IP_UPDATED, (data) => {
-      this.state.status.ipv4 = data.ipv4;
-      this.state.status.ipv6 = data.ipv6;
-      this.debouncedSave();
+      try {
+        // Check if we have valid IP data
+        if (data) {
+          // Update IPv4 if provided
+          if (data.ipv4) {
+            this.state.status.ipv4 = data.ipv4;
+          }
+          
+          // Update IPv6 if provided
+          if (data.ipv6) {
+            this.state.status.ipv6 = data.ipv6;
+          }
+          
+          // Save state immediately for IP changes - don't use debounced save
+          this.saveState();
+          logger.debug(`State updated with new IPs: IPv4=${data.ipv4 || 'not set'}, IPv6=${data.ipv6 || 'not set'}`);
+        }
+      } catch (error) {
+        logger.error(`Error updating IP in state: ${error.message}`);
+      }
+    });
+    
+    // Also subscribe to legacy ip:updated event for backward compatibility
+    this.eventBus.subscribe('ip:updated', (data) => {
+      try {
+        // Check if we have valid IP data
+        if (data) {
+          // Update IPv4 if provided
+          if (data.ipv4) {
+            this.state.status.ipv4 = data.ipv4;
+          }
+          
+          // Update IPv6 if provided
+          if (data.ipv6) {
+            this.state.status.ipv6 = data.ipv6;
+          }
+          
+          // Save state immediately for IP changes - don't use debounced save
+          this.saveState();
+          logger.debug(`State updated with new IPs (legacy event): IPv4=${data.ipv4 || 'not set'}, IPv6=${data.ipv6 || 'not set'}`);
+        }
+      } catch (error) {
+        logger.error(`Error updating IP in state from legacy event: ${error.message}`);
+      }
     });
     
     // Subscribe to DNS records updates
