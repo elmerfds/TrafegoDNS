@@ -16,364 +16,147 @@ class ConfigManager {
       ipv6: process.env.PUBLIC_IPV6 || null,
       lastCheck: 0
     };
-    
-    // Operation mode - traefik or direct
+
+    // Operation mode
     this.operationMode = EnvironmentLoader.getString('OPERATION_MODE', 'traefik');
-
-    // Managed Hostname management
     this.managedHostnames = EnvironmentLoader.getString('MANAGED_HOSTNAMES', '');    
-
-    // DNS Provider configuration
     this.dnsProvider = EnvironmentLoader.getString('DNS_PROVIDER', 'cloudflare');
+
+    // Provider configurations
+    this.loadProviderConfigs();
     
-    // Provider-specific settings
-    // Cloudflare settings
-    this.cloudflareToken = EnvironmentLoader.getString('CLOUDFLARE_TOKEN');
-    this.cloudflareZone = EnvironmentLoader.getString('CLOUDFLARE_ZONE');
-    
-    // Route53 settings
-    this.route53AccessKey = EnvironmentLoader.getString('ROUTE53_ACCESS_KEY');
-    this.route53SecretKey = EnvironmentLoader.getString('ROUTE53_SECRET_KEY');
-    this.route53Zone = EnvironmentLoader.getString('ROUTE53_ZONE');
-    this.route53ZoneId = EnvironmentLoader.getString('ROUTE53_ZONE_ID');
-    this.route53Region = EnvironmentLoader.getString('ROUTE53_REGION', 'eu-west-2');
-    
-    // Digital Ocean settings
-    this.digitalOceanToken = EnvironmentLoader.getString('DO_TOKEN');
-    this.digitalOceanDomain = EnvironmentLoader.getString('DO_DOMAIN');
-    
-    // Validate required settings based on provider
+    // Validate required settings
     this.validateProviderConfig();
-    
-    // Traefik API settings
-    this.traefikApiUrl = EnvironmentLoader.getString('TRAEFIK_API_URL', 'http://traefik:8080/api');
-    this.traefikApiUsername = EnvironmentLoader.getString('TRAEFIK_API_USERNAME');
-    this.traefikApiPassword = EnvironmentLoader.getString('TRAEFIK_API_PASSWORD');
-    
-    // Label prefixes
-    this.genericLabelPrefix = EnvironmentLoader.getString('DNS_LABEL_PREFIX', 'dns.');
-    this.dnsLabelPrefix = `${this.genericLabelPrefix}${this.dnsProvider}.`;
-    this.traefikLabelPrefix = EnvironmentLoader.getString('TRAEFIK_LABEL_PREFIX', 'traefik.');
-    
-    // Global DNS defaults
-    this.defaultRecordType = EnvironmentLoader.getString('DNS_DEFAULT_TYPE', 'CNAME');
-    this.defaultContent = EnvironmentLoader.getString('DNS_DEFAULT_CONTENT', this.getProviderDomain());
-    this.defaultProxied = EnvironmentLoader.getBool('DNS_DEFAULT_PROXIED', true);
-    
-    // Set default TTL based on the provider
-    switch (this.dnsProvider.toLowerCase()) {
-      case 'cloudflare':
-        this.defaultTTL = EnvironmentLoader.getInt('DNS_DEFAULT_TTL', 1); // Cloudflare minimum is 1 (Auto)
-        break;
-      case 'digitalocean':
-        this.defaultTTL = EnvironmentLoader.getInt('DNS_DEFAULT_TTL', 30); // DigitalOcean minimum is 30
-        break;
-      case 'route53':
-        this.defaultTTL = EnvironmentLoader.getInt('DNS_DEFAULT_TTL', 60); // Route53 minimum is 60
-        break;
-      default:
-        this.defaultTTL = EnvironmentLoader.getInt('DNS_DEFAULT_TTL', 1); // Default fallback
-    }
-    
-    this.defaultManage = EnvironmentLoader.getBool('DNS_DEFAULT_MANAGE', true);
-    
-    // Record type specific defaults - we'll set A content after IP discovery
-    this.recordDefaults = {
-      A: {
-        content: '',  // Will be set after IP discovery
-        proxied: process.env.DNS_DEFAULT_A_PROXIED !== undefined ? 
-                 process.env.DNS_DEFAULT_A_PROXIED !== 'false' : 
-                 this.defaultProxied,
-        ttl: EnvironmentLoader.getInt('DNS_DEFAULT_A_TTL', this.defaultTTL)
-      },
-      AAAA: {
-        content: '',  // Will be set after IP discovery
-        proxied: process.env.DNS_DEFAULT_AAAA_PROXIED !== undefined ? 
-                 process.env.DNS_DEFAULT_AAAA_PROXIED !== 'false' : 
-                 this.defaultProxied,
-        ttl: EnvironmentLoader.getInt('DNS_DEFAULT_AAAA_TTL', this.defaultTTL)
-      },
-      CNAME: {
-        content: EnvironmentLoader.getString('DNS_DEFAULT_CNAME_CONTENT', this.defaultContent || ''),
-        proxied: process.env.DNS_DEFAULT_CNAME_PROXIED !== undefined ? 
-                 process.env.DNS_DEFAULT_CNAME_PROXIED !== 'false' : 
-                 this.defaultProxied,
-        ttl: EnvironmentLoader.getInt('DNS_DEFAULT_CNAME_TTL', this.defaultTTL)
-      },
-      MX: {
-        content: EnvironmentLoader.getString('DNS_DEFAULT_MX_CONTENT', ''),
-        priority: EnvironmentLoader.getInt('DNS_DEFAULT_MX_PRIORITY', 10),
-        ttl: EnvironmentLoader.getInt('DNS_DEFAULT_MX_TTL', this.defaultTTL)
-      },
-      TXT: {
-        content: EnvironmentLoader.getString('DNS_DEFAULT_TXT_CONTENT', ''),
-        ttl: EnvironmentLoader.getInt('DNS_DEFAULT_TXT_TTL', this.defaultTTL)
-      },
-      SRV: {
-        content: EnvironmentLoader.getString('DNS_DEFAULT_SRV_CONTENT', ''),
-        priority: EnvironmentLoader.getInt('DNS_DEFAULT_SRV_PRIORITY', 1),
-        weight: EnvironmentLoader.getInt('DNS_DEFAULT_SRV_WEIGHT', 1),
-        port: EnvironmentLoader.getInt('DNS_DEFAULT_SRV_PORT', 80),
-        ttl: EnvironmentLoader.getInt('DNS_DEFAULT_SRV_TTL', this.defaultTTL)
-      },
-      CAA: {
-        content: EnvironmentLoader.getString('DNS_DEFAULT_CAA_CONTENT', ''),
-        flags: EnvironmentLoader.getInt('DNS_DEFAULT_CAA_FLAGS', 0),
-        tag: EnvironmentLoader.getString('DNS_DEFAULT_CAA_TAG', 'issue'),
-        ttl: EnvironmentLoader.getInt('DNS_DEFAULT_CAA_TTL', this.defaultTTL)
-      }
-    };
-    
-    // Application behavior
-    this.dockerSocket = EnvironmentLoader.getString('DOCKER_SOCKET', '/var/run/docker.sock');
-    this.pollInterval = EnvironmentLoader.getInt('POLL_INTERVAL', 60000);
-    this.watchDockerEvents = EnvironmentLoader.getBool('WATCH_DOCKER_EVENTS', true);
-    this.cleanupOrphaned = EnvironmentLoader.getBool('CLEANUP_ORPHANED', false);
-    
-    // Cache refresh interval in milliseconds (default: 1 hour)
-    this.cacheRefreshInterval = EnvironmentLoader.getInt('DNS_CACHE_REFRESH_INTERVAL', 3600000);
 
-    // API request timeout in milliseconds (default: 1 minute)
-    this.apiTimeout = EnvironmentLoader.getInt('API_TIMEOUT', 60000);    
+    // API settings
+    this.loadAPIConfigs();
     
-    // IP refresh interval in milliseconds (default: 1 hour)
-    this.ipRefreshInterval = EnvironmentLoader.getInt('IP_REFRESH_INTERVAL', 3600000);
-    
-    // API authentication settings
-    this.apiAuthEnabled = EnvironmentLoader.getBool('API_AUTH_ENABLED', false);
-    
-    // Authentication configuration
-    this.authEnabled = EnvironmentLoader.getBool('AUTH_ENABLED', true);
-    this.localAuthEnabled = EnvironmentLoader.getBool('LOCAL_AUTH_ENABLED', true);
-    this.oidcOnly = EnvironmentLoader.getBool('OIDC_ONLY', false);
-    this.jwtSecret = EnvironmentLoader.getString('JWT_SECRET', 'trafegodns-secret-key');
-    this.jwtExpiresIn = EnvironmentLoader.getString('JWT_EXPIRES_IN', '24h');
-    this.defaultAdminPassword = EnvironmentLoader.getString('DEFAULT_ADMIN_PASSWORD', '');
-    this.frontendUrl = EnvironmentLoader.getString('FRONTEND_URL', '/');
-
-    // OIDC configuration
-    this.oidcEnabled = EnvironmentLoader.getBool('OIDC_ENABLED', false);
-    this.oidcProvider = EnvironmentLoader.getString('OIDC_PROVIDER', '');
-    this.oidcClientId = EnvironmentLoader.getString('OIDC_CLIENT_ID', '');
-    this.oidcClientSecret = EnvironmentLoader.getString('OIDC_CLIENT_SECRET', '');
-    this.oidcRedirectUri = EnvironmentLoader.getString('OIDC_REDIRECT_URI', '');
-    this.oidcScope = EnvironmentLoader.getString('OIDC_SCOPE', 'openid profile email');
+    // DNS Defaults
+    this.setupDNSDefaults();
     
     // Schedule immediate IP update and then periodic refresh
-    this.updatePublicIPs().then(() => {
-      // Update A record defaults after IP discovery
-      this.recordDefaults.A.content = process.env.DNS_DEFAULT_A_CONTENT || this.ipCache.ipv4 || '';
-      this.recordDefaults.AAAA.content = process.env.DNS_DEFAULT_AAAA_CONTENT || this.ipCache.ipv6 || '';
-      logger.debug(`Updated A record defaults with IP: ${this.recordDefaults.A.content}`);
-    });
+    this.updatePublicIPs()
+      .then(() => this.updateRecordDefaults())
+      .catch(err => logger.error(`Error during initial IP update: ${err.message}`));
 
-    // Set up periodic IP refresh
+    // Periodic IP refresh
     if (this.ipRefreshInterval > 0) {
       setInterval(() => this.updatePublicIPs(), this.ipRefreshInterval);
     }
   }
   
   /**
+   * Loads environment-based provider configurations
+   */
+  loadProviderConfigs() {
+    this.cloudflareToken = EnvironmentLoader.getString('CLOUDFLARE_TOKEN');
+    this.cloudflareZone = EnvironmentLoader.getString('CLOUDFLARE_ZONE');
+    
+    this.route53AccessKey = EnvironmentLoader.getString('ROUTE53_ACCESS_KEY');
+    this.route53SecretKey = EnvironmentLoader.getString('ROUTE53_SECRET_KEY');
+    this.route53Zone = EnvironmentLoader.getString('ROUTE53_ZONE');
+    this.route53ZoneId = EnvironmentLoader.getString('ROUTE53_ZONE_ID');
+    this.route53Region = EnvironmentLoader.getString('ROUTE53_REGION', 'eu-west-2');
+    
+    this.digitalOceanToken = EnvironmentLoader.getString('DO_TOKEN');
+    this.digitalOceanDomain = EnvironmentLoader.getString('DO_DOMAIN');
+  }
+
+  /**
+   * Loads API-related configurations
+   */
+  loadAPIConfigs() {
+    this.traefikApiUrl = EnvironmentLoader.getString('TRAEFIK_API_URL', 'http://traefik:8080/api');
+    this.traefikApiUsername = EnvironmentLoader.getString('TRAEFIK_API_USERNAME');
+    this.traefikApiPassword = EnvironmentLoader.getString('TRAEFIK_API_PASSWORD');
+    this.apiTimeout = EnvironmentLoader.getInt('API_TIMEOUT', 60000);  
+    this.ipRefreshInterval = EnvironmentLoader.getInt('IP_REFRESH_INTERVAL', 3600000);
+  }
+
+  /**
    * Validate that required config is present for the selected provider
    */
   validateProviderConfig() {
-    switch (this.dnsProvider.toLowerCase()) {
-      case 'cloudflare':
-        if (!this.cloudflareToken) {
-          throw new Error('CLOUDFLARE_TOKEN environment variable is required for Cloudflare provider');
-        }
-        if (!this.cloudflareZone) {
-          throw new Error('CLOUDFLARE_ZONE environment variable is required for Cloudflare provider');
-        }
-        break;
-        
-      case 'route53':
-        if (!this.route53AccessKey) {
-          throw new Error('ROUTE53_ACCESS_KEY environment variable is required for Route53 provider');
-        }
-        if (!this.route53SecretKey) {
-          throw new Error('ROUTE53_SECRET_KEY environment variable is required for Route53 provider');
-        }
-        
-        // Allow either zone name or zone ID (prefer zone name for consistency with other providers)
-        if (!this.route53Zone && !this.route53ZoneId) {
-          throw new Error('Either ROUTE53_ZONE or ROUTE53_ZONE_ID environment variable is required for Route53 provider');
-        }
-        break;
-        
-      case 'digitalocean':
-        if (!this.digitalOceanToken) {
-          throw new Error('DO_TOKEN environment variable is required for DigitalOcean provider');
-        }
-        if (!this.digitalOceanDomain) {
-          throw new Error('DO_DOMAIN environment variable is required for DigitalOcean provider');
-        }
-        break;
-        
-      default:
-        throw new Error(`Unsupported DNS provider: ${this.dnsProvider}`);
+    const provider = this.dnsProvider.toLowerCase();
+    const requiredVars = {
+      cloudflare: ['CLOUDFLARE_TOKEN', 'CLOUDFLARE_ZONE'],
+      route53: ['ROUTE53_ACCESS_KEY', 'ROUTE53_SECRET_KEY'],
+      digitalocean: ['DO_TOKEN', 'DO_DOMAIN']
+    };
+
+    if (!requiredVars[provider]) {
+      throw new Error(`Unsupported DNS provider: ${this.dnsProvider}`);
     }
+
+    requiredVars[provider].forEach(varName => {
+      if (!process.env[varName]) {
+        throw new Error(`${varName} environment variable is required for ${provider} provider`);
+      }
+    });
   }
-  
+
   /**
-   * Get the main domain for the current provider
+   * Setup DNS-related defaults
    */
-  getProviderDomain() {
-    switch (this.dnsProvider.toLowerCase()) {
-      case 'cloudflare':
-        return this.cloudflareZone;
-      case 'route53':
-        return this.route53Zone;
-      case 'digitalocean':
-        return this.digitalOceanDomain;
-      default:
-        return '';
-    }
-  }
-  
-  /**
-   * Get defaults for a specific record type
-   */
-  getDefaultsForType(type) {
-    return this.recordDefaults[type] || {
-      content: this.defaultContent,
-      proxied: this.defaultProxied,
-      ttl: this.defaultTTL
+  setupDNSDefaults() {
+    this.defaultRecordType = EnvironmentLoader.getString('DNS_DEFAULT_TYPE', 'CNAME');
+    this.defaultContent = EnvironmentLoader.getString('DNS_DEFAULT_CONTENT', this.getProviderDomain());
+    this.defaultProxied = EnvironmentLoader.getBool('DNS_DEFAULT_PROXIED', true);
+    this.defaultTTL = EnvironmentLoader.getInt('DNS_DEFAULT_TTL', { cloudflare: 1, digitalocean: 30, route53: 60 }[this.dnsProvider.toLowerCase()] || 1);
+    
+    this.recordDefaults = {
+      A: { content: '', proxied: this.defaultProxied, ttl: this.defaultTTL },
+      AAAA: { content: '', proxied: this.defaultProxied, ttl: this.defaultTTL },
+      CNAME: { content: this.defaultContent, proxied: this.defaultProxied, ttl: this.defaultTTL }
     };
   }
-  
+
   /**
-   * Get public IPv4 address synchronously (from cache)
-   * If cache is empty, will return null and trigger async update
+   * Update record defaults after fetching public IPs
    */
-  getPublicIPSync() {
-    if (!this.ipCache || !this.ipCache.ipv4) {
-      // If we don't have a cached IP, trigger an async update
-      // This won't block the current execution, but will update for next time
-      this.updatePublicIPs();
-    }
-    return this.ipCache && this.ipCache.ipv4 ? this.ipCache.ipv4 : null;
+  updateRecordDefaults() {
+    this.recordDefaults.A.content = this.ipCache.ipv4 || '';
+    this.recordDefaults.AAAA.content = this.ipCache.ipv6 || '';
+    logger.debug(`Updated A record defaults with IP: ${this.recordDefaults.A.content}`);
   }
-  
+
   /**
-   * Get public IPv6 address synchronously (from cache)
-   */
-  getPublicIPv6Sync() {
-    if (!this.ipCache || !this.ipCache.ipv6) {
-      this.updatePublicIPs();
-    }
-    return this.ipCache && this.ipCache.ipv6 ? this.ipCache.ipv6 : null;
-  }
-  
-  /**
-   * Get public IP address asynchronously
-   * Returns a promise that resolves to the public IP
-   */
-  async getPublicIP() {
-    // Check if cache is fresh (less than 1 hour old)
-    const cacheAge = Date.now() - this.ipCache.lastCheck;
-    if (this.ipCache.ipv4 && cacheAge < this.ipRefreshInterval) {
-      return this.ipCache.ipv4;
-    }
-    
-    // Cache is stale or empty, update it
-    await this.updatePublicIPs();
-    return this.ipCache.ipv4;
-  }
-  
-  /**
-   * Update the public IP cache by calling external IP services
-   * Uses a semaphore to prevent concurrent updates
+   * Fetches public IP addresses asynchronously
    */
   async updatePublicIPs() {
-  // If an update is already in progress, wait for it to complete
-  if (ipUpdateInProgress) {
-    logger.debug('IP update already in progress, waiting...');
-    await new Promise(resolve => {
-      const checkInterval = setInterval(() => {
-        if (!ipUpdateInProgress) {
-          clearInterval(checkInterval);
-          resolve();
-        }
-      }, 100);
-    });
-    return this.ipCache;
+    if (ipUpdateInProgress) return;
+    ipUpdateInProgress = true;
+
+    try {
+      const [ipv4, ipv6] = await Promise.all([
+        this.fetchIP('https://api.ipify.org'),
+        this.fetchIP('https://api6.ipify.org', true)
+      ]);
+
+      this.ipCache = { ipv4, ipv6, lastCheck: Date.now() };
+      this.updateRecordDefaults();
+
+      logger.info(`Public IPs updated: IPv4=${ipv4}, IPv6=${ipv6}`);
+    } catch (error) {
+      logger.error(`Failed to update public IPs: ${error.message}`);
+    } finally {
+      ipUpdateInProgress = false;
+    }
   }
-  
-  ipUpdateInProgress = true;
-  
-  try {
-    // Remember old IPs to detect changes
-    const oldIpv4 = this.ipCache.ipv4;
-    const oldIpv6 = this.ipCache.ipv6;
-    
-    // Use environment variables if provided, otherwise fetch from IP service
-    let ipv4 = process.env.PUBLIC_IP;
-    let ipv6 = process.env.PUBLIC_IPV6;
-    
-    // If IP not set via environment, fetch from service
-    if (!ipv4) {
-      try {
-        // First try ipify.org
-        const response = await axios.get('https://api.ipify.org', { timeout: 5000 });
-        ipv4 = response.data;
-      } catch (error) {
-        // Fallback to ifconfig.me if ipify fails
-        try {
-          const response = await axios.get('https://ifconfig.me/ip', { timeout: 5000 });
-          ipv4 = response.data;
-        } catch (fallbackError) {
-          logger.error(`Failed to fetch public IPv4 address: ${fallbackError.message}`);
-        }
-      }
+
+  /**
+   * Fetch IP address from external services
+   * @param {string} url - API endpoint for fetching IP
+   * @param {boolean} isIPv6 - Whether to fetch IPv6
+   */
+  async fetchIP(url, isIPv6 = false) {
+    try {
+      const { data } = await axios.get(url, { timeout: 5000 });
+      return data;
+    } catch (error) {
+      logger.warn(`Failed to fetch public ${isIPv6 ? 'IPv6' : 'IPv4'}: ${error.message}`);
+      return null;
     }
-    
-    // Try to get IPv6 if not set in environment
-    if (!ipv6) {
-      try {
-        const response = await axios.get('https://api6.ipify.org', { timeout: 5000 });
-        ipv6 = response.data;
-      } catch (error) {
-        // IPv6 fetch failure is not critical, just log it
-        logger.debug('Failed to fetch public IPv6 address (this is normal if you don\'t have IPv6)');
-      }
-    }
-    
-    // Update cache
-    this.ipCache = {
-      ipv4: ipv4,
-      ipv6: ipv6,
-      lastCheck: Date.now()
-    };
-    
-    // Update record defaults with latest IP
-    this.recordDefaults.A.content = ipv4 || '';
-    this.recordDefaults.AAAA.content = ipv6 || '';
-    
-    // Log IP changes
-    if (ipv4 && ipv4 !== oldIpv4) {
-      logger.info(`Public IPv4 updated: ${ipv4}`);
-    }
-    
-    if (ipv6 && ipv6 !== oldIpv6) {
-      logger.info(`Public IPv6 updated: ${ipv6}`);
-    }
-    
-    // Always publish event regardless of whether IPs changed
-    // This ensures the UI always gets the latest IP info
-    if (this.eventBus) {
-      this.eventBus.publish('ip:updated', { 
-        ipv4: ipv4, 
-        ipv6: ipv6 
-      });
-    }
-    
-    return this.ipCache;
-  } catch (error) {
-    logger.error(`Error updating public IPs: ${error.message}`);
-    return this.ipCache;
-  } finally {
-    ipUpdateInProgress = false;
   }
 }
 
