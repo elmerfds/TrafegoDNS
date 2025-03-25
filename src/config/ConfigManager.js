@@ -247,22 +247,22 @@ class ConfigManager {
    * If cache is empty, will return null and trigger async update
    */
   getPublicIPSync() {
-    if (!this.ipCache.ipv4) {
+    if (!this.ipCache || !this.ipCache.ipv4) {
       // If we don't have a cached IP, trigger an async update
       // This won't block the current execution, but will update for next time
       this.updatePublicIPs();
     }
-    return this.ipCache?.ipv4 || null;
+    return this.ipCache && this.ipCache.ipv4 ? this.ipCache.ipv4 : null;
   }
   
   /**
    * Get public IPv6 address synchronously (from cache)
    */
   getPublicIPv6Sync() {
-    if (!this.ipCache.ipv6) {
+    if (!this.ipCache || !this.ipCache.ipv6) {
       this.updatePublicIPs();
     }
-    return this.ipCache?.ipv6 || null;
+    return this.ipCache && this.ipCache.ipv6 ? this.ipCache.ipv6 : null;
   }
   
   /**
