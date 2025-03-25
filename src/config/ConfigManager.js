@@ -315,4 +315,80 @@ class ConfigManager {
       if (!ipv4) {
         try {
           // First try ipify.org
-          const response = await axios.get('​​​​​​​​​​​​​​​​
+          const response = await axios.get('https://api.ipify.org', { timeout: 5000 });
+          ipv4 = response.data;
+        } catch (error) {
+          // Fallback to ifconfig.me if ipify fails
+          try {
+            const response = await axios.get('https://ifconfig.me/ip', { timeout: 5000 });
+            ipv4 = response.data;
+          } catch (fallbackError) {
+            logger.error(`Failed to fetch public IPv4 address: ${fallbackError.message}`);
+          }
+        }
+      }
+      
+      // Try to get IPv6 if not set in environment
+      if (!ipv6) {
+        try {
+          const response = await axios.get('https://api6.ipify.org', { timeout: 5000 });
+          ipv6 = response.data;
+        } catch (error) {
+          // IPv6 fetch failure is not critical, just log it
+          logger.debug('Failed to fetch public IPv6 address (this is normal if you don\'t have IPv6)');
+        }
+      }
+      
+      // Update cache
+      this.ipCache = {
+        ipv4: ipv4,
+        ipv6: ipv6,
+        lastCheck: Date.now()
+      };
+      
+      // Update record defaults with latest IP
+      if (this.recordDefaults && this.recordDefaults.A) {
+        this.recordDefaults.A.content = ipv4 || '';
+      }
+      
+      if (this.recordDefaults && this.recordDefaults.AAAA) {
+        this.recordDefaults.AAAA.content = ipv6 || '';
+      }
+      
+      // Log IP changes
+      if (ipv4 && ipv4 !== oldIpv4) {
+        logger.info(`Public IPv4 updated: ${ipv4}`);
+      }
+      
+      if (ipv6 && ipv6 !== oldIpv6) {
+        logger.info(`Public IPv6 updated: ${ipv6}`);
+      }
+      
+      // Always publish event regardless of whether IPs changed
+      // This ensures the UI always gets the latest IP info
+      if (this.eventBus) {
+        this.eventBus.publish('ip:updated', { 
+          ipv4: ipv4, 
+          ipv6: ipv6 
+        });
+        
+        // Also publish to standard event type if it exists
+        if (typeof EventTypes !== 'undefined' && EventTypes.IP_UPDATED) {
+          this.eventBus.publish(EventTypes.IP_UPDATED, { 
+            ipv4: ipv4, 
+            ipv6: ipv6 
+          });
+        }
+      }
+      
+      return this.ipCache;
+    } catch (error) {
+      logger.error(`Error updating public IPs: ${error.message}`);
+      return this.ipCache;
+    } finally {
+      ipUpdateInProgress = false;
+    }
+  }
+}
+
+module.exports = ConfigManager;
