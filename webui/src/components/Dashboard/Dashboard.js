@@ -32,12 +32,19 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     setIsLoading(true);
     try {
+      // First refresh IP addresses to ensure they're displayed properly
+      await statusService.getPublicIPs();
+      
+      // Small delay to ensure state updates are complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Then fetch all data
       const [statusResponse, statsResponse, recordsResponse] = await Promise.all([
         statusService.getStatus(),
         statusService.getStats(),
         recordsService.getAllRecords()
       ]);
-
+  
       setStatus(statusResponse.data);
       setStats(statsResponse.data);
       setRecords(recordsResponse.data);
