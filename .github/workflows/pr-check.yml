@@ -25,7 +25,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
       
       - name: Build Docker image for x64 only
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./docker-s6/Dockerfile
@@ -41,7 +41,7 @@ jobs:
           echo "✅ Docker image built successfully"
       
       - name: Verify multi-arch build process
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./docker-s6/Dockerfile
