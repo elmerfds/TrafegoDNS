@@ -166,7 +166,7 @@ TrafegoDNS images are available from both Docker Hub and GitHub Container Regist
 
 Both registries receive simultaneous updates and are functionally identical. The GitHub Container Registry offers an alternative if you experience rate limiting or availability issues with Docker Hub.
 
-### Docker Hub (default)
+### Docker Hub
 ```yaml
 image: eafxx/trafegodns:latest
 ```
