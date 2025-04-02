@@ -74,5 +74,8 @@ RUN head -1 /etc/cont-init.d/* /etc/services.d/trafegodns/*
 # Configure volumes
 VOLUME /config
 
+# Avoid timeout errors adjusting permissions during first run
+ENV S6_CMD_WAIT_FOR_SERVICES_MAXTIME 0
+
 # Set entrypoint to s6-overlay init
 ENTRYPOINT ["/init"]
