@@ -36,6 +36,33 @@ class EnvironmentLoader {
     }
     
     /**
+     * Get environment variable as a secret
+     * Checks if <name>_FILE is defined and reads the contents from the file
+     * @param {string} name - Environment variable name
+     * @param {string} defaultValue - Default value if not set
+     * @returns {string} The secret value or default value
+     */
+    static getSecret(name, defaultValue = '') {
+      const fileVarName = `${name}_FILE`;
+      const filePath = process.env[fileVarName];
+
+      if (filePath) {
+        try {
+          const fs = require('fs');
+          if (fs.existsSync(filePath)) {
+            return fs.readFileSync(filePath, 'utf8').trim();
+          } else {
+            throw new Error(`Secret file not found at path: ${filePath}`);
+          }
+        } catch (error) {
+          throw new Error(`Error reading secret file for ${name}: ${error.message}`);
+        }
+      }
+
+      return this.get(name, defaultValue);
+    }
+    
+    /**
      * Get environment variable as integer
      */
     static getInt(name, defaultValue = 0) {
