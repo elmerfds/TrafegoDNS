@@ -35,6 +35,7 @@ A service that automatically manages DNS records based on container configuratio
 - [Logging System](#logging-system)
 - [Performance Optimisation](#performance-optimisation)
 - [Automatic Apex Domain Handling](#automatic-apex-domain-handling)
+- [Using Docker Secrets](#using-docker-secrets)
 - [Building from Source](#building-from-source)
 - [Development](#development)
 - [Licence](#licence)
@@ -810,6 +811,41 @@ The application includes robust timeout handling for API operations:
 ## Automatic Apex Domain Handling
 
 The DNS Manager automatically detects apex domains (e.g., `example.com`) and uses A records with your public IP instead of CNAME records, which are not allowed at the apex domain level.
+
+## Using Docker Secrets
+
+Any environment variables supported by TrafegoDNS that contain secrets, i.e. those ending in `_TOKEN`, `_KEY` or `_PASSWORD` support receiving the secret vie Docker [secrets](https://docs.docker.com/compose/how-tos/use-secrets/). 
+
+To provide a value via secret file, append the suffix `_FILE` to the variable name and specify the path to the file that contains the secret.
+
+Example:
+
+```
+secrets:
+  cloudflare_dns_api_token:
+    file: ${APPDATA_LOCATION:-/srv/appdata}/secrets/cloudflare_dns_api_token
+
+services:
+  trafego:
+    container_name: trafego
+    image: eafxx/traefik-dns-manager:latest
+    restart: unless-stopped
+    volumes: 
+      - trafego:/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    secrets:
+      - cloudflare_dns_api_token
+    environment:
+      CLOUDFLARE_TOKEN_FILE: /run/secrets/cloudflare_dns_api_token
+```
+
+### Supported Secret Variables
+
+- CLOUDFLARE_TOKEN_FILE
+- ROUTE53_ACCESS_KEY_FILE
+- ROUTE53_SECRET_KEY_FILE
+- DO_TOKEN_FILE
+- TRAEFIK_API_PASSWORD_FILE
 
 ## Building from Source
 
