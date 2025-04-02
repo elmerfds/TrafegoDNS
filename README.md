@@ -12,6 +12,7 @@ A service that automatically manages DNS records based on container configuratio
 - [Operation Modes](#operation-modes)
 - [Supported DNS Providers](#supported-dns-providers)
 - [Supported Architectures](#supported-architectures)
+- [Container Registries](#container-registries)
 - [Quick Start](#quick-start)
 - [DNS Provider Configuration](#dns-provider-configuration)
   - [Cloudflare](#cloudflare)
@@ -35,6 +36,7 @@ A service that automatically manages DNS records based on container configuratio
 - [Logging System](#logging-system)
 - [Performance Optimisation](#performance-optimisation)
 - [Automatic Apex Domain Handling](#automatic-apex-domain-handling)
+- [Using Docker Secrets](#using-docker-secrets)
 - [Building from Source](#building-from-source)
 - [Development](#development)
 - [Licence](#licence)
@@ -158,6 +160,22 @@ TrafegoDNS supports multiple architectures with multi-arch Docker images:
 
 Docker will automatically select the appropriate architecture when you pull the image.
 
+## Container Registries
+
+TrafegoDNS images are available from both Docker Hub and GitHub Container Registry.
+
+Both registries receive simultaneous updates and are functionally identical. The GitHub Container Registry offers an alternative if you experience rate limiting or availability issues with Docker Hub.
+
+### Docker Hub
+```yaml
+image: eafxx/trafegodns:latest
+```
+
+### GitHub Container Registry
+```yaml
+image: ghcr.io/elmerfds/trafegodns:latest
+```
+
 ## Quick Start
 
 ### Docker Compose
@@ -166,9 +184,9 @@ Docker will automatically select the appropriate architecture when you pull the 
 version: '3'
 
 services:
-  traefik-dns-manager:
-    image: eafxx/traefik-dns-manager:latest
-    container_name: traefik-dns-manager
+  trafegodns:
+    image: eafxx/trafegodns:latest
+    container_name: trafegodns
     restart: unless-stopped
     environment:
       # User/Group Permissions (optional)
@@ -220,9 +238,9 @@ services:
 version: '3'
 
 services:
-  traefik-dns-manager:
-    image: eafxx/traefik-dns-manager:latest
-    container_name: traefik-dns-manager
+  trafegodns:
+    image: eafxx/trafegodns:latest
+    container_name: trafegodns
     restart: unless-stopped
     environment:
       # User/Group Permissions (optional)
@@ -811,6 +829,41 @@ The application includes robust timeout handling for API operations:
 
 The DNS Manager automatically detects apex domains (e.g., `example.com`) and uses A records with your public IP instead of CNAME records, which are not allowed at the apex domain level.
 
+## Using Docker Secrets
+
+Any environment variables supported by TrafegoDNS that contain secrets, i.e. those ending in `_TOKEN`, `_KEY` or `_PASSWORD` support receiving the secret vie Docker [secrets](https://docs.docker.com/compose/how-tos/use-secrets/). 
+
+To provide a value via secret file, append the suffix `_FILE` to the variable name and specify the path to the file that contains the secret.
+
+Example:
+
+```
+secrets:
+  cloudflare_dns_api_token:
+    file: ${APPDATA_LOCATION:-/srv/appdata}/secrets/cloudflare_dns_api_token
+
+services:
+  trafegodns:
+    container_name: trafegodns
+    image: eafxx/trafegodns:latest
+    restart: unless-stopped
+    volumes: 
+      - trafegodns:/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    secrets:
+      - cloudflare_dns_api_token
+    environment:
+      CLOUDFLARE_TOKEN_FILE: /run/secrets/cloudflare_dns_api_token
+```
+
+### Supported Secret Variables
+
+- CLOUDFLARE_TOKEN_FILE
+- ROUTE53_ACCESS_KEY_FILE
+- ROUTE53_SECRET_KEY_FILE
+- DO_TOKEN_FILE
+- TRAEFIK_API_PASSWORD_FILE
+
 ## Building from Source
 
 ```bash
@@ -828,7 +881,7 @@ docker run -d \
   -e CLOUDFLARE_ZONE=example.com \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -v ./config:/config \
-  traefik-dns-manager
+  trafegodns
 ```
 
 ## Development
