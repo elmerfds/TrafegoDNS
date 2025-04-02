@@ -12,6 +12,7 @@ A service that automatically manages DNS records based on container configuratio
 - [Operation Modes](#operation-modes)
 - [Supported DNS Providers](#supported-dns-providers)
 - [Supported Architectures](#supported-architectures)
+- [Container Registries](#container-registries)
 - [Quick Start](#quick-start)
 - [DNS Provider Configuration](#dns-provider-configuration)
   - [Cloudflare](#cloudflare)
@@ -161,17 +162,19 @@ Docker will automatically select the appropriate architecture when you pull the 
 
 ## Container Registries
 
-TrafegoDNS images are available from both Docker Hub and GitHub Container Registry:
+TrafegoDNS images are available from both Docker Hub and GitHub Container Registry.
+
+Both registries receive simultaneous updates and are functionally identical. The GitHub Container Registry offers an alternative if you experience rate limiting or availability issues with Docker Hub.
 
 ### Docker Hub (default)
 ```yaml
 image: eafxx/trafegodns:latest
+```
 
 ### GitHub Container Registry
 ```yaml
 image: ghcr.io/elmerfds/trafegodns:latest
-
-Both registries receive simultaneous updates and are functionally identical. The GitHub Container Registry offers an alternative if you experience rate limiting or availability issues with Docker Hub.
+```
 
 ## Quick Start
 
