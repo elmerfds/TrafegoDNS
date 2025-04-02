@@ -7,6 +7,16 @@ on:
         description: 'PR number to test'
         required: true
         type: string
+      platform:
+        description: 'Platform architecture to build'
+        required: true
+        type: choice
+        options:
+          - linux/amd64
+          - linux/arm64
+          - linux/arm/v7
+          - all
+        default: 'linux/amd64'
 
 jobs:
   build-pr-image:
@@ -74,13 +84,23 @@ jobs:
             # PR tag with date
             type=raw,value=pr-${{ github.event.inputs.pr_number }}-${{ steps.version.outputs.DATE_TAG }}
       
-      # Build Docker image for PR testing (x64 only for faster builds)
+      # Determine platforms to build
+      - name: Set platforms
+        id: platforms
+        run: |
+          if [ "${{ github.event.inputs.platform }}" == "all" ]; then
+            echo "PLATFORMS=linux/amd64,linux/arm64,linux/arm/v7" >> $GITHUB_OUTPUT
+          else
+            echo "PLATFORMS=${{ github.event.inputs.platform }}" >> $GITHUB_OUTPUT
+          fi
+      
+      # Build Docker image for PR testing
       - name: Build and push PR test image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker-s6/Dockerfile
-          platforms: linux/amd64
+          platforms: ${{ steps.platforms.outputs.PLATFORMS }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -93,6 +113,8 @@ jobs:
           echo "${{ steps.meta.outputs.tags }}"
           echo ""
           echo "PR #${{ github.event.inputs.pr_number }} test image ready for testing"
+          echo "Platform(s): ${{ steps.platforms.outputs.PLATFORMS }}"
           echo ""
           echo "You can pull this image with:"
           echo "docker pull ${{ secrets.DOCKER_USERNAME }}/trafegodns:pr-${{ github.event.inputs.pr_number }}"
+          echo ""
