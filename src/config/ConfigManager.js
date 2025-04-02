@@ -28,18 +28,18 @@ class ConfigManager {
     
     // Provider-specific settings
     // Cloudflare settings
-    this.cloudflareToken = EnvironmentLoader.getString('CLOUDFLARE_TOKEN');
+    this.cloudflareToken = EnvironmentLoader.getSecret('CLOUDFLARE_TOKEN');
     this.cloudflareZone = EnvironmentLoader.getString('CLOUDFLARE_ZONE');
     
     // Route53 settings
-    this.route53AccessKey = EnvironmentLoader.getString('ROUTE53_ACCESS_KEY');
-    this.route53SecretKey = EnvironmentLoader.getString('ROUTE53_SECRET_KEY');
+    this.route53AccessKey = EnvironmentLoader.getSecret('ROUTE53_ACCESS_KEY');
+    this.route53SecretKey = EnvironmentLoader.getSecret('ROUTE53_SECRET_KEY');
     this.route53Zone = EnvironmentLoader.getString('ROUTE53_ZONE');
     this.route53ZoneId = EnvironmentLoader.getString('ROUTE53_ZONE_ID');
     this.route53Region = EnvironmentLoader.getString('ROUTE53_REGION', 'eu-west-2');
     
     // Digital Ocean settings
-    this.digitalOceanToken = EnvironmentLoader.getString('DO_TOKEN');
+    this.digitalOceanToken = EnvironmentLoader.getSecret('DO_TOKEN');
     this.digitalOceanDomain = EnvironmentLoader.getString('DO_DOMAIN');
     
     // Validate required settings based on provider
@@ -48,7 +48,7 @@ class ConfigManager {
     // Traefik API settings
     this.traefikApiUrl = EnvironmentLoader.getString('TRAEFIK_API_URL', 'http://traefik:8080/api');
     this.traefikApiUsername = EnvironmentLoader.getString('TRAEFIK_API_USERNAME');
-    this.traefikApiPassword = EnvironmentLoader.getString('TRAEFIK_API_PASSWORD');
+    this.traefikApiPassword = EnvironmentLoader.getSecret('TRAEFIK_API_PASSWORD');
     
     // Label prefixes
     this.genericLabelPrefix = EnvironmentLoader.getString('DNS_LABEL_PREFIX', 'dns.');
