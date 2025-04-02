@@ -12,6 +12,7 @@ A service that automatically manages DNS records based on container configuratio
 - [Operation Modes](#operation-modes)
 - [Supported DNS Providers](#supported-dns-providers)
 - [Supported Architectures](#supported-architectures)
+- [Container Registries](#container-registries)
 - [Quick Start](#quick-start)
 - [DNS Provider Configuration](#dns-provider-configuration)
   - [Cloudflare](#cloudflare)
@@ -159,6 +160,22 @@ TrafegoDNS supports multiple architectures with multi-arch Docker images:
 
 Docker will automatically select the appropriate architecture when you pull the image.
 
+## Container Registries
+
+TrafegoDNS images are available from both Docker Hub and GitHub Container Registry.
+
+Both registries receive simultaneous updates and are functionally identical. The GitHub Container Registry offers an alternative if you experience rate limiting or availability issues with Docker Hub.
+
+### Docker Hub
+```yaml
+image: eafxx/trafegodns:latest
+```
+
+### GitHub Container Registry
+```yaml
+image: ghcr.io/elmerfds/trafegodns:latest
+```
+
 ## Quick Start
 
 ### Docker Compose
@@ -167,9 +184,9 @@ Docker will automatically select the appropriate architecture when you pull the 
 version: '3'
 
 services:
-  traefik-dns-manager:
-    image: eafxx/traefik-dns-manager:latest
-    container_name: traefik-dns-manager
+  trafegodns:
+    image: eafxx/trafegodns:latest
+    container_name: trafegodns
     restart: unless-stopped
     environment:
       # User/Group Permissions (optional)
@@ -221,9 +238,9 @@ services:
 version: '3'
 
 services:
-  traefik-dns-manager:
-    image: eafxx/traefik-dns-manager:latest
-    container_name: traefik-dns-manager
+  trafegodns:
+    image: eafxx/trafegodns:latest
+    container_name: trafegodns
     restart: unless-stopped
     environment:
       # User/Group Permissions (optional)
@@ -826,12 +843,12 @@ secrets:
     file: ${APPDATA_LOCATION:-/srv/appdata}/secrets/cloudflare_dns_api_token
 
 services:
-  trafego:
-    container_name: trafego
-    image: eafxx/traefik-dns-manager:latest
+  trafegodns:
+    container_name: trafegodns
+    image: eafxx/trafegodns:latest
     restart: unless-stopped
     volumes: 
-      - trafego:/config
+      - trafegodns:/config
       - /var/run/docker.sock:/var/run/docker.sock:ro
     secrets:
       - cloudflare_dns_api_token
@@ -864,7 +881,7 @@ docker run -d \
   -e CLOUDFLARE_ZONE=example.com \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -v ./config:/config \
-  traefik-dns-manager
+  trafegodns
 ```
 
 ## Development
