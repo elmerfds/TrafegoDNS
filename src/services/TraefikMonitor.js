@@ -224,7 +224,8 @@ class TraefikMonitor {
     const hostnames = [];
     const containerLabels = {};
     
-    for (const [routerName, router] of Object.entries(routers)) {
+    for (const [_, router] of Object.entries(routers)) {
+      const routerName = router.name;
       if (router.rule && router.rule.includes('Host')) {
         // Extract all hostnames from the rule
         const routerHostnames = extractHostnamesFromRule(router.rule);
@@ -271,6 +272,7 @@ class TraefikMonitor {
     // For each hostname
     for (const [hostname, routerLabels] of Object.entries(routerContainerLabels)) {
       const routerName = routerLabels.routerName;
+      const routerNameDocker = routerName.replace(/@docker$/, "");
       const serviceName = routerLabels[`${this.config.traefikLabelPrefix}http.routers.${routerName}.service`];
       
       logger.debug(`Looking for container labels for hostname=${hostname}, router=${routerName}, service=${serviceName}`);
@@ -284,6 +286,7 @@ class TraefikMonitor {
         if (
           containerId.includes(serviceName) || 
           containerLabels[`${this.config.traefikLabelPrefix}http.routers.${routerName}.service`] === serviceName ||
+          containerLabels[`${this.config.traefikLabelPrefix}http.routers.${routerNameDocker}.service`] === serviceName ||
           containerLabels[`${this.config.traefikLabelPrefix}http.services.${serviceName}.loadbalancer.server.port`]
         ) {
           // Get container name if available
