@@ -12,6 +12,6 @@
   "dependencies": {
     "axios": "^1.8.4",
     "@aws-sdk/client-route-53": "^3.772.0",
-    "dockerode": "^4.0.4"
+    "dockerode": "^4.0.5"
   }
 }
