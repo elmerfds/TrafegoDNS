@@ -12,6 +12,16 @@ const logger = require('./utils/logger');
  */
 async function start() {
   try {
+    // Initialize global stats counter
+    if (!global.statsCounter) {
+      global.statsCounter = {
+        created: 0,
+        updated: 0,
+        upToDate: 0,
+        errors: 0,
+        total: 0
+      };
+    }    
     // Create event bus (central communication)
     const eventBus = new EventBus();
     
