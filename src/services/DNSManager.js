@@ -1,4 +1,6 @@
 /**
+ * src/services/DNSManager.js
+ * 
  * DNS Manager Service
  * Responsible for managing DNS records through the selected provider
  */
@@ -6,6 +8,7 @@ const { DNSProviderFactory } = require('../providers');
 const logger = require('../utils/logger');
 const EventTypes = require('../events/EventTypes');
 const { extractDnsConfigFromLabels } = require('../utils/dns');
+const { extractTunnelConfigFromLabels, validateTunnelConfig } = require('../utils/tunnel');
 const RecordTracker = require('../utils/recordTracker');
 
 class DNSManager {
@@ -65,6 +68,32 @@ class DNSManager {
       const { hostnames, containerLabels } = data;
       await this.processHostnames(hostnames, containerLabels);
     });
+  }
+  
+  /**
+   * Process a tunnel configuration
+   * @param {Object} tunnelConfig - The tunnel configuration
+   * @returns {Promise<boolean>} - True if successful
+   */
+  async processTunnelConfig(tunnelConfig) {
+    try {
+      // Validate configuration
+      validateTunnelConfig(tunnelConfig);
+      
+      // Only proceed if using Cloudflare
+      if (this.config.dnsProvider !== 'cloudflare') {
+        logger.debug(`DNSManager.processTunnelConfig: Not using Cloudflare provider, skipping tunnel processing`);
+        return false;
+      }
+      
+      // Configure the tunnel
+      const success = await this.dnsProvider.configureTunnel(tunnelConfig);
+      
+      return success;
+    } catch (error) {
+      logger.error(`Error processing tunnel configuration: ${error.message}`);
+      return false;
+    }
   }
   
   /**
@@ -146,6 +175,14 @@ class DNSManager {
           
           // Add to batch instead of processing immediately
           dnsRecordConfigs.push(recordConfig);
+          
+          // Extract tunnel configuration if present
+          const tunnelConfig = extractTunnelConfigFromLabels(labels, this.config, fqdn);
+          
+          if (tunnelConfig) {
+            logger.debug(`Found tunnel configuration for ${fqdn}: tunnelId=${tunnelConfig.tunnelId}`);
+            await this.processTunnelConfig(tunnelConfig);
+          }
           
         } catch (error) {
           this.stats.errors++;
@@ -433,6 +470,49 @@ class DNSManager {
         logger.success(`Removed ${orphanedRecords.length} orphaned DNS records`);
       } else {
         logger.debug('No orphaned DNS records found');
+      }
+      
+      // After cleaning up DNS records, also clean up orphaned tunnel configurations
+      if (this.config.dnsProvider === 'cloudflare' && this.dnsProvider.tunnelEnabled) {
+        logger.debug('Checking for orphaned tunnel configurations...');
+        
+        // Get all tracked tunnel configurations
+        const allTunnelConfigs = this.dnsProvider.tunnelConfigs 
+          ? Array.from(this.dnsProvider.tunnelConfigs.values())
+          : [];
+        
+        // Find configurations for hostnames that are no longer active
+        const orphanedTunnelConfigs = allTunnelConfigs.filter(config => {
+          const hostname = config.hostname.toLowerCase();
+          
+          // Skip preserved hostnames
+          if (this.recordTracker.shouldPreserveHostname(hostname)) {
+            logger.debug(`Preserving tunnel config for ${hostname} (in preserved list)`);
+            return false;
+          }
+          
+          // Check if hostname is still active
+          return !normalizedActiveHostnames.has(hostname);
+        });
+        
+        // Remove orphaned configurations
+        if (orphanedTunnelConfigs.length > 0) {
+          logger.info(`Found ${orphanedTunnelConfigs.length} orphaned tunnel configurations to clean up`);
+          
+          for (const config of orphanedTunnelConfigs) {
+            logger.info(`🗑️ Removing orphaned tunnel config for ${config.hostname}`);
+            
+            try {
+              await this.dnsProvider.removeTunnelConfiguration(config.hostname, config.tunnelId);
+            } catch (error) {
+              logger.error(`Error removing tunnel config for ${config.hostname}: ${error.message}`);
+            }
+          }
+          
+          logger.success(`Removed ${orphanedTunnelConfigs.length} orphaned tunnel configurations`);
+        } else {
+          logger.debug('No orphaned tunnel configurations found');
+        }
       }
     } catch (error) {
       logger.error(`Error cleaning up orphaned records: ${error.message}`);

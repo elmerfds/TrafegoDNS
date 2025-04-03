@@ -1,4 +1,6 @@
 /**
+ * src/services/DirectDNSManager.js
+ * 
  * Direct DNS Manager Service
  * Extracts hostnames directly from Docker container labels
  * without relying on Traefik
@@ -177,6 +179,9 @@ class DirectDNSManager {
             containerName: containerName
           };
           
+          // Check for tunnel configuration
+          this.logTunnelLabels(hostname, labels, containerName);
+          
           logger.debug(`Found hostname ${hostname} in container ${containerName}`);
         }
       }
@@ -207,6 +212,9 @@ class DirectDNSManager {
               containerName: containerName
             };
             
+            // Check for tunnel configuration
+            this.logTunnelLabels(hostname, labels, containerName);
+            
             logger.debug(`Created hostname ${hostname} from domain=${domain} and subdomain=${subdomain}`);
           }
         }
@@ -223,6 +231,9 @@ class DirectDNSManager {
             containerId: containerId,
             containerName: containerName
           };
+          
+          // Check for tunnel configuration
+          this.logTunnelLabels(domain, labels, containerName);
           
           logger.debug(`Using apex domain ${domain} for container ${containerName}`);
         }
@@ -242,6 +253,9 @@ class DirectDNSManager {
               containerName: containerName
             };
             
+            // Check for tunnel configuration
+            this.logTunnelLabels(hostname, labels, containerName);
+            
             logger.debug(`Found hostname ${hostname} from ${key} in container ${containerName}`);
           }
         }
@@ -249,6 +263,42 @@ class DirectDNSManager {
     }
     
     return { hostnames, containerLabels };
+  }
+  
+  /**
+   * Log tunnel label information
+   * @param {string} hostname - The hostname
+   * @param {Object} labels - Container labels
+   * @param {string} containerName - Container name for logging
+   */
+  logTunnelLabels(hostname, labels, containerName) {
+    // Only process for Cloudflare provider
+    if (this.config.dnsProvider !== 'cloudflare') {
+      return;
+    }
+    
+    const genericPrefix = this.config.genericLabelPrefix;
+    const providerPrefix = this.config.dnsLabelPrefix;
+    
+    // Check for tunnel configuration
+    const tunnelId = labels[`${providerPrefix}cloudflare.tunnel`] || 
+                   labels[`${genericPrefix}cloudflare.tunnel`];
+                   
+    if (tunnelId) {
+      const tunnelPath = labels[`${providerPrefix}cloudflare.tunnel.path`] || 
+                        labels[`${genericPrefix}cloudflare.tunnel.path`] || 
+                        '/';
+                        
+      const tunnelService = labels[`${providerPrefix}cloudflare.tunnel.service`] || 
+                           labels[`${genericPrefix}cloudflare.tunnel.service`];
+                           
+      if (tunnelService) {
+        logger.info(`🚇 Found Cloudflare Tunnel configuration for ${hostname} (tunnel: ${tunnelId}, service: ${tunnelService})`);
+      } else {
+        logger.warn(`⚠️ Incomplete tunnel configuration for ${hostname} (tunnel ID found but missing service URL)`);
+        logger.warn(`Please add ${genericPrefix}cloudflare.tunnel.service label to container ${containerName}`);
+      }
+    }
   }
 }
 
