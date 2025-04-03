@@ -32,12 +32,12 @@ function isApexDomain(hostname, zone) {
  * @returns {boolean} - True if the hostname is an IPv4 address
  */
 function isIPv4Address(hostname) {
-  logger.trace(`dns.isApexDomain: Checking if ${hostname} is an IPv4 address`);
+  logger.trace(`dns.isIPv4Address: Checking if ${hostname} is an IPv4 address`);
 
   const ipv4Regex = /^(25[0-5]|2[0-4]\d|[01]?\d?\d)(\.(25[0-5]|2[0-4]\d|[01]?\d?\d)){3}$/;
   const isIPv4 = ipv4Regex.test(hostname);
 
-  logger.trace(`dns.isApexDomain: Result: ${isIPv4}`);
+  logger.trace(`dns.isIPv4Address: Result: ${isIPv4}`);
 
   return isIPv4;
 }
@@ -48,12 +48,12 @@ function isIPv4Address(hostname) {
  * @returns {boolean} - True if the hostname is an IPv6 address
  */
 function isIPv6Address(hostname) {
-  logger.trace(`dns.isApexDomain: Checking if ${hostname} is an IPv6 address`);
+  logger.trace(`dns.isIPv6Address: Checking if ${hostname} is an IPv6 address`);
 
   const ipv6Regex = /^(?:(?:[A-Fa-f0-9]{1,4}:){7}[A-Fa-f0-9]{1,4}|(?:[A-Fa-f0-9]{1,4}:){1,7}:|(?:[A-Fa-f0-9]{1,4}:){1,6}:[A-Fa-f0-9]{1,4}|(?:[A-Fa-f0-9]{1,4}:){1,5}(?::[A-Fa-f0-9]{1,4}){1,2}|(?:[A-Fa-f0-9]{1,4}:){1,4}(?::[A-Fa-f0-9]{1,4}){1,3}|(?:[A-Fa-f0-9]{1,4}:){1,3}(?::[A-Fa-f0-9]{1,4}){1,4}|(?:[A-Fa-f0-9]{1,4}:){1,2}(?::[A-Fa-f0-9]{1,4}){1,5}|[A-Fa-f0-9]{1,4}:(?:(?::[A-Fa-f0-9]{1,4}){1,6})|:(?:(?::[A-Fa-f0-9]{1,4}){1,7}|:))$/;
   const isIPv6 = ipv6Regex.test(hostname);
 
-  logger.trace(`dns.isApexDomain: Result: ${isIPv6}`);
+  logger.trace(`dns.isIPv6Address: Result: ${isIPv6}`);
 
   return isIPv6;
 }
