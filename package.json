@@ -1,5 +1,5 @@
 {
-  "name": "TráfegoDNS",
+  "name": "TrafegoDNS",
   "version": "1.9.0",
   "description": "Automatically manage Cloudflare DNS records based on Traefik routing configuration",
   "main": "src/app.js",
