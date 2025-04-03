@@ -531,7 +531,10 @@ class CloudflareProvider extends DNSProvider {
       
       for (const recordConfig of recordConfigs) {
         try {
-          this.stats.total++;
+          if (global.statsCounter) {
+            global.statsCounter.total++;
+            logger.trace(`CloudflareProvider.batchEnsureRecords: Incremented global.statsCounter.total to ${global.statsCounter.total}`);
+          }
           
           logger.trace(`CloudflareProvider.batchEnsureRecords: Processing record ${recordConfig.name} (${recordConfig.type})`);
           
