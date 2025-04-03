@@ -1,4 +1,6 @@
 /**
+ * src/providers/cloudflare/provider.js
+ * 
  * Cloudflare DNS Provider
  * Core implementation of the DNSProvider interface for Cloudflare
  */
@@ -7,6 +9,7 @@ const DNSProvider = require('../base');
 const logger = require('../../utils/logger');
 const { convertToCloudflareFormat } = require('./converter');
 const { validateRecord } = require('./validator');
+const CloudflareTunnelClient = require('./tunnel');
 
 class CloudflareProvider extends DNSProvider {
   constructor(config) {
@@ -27,6 +30,11 @@ class CloudflareProvider extends DNSProvider {
       },
       timeout: config.apiTimeout  // Use the configurable timeout
     });
+    
+    // Initialise tunnel client (only if enabled)
+    this.tunnelEnabled = config.enableCloudflareTransport !== false;
+    this.tunnelClient = null;
+    this.tunnelConfigs = new Map();
     
     logger.trace('CloudflareProvider.constructor: Axios client initialized');
   }
@@ -65,6 +73,28 @@ class CloudflareProvider extends DNSProvider {
       logger.trace(`CloudflareProvider.init: Error details: ${JSON.stringify(error.response?.data || error.message)}`);
       throw new Error(`Failed to initialize Cloudflare API: ${error.message}`);
     }
+  }
+  
+  /**
+   * Get the tunnel client, initialising it if necessary
+   * @returns {CloudflareTunnelClient} - The tunnel client
+   */
+  async getTunnelClient() {
+    if (!this.tunnelClient) {
+      logger.debug('CloudflareProvider.getTunnelClient: Initialising tunnel client');
+      
+      // Ensure we have a zoneId first
+      if (!this.zoneId) {
+        await this.init();
+      }
+      
+      this.tunnelClient = new CloudflareTunnelClient({
+        token: this.token,
+        timeout: this.config.apiTimeout
+      });
+    }
+    
+    return this.tunnelClient;
   }
   
   /**
@@ -380,6 +410,99 @@ class CloudflareProvider extends DNSProvider {
   }
   
   /**
+   * Configure a tunnel for a hostname
+   * @param {Object} tunnelConfig - Tunnel configuration
+   * @returns {Promise<boolean>} - True if successful
+   */
+  async configureTunnel(tunnelConfig) {
+    if (!this.tunnelEnabled) {
+      logger.debug('CloudflareProvider.configureTunnel: Tunnels disabled, skipping configuration');
+      return false;
+    }
+    
+    try {
+      logger.debug(`CloudflareProvider.configureTunnel: Configuring tunnel for ${tunnelConfig.hostname}`);
+      
+      const tunnelClient = await this.getTunnelClient();
+      
+      await tunnelClient.configureHostname(
+        tunnelConfig.tunnelId,
+        tunnelConfig.hostname,
+        tunnelConfig.service,
+        tunnelConfig.path
+      );
+      
+      // Store the configuration for tracking
+      const configKey = `${tunnelConfig.hostname}:${tunnelConfig.tunnelId}`;
+      this.tunnelConfigs.set(configKey, tunnelConfig);
+      
+      logger.success(`Configured Cloudflare Tunnel for ${tunnelConfig.hostname}`);
+      return true;
+    } catch (error) {
+      logger.error(`Failed to configure Cloudflare Tunnel for ${tunnelConfig.hostname}: ${error.message}`);
+      return false;
+    }
+  }
+  
+  /**
+   * Remove a tunnel configuration for a hostname
+   * @param {string} hostname - The hostname to remove
+   * @param {string} tunnelId - Optional specific tunnel ID to remove from
+   * @returns {Promise<boolean>} - True if successful
+   */
+  async removeTunnelConfiguration(hostname, tunnelId = null) {
+    if (!this.tunnelEnabled) {
+      logger.debug('CloudflareProvider.removeTunnelConfiguration: Tunnels disabled, skipping removal');
+      return false;
+    }
+    
+    try {
+      logger.debug(`CloudflareProvider.removeTunnelConfiguration: Removing tunnel config for ${hostname}`);
+      
+      // If no specific tunnelId is provided, check all tracked configurations
+      if (!tunnelId) {
+        // Find all configurations for this hostname
+        const matchingConfigs = Array.from(this.tunnelConfigs.values())
+          .filter(config => config.hostname === hostname);
+        
+        if (matchingConfigs.length === 0) {
+          logger.debug(`No tunnel configurations found for ${hostname}`);
+          return true;
+        }
+        
+        // Remove from all matching tunnels
+        const tunnelClient = await this.getTunnelClient();
+        
+        for (const config of matchingConfigs) {
+          await tunnelClient.removeHostname(config.tunnelId, hostname);
+          
+          // Remove from tracking
+          const configKey = `${config.hostname}:${config.tunnelId}`;
+          this.tunnelConfigs.delete(configKey);
+          
+          logger.success(`Removed ${hostname} from tunnel ${config.tunnelId}`);
+        }
+        
+        return true;
+      } else {
+        // Remove from a specific tunnel
+        const tunnelClient = await this.getTunnelClient();
+        await tunnelClient.removeHostname(tunnelId, hostname);
+        
+        // Remove from tracking
+        const configKey = `${hostname}:${tunnelId}`;
+        this.tunnelConfigs.delete(configKey);
+        
+        logger.success(`Removed ${hostname} from tunnel ${tunnelId}`);
+        return true;
+      }
+    } catch (error) {
+      logger.error(`Failed to remove tunnel configuration for ${hostname}: ${error.message}`);
+      return false;
+    }
+  }
+  
+  /**
    * Batch process multiple DNS records at once
    */
   async batchEnsureRecords(recordConfigs) {
@@ -408,6 +531,8 @@ class CloudflareProvider extends DNSProvider {
       
       for (const recordConfig of recordConfigs) {
         try {
+          this.stats.total++;
+          
           logger.trace(`CloudflareProvider.batchEnsureRecords: Processing record ${recordConfig.name} (${recordConfig.type})`);
           
           // Handle apex domains that need IP lookup

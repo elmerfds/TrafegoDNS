@@ -1,4 +1,6 @@
 /**
+ * src/services/TraefikMonitor.js
+ * 
  * Traefik Monitor Service
  * Responsible for monitoring Traefik routers and updating DNS records
  */
@@ -305,6 +307,41 @@ class TraefikMonitor {
             }
           }
           
+          // Also check for tunnel labels
+          const tunnelLabels = {};
+          let hasTunnelConfig = false;
+          
+          // Check for Cloudflare tunnel labels
+          if (
+            containerLabels[`${genericPrefix}cloudflare.tunnel`] || 
+            containerLabels[`${providerPrefix}cloudflare.tunnel`]
+          ) {
+            hasTunnelConfig = true;
+            
+            // Get tunnel ID (prefer provider-specific label)
+            const tunnelId = containerLabels[`${providerPrefix}cloudflare.tunnel`] || 
+                            containerLabels[`${genericPrefix}cloudflare.tunnel`];
+            
+            tunnelLabels[`${genericPrefix}cloudflare.tunnel`] = tunnelId;
+            
+            // Get other tunnel settings (path and service)
+            const tunnelPath = containerLabels[`${providerPrefix}cloudflare.tunnel.path`] || 
+                              containerLabels[`${genericPrefix}cloudflare.tunnel.path`] || 
+                              '/';
+            
+            const tunnelService = containerLabels[`${providerPrefix}cloudflare.tunnel.service`] || 
+                                containerLabels[`${genericPrefix}cloudflare.tunnel.service`];
+            
+            tunnelLabels[`${genericPrefix}cloudflare.tunnel.path`] = tunnelPath;
+            
+            if (tunnelService) {
+              tunnelLabels[`${genericPrefix}cloudflare.tunnel.service`] = tunnelService;
+            }
+            
+            // Log tunnel configuration
+            logger.debug(`Found tunnel configuration for ${hostname}: tunnelId=${tunnelId}, path=${tunnelPath}, service=${tunnelService || 'not specified'}`);
+          }
+          
           // Check if this is first poll or if the proxied setting has changed
           const proxiedLabel = getLabelValue(containerLabels, genericPrefix, providerPrefix, 'proxied', null);
           const previousLabels = this.lastMergedLabels?.[hostname];
@@ -328,14 +365,34 @@ class TraefikMonitor {
             }
           }
           
+          // Log tunnel configuration changes
+          const previousTunnelId = previousLabels?.[`${genericPrefix}cloudflare.tunnel`];
+          if (hasTunnelConfig) {
+            const tunnelId = tunnelLabels[`${genericPrefix}cloudflare.tunnel`];
+            
+            if (firstPoll || previousTunnelId !== tunnelId) {
+              logger.info(`🚇 Found tunnel config for ${hostname} (${tunnelId}) from container ${containerName}`);
+              // Track the change for summary
+              labelChanges[hostname] = labelChanges[hostname] || 'tunnel-configured';
+            } else {
+              // Use debug level for repeated information
+              logger.debug(`Found tunnel config for ${hostname} (${tunnelId}) from container ${containerName}`);
+            }
+          } else if (previousTunnelId) {
+            logger.info(`🚇 Tunnel config removed for ${hostname} (was ${previousTunnelId})`);
+            // Track the change for summary
+            labelChanges[hostname] = 'tunnel-removed';
+          }
+          
           // Merge the container's DNS labels into our hostname labels
           mergedLabels[hostname] = {
             ...mergedLabels[hostname],
-            ...dnsLabels
+            ...dnsLabels,
+            ...tunnelLabels
           };
           
-          if (Object.keys(dnsLabels).length > 0) {
-            logger.debug(`Applied DNS configuration for ${hostname}: ${JSON.stringify(dnsLabels)}`);
+          if (Object.keys(dnsLabels).length > 0 || Object.keys(tunnelLabels).length > 0) {
+            logger.debug(`Applied configuration for ${hostname}: ${Object.keys(dnsLabels).length} DNS labels, ${Object.keys(tunnelLabels).length} tunnel labels`);
           }
           
           matchFound = true;
@@ -354,7 +411,7 @@ class TraefikMonitor {
       const changeList = Object.entries(labelChanges)
         .map(([hostname, change]) => `${hostname} (${change})`)
         .join(', ');
-      logger.info(`DNS label changes detected for ${changeCount} hostnames: ${changeList}`);
+      logger.info(`Label changes detected for ${changeCount} hostnames: ${changeList}`);
     }
     
     // Store the current labels for next comparison

@@ -1,4 +1,6 @@
 /**
+ * src/utils/dns.js
+ * 
  * DNS-related utility functions
  */
 const logger = require('./logger');
@@ -66,6 +68,20 @@ function getMinimumTTL(provider) {
     default:
       return 1;  // Default minimum
   }
+}
+
+/**
+ * Check if labels contain Cloudflare tunnel configuration
+ * @param {Object} labels - Container labels 
+ * @param {string} genericPrefix - Generic label prefix
+ * @param {string} providerPrefix - Provider-specific label prefix
+ * @returns {boolean} - True if tunnel labels are present
+ */
+function hasTunnelLabels(labels, genericPrefix, providerPrefix) {
+  return (
+    labels[`${genericPrefix}cloudflare.tunnel`] !== undefined ||
+    labels[`${providerPrefix}cloudflare.tunnel`] !== undefined
+  );
 }
 
 /**
@@ -239,5 +255,6 @@ module.exports = {
   isApexDomain,
   extractDnsConfigFromLabels,
   getLabelValue,
-  getMinimumTTL
+  getMinimumTTL,
+  hasTunnelLabels
 };
