@@ -122,7 +122,7 @@ jobs:
       # Build and push multi-arch Docker image for main/master branch
       - name: Build and push Docker image (Main branch - Multi Architecture)
         if: ${{ steps.check-branch.outputs.IS_DEV == 'false' }}
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./docker-s6/Dockerfile
@@ -135,7 +135,7 @@ jobs:
       # Build and push x64-only Docker image for dev branch
       - name: Build and push Docker image (Dev branch - x64 only)
         if: ${{ steps.check-branch.outputs.IS_DEV == 'true' }}
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./docker-s6/Dockerfile
