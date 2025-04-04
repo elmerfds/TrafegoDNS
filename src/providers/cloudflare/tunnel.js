@@ -391,6 +391,19 @@ class CloudFlareTunnelManager {
         // Find container labels for this hostname
         const labels = containerLabels[hostname] || {};
         
+        // Check if this hostname should be managed by tunnel
+        const genericPrefix = this.config.genericLabelPrefix;
+        const providerPrefix = this.config.dnsLabelPrefix;
+        
+        const hasTunnelLabel = 
+          labels[`${genericPrefix}tunnel.service`] !== undefined ||
+          labels[`${providerPrefix}tunnel.service`] !== undefined;
+        
+        if (!hasTunnelLabel) {
+          logger.debug(`Skipping hostname ${hostname} - no tunnel label found`);
+          continue;
+        }
+        
         // Get tunnel service from labels
         const service = this.getTunnelServiceFromLabels(labels, hostname);
         
@@ -575,34 +588,27 @@ class CloudFlareTunnelManager {
     const genericPrefix = this.config.genericLabelPrefix;
     const providerPrefix = this.config.dnsLabelPrefix;
     
-    // Check for provider-specific tunnel service label first
+    // Check for explicit tunnel service configuration
     if (labels[`${providerPrefix}tunnel.service`]) {
       return labels[`${providerPrefix}tunnel.service`];
     }
     
-    // Then check for generic tunnel service label
     if (labels[`${genericPrefix}tunnel.service`]) {
       return labels[`${genericPrefix}tunnel.service`];
     }
     
-    // Extract service from container details (containerName:port format)
+    // Extract better container info
     const containerName = labels.containerName || 'unknown';
     const traefikLabelPrefix = this.config.traefikLabelPrefix;
     
     // Try to get port from Traefik labels
     let port = '80'; // Default port
     
-    // Try different methods to find the port
-    const serviceName = labels[`${traefikLabelPrefix}http.routers.${labels.routerName}.service`];
-    if (serviceName) {
-      // Try to find the port from the service configuration
-      const servicePortLabel = `${traefikLabelPrefix}http.services.${serviceName}.loadbalancer.server.port`;
-      if (labels[servicePortLabel]) {
-        port = labels[servicePortLabel];
-      }
+    // Check for explicit port specification
+    if (labels[`${traefikLabelPrefix}http.services.${containerName}.loadbalancer.server.port`]) {
+      port = labels[`${traefikLabelPrefix}http.services.${containerName}.loadbalancer.server.port`];
     }
     
-    // Return service in 'hostname:port' format
     return `${containerName}:${port}`;
   }
   

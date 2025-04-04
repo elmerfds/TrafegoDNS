@@ -20,6 +20,7 @@ class CloudflareProvider extends DNSProvider {
     this.token = config.cloudflareToken;
     this.zone = config.cloudflareZone;
     this.zoneId = null;
+    this.stats = { total: 0, created: 0, updated: 0, upToDate: 0, errors: 0 };
     
     // Initialize Axios client
     this.client = axios.create({
@@ -419,12 +420,20 @@ class CloudflareProvider extends DNSProvider {
   /**
    * Check if a hostname should be managed by tunnel instead of DNS
    */
-  isHostnameTunnelManaged(hostname) {
+  isHostnameTunnelManaged(hostname, labels = {}) {
     if (!this.tunnelEnabled || !this.tunnelManager) {
       return false;
     }
     
-    return true; // When tunnel is enabled, all hostnames for our zone are managed by tunnel
+    const genericPrefix = this.config.genericLabelPrefix;
+    const providerPrefix = this.config.dnsLabelPrefix;
+    
+    // Check for tunnel labels for this specific hostname
+    const hasTunnelLabel = 
+      labels[`${genericPrefix}tunnel.service`] !== undefined ||
+      labels[`${providerPrefix}tunnel.service`] !== undefined;
+    
+    return hasTunnelLabel;
   }
   
   /**
@@ -435,8 +444,11 @@ class CloudflareProvider extends DNSProvider {
     if (this.tunnelEnabled && this.tunnelManager) {
       const originalCount = recordConfigs.length;
       recordConfigs = recordConfigs.filter(record => {
+        // Get container labels for this hostname
+        const labels = containerLabels[record.name] || {};
+        
         // Skip if hostname is managed by tunnel
-        if (this.isHostnameTunnelManaged(record.name)) {
+        if (this.isHostnameTunnelManaged(record.name, labels)) {
           logger.debug(`Skipping DNS record creation for ${record.name} as it will be managed by CloudFlare Tunnel`);
           return false;
         }
@@ -446,11 +458,6 @@ class CloudflareProvider extends DNSProvider {
       if (originalCount > recordConfigs.length) {
         logger.info(`Filtered out ${originalCount - recordConfigs.length} hostnames that will be managed by CloudFlare Tunnel`);
       }
-    }
-    
-    if (!recordConfigs || recordConfigs.length === 0) {
-      logger.trace('CloudflareProvider.batchEnsureRecords: No record configs provided, skipping');
-      return [];
     }
     
     logger.debug(`Batch processing ${recordConfigs.length} DNS records`);

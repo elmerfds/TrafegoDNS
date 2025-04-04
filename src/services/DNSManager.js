@@ -180,7 +180,8 @@ class DNSManager {
       // Batch process all DNS records
       if (dnsRecordConfigs.length > 0) {
         logger.debug(`Batch processing ${dnsRecordConfigs.length} DNS record configurations`);
-        const processedRecords = await this.dnsProvider.batchEnsureRecords(dnsRecordConfigs);
+        // Pass containerLabels as a second parameter
+        const processedRecords = await this.dnsProvider.batchEnsureRecords(dnsRecordConfigs, containerLabels);
         
         // Track all created/updated records
         if (processedRecords && processedRecords.length > 0) {
