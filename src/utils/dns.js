@@ -3,6 +3,7 @@
  */
 const logger = require('./logger');
 const { LOG_LEVELS } = require('./logger');
+const { shouldUseTunnel } = require('./tunnelUtils');
 
 /**
  * Check if a hostname is an apex/root domain
@@ -114,6 +115,19 @@ function extractDnsConfigFromLabels(labels, config, hostname) {
       .map(([key, value]) => `${key}=${value}`);
       
     logger.trace(`dns.extractDnsConfigFromLabels: DNS-related labels: ${dnsLabels.length ? dnsLabels.join(', ') : 'none'}`);
+  }
+  
+  // Check if this hostname should be managed by CloudFlare Tunnel
+  if (config.dnsProvider === 'cloudflare' && config.cfTunnelEnabled) {
+    if (shouldUseTunnel(hostname, labels, config)) {
+      logger.trace(`dns.extractDnsConfigFromLabels: Hostname ${hostname} should use CloudFlare Tunnel`);
+      // Return a special marker configuration to indicate this should use tunnel
+      return {
+        type: 'TUNNEL',
+        name: hostname,
+        useTunnel: true
+      };
+    }
   }
   
   const genericPrefix = config.genericLabelPrefix;
@@ -283,6 +297,8 @@ function extractDnsConfigFromLabels(labels, config, hostname) {
 
 module.exports = {
   isApexDomain,
+  isIPv4Address,
+  isIPv6Address,
   extractDnsConfigFromLabels,
   getLabelValue,
   getMinimumTTL
