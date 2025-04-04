@@ -1,12 +1,15 @@
 /**
  * Cloudflare DNS Provider
  * Core implementation of the DNSProvider interface for Cloudflare
+ * 
+ * File: src/providers/cloudflare/provider.js
  */
 const axios = require('axios');
 const DNSProvider = require('../base');
 const logger = require('../../utils/logger');
 const { convertToCloudflareFormat } = require('./converter');
 const { validateRecord } = require('./validator');
+const CloudFlareTunnelManager = require('./tunnel');
 
 class CloudflareProvider extends DNSProvider {
   constructor(config) {
@@ -27,6 +30,15 @@ class CloudflareProvider extends DNSProvider {
       },
       timeout: config.apiTimeout  // Use the configurable timeout
     });
+    
+    // Initialize tunnel manager if enabled
+    this.tunnelEnabled = config.cloudflareTunnelEnabled;
+    this.tunnelManager = null;
+    
+    if (this.tunnelEnabled) {
+      logger.debug('CloudFlare Tunnel support is enabled');
+      this.tunnelManager = new CloudFlareTunnelManager(config, this);
+    }
     
     logger.trace('CloudflareProvider.constructor: Axios client initialized');
   }
@@ -58,6 +70,12 @@ class CloudflareProvider extends DNSProvider {
       // Initialize the DNS record cache
       logger.trace('CloudflareProvider.init: Initialising DNS record cache');
       await this.refreshRecordCache();
+      
+      // Initialize tunnel manager if enabled
+      if (this.tunnelEnabled && this.tunnelManager) {
+        logger.debug('Initializing CloudFlare Tunnel Manager');
+        await this.tunnelManager.init();
+      }
       
       return true;
     } catch (error) {
@@ -322,7 +340,7 @@ class CloudflareProvider extends DNSProvider {
       
       const updatedRecord = response.data.result;
       logger.trace(`CloudflareProvider.updateRecord: Record updated successfully, ID=${updatedRecord.id}`);
-      
+
       // Update the cache
       this.updateRecordInCache(updatedRecord);
       
@@ -380,9 +398,56 @@ class CloudflareProvider extends DNSProvider {
   }
   
   /**
+   * Process CloudFlare Tunnel hostnames
+   * Handles creating tunnel public hostnames instead of DNS records
+   */
+  async processTunnelHostnames(hostnames, containerLabels) {
+    if (!this.tunnelEnabled || !this.tunnelManager) {
+      logger.debug('CloudFlare Tunnel is not enabled, skipping tunnel hostname processing');
+      return [];
+    }
+    
+    logger.debug(`Processing ${hostnames.length} hostnames for CloudFlare Tunnel`);
+    try {
+      return await this.tunnelManager.processHostnames(hostnames, containerLabels);
+    } catch (error) {
+      logger.error(`Error processing CloudFlare Tunnel hostnames: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Check if a hostname should be managed by tunnel instead of DNS
+   */
+  isHostnameTunnelManaged(hostname) {
+    if (!this.tunnelEnabled || !this.tunnelManager) {
+      return false;
+    }
+    
+    return true; // When tunnel is enabled, all hostnames for our zone are managed by tunnel
+  }
+  
+  /**
    * Batch process multiple DNS records at once
    */
   async batchEnsureRecords(recordConfigs) {
+    // If tunnels are enabled, filter out hostnames that will be managed by tunnel
+    if (this.tunnelEnabled && this.tunnelManager) {
+      const originalCount = recordConfigs.length;
+      recordConfigs = recordConfigs.filter(record => {
+        // Skip if hostname is managed by tunnel
+        if (this.isHostnameTunnelManaged(record.name)) {
+          logger.debug(`Skipping DNS record creation for ${record.name} as it will be managed by CloudFlare Tunnel`);
+          return false;
+        }
+        return true;
+      });
+      
+      if (originalCount > recordConfigs.length) {
+        logger.info(`Filtered out ${originalCount - recordConfigs.length} hostnames that will be managed by CloudFlare Tunnel`);
+      }
+    }
+    
     if (!recordConfigs || recordConfigs.length === 0) {
       logger.trace('CloudflareProvider.batchEnsureRecords: No record configs provided, skipping');
       return [];
@@ -408,6 +473,8 @@ class CloudflareProvider extends DNSProvider {
       
       for (const recordConfig of recordConfigs) {
         try {
+          this.stats.total++;
+          
           logger.trace(`CloudflareProvider.batchEnsureRecords: Processing record ${recordConfig.name} (${recordConfig.type})`);
           
           // Handle apex domains that need IP lookup
@@ -468,6 +535,7 @@ class CloudflareProvider extends DNSProvider {
             });
           }
         } catch (error) {
+          this.stats.errors++;
           logger.error(`Error processing ${recordConfig.name}: ${error.message}`);
           logger.trace(`CloudflareProvider.batchEnsureRecords: Error details: ${error.message}`);
           
@@ -532,10 +600,10 @@ class CloudflareProvider extends DNSProvider {
     }
   }
   
-/**
- * Check if a record needs to be updated
- */
-recordNeedsUpdate(existing, newRecord) {
+  /**
+   * Check if a record needs to be updated
+   */
+  recordNeedsUpdate(existing, newRecord) {
     logger.trace(`CloudflareProvider.recordNeedsUpdate: Comparing records for ${newRecord.name}`);
     logger.trace(`CloudflareProvider.recordNeedsUpdate: Existing: ${JSON.stringify(existing)}`);
     logger.trace(`CloudflareProvider.recordNeedsUpdate: New: ${JSON.stringify(newRecord)}`);

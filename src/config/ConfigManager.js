@@ -1,5 +1,7 @@
 /**
  * Configuration management for Traefik DNS Manager 
+ * 
+ * File: src/config/ConfigManager.js
  */
 const axios = require('axios');
 const logger = require('../utils/logger');
@@ -30,6 +32,12 @@ class ConfigManager {
     // Cloudflare settings
     this.cloudflareToken = EnvironmentLoader.getSecret('CLOUDFLARE_TOKEN');
     this.cloudflareZone = EnvironmentLoader.getString('CLOUDFLARE_ZONE');
+    
+    // CloudFlare Tunnel settings
+    this.cloudflareTunnelEnabled = EnvironmentLoader.getBool('CLOUDFLARE_TUNNEL_ENABLED', false);
+    this.cloudflareTunnelId = EnvironmentLoader.getString('CLOUDFLARE_TUNNEL_ID', '');
+    this.cloudflareTunnelName = EnvironmentLoader.getString('CLOUDFLARE_TUNNEL_NAME', '');
+    this.cloudflareAccountId = EnvironmentLoader.getString('CLOUDFLARE_ACCOUNT_ID', '');
     
     // Route53 settings
     this.route53AccessKey = EnvironmentLoader.getSecret('ROUTE53_ACCESS_KEY');
@@ -164,6 +172,16 @@ class ConfigManager {
         }
         if (!this.cloudflareZone) {
           throw new Error('CLOUDFLARE_ZONE environment variable is required for Cloudflare provider');
+        }
+        
+        // Validate CloudFlare Tunnel configuration if enabled
+        if (this.cloudflareTunnelEnabled) {
+          if (!this.cloudflareAccountId) {
+            throw new Error('CLOUDFLARE_ACCOUNT_ID environment variable is required when using CloudFlare Tunnel');
+          }
+          if (!this.cloudflareTunnelId && !this.cloudflareTunnelName) {
+            throw new Error('Either CLOUDFLARE_TUNNEL_ID or CLOUDFLARE_TUNNEL_NAME environment variable is required when using CloudFlare Tunnel');
+          }
         }
         break;
         

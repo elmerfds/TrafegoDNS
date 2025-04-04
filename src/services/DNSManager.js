@@ -1,6 +1,8 @@
 /**
  * DNS Manager Service
  * Responsible for managing DNS records through the selected provider
+ * 
+ * File: src/services/DNSManager.js
  */
 const { DNSProviderFactory } = require('../providers');
 const logger = require('../utils/logger');
@@ -150,6 +152,28 @@ class DNSManager {
         } catch (error) {
           this.stats.errors++;
           logger.error(`Error processing hostname ${hostname}: ${error.message}`);
+        }
+      }
+      
+      // Process CloudFlare tunnel hostnames if enabled
+      if (this.config.dnsProvider === 'cloudflare' && this.config.cloudflareTunnelEnabled) {
+        try {
+          logger.debug('Processing CloudFlare Tunnel hostnames');
+          // Get the CloudFlare provider
+          const cloudflareProvider = this.dnsProvider;
+          if (cloudflareProvider.processTunnelHostnames) {
+            // Process the same hostnames through the tunnel manager
+            await cloudflareProvider.processTunnelHostnames(hostnames, containerLabels);
+            logger.success('CloudFlare Tunnel hostnames processed successfully');
+          } else {
+            logger.warn('CloudFlare Tunnel is enabled but provider does not support tunnel operations');
+          }
+        } catch (error) {
+          logger.error(`Error processing CloudFlare Tunnel hostnames: ${error.message}`);
+          this.eventBus.publish(EventTypes.ERROR_OCCURRED, {
+            source: 'DNSManager.processCloudFlareTunnelHostnames',
+            error: error.message
+          });
         }
       }
       
