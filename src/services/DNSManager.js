@@ -84,6 +84,40 @@ class DNSManager {
       // Track processed hostnames for cleanup
       const processedHostnames = [];
       
+      // Track hostnames handled by CloudFlare Tunnels to avoid creating duplicate DNS records
+      const tunnelHandledHostnames = new Set();
+      
+      // Process CloudFlare tunnel hostnames first if enabled
+      if (this.config.dnsProvider === 'cloudflare' && this.config.cloudflareTunnelEnabled) {
+        try {
+          logger.debug('Processing CloudFlare Tunnel hostnames');
+          // Get the CloudFlare provider
+          const cloudflareProvider = this.dnsProvider;
+          if (cloudflareProvider.processTunnelHostnames) {
+            // Process the same hostnames through the tunnel manager
+            const tunnelResults = await cloudflareProvider.processTunnelHostnames(hostnames, containerLabels);
+            
+            // Track which hostnames were handled by tunnels
+            if (tunnelResults && tunnelResults.processedHostnames) {
+              tunnelResults.processedHostnames.forEach(hostname => {
+                tunnelHandledHostnames.add(hostname.toLowerCase());
+                logger.debug(`Hostname ${hostname} handled by CloudFlare Tunnel`);
+              });
+            }
+            
+            logger.success(`CloudFlare Tunnel hostnames processed successfully (${tunnelHandledHostnames.size} hostnames)`);
+          } else {
+            logger.warn('CloudFlare Tunnel is enabled but provider does not support tunnel operations');
+          }
+        } catch (error) {
+          logger.error(`Error processing CloudFlare Tunnel hostnames: ${error.message}`);
+          this.eventBus.publish(EventTypes.ERROR_OCCURRED, {
+            source: 'DNSManager.processCloudFlareTunnelHostnames',
+            error: error.message
+          });
+        }
+      }
+      
       // Collect all DNS record configurations to batch process
       const dnsRecordConfigs = [];
       
@@ -91,6 +125,16 @@ class DNSManager {
       for (const hostname of hostnames) {
         try {
           this.stats.total++;
+          
+          // Create fully qualified domain name for comparison with tunnel hostnames
+          const fqdn = this.ensureFqdn(hostname, this.config.getProviderDomain());
+          
+          // Skip hostnames that were already handled by CloudFlare Tunnels
+          if (tunnelHandledHostnames.has(fqdn.toLowerCase())) {
+            logger.debug(`Skipping regular DNS creation for ${fqdn} as it's handled by CloudFlare Tunnel`);
+            processedHostnames.push(fqdn); // Still track as processed for cleanup purposes
+            continue;
+          }
           
           // Find container labels for this hostname if possible
           const labels = containerLabels[hostname] || {};
@@ -135,8 +179,6 @@ class DNSManager {
             continue;
           }
           
-          // Create fully qualified domain name
-          const fqdn = this.ensureFqdn(hostname, this.config.getProviderDomain());
           processedHostnames.push(fqdn);
           
           // Extract DNS configuration
@@ -152,28 +194,6 @@ class DNSManager {
         } catch (error) {
           this.stats.errors++;
           logger.error(`Error processing hostname ${hostname}: ${error.message}`);
-        }
-      }
-      
-      // Process CloudFlare tunnel hostnames if enabled
-      if (this.config.dnsProvider === 'cloudflare' && this.config.cloudflareTunnelEnabled) {
-        try {
-          logger.debug('Processing CloudFlare Tunnel hostnames');
-          // Get the CloudFlare provider
-          const cloudflareProvider = this.dnsProvider;
-          if (cloudflareProvider.processTunnelHostnames) {
-            // Process the same hostnames through the tunnel manager
-            await cloudflareProvider.processTunnelHostnames(hostnames, containerLabels);
-            logger.success('CloudFlare Tunnel hostnames processed successfully');
-          } else {
-            logger.warn('CloudFlare Tunnel is enabled but provider does not support tunnel operations');
-          }
-        } catch (error) {
-          logger.error(`Error processing CloudFlare Tunnel hostnames: ${error.message}`);
-          this.eventBus.publish(EventTypes.ERROR_OCCURRED, {
-            source: 'DNSManager.processCloudFlareTunnelHostnames',
-            error: error.message
-          });
         }
       }
       
