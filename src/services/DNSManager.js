@@ -482,9 +482,24 @@ class DNSManager {
     // Collect DNS record configurations
     const dnsRecordConfigs = [];
     
+    // Track hostnames to prevent duplicates (hostname+type as key)
+    const processedKeys = new Set();
+    
     // Process each managed hostname
     for (const config of this.recordTracker.managedHostnames) {
       try {
+        // Create a unique key for this record to prevent duplicates
+        const recordKey = `${config.hostname}|${config.type}`;
+        
+        // Skip if we've already processed this hostname+type combination
+        if (processedKeys.has(recordKey)) {
+          logger.debug(`Skipping duplicate managed hostname: ${config.hostname} (${config.type})`);
+          continue;
+        }
+        
+        // Mark this hostname+type as processed
+        processedKeys.add(recordKey);
+        
         // Create a record configuration
         const recordConfig = {
           type: config.type,
