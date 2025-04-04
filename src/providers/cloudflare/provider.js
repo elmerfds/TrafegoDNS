@@ -441,8 +441,11 @@ class CloudflareProvider extends DNSProvider {
         await this.tunnelManager.processHostnames(tunnelHostnames, containerLabels);
       } catch (error) {
         logger.error(`Error processing tunnel hostnames: ${error.message}`);
-        // If tunnel processing fails, fall back to regular DNS
-        dnsHostnames.push(...tunnelHostnames);
+        // IMPORTANT: Do NOT fall back to DNS if tunnel processing fails
+        // dnsHostnames.push(...tunnelHostnames);  <-- REMOVE THIS LINE
+        
+        // Instead, log that these hostnames won't be accessible
+        logger.warn(`The following hostnames will not be accessible due to tunnel processing failure: ${tunnelHostnames.join(', ')}`);
       }
     }
     
