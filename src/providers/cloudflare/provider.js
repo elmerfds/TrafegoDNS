@@ -439,7 +439,7 @@ class CloudflareProvider extends DNSProvider {
   /**
    * Batch process multiple DNS records at once
    */
-  async batchEnsureRecords(recordConfigs) {
+  async batchEnsureRecords(recordConfigs, containerLabels = {}) {
     // If tunnels are enabled, filter out hostnames that will be managed by tunnel
     if (this.tunnelEnabled && this.tunnelManager) {
       const originalCount = recordConfigs.length;

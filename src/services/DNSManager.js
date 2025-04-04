@@ -512,7 +512,7 @@ class DNSManager {
       logger.debug(`Batch processing ${dnsRecordConfigs.length} managed DNS records`);
       
       try {
-        const processedRecords = await this.dnsProvider.batchEnsureRecords(dnsRecordConfigs);
+        const processedRecords = await this.dnsProvider.batchEnsureRecords(dnsRecordConfigs, {});
         
         // Track created/updated records
         if (processedRecords && processedRecords.length > 0) {
