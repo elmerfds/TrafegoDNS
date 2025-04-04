@@ -13,7 +13,7 @@ class TraefikMonitor {
     this.config = config;
     this.eventBus = eventBus;
     
-    // Initialize HTTP client
+    // initialise HTTP client
     this.client = axios.create({
       baseURL: config.traefikApiUrl,
       timeout: config.apiTimeout  // Use the configurable timeout
@@ -52,7 +52,7 @@ class TraefikMonitor {
   }
   
   /**
-   * Initialize the Traefik Monitor
+   * initialise the Traefik Monitor
    */
   async init() {
     try {
@@ -68,7 +68,7 @@ class TraefikMonitor {
       logger.success('Successfully connected to Traefik API');
       return true;
     } catch (error) {
-      logger.error(`Failed to initialize Traefik Monitor: ${error.message}`);
+      logger.error(`Failed to initialise Traefik Monitor: ${error.message}`);
       throw error;
     }
   }
@@ -256,6 +256,7 @@ class TraefikMonitor {
     const mergedLabels = { ...routerContainerLabels };
     const genericPrefix = this.config.genericLabelPrefix;
     const providerPrefix = this.config.dnsLabelPrefix;
+    const tunnelPrefix = `${genericPrefix}cf.tunnel.`;
     
     // For tracking changes in logging
     const firstPoll = !this.lastMergedLabels;
@@ -268,6 +269,9 @@ class TraefikMonitor {
     } else if (this.lastContainerIdToName) {
       containerIdToName = this.lastContainerIdToName;
     }
+    
+    // Check for tunnel-specific configuration
+    const hasTunnelConfig = this.config.dnsProvider === 'cloudflare' && this.config.cfTunnelEnabled;
     
     // For each hostname
     for (const [hostname, routerLabels] of Object.entries(routerContainerLabels)) {
@@ -308,10 +312,23 @@ class TraefikMonitor {
             }
           }
           
+          // Also collect tunnel-specific labels if CloudFlare Tunnel is enabled
+          if (hasTunnelConfig) {
+            for (const [key, value] of Object.entries(containerLabels)) {
+              if (key.startsWith(tunnelPrefix)) {
+                dnsLabels[key] = value;
+              }
+            }
+          }
+          
           // Check if this is first poll or if the proxied setting has changed
           const proxiedLabel = getLabelValue(containerLabels, genericPrefix, providerPrefix, 'proxied', null);
           const previousLabels = this.lastMergedLabels?.[hostname];
           const previousProxied = previousLabels?.[`${providerPrefix}proxied`] || previousLabels?.[`${genericPrefix}proxied`];
+          
+          // Check for tunnel settings changes
+          const tunnelEnabledLabel = containerLabels[`${tunnelPrefix}enabled`];
+          const previousTunnelEnabled = previousLabels?.[`${tunnelPrefix}enabled`];
           
           // Only log at INFO level if this is the first poll or the proxied value has changed
           if (firstPoll || previousProxied !== proxiedLabel) {
@@ -324,10 +341,16 @@ class TraefikMonitor {
               // Track the change for summary
               labelChanges[hostname] = 'proxied';
             }
-          } else {
-            // Use debug level for repeated information
-            if (proxiedLabel === 'false') {
-              logger.debug(`Found proxied=false for ${hostname} from container ${containerName}`);
+          }
+          
+          // Log tunnel settings changes
+          if (hasTunnelConfig && (firstPoll || previousTunnelEnabled !== tunnelEnabledLabel)) {
+            if (tunnelEnabledLabel === 'true') {
+              logger.info(`🔄 Found tunnel=true for ${hostname} from container ${containerName}`);
+              labelChanges[hostname] = 'tunnel-enabled';
+            } else if (tunnelEnabledLabel === 'false' && previousTunnelEnabled === 'true') {
+              logger.info(`🔄 Found tunnel=false for ${hostname} from container ${containerName}`);
+              labelChanges[hostname] = 'tunnel-disabled';
             }
           }
           

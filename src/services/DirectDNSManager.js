@@ -6,6 +6,7 @@
 const logger = require('../utils/logger');
 const EventTypes = require('../events/EventTypes');
 const { getLabelValue } = require('../utils/dns');
+const { shouldUseTunnel } = require('../utils/tunnelUtils');
 
 class DirectDNSManager {
   constructor(config, eventBus) {
@@ -47,7 +48,7 @@ class DirectDNSManager {
   }
 
   /**
-   * Initialize the Direct DNS Manager
+   * Initialise the Direct DNS Manager
    */
   async init() {
     logger.debug('Initialising DirectDNSManager...');
@@ -148,6 +149,7 @@ class DirectDNSManager {
     
     // Get label prefix from existing config
     const dnsLabelPrefix = this.config.genericLabelPrefix;
+    const tunnelPrefix = `${dnsLabelPrefix}cf.tunnel.`;
     
     // Process each container
     for (const [containerId, labels] of Object.entries(containerLabelsCache)) {
@@ -181,6 +183,34 @@ class DirectDNSManager {
         }
       }
       
+      // Also check for tunnel-specific hostnames
+      if (this.config.dnsProvider === 'cloudflare' && this.config.cfTunnelEnabled) {
+        if (labels[`${tunnelPrefix}hostname`]) {
+          // Split comma-separated hostnames
+          const tunnelHostnames = labels[`${tunnelPrefix}hostname`]
+            .split(',')
+            .map(h => h.trim())
+            .filter(h => h.length > 0);
+          
+          // Process each hostname
+          for (const hostname of tunnelHostnames) {
+            if (!hostnames.includes(hostname)) {
+              hostnames.push(hostname);
+            }
+            
+            // Associate container labels with this hostname and mark as tunnel
+            containerLabels[hostname] = {
+              ...labels,
+              containerId: containerId,
+              containerName: containerName,
+              [`${dnsLabelPrefix}cf.tunnel.enabled`]: 'true'
+            };
+            
+            logger.debug(`Found tunnel hostname ${hostname} in container ${containerName}`);
+          }
+        }
+      }
+      
       // Also check for dns.domain label combined with dns.subdomain
       if (labels[`${dnsLabelPrefix}domain`]) {
         const domain = labels[`${dnsLabelPrefix}domain`];
@@ -211,6 +241,33 @@ class DirectDNSManager {
           }
         }
         
+        // Check for tunnel subdomains
+        if (labels[`${tunnelPrefix}subdomain`] && this.config.dnsProvider === 'cloudflare' && this.config.cfTunnelEnabled) {
+          const tunnelSubdomains = labels[`${tunnelPrefix}subdomain`]
+            .split(',')
+            .map(s => s.trim())
+            .filter(s => s.length > 0);
+          
+          // Create full hostnames from domain and tunnel subdomains
+          for (const subdomain of tunnelSubdomains) {
+            const hostname = `${subdomain}.${domain}`;
+            
+            if (!hostnames.includes(hostname)) {
+              hostnames.push(hostname);
+            }
+            
+            // Associate container labels with this hostname and mark as tunnel
+            containerLabels[hostname] = {
+              ...labels,
+              containerId: containerId,
+              containerName: containerName,
+              [`${dnsLabelPrefix}cf.tunnel.enabled`]: 'true'
+            };
+            
+            logger.debug(`Created tunnel hostname ${hostname} from domain=${domain} and tunnel subdomain=${subdomain}`);
+          }
+        }
+        
         // Check if the apex domain itself should be used
         if (labels[`${dnsLabelPrefix}use_apex`] === 'true') {
           if (!hostnames.includes(domain)) {
@@ -225,6 +282,23 @@ class DirectDNSManager {
           };
           
           logger.debug(`Using apex domain ${domain} for container ${containerName}`);
+        }
+        
+        // Check if the apex domain should use tunnel
+        if (labels[`${tunnelPrefix}use_apex`] === 'true' && this.config.dnsProvider === 'cloudflare' && this.config.cfTunnelEnabled) {
+          if (!hostnames.includes(domain)) {
+            hostnames.push(domain);
+          }
+          
+          // Associate container labels with this hostname and mark as tunnel
+          containerLabels[domain] = {
+            ...labels,
+            containerId: containerId,
+            containerName: containerName,
+            [`${dnsLabelPrefix}cf.tunnel.enabled`]: 'true'
+          };
+          
+          logger.debug(`Using apex domain ${domain} with tunnel for container ${containerName}`);
         }
       }
       
@@ -246,6 +320,28 @@ class DirectDNSManager {
           }
         }
       });
+      
+      // Allow a specific tunnel host format using dns.cf.tunnel.host.X labels
+      if (this.config.dnsProvider === 'cloudflare' && this.config.cfTunnelEnabled) {
+        Object.entries(labels).forEach(([key, value]) => {
+          if (key.startsWith(`${tunnelPrefix}host.`) && value) {
+            const hostname = value.trim();
+            if (hostname && !hostnames.includes(hostname)) {
+              hostnames.push(hostname);
+              
+              // Associate container labels with this hostname and mark as tunnel
+              containerLabels[hostname] = {
+                ...labels,
+                containerId: containerId,
+                containerName: containerName,
+                [`${dnsLabelPrefix}cf.tunnel.enabled`]: 'true'
+              };
+              
+              logger.debug(`Found tunnel hostname ${hostname} from ${key} in container ${containerName}`);
+            }
+          }
+        });
+      }
     }
     
     return { hostnames, containerLabels };

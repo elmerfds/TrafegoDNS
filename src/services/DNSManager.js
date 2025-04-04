@@ -6,6 +6,7 @@ const { DNSProviderFactory } = require('../providers');
 const logger = require('../utils/logger');
 const EventTypes = require('../events/EventTypes');
 const { extractDnsConfigFromLabels } = require('../utils/dns');
+const { shouldUseTunnel } = require('../utils/tunnelUtils');
 const RecordTracker = require('../utils/recordTracker');
 
 class DNSManager {
@@ -43,10 +44,10 @@ class DNSManager {
    */
   async init() {
     try {
-      logger.debug('Initializing DNS Manager...');
+      logger.debug('initialising DNS Manager...');
       await this.dnsProvider.init();
       
-      // Process managed hostnames during initialization
+      // Process managed hostnames during initialisation
       await this.processManagedHostnames();
       
       logger.success('DNS Manager initialised successfully');
@@ -81,11 +82,35 @@ class DNSManager {
       
       // Track processed hostnames for cleanup
       const processedHostnames = [];
+      let processedTunnelHostnames = [];
+      
+      // Handle tunnel hostnames if using CloudFlare
+      if (this.config.dnsProvider === 'cloudflare' && this.config.cfTunnelEnabled) {
+        // Try to process tunnel hostnames first
+        try {
+          // Cast to CloudflareProvider to access tunnel methods
+          const cloudflareProvider = this.dnsProvider;
+          
+          if (cloudflareProvider.processTunnelHostnames) {
+            const { tunnelHostnames, dnsHostnames } = await cloudflareProvider.processTunnelHostnames(hostnames, containerLabels);
+            
+            // Update the hostnames list to only include DNS hostnames
+            hostnames = dnsHostnames;
+            processedTunnelHostnames = tunnelHostnames;
+            
+            if (tunnelHostnames.length > 0) {
+              logger.info(`Processed ${tunnelHostnames.length} hostnames using CloudFlare Tunnel`);
+            }
+          }
+        } catch (error) {
+          logger.error(`Error processing tunnel hostnames: ${error.message}`);
+        }
+      }
       
       // Collect all DNS record configurations to batch process
       const dnsRecordConfigs = [];
       
-      // Process each hostname
+      // Process each hostname for regular DNS
       for (const hostname of hostnames) {
         try {
           this.stats.total++;
@@ -130,6 +155,14 @@ class DNSManager {
           
           // Skip to next hostname if we shouldn't manage this one
           if (!shouldManage) {
+            continue;
+          }
+          
+          // Skip if this hostname should be handled by CloudFlare Tunnel
+          if (this.config.dnsProvider === 'cloudflare' && 
+              this.config.cfTunnelEnabled && 
+              shouldUseTunnel(hostname, labels, this.config)) {
+            logger.debug(`Skipping DNS management for ${hostname} as it's handled by CloudFlare Tunnel`);
             continue;
           }
           
@@ -181,20 +214,38 @@ class DNSManager {
       // Log summary stats if we have records
       this.logStats();
       
+      // Combine processed hostnames from both DNS and tunnel
+      const allProcessedHostnames = [...processedHostnames, ...processedTunnelHostnames];
+      
       // Cleanup orphaned records if configured
-      if (this.config.cleanupOrphaned && processedHostnames.length > 0) {
+      if (this.config.cleanupOrphaned && allProcessedHostnames.length > 0) {
+        // Clean up DNS records
         await this.cleanupOrphanedRecords(processedHostnames);
+        
+        // Clean up tunnel hostnames if using CloudFlare
+        if (this.config.dnsProvider === 'cloudflare' && this.config.cfTunnelEnabled) {
+          try {
+            // Cast to CloudflareProvider to access tunnel methods
+            const cloudflareProvider = this.dnsProvider;
+            
+            if (cloudflareProvider.cleanupOrphanedTunnelHostnames) {
+              await cloudflareProvider.cleanupOrphanedTunnelHostnames(processedTunnelHostnames);
+            }
+          } catch (error) {
+            logger.error(`Error cleaning up orphaned tunnel hostnames: ${error.message}`);
+          }
+        }
       }
       
       // Publish event with results
       this.eventBus.publish(EventTypes.DNS_RECORDS_UPDATED, {
         stats: this.stats,
-        processedHostnames
+        processedHostnames: allProcessedHostnames
       });
       
       return {
         stats: this.stats,
-        processedHostnames
+        processedHostnames: allProcessedHostnames
       };
     } catch (error) {
       logger.error(`Error processing hostnames: ${error.message}`);
