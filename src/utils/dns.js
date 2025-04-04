@@ -27,6 +27,38 @@ function isApexDomain(hostname, zone) {
 }
 
 /**
+ * Check if a hostname is an IPv4 address
+ * @param {string} hostname - The hostname to check
+ * @returns {boolean} - True if the hostname is an IPv4 address
+ */
+function isIPv4Address(hostname) {
+  logger.trace(`dns.isIPv4Address: Checking if ${hostname} is an IPv4 address`);
+
+  const ipv4Regex = /^(25[0-5]|2[0-4]\d|[01]?\d?\d)(\.(25[0-5]|2[0-4]\d|[01]?\d?\d)){3}$/;
+  const isIPv4 = ipv4Regex.test(hostname);
+
+  logger.trace(`dns.isIPv4Address: Result: ${isIPv4}`);
+
+  return isIPv4;
+}
+
+/**
+ * Check if a hostname is an IPv6 address
+ * @param {string} hostname - The hostname to check
+ * @returns {boolean} - True if the hostname is an IPv6 address
+ */
+function isIPv6Address(hostname) {
+  logger.trace(`dns.isIPv6Address: Checking if ${hostname} is an IPv6 address`);
+
+  const ipv6Regex = /^(?:(?:[A-Fa-f0-9]{1,4}:){7}[A-Fa-f0-9]{1,4}|(?:[A-Fa-f0-9]{1,4}:){1,7}:|(?:[A-Fa-f0-9]{1,4}:){1,6}:[A-Fa-f0-9]{1,4}|(?:[A-Fa-f0-9]{1,4}:){1,5}(?::[A-Fa-f0-9]{1,4}){1,2}|(?:[A-Fa-f0-9]{1,4}:){1,4}(?::[A-Fa-f0-9]{1,4}){1,3}|(?:[A-Fa-f0-9]{1,4}:){1,3}(?::[A-Fa-f0-9]{1,4}){1,4}|(?:[A-Fa-f0-9]{1,4}:){1,2}(?::[A-Fa-f0-9]{1,4}){1,5}|[A-Fa-f0-9]{1,4}:(?:(?::[A-Fa-f0-9]{1,4}){1,6})|:(?:(?::[A-Fa-f0-9]{1,4}){1,7}|:))$/;
+  const isIPv6 = ipv6Regex.test(hostname);
+
+  logger.trace(`dns.isIPv6Address: Result: ${isIPv6}`);
+
+  return isIPv6;
+}
+
+/**
  * Get label value with provider-specific precedence
  * @param {Object} labels - Container labels
  * @param {string} genericPrefix - Generic label prefix 
@@ -137,6 +169,20 @@ function extractDnsConfigFromLabels(labels, config, hostname) {
   } else {
     recordConfig.content = content;
     logger.trace(`dns.extractDnsConfigFromLabels: Using label-specified content: ${content}`);
+  }
+
+  const isIPv4 = isIPv4Address(recordConfig.content);
+  if (isIPv4 && !recordTypeLabel && recordConfig.type === 'CNAME') {
+    // The record type is CNAME by default (not given by label) but the content is IPV4 which isn't supported
+    recordConfig.type = 'A';
+    logger.debug(`IPv4 address (${recordConfig.content}) content detected for ${hostname}, using A record instead of CNAME`);
+  }
+
+  const isIPv6 = isIPv6Address(recordConfig.content);
+  if (isIPv6 && !recordTypeLabel && recordConfig.type === 'CNAME') {
+    // The record type is CNAME by default (not given by label) but the content is IPV6 which isn't supported
+    recordConfig.type = 'AAAA';
+    logger.debug(`IPv6 address (${recordConfig.content}) content detected for ${hostname}, using AAAA record instead of CNAME`);
   }
   
   // Handle proxied status ONLY for providers that support it (Cloudflare)
