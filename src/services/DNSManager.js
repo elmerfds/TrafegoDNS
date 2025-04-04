@@ -76,12 +76,23 @@ class DNSManager {
    */
   async processHostnames(hostnames, containerLabels) {
     try {
-      logger.debug(`DNS Manager processing ${hostnames.length} hostnames`);
+      if (!hostnames || hostnames.length === 0) {
+        logger.debug('No hostnames to process');
+        return { stats: this.stats, processedHostnames: [] };
+      }
       
-      // Reset statistics for this processing run
+      // Deduplicate hostnames before processing to prevent duplicate creation attempts
+      const uniqueHostnames = [...new Set(hostnames)];
+      
+      if (uniqueHostnames.length < hostnames.length) {
+        logger.debug(`Deduplicated ${hostnames.length - uniqueHostnames.length} duplicate hostname(s)`);
+      }
+      
+      logger.info(`Processing ${uniqueHostnames.length} hostnames for DNS management`);
+      
+      // Reset statistics for this batch
       this.resetStats();
       
-      // Track processed hostnames for cleanup
       const processedHostnames = [];
       
       // Track hostnames handled by CloudFlare Tunnels to avoid creating duplicate DNS records
@@ -95,7 +106,7 @@ class DNSManager {
           const cloudflareProvider = this.dnsProvider;
           if (cloudflareProvider.processTunnelHostnames) {
             // Process the same hostnames through the tunnel manager
-            const tunnelResults = await cloudflareProvider.processTunnelHostnames(hostnames, containerLabels);
+            const tunnelResults = await cloudflareProvider.processTunnelHostnames(uniqueHostnames, containerLabels);
             
             // Track which hostnames were handled by tunnels
             if (tunnelResults && tunnelResults.processedHostnames) {
@@ -122,7 +133,7 @@ class DNSManager {
       const dnsRecordConfigs = [];
       
       // Process each hostname
-      for (const hostname of hostnames) {
+      for (const hostname of uniqueHostnames) {
         try {
           this.stats.total++;
           
