@@ -1,4 +1,5 @@
 /**
+ * src/providers/cloudflare/provider.js
  * Cloudflare DNS Provider
  * Core implementation of the DNSProvider interface for Cloudflare
  */
@@ -7,6 +8,8 @@ const DNSProvider = require('../base');
 const logger = require('../../utils/logger');
 const { convertToCloudflareFormat } = require('./converter');
 const { validateRecord } = require('./validator');
+const CloudFlareTunnelManager = require('./tunnel');
+const { shouldUseTunnel } = require('../../utils/tunnelUtils');
 
 class CloudflareProvider extends DNSProvider {
   constructor(config) {
@@ -18,7 +21,7 @@ class CloudflareProvider extends DNSProvider {
     this.zone = config.cloudflareZone;
     this.zoneId = null;
     
-    // Initialize Axios client
+    // initialise Axios client
     this.client = axios.create({
       baseURL: 'https://api.cloudflare.com/client/v4',
       headers: {
@@ -28,14 +31,21 @@ class CloudflareProvider extends DNSProvider {
       timeout: config.apiTimeout  // Use the configurable timeout
     });
     
-    logger.trace('CloudflareProvider.constructor: Axios client initialized');
+    logger.trace('CloudflareProvider.constructor: Axios client initialised');
+    
+    // Initialise tunnel manager if enabled
+    this.tunnelManager = null;
+    if (config.cfTunnelEnabled) {
+      logger.debug('CloudFlare Tunnel features are enabled, initialising tunnel manager...');
+      this.tunnelManager = new CloudFlareTunnelManager(config, this);
+    }
   }
   
   /**
-   * Initialize API by fetching zone ID
+   * initialise API by fetching zone ID
    */
   async init() {
-    logger.trace(`CloudflareProvider.init: Starting initialization for zone "${this.zone}"`);
+    logger.trace(`CloudflareProvider.init: Starting initialisation for zone "${this.zone}"`);
     
     try {
       // Look up zone ID
@@ -55,15 +65,27 @@ class CloudflareProvider extends DNSProvider {
       logger.debug(`Cloudflare zone ID for ${this.zone}: ${this.zoneId}`);
       logger.success('Cloudflare zone authenticated successfully');
       
-      // Initialize the DNS record cache
+      // initialise the DNS record cache
       logger.trace('CloudflareProvider.init: Initialising DNS record cache');
       await this.refreshRecordCache();
       
+      // Initialise tunnel manager if enabled
+      if (this.tunnelManager) {
+        logger.trace('CloudflareProvider.init: initialising tunnel manager');
+        try {
+          await this.tunnelManager.init();
+          logger.success('CloudFlare Tunnel manager initialised successfully');
+        } catch (error) {
+          logger.error(`Failed to initialise CloudFlare Tunnel manager: ${error.message}`);
+          // Continue initialisation even if tunnel manager fails
+        }
+      }
+      
       return true;
     } catch (error) {
-      logger.error(`Failed to initialize Cloudflare API: ${error.message}`);
+      logger.error(`Failed to initialise Cloudflare API: ${error.message}`);
       logger.trace(`CloudflareProvider.init: Error details: ${JSON.stringify(error.response?.data || error.message)}`);
-      throw new Error(`Failed to initialize Cloudflare API: ${error.message}`);
+      throw new Error(`Failed to initialise Cloudflare API: ${error.message}`);
     }
   }
   
@@ -380,6 +402,75 @@ class CloudflareProvider extends DNSProvider {
   }
   
   /**
+   * Process hostnames for CloudFlare Tunnel
+   * @param {Array<string>} hostnames - List of hostnames to process
+   * @param {Object} containerLabels - Map of container IDs to their labels
+   * @returns {Object} - Object with tunnelHostnames and dnsHostnames arrays
+   */
+  async processTunnelHostnames(hostnames, containerLabels) {
+    if (!this.tunnelManager || !this.config.cfTunnelEnabled) {
+      // Tunnel features not enabled, all hostnames should use DNS
+      return {
+        tunnelHostnames: [],
+        dnsHostnames: hostnames
+      };
+    }
+    
+    logger.debug(`Processing ${hostnames.length} hostnames for CloudFlare Tunnel...`);
+    
+    const tunnelHostnames = [];
+    const dnsHostnames = [];
+    
+    // Determine which hostnames should use tunnel vs. DNS
+    for (const hostname of hostnames) {
+      const labels = containerLabels[hostname] || {};
+      
+      // Check if this hostname should use tunnel
+      if (shouldUseTunnel(hostname, labels, this.config)) {
+        tunnelHostnames.push(hostname);
+        logger.debug(`Hostname ${hostname} will use CloudFlare Tunnel`);
+      } else {
+        dnsHostnames.push(hostname);
+        logger.debug(`Hostname ${hostname} will use regular DNS`);
+      }
+    }
+    
+    // Process tunnel hostnames
+    if (tunnelHostnames.length > 0) {
+      try {
+        await this.tunnelManager.processHostnames(tunnelHostnames, containerLabels);
+      } catch (error) {
+        logger.error(`Error processing tunnel hostnames: ${error.message}`);
+        // If tunnel processing fails, fall back to regular DNS
+        dnsHostnames.push(...tunnelHostnames);
+      }
+    }
+    
+    return {
+      tunnelHostnames,
+      dnsHostnames
+    };
+  }
+  
+  /**
+   * Clean up orphaned tunnel hostnames
+   * @param {Array<string>} activeHostnames - List of active hostnames
+   * @returns {Promise<Array<string>>} - List of removed hostnames
+   */
+  async cleanupOrphanedTunnelHostnames(activeHostnames) {
+    if (!this.tunnelManager || !this.config.cfTunnelEnabled) {
+      return [];
+    }
+    
+    try {
+      return await this.tunnelManager.cleanupOrphanedHostnames(activeHostnames);
+    } catch (error) {
+      logger.error(`Error cleaning up orphaned tunnel hostnames: ${error.message}`);
+      return [];
+    }
+  }
+  
+  /**
    * Batch process multiple DNS records at once
    */
   async batchEnsureRecords(recordConfigs) {
@@ -532,10 +623,10 @@ class CloudflareProvider extends DNSProvider {
     }
   }
   
-/**
- * Check if a record needs to be updated
- */
-recordNeedsUpdate(existing, newRecord) {
+  /**
+   * Check if a record needs to be updated
+   */
+  recordNeedsUpdate(existing, newRecord) {
     logger.trace(`CloudflareProvider.recordNeedsUpdate: Comparing records for ${newRecord.name}`);
     logger.trace(`CloudflareProvider.recordNeedsUpdate: Existing: ${JSON.stringify(existing)}`);
     logger.trace(`CloudflareProvider.recordNeedsUpdate: New: ${JSON.stringify(newRecord)}`);
