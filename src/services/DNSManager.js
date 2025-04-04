@@ -84,8 +84,13 @@ class DNSManager {
       const processedHostnames = [];
       let processedTunnelHostnames = [];
       
+      // Clone hostnames to avoid modifying the original array
+      let dnsHostnames = [...hostnames];
+      let isTunnelProvider = false;
+      
       // Handle tunnel hostnames if using CloudFlare
       if (this.config.dnsProvider === 'cloudflare' && this.config.cfTunnelEnabled) {
+        isTunnelProvider = true;
         // Try to process tunnel hostnames first
         try {
           // Cast to CloudflareProvider to access tunnel methods
@@ -95,10 +100,11 @@ class DNSManager {
             logger.debug(`Dividing hostnames between tunnel and DNS...`);
             
             // Process hostnames through CloudflareProvider's tunnel processor
-            const { tunnelHostnames, dnsHostnames } = await cloudflareProvider.processTunnelHostnames(hostnames, containerLabels);
+            const { tunnelHostnames, dnsHostnames: remainingHostnames } = 
+              await cloudflareProvider.processTunnelHostnames(hostnames, containerLabels);
             
             // Update the hostnames list to only include DNS hostnames
-            hostnames = dnsHostnames;
+            dnsHostnames = remainingHostnames;
             processedTunnelHostnames = tunnelHostnames;
             
             if (tunnelHostnames.length > 0) {
@@ -113,7 +119,8 @@ class DNSManager {
           }
         } catch (error) {
           logger.error(`Error processing tunnel hostnames: ${error.message}`);
-          // Do NOT fall back to DNS records for tunnel hostnames
+          // Continue with DNS processing for all hostnames if tunnel processing fails
+          dnsHostnames = [...hostnames]; // Reset to original hostnames if tunnel processing fails
         }
       }
       
@@ -121,7 +128,7 @@ class DNSManager {
       const dnsRecordConfigs = [];
       
       // Process each hostname for regular DNS
-      for (const hostname of hostnames) {
+      for (const hostname of dnsHostnames) {
         try {
           this.stats.total++;
           
@@ -169,10 +176,12 @@ class DNSManager {
           }
           
           // Extra safety check - Skip if this hostname should be handled by CloudFlare Tunnel
-          // This is redundant with the earlier tunnel processing but kept as a safety measure
-          if (this.config.dnsProvider === 'cloudflare' && 
-              this.config.cfTunnelEnabled && 
-              shouldUseTunnel(hostname, labels, this.config)) {
+          // This runs in two scenarios:
+          // 1. For non-Cloudflare providers to prevent accidental processing of tunnel hostnames
+          // 2. For Cloudflare when tunnel processing failed - in this case we should skip tunnel hostnames
+          //    instead of creating DNS records for them, as that would be inconsistent
+          if ((this.config.dnsProvider === 'cloudflare' && this.config.cfTunnelEnabled && !isTunnelProvider) || 
+              (this.config.dnsProvider !== 'cloudflare' && shouldUseTunnel(hostname, labels, this.config))) {
             logger.debug(`Safety check: Skipping DNS management for ${hostname} as it should be handled by CloudFlare Tunnel`);
             continue;
           }
