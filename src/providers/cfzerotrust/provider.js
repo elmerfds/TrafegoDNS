@@ -1528,60 +1528,7 @@ class CFZeroTrustProvider extends DNSProvider {
        
        logger.trace(`CFZeroTrustProvider.processTunnelRecords: Tunnel processing complete, returning ${results.length} results`);
        return results;
-     }
-     
-     /**
-      * Check if a record needs to be updated
-      */
-     recordNeedsUpdate(existing, newRecord) {
-       logger.trace(`CFZeroTrustProvider.recordNeedsUpdate: Comparing records for ${newRecord.name}`);
-       logger.trace(`CFZeroTrustProvider.recordNeedsUpdate: Existing: ${JSON.stringify(existing)}`);
-       logger.trace(`CFZeroTrustProvider.recordNeedsUpdate: New: ${JSON.stringify(newRecord)}`);
-       
-       // Compare service (content) and path
-       let needsUpdate = false;
-       
-       // Compare service (target)
-       if (existing.content !== newRecord.content) {
-         logger.trace(`CFZeroTrustProvider.recordNeedsUpdate: Service different: ${existing.content} vs ${newRecord.content}`);
-         needsUpdate = true;
-       }
-       
-       // Compare path
-       const existingPath = existing.path || '';
-       const newPath = newRecord.path || '';
-       if (existingPath !== newPath) {
-         logger.trace(`CFZeroTrustProvider.recordNeedsUpdate: Path different: ${existingPath} vs ${newPath}`);
-         needsUpdate = true;
-       }
-       
-       // Compare additional attributes
-       // For example, if there's a disableChunkedEncoding setting
-       if (newRecord.disableChunkedEncoding !== undefined && 
-           existing.config && 
-           existing.config.disableChunkedEncoding !== newRecord.disableChunkedEncoding) {
-         needsUpdate = true;
-       }
-       
-       // Compare accessPolicy if provided
-       if (newRecord.accessPolicy !== undefined && 
-           existing.config && 
-           existing.config.access_policy !== newRecord.accessPolicy) {
-         needsUpdate = true;
-       }
-       
-       // If an update is needed, log the specific differences at DEBUG level
-       if (needsUpdate && logger.level >= 3) { // DEBUG level or higher
-         logger.debug(`Record ${newRecord.name} needs update:`);
-         if (existing.content !== newRecord.content) 
-           logger.debug(` - Service: ${existing.content} → ${newRecord.content}`);
-         if (existingPath !== newPath) 
-           logger.debug(` - Path: ${existingPath} → ${newPath}`);
-       }
-       
-       logger.trace(`CFZeroTrustProvider.recordNeedsUpdate: Final result - needs update: ${needsUpdate}`);
-       return needsUpdate;
-     }
+     }   
    }
    
    module.exports = CFZeroTrustProvider;
