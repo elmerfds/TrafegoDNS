@@ -41,6 +41,10 @@ class ConfigManager {
     // Digital Ocean settings
     this.digitalOceanToken = EnvironmentLoader.getSecret('DO_TOKEN');
     this.digitalOceanDomain = EnvironmentLoader.getString('DO_DOMAIN');
+
+    // CloudFlare Zero Trust specific settings
+    this.cloudflareAccountId = EnvironmentLoader.getString('CLOUDFLARE_ACCOUNT_ID');
+    this.cfzerotrustTunnelId = EnvironmentLoader.getString('CFZEROTRUST_TUNNEL_ID');    
     
     // Validate required settings based on provider
     this.validateProviderConfig();
@@ -189,6 +193,21 @@ class ConfigManager {
           throw new Error('DO_DOMAIN environment variable is required for DigitalOcean provider');
         }
         break;
+
+      case 'cfzerotrust':
+        if (!this.cloudflareToken) {
+          throw new Error('CLOUDFLARE_TOKEN environment variable is required for CloudFlare Zero Trust provider');
+        }
+        if (!this.cloudflareAccountId) {
+          throw new Error('CLOUDFLARE_ACCOUNT_ID environment variable is required for CloudFlare Zero Trust provider');
+        }
+        if (!this.cfzerotrustTunnelId) {
+          throw new Error('CFZEROTRUST_TUNNEL_ID environment variable is required for CloudFlare Zero Trust provider');
+        }
+        if (!this.cloudflareZone) {
+          throw new Error('CLOUDFLARE_ZONE environment variable is required for CloudFlare Zero Trust provider');
+        }
+        break;        
         
       default:
         throw new Error(`Unsupported DNS provider: ${this.dnsProvider}`);
