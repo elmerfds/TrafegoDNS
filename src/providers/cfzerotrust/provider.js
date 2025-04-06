@@ -31,6 +31,9 @@ class CFZeroTrustProvider extends DNSProvider {
       },
       timeout: config.apiTimeout  // Use the configurable timeout
     });
+
+    // Store reference to the record tracker for persistent storage
+    this.recordTracker = config.recordTracker;
     
     logger.trace('CFZeroTrustProvider.constructor: Axios client initialized');
   }
@@ -831,30 +834,59 @@ class CFZeroTrustProvider extends DNSProvider {
    */
   trackCreatedHostname(hostname, record) {
     try {
-      if (!global.tunnelHostnames) {
-        global.tunnelHostnames = new Map();
-      }
-      
-      // Store both the hostname and the record information
-      global.tunnelHostnames.set(hostname, {
-        tunnelId: record.tunnelId || this.defaultTunnelId,
+      // Create a record object in the format expected by RecordTracker
+      const trackingRecord = {
         id: record.id,
-        updated: new Date().toISOString()
-      });
+        provider: 'cfzerotrust',
+        domain: this.config.cloudflareZone,
+        name: hostname,
+        type: 'TUNNEL',
+        tunnelId: record.tunnelId || this.defaultTunnelId,
+        createdAt: new Date().toISOString(),
+        managedBy: 'TráfegoDNS'
+      };
       
-      logger.debug(`Tracked tunnel hostname: ${hostname} (tunnel: ${record.tunnelId || this.defaultTunnelId})`);
+      // Check if record is already tracked (update if exists, add if new)
+      if (this.isHostnameTracked(hostname)) {
+        logger.debug(`Updating tracked tunnel hostname: ${hostname} (tunnel: ${trackingRecord.tunnelId})`);
+        // Find the existing record in the tracker by composite ID
+        const existingRecords = this.config.recordTracker.getAllTrackedRecords();
+        const existingIndex = existingRecords.findIndex(r => 
+          r.provider === 'cfzerotrust' && r.name === hostname
+        );
+        
+        if (existingIndex >= 0) {
+          // Update the existing record
+          existingRecords[existingIndex] = {
+            ...existingRecords[existingIndex],
+            id: trackingRecord.id,
+            tunnelId: trackingRecord.tunnelId,
+            updatedAt: new Date().toISOString()
+          };
+          
+          // Save the updated tracking data
+          this.config.recordTracker.saveTrackedRecords();
+        }
+      } else {
+        // Track new record
+        logger.debug(`Tracking new tunnel hostname: ${hostname} (tunnel: ${trackingRecord.tunnelId})`);
+        this.config.recordTracker.trackRecord(trackingRecord);
+      }
     } catch (error) {
       logger.error(`Failed to track tunnel hostname: ${error.message}`);
     }
   }
   
   /**
-   * Check if a hostname exists in any tracked tunnel
+   * Check if a hostname is tracked in RecordTracker
    * @param {string} hostname - The hostname to check
-   * @returns {boolean} - True if the hostname exists
+   * @returns {boolean} - True if the hostname is tracked
    */
   isHostnameTracked(hostname) {
-    return global.tunnelHostnames && global.tunnelHostnames.has(hostname);
+    const records = this.config.recordTracker.getAllTrackedRecords();
+    return records.some(record => 
+      record.provider === 'cfzerotrust' && record.name === hostname
+    );
   }
   
   /**
@@ -863,20 +895,39 @@ class CFZeroTrustProvider extends DNSProvider {
    * @returns {Object|null} - The tracked info or null
    */
   getTrackedHostnameInfo(hostname) {
-    if (global.tunnelHostnames && global.tunnelHostnames.has(hostname)) {
-      return global.tunnelHostnames.get(hostname);
+    const records = this.config.recordTracker.getAllTrackedRecords();
+    const record = records.find(record => 
+      record.provider === 'cfzerotrust' && record.name === hostname
+    );
+    
+    if (record) {
+      return {
+        tunnelId: record.tunnelId,
+        id: record.id,
+        updated: record.updatedAt || record.createdAt
+      };
     }
+    
     return null;
   }
   
   /**
-   * Remove a hostname from tracking
+   * Remove a hostname from tracking in RecordTracker
    * @param {string} hostname - The hostname to remove
    */
   removeTrackedHostname(hostname) {
-    if (global.tunnelHostnames && global.tunnelHostnames.has(hostname)) {
-      global.tunnelHostnames.delete(hostname);
-      logger.debug(`Removed tracked tunnel hostname: ${hostname}`);
+    try {
+      const records = this.config.recordTracker.getAllTrackedRecords();
+      const record = records.find(record => 
+        record.provider === 'cfzerotrust' && record.name === hostname
+      );
+      
+      if (record) {
+        this.config.recordTracker.untrackRecord(record);
+        logger.debug(`Removed tracked tunnel hostname: ${hostname}`);
+      }
+    } catch (error) {
+      logger.error(`Failed to remove tracked tunnel hostname: ${error.message}`);
     }
   }
 }
