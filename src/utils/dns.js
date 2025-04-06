@@ -171,6 +171,56 @@ function extractDnsConfigFromLabels(labels, config, hostname) {
     logger.trace(`dns.extractDnsConfigFromLabels: Using label-specified content: ${content}`);
   }
 
+  // Special handling for CloudFlare Zero Trust service
+  if (config.dnsProvider === 'cfzerotrust') {
+    // Priority for content: 1) dns.content, 2) dns.cfzerotrust.service, 3) default content
+    const zerotrustService = getLabelValue(labels, genericPrefix, 
+      `${genericPrefix}cfzerotrust.`, 'service', null);
+    
+    if (zerotrustService && !content) {
+      // If there's a cfzerotrust.service label and no explicit content label,
+      // use the service label as content
+      recordConfig.content = zerotrustService;
+      logger.debug(`Using CloudFlare Zero Trust service as content: ${zerotrustService}`);
+    }
+    
+    // Get tunnel ID from label if available, otherwise use default
+    recordConfig.tunnelId = getLabelValue(labels, genericPrefix, 
+      `${genericPrefix}cfzerotrust.`, 'tunnelid', null) || null;
+    
+    // Get path from label if available
+    const pathLabel = getLabelValue(labels, genericPrefix, 
+      `${genericPrefix}cfzerotrust.`, 'path', null);
+    if (pathLabel) {
+      recordConfig.path = pathLabel.startsWith('/') ? pathLabel : `/${pathLabel}`;
+    }
+    
+    // Get other tunnel-specific settings
+    const disableChunkedLabel = getLabelValue(labels, genericPrefix, 
+      `${genericPrefix}cfzerotrust.`, 'disablechunked', null);
+    if (disableChunkedLabel !== null) {
+      recordConfig.disableChunkedEncoding = disableChunkedLabel === 'true';
+    }
+    
+    const noTlsVerifyLabel = getLabelValue(labels, genericPrefix, 
+      `${genericPrefix}cfzerotrust.`, 'notlsverify', null);
+    if (noTlsVerifyLabel !== null) {
+      recordConfig.noTLSVerify = noTlsVerifyLabel === 'true';
+    }
+    
+    const http2OriginLabel = getLabelValue(labels, genericPrefix, 
+      `${genericPrefix}cfzerotrust.`, 'http2origin', null);
+    if (http2OriginLabel !== null) {
+      recordConfig.http2Origin = http2OriginLabel === 'true';
+    }
+    
+    const accessPolicyLabel = getLabelValue(labels, genericPrefix, 
+      `${genericPrefix}cfzerotrust.`, 'accesspolicy', null);
+    if (accessPolicyLabel) {
+      recordConfig.accessPolicy = accessPolicyLabel;
+    }
+  }
+
   const isIPv4 = isIPv4Address(recordConfig.content);
   if (isIPv4 && !recordTypeLabel && recordConfig.type === 'CNAME') {
     // The record type is CNAME by default (not given by label) but the content is IPV4 which isn't supported

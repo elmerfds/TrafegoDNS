@@ -287,6 +287,68 @@ class DNSManager {
     try {
       logger.debug('Checking for orphaned DNS records...');
       
+      // Special handling for CloudFlare Zero Trust provider
+      if (this.config.dnsProvider === 'cfzerotrust') {
+        try {
+          logger.debug('Checking for orphaned CloudFlare Zero Trust tunnel hostnames...');
+          
+          // Get all active hostnames that should be preserved
+          const normalizedActiveHostnames = new Set(activeHostnames.map(host => host.toLowerCase()));
+          
+          // Check for orphaned hostnames in tracking
+          if (global.tunnelHostnames) {
+            const orphanedTunnelHostnames = [];
+            
+            for (const [hostname, info] of global.tunnelHostnames.entries()) {
+              // Skip if hostname is in active list or should be preserved
+              if (normalizedActiveHostnames.has(hostname.toLowerCase()) || this.recordTracker.shouldPreserveHostname(hostname)) {
+                continue;
+              }
+              
+              // Skip if hostname is in manually managed hostnames
+              if (this.recordTracker.managedHostnames && 
+                  this.recordTracker.managedHostnames.some(h => h.hostname.toLowerCase() === hostname.toLowerCase())) {
+                continue;
+              }
+              
+              // This is an orphaned hostname
+              logger.debug(`Found orphaned tunnel hostname: ${hostname} (tunnel: ${info.tunnelId})`);
+              orphanedTunnelHostnames.push({ hostname, info });
+            }
+            
+            // Delete orphaned tunnel hostnames
+            if (orphanedTunnelHostnames.length > 0) {
+              logger.info(`Found ${orphanedTunnelHostnames.length} orphaned tunnel hostnames to clean up`);
+              
+              for (const { hostname, info } of orphanedTunnelHostnames) {
+                logger.info(`🗑️ Removing orphaned tunnel hostname: ${hostname} (tunnel: ${info.tunnelId})`);
+                
+                try {
+                  await this.dnsProvider.deleteRecord(info.id);
+                  this.dnsProvider.removeTrackedHostname(hostname);
+                  
+                  // Publish delete event
+                  this.eventBus.publish(EventTypes.DNS_RECORD_DELETED, {
+                    name: hostname,
+                    type: 'TUNNEL'
+                  });
+                } catch (error) {
+                  logger.error(`Error deleting orphaned tunnel hostname ${hostname}: ${error.message}`);
+                }
+              }
+              
+              logger.success(`Removed ${orphanedTunnelHostnames.length} orphaned tunnel hostnames`);
+            } else {
+              logger.debug('No orphaned tunnel hostnames found');
+            }
+          }
+        } catch (error) {
+          logger.error(`Error cleaning up orphaned tunnel hostnames: ${error.message}`);
+        }
+        
+        return; // Skip the regular DNS cleanup for this provider
+      }
+      
       // Get all DNS records for our zone (from cache when possible)
       const allRecords = await this.dnsProvider.getRecordsFromCache(true); // Force refresh
       

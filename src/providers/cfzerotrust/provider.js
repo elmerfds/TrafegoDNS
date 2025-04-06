@@ -315,6 +315,9 @@ class CFZeroTrustProvider extends DNSProvider {
         logger.trace(`CFZeroTrustProvider.createRecord: Incremented global.statsCounter.created to ${global.statsCounter.created}`);
       }
       
+      // Track the created hostname for cleanup later
+      this.trackCreatedHostname(record.name, createdRecord);
+      
       return createdRecord;
     } catch (error) {
       logger.error(`Failed to create tunnel hostname for ${record.name}: ${error.message}`);
@@ -396,6 +399,9 @@ class CFZeroTrustProvider extends DNSProvider {
         logger.trace(`CFZeroTrustProvider.updateRecord: Incremented global.statsCounter.updated to ${global.statsCounter.updated}`);
       }
       
+      // Track the updated hostname for cleanup later
+      this.trackCreatedHostname(hostname, updatedRecord);
+      
       return updatedRecord;
     } catch (error) {
       logger.error(`Failed to update tunnel hostname ${hostname}: ${error.message}`);
@@ -461,6 +467,9 @@ class CFZeroTrustProvider extends DNSProvider {
       
       // Update the cache
       this.removeRecordFromCache(id);
+      
+      // Remove from tracking
+      this.removeTrackedHostname(hostname);
       
       // Log at INFO level
       logger.info(`🗑️ Deleted tunnel hostname: ${hostname} (tunnel: ${tunnelId})`);
@@ -553,6 +562,13 @@ class CFZeroTrustProvider extends DNSProvider {
         // Process records for this tunnel
         const tunnelResults = await this.processTunnelRecords(tunnelId, tunnelRecords);
         results.push(...tunnelResults);
+      }
+      
+      // Track all hostnames processed in this batch for cleanup later
+      for (const record of results) {
+        if (record && record.name) {
+          this.trackCreatedHostname(record.name, record);
+        }
       }
       
       logger.trace(`CFZeroTrustProvider.batchEnsureRecords: Batch processing complete, returning ${results.length} results`);
@@ -806,6 +822,62 @@ class CFZeroTrustProvider extends DNSProvider {
     
     logger.trace(`CFZeroTrustProvider.recordNeedsUpdate: Final result - needs update: ${needsUpdate}`);
     return needsUpdate;
+  }
+  
+  /**
+   * Add the tracking information needed for orphaned record cleanup
+   * @param {Object} hostname - The hostname configuration
+   * @param {Object} record - The created/updated record
+   */
+  trackCreatedHostname(hostname, record) {
+    try {
+      if (!global.tunnelHostnames) {
+        global.tunnelHostnames = new Map();
+      }
+      
+      // Store both the hostname and the record information
+      global.tunnelHostnames.set(hostname, {
+        tunnelId: record.tunnelId || this.defaultTunnelId,
+        id: record.id,
+        updated: new Date().toISOString()
+      });
+      
+      logger.debug(`Tracked tunnel hostname: ${hostname} (tunnel: ${record.tunnelId || this.defaultTunnelId})`);
+    } catch (error) {
+      logger.error(`Failed to track tunnel hostname: ${error.message}`);
+    }
+  }
+  
+  /**
+   * Check if a hostname exists in any tracked tunnel
+   * @param {string} hostname - The hostname to check
+   * @returns {boolean} - True if the hostname exists
+   */
+  isHostnameTracked(hostname) {
+    return global.tunnelHostnames && global.tunnelHostnames.has(hostname);
+  }
+  
+  /**
+   * Get tracked information for a hostname
+   * @param {string} hostname - The hostname to get info for
+   * @returns {Object|null} - The tracked info or null
+   */
+  getTrackedHostnameInfo(hostname) {
+    if (global.tunnelHostnames && global.tunnelHostnames.has(hostname)) {
+      return global.tunnelHostnames.get(hostname);
+    }
+    return null;
+  }
+  
+  /**
+   * Remove a hostname from tracking
+   * @param {string} hostname - The hostname to remove
+   */
+  removeTrackedHostname(hostname) {
+    if (global.tunnelHostnames && global.tunnelHostnames.has(hostname)) {
+      global.tunnelHostnames.delete(hostname);
+      logger.debug(`Removed tracked tunnel hostname: ${hostname}`);
+    }
   }
 }
 
