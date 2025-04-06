@@ -295,52 +295,63 @@ class DNSManager {
           // Get all active hostnames that should be preserved
           const normalizedActiveHostnames = new Set(activeHostnames.map(host => host.toLowerCase()));
           
-          // Check for orphaned hostnames in tracking
-          if (global.tunnelHostnames) {
-            const orphanedTunnelHostnames = [];
+          // Get all tracked records for the cfzerotrust provider
+          const allTrackedRecords = this.recordTracker.getAllTrackedRecords();
+          const cfzerotrustRecords = allTrackedRecords.filter(record => 
+            record.provider === 'cfzerotrust'
+          );
+          
+          // Find orphaned tunnel hostnames
+          const orphanedTunnelHostnames = [];
+          
+          for (const record of cfzerotrustRecords) {
+            const hostname = record.name;
             
-            for (const [hostname, info] of global.tunnelHostnames.entries()) {
-              // Skip if hostname is in active list or should be preserved
-              if (normalizedActiveHostnames.has(hostname.toLowerCase()) || this.recordTracker.shouldPreserveHostname(hostname)) {
-                continue;
-              }
-              
-              // Skip if hostname is in manually managed hostnames
-              if (this.recordTracker.managedHostnames && 
-                  this.recordTracker.managedHostnames.some(h => h.hostname.toLowerCase() === hostname.toLowerCase())) {
-                continue;
-              }
-              
-              // This is an orphaned hostname
-              logger.debug(`Found orphaned tunnel hostname: ${hostname} (tunnel: ${info.tunnelId})`);
-              orphanedTunnelHostnames.push({ hostname, info });
+            // Skip if hostname is in active list or should be preserved
+            if (normalizedActiveHostnames.has(hostname.toLowerCase()) || this.recordTracker.shouldPreserveHostname(hostname)) {
+              continue;
             }
             
-            // Delete orphaned tunnel hostnames
-            if (orphanedTunnelHostnames.length > 0) {
-              logger.info(`Found ${orphanedTunnelHostnames.length} orphaned tunnel hostnames to clean up`);
+            // Skip if hostname is in manually managed hostnames
+            if (this.recordTracker.managedHostnames && 
+                this.recordTracker.managedHostnames.some(h => h.hostname.toLowerCase() === hostname.toLowerCase())) {
+              continue;
+            }
+            
+            // This is an orphaned hostname
+            logger.debug(`Found orphaned tunnel hostname: ${hostname} (tunnel: ${record.tunnelId})`);
+            orphanedTunnelHostnames.push({
+              hostname,
+              info: {
+                tunnelId: record.tunnelId,
+                id: record.id
+              }
+            });
+          }
+          
+          // Delete orphaned tunnel hostnames
+          if (orphanedTunnelHostnames.length > 0) {
+            logger.info(`Found ${orphanedTunnelHostnames.length} orphaned tunnel hostnames to clean up`);
+            
+            for (const { hostname, info } of orphanedTunnelHostnames) {
+              logger.info(`🗑️ Removing orphaned tunnel hostname: ${hostname} (tunnel: ${info.tunnelId})`);
               
-              for (const { hostname, info } of orphanedTunnelHostnames) {
-                logger.info(`🗑️ Removing orphaned tunnel hostname: ${hostname} (tunnel: ${info.tunnelId})`);
+              try {
+                await this.dnsProvider.deleteRecord(info.id);
                 
-                try {
-                  await this.dnsProvider.deleteRecord(info.id);
-                  this.dnsProvider.removeTrackedHostname(hostname);
-                  
-                  // Publish delete event
-                  this.eventBus.publish(EventTypes.DNS_RECORD_DELETED, {
-                    name: hostname,
-                    type: 'TUNNEL'
-                  });
-                } catch (error) {
-                  logger.error(`Error deleting orphaned tunnel hostname ${hostname}: ${error.message}`);
-                }
+                // Publish delete event
+                this.eventBus.publish(EventTypes.DNS_RECORD_DELETED, {
+                  name: hostname,
+                  type: 'TUNNEL'
+                });
+              } catch (error) {
+                logger.error(`Error deleting orphaned tunnel hostname ${hostname}: ${error.message}`);
               }
-              
-              logger.success(`Removed ${orphanedTunnelHostnames.length} orphaned tunnel hostnames`);
-            } else {
-              logger.debug('No orphaned tunnel hostnames found');
             }
+            
+            logger.success(`Removed ${orphanedTunnelHostnames.length} orphaned tunnel hostnames`);
+          } else {
+            logger.debug('No orphaned tunnel hostnames found');
           }
         } catch (error) {
           logger.error(`Error cleaning up orphaned tunnel hostnames: ${error.message}`);
