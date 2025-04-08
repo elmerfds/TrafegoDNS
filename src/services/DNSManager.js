@@ -175,25 +175,33 @@ class DNSManager {
         
         // Track all created/updated records
         if (results && results.length > 0) {
+          logger.debug(`Processing ${results.length} results for tracking`);
           for (const record of results) {
             // Only track records that have an ID (successfully created/updated)
             if (record && record.id) {
+              logger.debug(`Tracking record: ${record.name} (ID: ${record.id})`);
+              
               // Check if this is a new record or just an update
               const isTracked = this.recordTracker.isTracked(record);
               
               if (isTracked) {
                 // Update the tracked record with the latest ID
+                logger.debug(`Updating existing tracked record: ${record.name}`);
                 this.recordTracker.updateRecordId(record, record);
               } else {
                 // Track new record
+                logger.debug(`Tracking new record: ${record.name}`);
                 this.recordTracker.trackRecord(record);
               }
+            } else {
+              logger.debug(`Skipping tracking for record without ID: ${record?.name || 'unknown'}`);
             }
           }
         }
         
         // Persist tunnel hostname tracking if needed
         if (this.config.dnsProvider === 'cfzerotrust' && results && results.length > 0) {
+          logger.debug(`Persisting ${results.length} tunnel hostnames for tracking`);
           this.persistTunnelHostnameTracking(results);
         }
       }
