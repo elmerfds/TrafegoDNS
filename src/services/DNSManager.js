@@ -156,11 +156,26 @@ class DNSManager {
       // Batch process all DNS records
       if (dnsRecordConfigs.length > 0) {
         logger.debug(`Batch processing ${dnsRecordConfigs.length} DNS record configurations`);
-        const processedRecords = await this.dnsProvider.batchEnsureRecords(dnsRecordConfigs);
+        
+        // Setup global counter for provider to update
+        global.statsCounter = { created: 0, updated: 0, upToDate: 0, errors: 0 };
+        
+        const results = await this.dnsProvider.batchEnsureRecords(dnsRecordConfigs);
+        
+        // Update stats from global counter
+        if (global.statsCounter) {
+          this.stats.created += global.statsCounter.created || 0;
+          this.stats.updated += global.statsCounter.updated || 0;
+          this.stats.upToDate += global.statsCounter.upToDate || 0;
+          this.stats.errors += global.statsCounter.errors || 0;
+          
+          // Clean up global counter
+          global.statsCounter = null;
+        }
         
         // Track all created/updated records
-        if (processedRecords && processedRecords.length > 0) {
-          for (const record of processedRecords) {
+        if (results && results.length > 0) {
+          for (const record of results) {
             // Only track records that have an ID (successfully created/updated)
             if (record && record.id) {
               // Check if this is a new record or just an update
@@ -175,6 +190,11 @@ class DNSManager {
               }
             }
           }
+        }
+        
+        // Persist tunnel hostname tracking if needed
+        if (this.config.dnsProvider === 'cfzerotrust' && results && results.length > 0) {
+          this.persistTunnelHostnameTracking(results);
         }
       }
       
@@ -281,6 +301,36 @@ class DNSManager {
   }
   
   /**
+   * Process results from provider operations and persist tracking
+   * This is primarily used for cfzerotrust provider but the method
+   * is designed to be safe for all providers
+   * @param {Array} results - Results from provider operations
+   */
+  persistTunnelHostnameTracking(results) {
+    // Only process for cfzerotrust provider
+    if (this.config.dnsProvider !== 'cfzerotrust') {
+      return;
+    }
+    
+    // Skip if no results
+    if (!results || !Array.isArray(results) || results.length === 0) {
+      return;
+    }
+    
+    logger.debug(`Persisting tracking for ${results.length} tunnel hostnames`);
+    
+    // Process each record and persist tracking
+    for (const record of results) {
+      if (record && record.name) {
+        // Check if the provider has the trackCreatedHostname method
+        if (typeof this.dnsProvider.trackCreatedHostname === 'function') {
+          this.dnsProvider.trackCreatedHostname(record.name, record, this.recordTracker);
+        }
+      }
+    }
+  }
+  
+  /**
    * Clean up orphaned DNS records
    */
   async cleanupOrphanedRecords(activeHostnames) {
@@ -295,38 +345,63 @@ class DNSManager {
           // Get all active hostnames that should be preserved
           const normalizedActiveHostnames = new Set(activeHostnames.map(host => host.toLowerCase()));
           
-          // Get all tracked records for the cfzerotrust provider
-          const allTrackedRecords = this.recordTracker.getAllTrackedRecords();
-          const cfzerotrustRecords = allTrackedRecords.filter(record => 
-            record.provider === 'cfzerotrust'
-          );
+          // Get all tracked records for the cfzerotrust provider from RecordTracker
+          let orphanedTunnelHostnames = [];
           
-          // Find orphaned tunnel hostnames
-          const orphanedTunnelHostnames = [];
-          
-          for (const record of cfzerotrustRecords) {
-            const hostname = record.name;
+          try {
+            // Try to get tracked records from persistent storage
+            const allTrackedRecords = this.recordTracker.getAllTrackedRecords();
+            const cfzerotrustRecords = allTrackedRecords.filter(record => 
+              record.provider === 'cfzerotrust'
+            );
             
-            // Skip if hostname is in active list or should be preserved
-            if (normalizedActiveHostnames.has(hostname.toLowerCase()) || this.recordTracker.shouldPreserveHostname(hostname)) {
-              continue;
-            }
-            
-            // Skip if hostname is in manually managed hostnames
-            if (this.recordTracker.managedHostnames && 
-                this.recordTracker.managedHostnames.some(h => h.hostname.toLowerCase() === hostname.toLowerCase())) {
-              continue;
-            }
-            
-            // This is an orphaned hostname
-            logger.debug(`Found orphaned tunnel hostname: ${hostname} (tunnel: ${record.tunnelId})`);
-            orphanedTunnelHostnames.push({
-              hostname,
-              info: {
-                tunnelId: record.tunnelId,
-                id: record.id
+            // Find orphaned tunnel hostnames
+            for (const record of cfzerotrustRecords) {
+              const hostname = record.name;
+              
+              // Skip if hostname is in active list or should be preserved
+              if (normalizedActiveHostnames.has(hostname.toLowerCase()) || this.recordTracker.shouldPreserveHostname(hostname)) {
+                continue;
               }
-            });
+              
+              // Skip if hostname is in manually managed hostnames
+              if (this.recordTracker.managedHostnames && 
+                  this.recordTracker.managedHostnames.some(h => h.hostname.toLowerCase() === hostname.toLowerCase())) {
+                continue;
+              }
+              
+              // This is an orphaned hostname
+              logger.debug(`Found orphaned tunnel hostname in persistent storage: ${hostname} (tunnel: ${record.tunnelId})`);
+              orphanedTunnelHostnames.push({
+                hostname,
+                info: {
+                  tunnelId: record.tunnelId,
+                  id: record.id
+                }
+              });
+            }
+          } catch (error) {
+            logger.warn(`Error accessing persistent tracking, falling back to in-memory tracking: ${error.message}`);
+            
+            // Fall back to in-memory tracking
+            if (global.tunnelHostnames) {
+              for (const [hostname, info] of global.tunnelHostnames.entries()) {
+                // Skip if hostname is in active list or should be preserved
+                if (normalizedActiveHostnames.has(hostname.toLowerCase()) || this.recordTracker.shouldPreserveHostname(hostname)) {
+                  continue;
+                }
+                
+                // Skip if hostname is in manually managed hostnames
+                if (this.recordTracker.managedHostnames && 
+                    this.recordTracker.managedHostnames.some(h => h.hostname.toLowerCase() === hostname.toLowerCase())) {
+                  continue;
+                }
+                
+                // This is an orphaned hostname
+                logger.debug(`Found orphaned tunnel hostname in memory: ${hostname} (tunnel: ${info.tunnelId})`);
+                orphanedTunnelHostnames.push({ hostname, info });
+              }
+            }
           }
           
           // Delete orphaned tunnel hostnames
@@ -338,6 +413,11 @@ class DNSManager {
               
               try {
                 await this.dnsProvider.deleteRecord(info.id);
+                
+                // Check if the provider has removeTrackedHostname method
+                if (typeof this.dnsProvider.removeTrackedHostname === 'function') {
+                  this.dnsProvider.removeTrackedHostname(hostname, this.recordTracker);
+                }
                 
                 // Publish delete event
                 this.eventBus.publish(EventTypes.DNS_RECORD_DELETED, {
@@ -578,6 +658,11 @@ class DNSManager {
                 this.recordTracker.trackRecord(record);
               }
             }
+          }
+          
+          // Persist tunnel hostname tracking if needed for cfzerotrust provider
+          if (this.config.dnsProvider === 'cfzerotrust') {
+            this.persistTunnelHostnameTracking(processedRecords);
           }
         }
         
