@@ -79,12 +79,31 @@ class TraefikMonitor {
   setupEventSubscriptions() {
     // Subscribe to Docker label updates
     this.eventBus.subscribe(EventTypes.DOCKER_LABELS_UPDATED, (data) => {
-      const { containerLabelsCache, containerIdToName } = data;
+      const { containerLabelsCache, containerIdToName, containerRemoved } = data;
       
       // Update our cache of Docker labels
       this.lastDockerLabels = containerLabelsCache || {};
       this.lastContainerIdToName = containerIdToName || new Map();
+      
       logger.debug('Updated Docker container labels cache in TraefikMonitor');
+      
+      // If this was triggered by a container removal, we should trigger a poll to update hostnames
+      if (containerRemoved) {
+        logger.info('Container removed - triggering Traefik poll to update active hostnames');
+        // This will trigger a poll which will then run cleanup
+        this.pollTraefikAPI();
+      }
+    });
+    
+    // Add a direct subscription to container stop events
+    this.eventBus.subscribe(EventTypes.DOCKER_CONTAINER_STOPPED, (data) => {
+      const { containerName } = data;
+      logger.info(`Container stopped: ${containerName} - triggering Traefik poll in 3 seconds`);
+      
+      // Wait a moment for Traefik to update its routers
+      setTimeout(() => {
+        this.pollTraefikAPI();
+      }, 3000);
     });
   }
   
