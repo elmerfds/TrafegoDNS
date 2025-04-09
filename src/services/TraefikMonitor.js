@@ -97,12 +97,13 @@ class TraefikMonitor {
     
     // Add a direct subscription to container stop events
     this.eventBus.subscribe(EventTypes.DOCKER_CONTAINER_STOPPED, (data) => {
-      const { containerName, containerRemoved = true } = data;
-      logger.info(`Container stopped: ${containerName} - triggering Traefik poll in 3 seconds`);
+      const { containerName, containerRemoved = true, status } = data;
+      logger.info(`Container stopped: ${containerName} - status: ${status} - containerRemoved: ${containerRemoved} - triggering Traefik poll in 3 seconds`);
       
       // Wait a moment for Traefik to update its routers
       setTimeout(() => {
         // Pass the containerRemoved flag to indicate this poll was triggered by a container removal
+        logger.info(`Executing delayed poll for stopped container ${containerName} with containerRemoved=${containerRemoved}`);
         this.pollTraefikAPI(containerRemoved);
       }, 3000);
     });
@@ -164,7 +165,7 @@ class TraefikMonitor {
       // Publish poll started event
       this.eventBus.publish(EventTypes.TRAEFIK_POLL_STARTED);
       
-      logger.debug('Polling Traefik API for routers...');
+      logger.info(`Polling Traefik API for routers... containerRemoved=${containerRemoved}`);
       
       // Get all routers from Traefik
       const routers = await this.getRouters();
@@ -190,6 +191,7 @@ class TraefikMonitor {
       const mergedLabels = this.mergeContainerLabels(containerLabels, this.lastDockerLabels);
       
       // Publish router update event
+      logger.info(`Publishing TRAEFIK_ROUTERS_UPDATED event with containerRemoved=${containerRemoved}`);
       this.eventBus.publish(EventTypes.TRAEFIK_ROUTERS_UPDATED, {
         hostnames,
         containerLabels: mergedLabels,

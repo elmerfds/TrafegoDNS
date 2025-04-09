@@ -119,7 +119,11 @@ class DockerMonitor {
           ['start', 'stop', 'die', 'destroy'].includes(event.status)
         ) {
           const containerName = event.Actor.Attributes.name || 'unknown';
-          logger.debug(`Docker ${event.status} event detected for ${containerName}`);
+          logger.info(`Docker ${event.status} event detected for ${containerName}`);
+          
+          // Determine if this is a container removal event
+          const containerRemoved = event.status === 'stop' || event.status === 'die' || event.status === 'destroy';
+          logger.info(`Container ${containerName} ${event.status} event with containerRemoved=${containerRemoved}`);
           
           // Publish Docker event
           this.eventBus.publish(
@@ -130,7 +134,7 @@ class DockerMonitor {
               containerId: event.Actor.ID,
               containerName,
               status: event.status,
-              containerRemoved: event.status === 'stop' || event.status === 'die' || event.status === 'destroy'
+              containerRemoved: containerRemoved
             }
           );
           
