@@ -123,13 +123,14 @@ class DockerMonitor {
           
           // Publish Docker event
           this.eventBus.publish(
-            event.status === 'start' 
-              ? EventTypes.DOCKER_CONTAINER_STARTED 
+            event.status === 'start'
+              ? EventTypes.DOCKER_CONTAINER_STARTED
               : EventTypes.DOCKER_CONTAINER_STOPPED,
             {
               containerId: event.Actor.ID,
               containerName,
-              status: event.status
+              status: event.status,
+              containerRemoved: event.status === 'stop' || event.status === 'die' || event.status === 'destroy'
             }
           );
           

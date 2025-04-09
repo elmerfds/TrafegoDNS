@@ -97,12 +97,13 @@ class TraefikMonitor {
     
     // Add a direct subscription to container stop events
     this.eventBus.subscribe(EventTypes.DOCKER_CONTAINER_STOPPED, (data) => {
-      const { containerName } = data;
+      const { containerName, containerRemoved = true } = data;
       logger.info(`Container stopped: ${containerName} - triggering Traefik poll in 3 seconds`);
       
       // Wait a moment for Traefik to update its routers
       setTimeout(() => {
-        this.pollTraefikAPI();
+        // Pass the containerRemoved flag to indicate this poll was triggered by a container removal
+        this.pollTraefikAPI(containerRemoved);
       }, 3000);
     });
   }
@@ -149,7 +150,7 @@ class TraefikMonitor {
   /**
    * Poll the Traefik API for routers
    */
-  async pollTraefikAPI() {
+  async pollTraefikAPI(containerRemoved = false) {
     // Skip if already polling to prevent parallel execution
     if (this.isPolling) {
       logger.debug('Skipping poll - another poll cycle is already in progress');
@@ -191,7 +192,8 @@ class TraefikMonitor {
       // Publish router update event
       this.eventBus.publish(EventTypes.TRAEFIK_ROUTERS_UPDATED, {
         hostnames,
-        containerLabels: mergedLabels
+        containerLabels: mergedLabels,
+        containerRemoved: containerRemoved
       });
       
       // Publish poll completed event
