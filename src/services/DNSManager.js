@@ -354,163 +354,57 @@ class DNSManager {
         try {
           logger.debug('Checking for orphaned CloudFlare Zero Trust tunnel hostnames...');
           
+          // Get current hostnames directly from the tunnel API instead of relying solely on tracking
+          const tunnelId = this.config.cfzerotrustTunnelId;
+          logger.debug(`Getting current hostnames from tunnel ${tunnelId}...`);
+          const tunnelHostnames = await this.dnsProvider.getTunnelHostnames(tunnelId);
+          logger.debug(`Found ${tunnelHostnames.length} hostnames in tunnel ${tunnelId}`);
+          
           // Get all active hostnames that should be preserved
           const normalizedActiveHostnames = new Set(activeHostnames.map(host => host.toLowerCase()));
           logger.debug(`Normalized ${normalizedActiveHostnames.size} active hostnames for comparison`);
           
-          // Get all tracked records for the cfzerotrust provider
+          // Find orphaned tunnel hostnames
           let orphanedTunnelHostnames = [];
           
-          try {
-            // Try to get tracked records from persistent storage
-            const allTrackedRecords = this.recordTracker.getAllTrackedRecords();
-            const cfzerotrustRecords = allTrackedRecords.filter(record => 
-              record.provider === 'cfzerotrust'
-            );
+          // Check each tunnel hostname
+          for (const record of tunnelHostnames) {
+            const hostname = record.name;
+            const isActive = normalizedActiveHostnames.has(hostname.toLowerCase());
+            const shouldPreserve = this.recordTracker.shouldPreserveHostname(hostname);
             
-            // Enhanced logging to diagnose issues
-            logger.debug(`Found ${cfzerotrustRecords.length} cfzerotrust records in tracking`);
-            logger.debug(`Record details: ${JSON.stringify(cfzerotrustRecords.map(r => ({ name: r.name, id: r.id, tunnelId: r.tunnelId })))}`);
-            logger.debug(`Current active hostnames: ${Array.from(normalizedActiveHostnames).join(', ')}`);
-            logger.debug(`Orphaned detection starting...`);
+            logger.debug(`Checking ${hostname}: active=${isActive}, preserved=${shouldPreserve}`);
             
-            // Find orphaned tunnel hostnames - with more detailed debugging
-            for (const record of cfzerotrustRecords) {
-              const hostname = record.name;
-              const isActive = normalizedActiveHostnames.has(hostname.toLowerCase());
-              const shouldPreserve = this.recordTracker.shouldPreserveHostname(hostname);
-              const isManaged = this.recordTracker.managedHostnames && 
-                                this.recordTracker.managedHostnames.some(h => 
-                                  h.hostname.toLowerCase() === hostname.toLowerCase());
-              
-              logger.debug(`Checking record: ${hostname} - active: ${isActive}, preserved: ${shouldPreserve}, managed: ${isManaged}`);
-              
-              // Skip if hostname is in active list or should be preserved
-              if (isActive) {
-                logger.debug(`Skipping ${hostname} - it's in the active hostnames list`);
-                continue;
-              }
-              
-              if (shouldPreserve) {
-                logger.debug(`Skipping ${hostname} - it's in the preserved hostnames list`);
-                continue;
-              }
-              
-              // Skip if hostname is in manually managed hostnames
-              if (isManaged) {
-                logger.debug(`Skipping ${hostname} - it's a manually managed hostname`);
-                continue;
-              }
-              
-              // This is an orphaned hostname
-              logger.info(`Found orphaned tunnel hostname: ${hostname} (tunnel: ${record.tunnelId}, id: ${record.id})`);
-              orphanedTunnelHostnames.push({
-                hostname,
-                info: {
-                  tunnelId: record.tunnelId,
-                  id: record.id
-                }
-              });
+            // Skip if hostname is in active list or should be preserved
+            if (isActive || shouldPreserve) {
+              continue;
             }
-          } catch (error) {
-            logger.warn(`Error accessing persistent tracking, falling back to in-memory tracking: ${error.message}`);
             
-            // Fall back to in-memory tracking
-            if (global.tunnelHostnames) {
-              logger.debug(`Found ${global.tunnelHostnames.size} hostnames in in-memory tracking`);
-              
-              for (const [hostname, info] of global.tunnelHostnames.entries()) {
-                const isActive = normalizedActiveHostnames.has(hostname.toLowerCase());
-                const shouldPreserve = this.recordTracker.shouldPreserveHostname(hostname);
-                const isManaged = this.recordTracker.managedHostnames && 
-                                  this.recordTracker.managedHostnames.some(h => 
-                                    h.hostname.toLowerCase() === hostname.toLowerCase());
-                
-                logger.debug(`Checking in-memory hostname: ${hostname} - active: ${isActive}, preserved: ${shouldPreserve}, managed: ${isManaged}`);
-                
-                // Skip if hostname is in active list
-                if (isActive) {
-                  logger.debug(`Skipping ${hostname} - it's in the active hostnames list`);
-                  continue;
-                }
-                
-                // Skip if hostname should be preserved
-                if (shouldPreserve) {
-                  logger.debug(`Skipping ${hostname} - it's in the preserved hostnames list`);
-                  continue;
-                }
-                
-                // Skip if hostname is in manually managed hostnames
-                if (isManaged) {
-                  logger.debug(`Skipping ${hostname} - it's a manually managed hostname`);
-                  continue;
-                }
-                
-                // This is an orphaned hostname
-                logger.info(`Found orphaned tunnel hostname in memory: ${hostname} (tunnel: ${info.tunnelId}, id: ${info.id})`);
-                orphanedTunnelHostnames.push({ hostname, info });
-              }
-            } else {
-              logger.debug('No in-memory tunnel hostname tracking found');
+            // Skip if hostname is in manually managed hostnames
+            const isManaged = this.recordTracker.managedHostnames && 
+                             this.recordTracker.managedHostnames.some(h => 
+                               h.hostname.toLowerCase() === hostname.toLowerCase());
+            
+            if (isManaged) {
+              logger.debug(`Skipping managed hostname: ${hostname}`);
+              continue;
             }
+            
+            // This is an orphaned hostname
+            logger.info(`Found orphaned tunnel hostname: ${hostname} (tunnel: ${record.tunnelId}, id: ${record.id})`);
+            orphanedTunnelHostnames.push({
+              hostname,
+              info: {
+                tunnelId: record.tunnelId,
+                id: record.id
+              }
+            });
           }
           
-          // Delete orphaned tunnel hostnames - with additional checks
+          // Delete orphaned tunnel hostnames
           if (orphanedTunnelHostnames.length > 0) {
             logger.info(`Found ${orphanedTunnelHostnames.length} orphaned tunnel hostnames to clean up`);
             
-            // Enhanced verification of orphaned status by checking against Traefik directly
-            // This ensures we don't delete a hostname that's still active in Traefik
-            if (this.eventBus) {
-              try {
-                // Find routers from TraefikMonitor if available
-                const traefikMonitor = global.traefikMonitor || null;
-                if (traefikMonitor && traefikMonitor.getRouters) {
-                  logger.debug('Double-checking orphaned status against Traefik routers');
-                  const routers = await traefikMonitor.getRouters();
-                  
-                  // Extract hostnames from routers
-                  const traefikHostnames = new Set();
-                  for (const [_, router] of Object.entries(routers)) {
-                    if (router.rule && router.rule.includes('Host')) {
-                      // Extract hostnames from the rule using the helper function
-                      const extractHostnamesFromRule = (rule) => {
-                        const matches = [];
-                        let match;
-                        const regex = /Host\(`([^`]+)`\)/g;
-                        while ((match = regex.exec(rule)) !== null) {
-                          matches.push(match[1]);
-                        }
-                        return matches;
-                      };
-                      
-                      const routerHostnames = extractHostnamesFromRule(router.rule);
-                      for (const hostname of routerHostnames) {
-                        traefikHostnames.add(hostname.toLowerCase());
-                      }
-                    }
-                  }
-                  
-                  logger.debug(`Found ${traefikHostnames.size} hostnames in Traefik routers`);
-                  
-                  // Filter orphaned hostnames again to make sure they're truly orphaned
-                  orphanedTunnelHostnames = orphanedTunnelHostnames.filter(({ hostname }) => {
-                    const isInTraefik = traefikHostnames.has(hostname.toLowerCase());
-                    if (isInTraefik) {
-                      logger.debug(`Hostname ${hostname} is still in Traefik routers, not cleaning up yet`);
-                      return false;
-                    }
-                    return true;
-                  });
-                  
-                  logger.info(`After verification, proceeding with ${orphanedTunnelHostnames.length} truly orphaned hostnames`);
-                }
-              } catch (verifyError) {
-                logger.warn(`Error verifying orphaned status: ${verifyError.message}`);
-              }
-            }
-            
-            // Now delete the truly orphaned hostnames
             for (const { hostname, info } of orphanedTunnelHostnames) {
               logger.info(`🗑️ Removing orphaned tunnel hostname: ${hostname} (tunnel: ${info.tunnelId}, id: ${info.id})`);
               
@@ -530,7 +424,7 @@ class DNSManager {
                 // Also remove from in-memory tracking
                 if (global.tunnelHostnames && global.tunnelHostnames.has(hostname)) {
                   global.tunnelHostnames.delete(hostname);
-                  logger.debug(`Removed hostname from in-memory tracking: ${hostname}`);
+                  logger.debug(`Removed tracked tunnel hostname from memory: ${hostname}`);
                 }
                 
                 // Publish delete event
