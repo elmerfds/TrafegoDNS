@@ -342,6 +342,8 @@ class DNSManager {
    * Clean up orphaned DNS records
    */
   async cleanupOrphanedRecords(activeHostnames) {
+    // Make sure activeHostnames is always an array
+    activeHostnames = Array.isArray(activeHostnames) ? activeHostnames : [];
     try {
       logger.debug(`Cleaning up orphaned records with ${activeHostnames.length} active hostnames`);
       logger.debug(`Active hostnames: ${activeHostnames.join(', ')}`);
@@ -368,7 +370,9 @@ class DNSManager {
             
             // Enhanced logging to diagnose issues
             logger.debug(`Found ${cfzerotrustRecords.length} cfzerotrust records in tracking`);
+            logger.debug(`Record details: ${JSON.stringify(cfzerotrustRecords.map(r => ({ name: r.name, id: r.id, tunnelId: r.tunnelId })))}`);
             logger.debug(`Current active hostnames: ${Array.from(normalizedActiveHostnames).join(', ')}`);
+            logger.debug(`Orphaned detection starting...`);
             
             // Find orphaned tunnel hostnames - with more detailed debugging
             for (const record of cfzerotrustRecords) {
@@ -399,7 +403,7 @@ class DNSManager {
               }
               
               // This is an orphaned hostname
-              logger.info(`Found orphaned tunnel hostname: ${hostname} (tunnel: ${record.tunnelId})`);
+              logger.info(`Found orphaned tunnel hostname: ${hostname} (tunnel: ${record.tunnelId}, id: ${record.id})`);
               orphanedTunnelHostnames.push({
                 hostname,
                 info: {
@@ -443,7 +447,7 @@ class DNSManager {
                 }
                 
                 // This is an orphaned hostname
-                logger.info(`Found orphaned tunnel hostname in memory: ${hostname} (tunnel: ${info.tunnelId})`);
+                logger.info(`Found orphaned tunnel hostname in memory: ${hostname} (tunnel: ${info.tunnelId}, id: ${info.id})`);
                 orphanedTunnelHostnames.push({ hostname, info });
               }
             } else {
@@ -508,14 +512,19 @@ class DNSManager {
             
             // Now delete the truly orphaned hostnames
             for (const { hostname, info } of orphanedTunnelHostnames) {
-              logger.info(`🗑️ Removing orphaned tunnel hostname: ${hostname} (tunnel: ${info.tunnelId})`);
+              logger.info(`🗑️ Removing orphaned tunnel hostname: ${hostname} (tunnel: ${info.tunnelId}, id: ${info.id})`);
               
               try {
-                await this.dnsProvider.deleteRecord(info.id);
+                // Add additional logging to track the delete operation
+                logger.debug(`Calling deleteRecord for ${hostname} with ID ${info.id}`);
+                const deleteResult = await this.dnsProvider.deleteRecord(info.id);
+                logger.debug(`deleteRecord result: ${deleteResult ? 'success' : 'failed'}`);
                 
                 // Check if the provider has removeTrackedHostname method
                 if (typeof this.dnsProvider.removeTrackedHostname === 'function') {
+                  logger.debug(`Removing ${hostname} from tracking`);
                   this.dnsProvider.removeTrackedHostname(hostname, this.recordTracker);
+                  logger.debug(`Removed ${hostname} from tracking successfully`);
                 }
                 
                 // Also remove from in-memory tracking

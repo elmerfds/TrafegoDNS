@@ -316,6 +316,7 @@ class CFZeroTrustProvider extends DNSProvider {
       }
       
       // Track the created hostname for cleanup later
+      // We'll store in memory now, it will be persisted when DNSManager processes results
       this.trackCreatedHostname(record.name, createdRecord);
       
       return createdRecord;
@@ -400,6 +401,7 @@ class CFZeroTrustProvider extends DNSProvider {
       }
       
       // Track the updated hostname for cleanup later
+      // We'll store in memory now, it will be persisted when DNSManager processes results
       this.trackCreatedHostname(hostname, updatedRecord);
       
       return updatedRecord;
