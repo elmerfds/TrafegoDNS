@@ -13,6 +13,9 @@ class EventBus {
     // Set higher limit for listeners to avoid warnings
     this.emitter.setMaxListeners(20);
     
+    // Store the last event of each type for reference
+    this.lastEvents = {};
+    
     // Track number of subscribers for debugging
     this.subscriberCounts = {};
     
@@ -56,12 +59,28 @@ class EventBus {
       logger.warn(`Publishing unknown event type: ${eventType}`);
     }
     
+    // Store the last event of this type
+    this.lastEvents[eventType] = {
+      type: eventType,
+      data: data,
+      timestamp: Date.now()
+    };
+    
     if (this.subscriberCounts[eventType] && this.subscriberCounts[eventType] > 0) {
       logger.debug(`Publishing event ${eventType} to ${this.subscriberCounts[eventType]} subscribers`);
       this.emitter.emit(eventType, data);
     } else {
       logger.debug(`No subscribers for event ${eventType}`);
     }
+  }
+  
+  /**
+   * Get the last event of a specific type
+   * @param {string} eventType - Event type from EventTypes
+   * @returns {Object|null} - The last event or null if none exists
+   */
+  getLastEvent(eventType) {
+    return this.lastEvents[eventType] || null;
   }
   
   /**

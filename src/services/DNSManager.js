@@ -63,7 +63,37 @@ class DNSManager {
     // Subscribe to Traefik router updates
     this.eventBus.subscribe(EventTypes.TRAEFIK_ROUTERS_UPDATED, async (data) => {
       const { hostnames, containerLabels, containerRemoved = false } = data;
+      logger.info(`Received TRAEFIK_ROUTERS_UPDATED event with containerRemoved=${containerRemoved}`);
       await this.processHostnames(hostnames, containerLabels, containerRemoved);
+    });
+    
+    // Direct subscription to container stop events for more reliable cleanup
+    this.eventBus.subscribe(EventTypes.DOCKER_CONTAINER_STOPPED, async (data) => {
+      const { containerName, status, containerRemoved = true } = data;
+      logger.info(`DNSManager: Received direct DOCKER_CONTAINER_STOPPED event for ${containerName} with status=${status}, containerRemoved=${containerRemoved}`);
+      
+      // Only proceed if we're using CloudFlare Zero Trust provider
+      if (this.config.dnsProvider !== 'cfzerotrust') {
+        logger.info('Not using CloudFlare Zero Trust provider, skipping direct cleanup');
+        return;
+      }
+      
+      // Wait a moment for Traefik to update its routers
+      setTimeout(async () => {
+        logger.info(`DNSManager: Executing delayed cleanup for stopped container ${containerName}`);
+        
+        try {
+          // Get current hostnames from Traefik via the last event
+          const lastEvent = this.eventBus.getLastEvent(EventTypes.TRAEFIK_ROUTERS_UPDATED);
+          const hostnames = lastEvent?.data?.hostnames || [];
+          
+          // Force cleanup regardless of config setting
+          logger.info(`DNSManager: Forcing cleanup for container ${containerName} with ${hostnames.length} active hostnames`);
+          await this.cleanupOrphanedRecords(hostnames);
+        } catch (error) {
+          logger.error(`Error in delayed cleanup for container ${containerName}: ${error.message}`);
+        }
+      }, 5000); // Wait 5 seconds, slightly longer than TraefikMonitor's 3 seconds
     });
   }
   
@@ -74,7 +104,7 @@ class DNSManager {
    */
   async processHostnames(hostnames, containerLabels, containerRemoved = false) {
     try {
-      logger.debug(`DNS Manager processing ${hostnames.length} hostnames`);
+      logger.info(`DNS Manager processing ${hostnames.length} hostnames with containerRemoved=${containerRemoved}`);
       
       // Reset statistics for this processing run
       this.resetStats();
@@ -210,9 +240,13 @@ class DNSManager {
       this.logStats();
       
       // Cleanup orphaned records if configured or if a container was removed
-      if ((this.config.cleanupOrphaned || containerRemoved) && processedHostnames.length > 0) {
+      logger.info(`Cleanup condition: cleanupOrphaned=${this.config.cleanupOrphaned}, containerRemoved=${containerRemoved}, processedHostnames.length=${processedHostnames.length}`);
+      // Always run cleanup if containerRemoved is true, regardless of processedHostnames.length
+      if (this.config.cleanupOrphaned || containerRemoved) {
         logger.info(`Cleaning up orphaned records${containerRemoved ? ' due to container removal' : ''}`);
         await this.cleanupOrphanedRecords(processedHostnames);
+      } else {
+        logger.info(`Skipping cleanup: cleanupOrphaned=${this.config.cleanupOrphaned}, containerRemoved=${containerRemoved}, processedHostnames.length=${processedHostnames.length}`);
       }
       
       // Publish event with results
@@ -346,14 +380,15 @@ class DNSManager {
     // Make sure activeHostnames is always an array
     activeHostnames = Array.isArray(activeHostnames) ? activeHostnames : [];
     try {
-      logger.debug(`Cleaning up orphaned records with ${activeHostnames.length} active hostnames`);
+      logger.info(`Cleaning up orphaned records with ${activeHostnames.length} active hostnames`);
       logger.debug(`Active hostnames: ${activeHostnames.join(', ')}`);
       logger.debug(`Cleanup orphaned setting: ${this.config.cleanupOrphaned}`);
       
       // Special handling for CloudFlare Zero Trust provider
       if (this.config.dnsProvider === 'cfzerotrust') {
+        logger.info('CloudFlare Zero Trust provider detected - running tunnel hostname cleanup');
         try {
-          logger.debug('Checking for orphaned CloudFlare Zero Trust tunnel hostnames...');
+          logger.info('Checking for orphaned CloudFlare Zero Trust tunnel hostnames...');
           
           // Get current hostnames directly from the tunnel API instead of relying solely on tracking
           const tunnelId = this.config.cfzerotrustTunnelId;
