@@ -165,7 +165,12 @@ class TraefikMonitor {
       // Publish poll started event
       this.eventBus.publish(EventTypes.TRAEFIK_POLL_STARTED);
       
-      logger.info(`Polling Traefik API for routers... containerRemoved=${containerRemoved}`);
+      // Only log at INFO level if this is a container removal
+      if (containerRemoved) {
+        logger.info(`Polling Traefik API for routers due to container removal`);
+      } else {
+        logger.debug(`Polling Traefik API for routers during regular polling`);
+      }
       
       // Get all routers from Traefik
       const routers = await this.getRouters();
@@ -191,7 +196,12 @@ class TraefikMonitor {
       const mergedLabels = this.mergeContainerLabels(containerLabels, this.lastDockerLabels);
       
       // Publish router update event
-      logger.info(`Publishing TRAEFIK_ROUTERS_UPDATED event with containerRemoved=${containerRemoved}`);
+      // Only log at INFO level if this is a container removal
+      if (containerRemoved) {
+        logger.info(`Publishing TRAEFIK_ROUTERS_UPDATED event for container removal`);
+      } else {
+        logger.debug(`Publishing TRAEFIK_ROUTERS_UPDATED event for regular polling`);
+      }
       this.eventBus.publish(EventTypes.TRAEFIK_ROUTERS_UPDATED, {
         hostnames,
         containerLabels: mergedLabels,
