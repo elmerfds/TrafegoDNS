@@ -62,8 +62,8 @@ class DNSManager {
   setupEventSubscriptions() {
     // Subscribe to Traefik router updates
     this.eventBus.subscribe(EventTypes.TRAEFIK_ROUTERS_UPDATED, async (data) => {
-      const { hostnames, containerLabels } = data;
-      await this.processHostnames(hostnames, containerLabels);
+      const { hostnames, containerLabels, containerRemoved = false } = data;
+      await this.processHostnames(hostnames, containerLabels, containerRemoved);
     });
   }
   
@@ -72,7 +72,7 @@ class DNSManager {
    * @param {Array<string>} hostnames - List of hostnames to process
    * @param {Object} containerLabels - Map of container IDs to their labels
    */
-  async processHostnames(hostnames, containerLabels) {
+  async processHostnames(hostnames, containerLabels, containerRemoved = false) {
     try {
       logger.debug(`DNS Manager processing ${hostnames.length} hostnames`);
       
@@ -209,8 +209,9 @@ class DNSManager {
       // Log summary stats if we have records
       this.logStats();
       
-      // Cleanup orphaned records if configured
-      if (this.config.cleanupOrphaned && processedHostnames.length > 0) {
+      // Cleanup orphaned records if configured or if a container was removed
+      if ((this.config.cleanupOrphaned || containerRemoved) && processedHostnames.length > 0) {
+        logger.info(`Cleaning up orphaned records${containerRemoved ? ' due to container removal' : ''}`);
         await this.cleanupOrphanedRecords(processedHostnames);
       }
       
