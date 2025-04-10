@@ -582,7 +582,7 @@ class DNSManager {
             // Only log this message once at the end of the cleanup process
             if (successfulDeletions > 0) {
               // Log at INFO level but only once at the end
-              logger.success(`Removed ${successfulDeletions} orphaned tunnel hostnames`);
+              logger.success(`Removed ${successfulDeletions} orphaned tunnel hostname${successfulDeletions > 1 ? 's' : ''}`);
             }
           } else {
             logger.debug('No orphaned tunnel hostnames found');
