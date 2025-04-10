@@ -98,12 +98,12 @@ class TraefikMonitor {
     // Add a direct subscription to container stop events
     this.eventBus.subscribe(EventTypes.DOCKER_CONTAINER_STOPPED, (data) => {
       const { containerName, containerRemoved = true, status } = data;
-      logger.info(`Container stopped: ${containerName} - status: ${status} - containerRemoved: ${containerRemoved} - triggering Traefik poll in 3 seconds`);
+      logger.debug(`Container stopped: ${containerName} - status: ${status} - containerRemoved: ${containerRemoved} - triggering Traefik poll in 3 seconds`);
       
       // Wait a moment for Traefik to update its routers
       setTimeout(() => {
         // Pass the containerRemoved flag to indicate this poll was triggered by a container removal
-        logger.info(`Executing delayed poll for stopped container ${containerName} with containerRemoved=${containerRemoved}`);
+        logger.debug(`Executing delayed poll for stopped container ${containerName} with containerRemoved=${containerRemoved}`);
         this.pollTraefikAPI(containerRemoved);
       }, 3000);
     });

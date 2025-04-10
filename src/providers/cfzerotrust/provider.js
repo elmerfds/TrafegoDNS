@@ -440,7 +440,7 @@ class CFZeroTrustProvider extends DNSProvider {
       const existingIndex = ingress.findIndex(rule => rule.hostname === hostname);
       
       if (existingIndex < 0) {
-        logger.warn(`Hostname ${hostname} not found in tunnel ${tunnelId} configuration, nothing to delete`);
+        logger.debug(`Hostname ${hostname} not found in tunnel ${tunnelId} configuration, nothing to delete`);
         return true; // Nothing to delete, but not an error
       }
       
