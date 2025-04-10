@@ -13,6 +13,8 @@ class DNSManager {
   static recentlyDeletedHostnames = new Set();
   // Track cleanup operations with container context
   static recentCleanupOperations = new Map();
+  // Track which hostname sets have been reported
+  static reportedCleanupSets = new Map();
   
   constructor(config, eventBus) {
     this.config = config;
@@ -586,24 +588,47 @@ class DNSManager {
             
             // Only log this message once at the end of the cleanup process
             if (successfulDeletions > 0) {
-              // Create unique identifier for this cleanup operation
-              const cleanupContext = this.currentCleanupContext || 'unknown';
-              const cleanupKey = `${cleanupContext}:${Date.now()}`;
+              // Create a list of the hostnames that were deleted
+              const deletedHostnames = orphanedTunnelHostnames
+                .filter(item => item.hostname)
+                .map(item => item.hostname)
+                .slice(0, successfulDeletions); // Only include ones that were successfully deleted
               
-              // Check if we've already logged a message for this exact cleanup operation
-              if (!DNSManager.recentCleanupOperations.has(cleanupKey)) {
+              // Create a unique key based on the sorted hostnames
+              const hostnamesKey = deletedHostnames.sort().join(',');
+              const now = Date.now();
+              
+              // Only log if we haven't reported this exact set of hostnames recently
+              if (!DNSManager.reportedCleanupSets.has(hostnamesKey) || 
+                  (now - DNSManager.reportedCleanupSets.get(hostnamesKey)) > 5000) {
+                  
+                // Include hostname in message for single deletions
+                let message = '';
+                if (successfulDeletions === 1) {
+                  message = `Removed 1 orphaned tunnel hostname: ${deletedHostnames[0]}`;
+                } else {
+                  // For multiple, show count and first couple of examples
+                  const displayNames = deletedHostnames.slice(0, 2);
+                  const remainingCount = successfulDeletions - displayNames.length;
+                  
+                  message = `Removed ${successfulDeletions} orphaned tunnel hostnames: ${displayNames.join(', ')}`;
+                  if (remainingCount > 0) {
+                    message += ` and ${remainingCount} more`;
+                  }
+                }
+                
                 // Log the success message
-                logger.success(`Removed ${successfulDeletions} orphaned tunnel hostname${successfulDeletions > 1 ? 's' : ''}`);
+                logger.success(message);
                 
-                // Remember this operation to avoid duplicates
-                DNSManager.recentCleanupOperations.set(cleanupKey, true);
+                // Mark these hostnames as reported
+                DNSManager.reportedCleanupSets.set(hostnamesKey, now);
                 
-                // Clean up old entries (keep for 10 seconds)
+                // Clean up old entries after 10 seconds
                 setTimeout(() => {
-                  DNSManager.recentCleanupOperations.delete(cleanupKey);
+                  DNSManager.reportedCleanupSets.delete(hostnamesKey);
                 }, 10000);
               } else {
-                logger.debug(`Skipping duplicate cleanup success message for context ${cleanupContext}`);
+                logger.debug(`Skipping duplicate cleanup report for: ${hostnamesKey}`);
               }
             }
           } else {

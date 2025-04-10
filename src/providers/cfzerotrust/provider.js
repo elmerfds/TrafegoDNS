@@ -306,7 +306,7 @@ class CFZeroTrustProvider extends DNSProvider {
       this.updateRecordInCache(createdRecord);
       
       // Log at INFO level which record was created
-      logger.info(`✨ Created tunnel hostname ${record.name} → ${record.content} (tunnel: ${tunnelId})`);
+      logger.info(`🚇 Created tunnel hostname ${record.name} → ${record.content} (tunnel: ${tunnelId})`);
       logger.success(`Created tunnel hostname ${record.name}`);
       
       // Update stats counter if available
