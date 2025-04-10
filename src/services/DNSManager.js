@@ -11,6 +11,8 @@ const RecordTracker = require('../utils/recordTracker');
 // Static property to track recently deleted hostnames across all instances
 class DNSManager {
   static recentlyDeletedHostnames = new Set();
+  // Track cleanup operations with container context
+  static recentCleanupOperations = new Map();
   
   constructor(config, eventBus) {
     this.config = config;
@@ -452,6 +454,9 @@ class DNSManager {
    * Clean up orphaned DNS records
    */
   async cleanupOrphanedRecords(activeHostnames) {
+    // Generate unique context for this cleanup operation
+    this.currentCleanupContext = `cleanup-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    
     // Make sure activeHostnames is always an array
     activeHostnames = Array.isArray(activeHostnames) ? activeHostnames : [];
     try {
@@ -581,8 +586,25 @@ class DNSManager {
             
             // Only log this message once at the end of the cleanup process
             if (successfulDeletions > 0) {
-              // Log at INFO level but only once at the end
-              logger.success(`Removed ${successfulDeletions} orphaned tunnel hostname${successfulDeletions > 1 ? 's' : ''}`);
+              // Create unique identifier for this cleanup operation
+              const cleanupContext = this.currentCleanupContext || 'unknown';
+              const cleanupKey = `${cleanupContext}:${Date.now()}`;
+              
+              // Check if we've already logged a message for this exact cleanup operation
+              if (!DNSManager.recentCleanupOperations.has(cleanupKey)) {
+                // Log the success message
+                logger.success(`Removed ${successfulDeletions} orphaned tunnel hostname${successfulDeletions > 1 ? 's' : ''}`);
+                
+                // Remember this operation to avoid duplicates
+                DNSManager.recentCleanupOperations.set(cleanupKey, true);
+                
+                // Clean up old entries (keep for 10 seconds)
+                setTimeout(() => {
+                  DNSManager.recentCleanupOperations.delete(cleanupKey);
+                }, 10000);
+              } else {
+                logger.debug(`Skipping duplicate cleanup success message for context ${cleanupContext}`);
+              }
             }
           } else {
             logger.debug('No orphaned tunnel hostnames found');
