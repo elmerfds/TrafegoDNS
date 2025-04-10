@@ -119,11 +119,16 @@ class DockerMonitor {
           ['start', 'stop', 'die', 'destroy'].includes(event.status)
         ) {
           const containerName = event.Actor.Attributes.name || 'unknown';
-          logger.info(`Docker ${event.status} event detected for ${containerName}`);
+          // Only log container start events at INFO level, others at DEBUG
+          if (event.status === 'start') {
+            logger.info(`Docker ${event.status} event detected for ${containerName}`);
+          } else {
+            logger.debug(`Docker ${event.status} event detected for ${containerName}`);
+          }
           
           // Determine if this is a container removal event
           const containerRemoved = event.status === 'stop' || event.status === 'die' || event.status === 'destroy';
-          logger.info(`Container ${containerName} ${event.status} event with containerRemoved=${containerRemoved}`);
+          logger.debug(`Container ${containerName} ${event.status} event with containerRemoved=${containerRemoved}`);
           
           // Publish Docker event
           this.eventBus.publish(
@@ -317,7 +322,7 @@ class DockerMonitor {
           const oldName = this.containerIdToName.get(id);
           const displayId = oldName || id;
           
-          logger.info(`Container ${displayId} with DNS labels was removed`);
+          logger.debug(`Container ${displayId} with DNS labels was removed`);
           // Only add to changes if we don't already have a matching name
           const name = [...previousNames].find(name => 
             this.containerLabelsCache[name] === prevLabels
@@ -339,7 +344,7 @@ class DockerMonitor {
         );
         
         if (hasDnsLabels) {
-          logger.info(`Container ${name} with DNS labels was removed`);
+          logger.debug(`Container ${name} with DNS labels was removed`);
           dnsLabelChanges[name] = true;
         }
       }

@@ -101,7 +101,7 @@ class DNSManager {
         this.recentlyCleanedContainers.delete(containerName);
       }, 10000);
       
-      logger.info(`DNSManager: Processing container stop event for ${containerName} with status=${status}`);
+      logger.debug(`DNSManager: Processing container stop event for ${containerName} with status=${status}`);
       
       // Wait a moment for Traefik to update its routers
       setTimeout(async () => {
@@ -113,7 +113,7 @@ class DNSManager {
           const hostnames = lastEvent?.data?.hostnames || [];
           
           // Force cleanup regardless of config setting
-          logger.info(`Forcing cleanup for stopped container ${containerName}`);
+          logger.debug(`Forcing cleanup for stopped container ${containerName}`);
           await this.cleanupOrphanedRecords(hostnames);
         } catch (error) {
           logger.error(`Error in delayed cleanup for container ${containerName}: ${error.message}`);
@@ -481,7 +481,8 @@ class DNSManager {
           
           // Delete orphaned tunnel hostnames
           if (orphanedTunnelHostnames.length > 0) {
-            logger.info(`Found ${orphanedTunnelHostnames.length} orphaned tunnel hostnames to clean up`);
+            // Only log once at the beginning of the cleanup process
+            logger.debug(`Found ${orphanedTunnelHostnames.length} orphaned tunnel hostnames to clean up`);
             
             for (const { hostname, info } of orphanedTunnelHostnames) {
               // Only log at INFO level for the actual deletion
