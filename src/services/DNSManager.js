@@ -8,7 +8,10 @@ const EventTypes = require('../events/EventTypes');
 const { extractDnsConfigFromLabels } = require('../utils/dns');
 const RecordTracker = require('../utils/recordTracker');
 
+// Static property to track recently deleted hostnames across all instances
 class DNSManager {
+  static recentlyDeletedHostnames = new Set();
+  
   constructor(config, eventBus) {
     this.config = config;
     this.eventBus = eventBus;
@@ -418,6 +421,7 @@ class DNSManager {
       // Special handling for CloudFlare Zero Trust provider
       if (this.config.dnsProvider === 'cfzerotrust') {
         logger.debug('CloudFlare Zero Trust provider detected - running tunnel hostname cleanup');
+        
         try {
           logger.debug('Checking for orphaned CloudFlare Zero Trust tunnel hostnames...');
           
@@ -458,8 +462,14 @@ class DNSManager {
               continue;
             }
             
-            // This is an orphaned hostname
-            logger.info(`Found orphaned tunnel hostname: ${hostname} (tunnel: ${record.tunnelId}, id: ${record.id})`);
+            // Check if this hostname has already been processed recently
+            if (DNSManager.recentlyDeletedHostnames.has(hostname)) {
+              logger.debug(`Skipping recently processed hostname: ${hostname}`);
+              continue;
+            }
+            
+            // This is an orphaned hostname - log at debug level to reduce noise
+            logger.debug(`Found orphaned tunnel hostname: ${hostname} (tunnel: ${record.tunnelId}, id: ${record.id})`);
             orphanedTunnelHostnames.push({
               hostname,
               info: {
@@ -474,13 +484,23 @@ class DNSManager {
             logger.info(`Found ${orphanedTunnelHostnames.length} orphaned tunnel hostnames to clean up`);
             
             for (const { hostname, info } of orphanedTunnelHostnames) {
-              logger.info(`🗑️ Removing orphaned tunnel hostname: ${hostname} (tunnel: ${info.tunnelId}, id: ${info.id})`);
+              // Only log at INFO level for the actual deletion
+              logger.debug(`Preparing to remove orphaned tunnel hostname: ${hostname} (tunnel: ${info.tunnelId}, id: ${info.id})`);
               
               try {
                 // Add additional logging to track the delete operation
                 logger.debug(`Calling deleteRecord for ${hostname} with ID ${info.id}`);
                 const deleteResult = await this.dnsProvider.deleteRecord(info.id);
+                // Log the actual deletion at INFO level
+                logger.info(`🗑️ Deleted tunnel hostname: ${hostname} (tunnel: ${info.tunnelId})`);
                 logger.debug(`deleteRecord result: ${deleteResult ? 'success' : 'failed'}`);
+                
+                // Add to recently deleted set with 10-second expiry
+                DNSManager.recentlyDeletedHostnames.add(hostname);
+                setTimeout(() => {
+                  DNSManager.recentlyDeletedHostnames.delete(hostname);
+                  logger.debug(`Removed ${hostname} from recently deleted tracking`);
+                }, 10000);
                 
                 // Check if the provider has removeTrackedHostname method
                 if (typeof this.dnsProvider.removeTrackedHostname === 'function') {
