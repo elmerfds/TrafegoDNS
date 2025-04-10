@@ -484,8 +484,11 @@ class DNSManager {
             // Only log once at the beginning of the cleanup process
             logger.debug(`Found ${orphanedTunnelHostnames.length} orphaned tunnel hostnames to clean up`);
             
+            // Track successful deletions for summary
+            let successfulDeletions = 0;
+            
             for (const { hostname, info } of orphanedTunnelHostnames) {
-              // Only log at INFO level for the actual deletion
+              // Only log at DEBUG level for the preparation
               logger.debug(`Preparing to remove orphaned tunnel hostname: ${hostname} (tunnel: ${info.tunnelId}, id: ${info.id})`);
               
               try {
@@ -500,6 +503,11 @@ class DNSManager {
                   logger.debug(`🗑️ Deleted tunnel hostname: ${hostname} (tunnel: ${info.tunnelId})`);
                 }
                 logger.debug(`deleteRecord result: ${deleteResult ? 'success' : 'failed'}`);
+                
+                // Count successful deletions
+                if (deleteResult) {
+                  successfulDeletions++;
+                }
                 
                 // Add to recently deleted set with 10-second expiry
                 DNSManager.recentlyDeletedHostnames.add(hostname);
@@ -531,7 +539,11 @@ class DNSManager {
               }
             }
             
-            logger.success(`Removed ${orphanedTunnelHostnames.length} orphaned tunnel hostnames`);
+            // Only log this message once at the end of the cleanup process
+            if (successfulDeletions > 0) {
+              // Log at INFO level but only once at the end
+              logger.success(`Removed ${successfulDeletions} orphaned tunnel hostnames`);
+            }
           } else {
             logger.debug('No orphaned tunnel hostnames found');
           }
