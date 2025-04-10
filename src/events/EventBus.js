@@ -66,11 +66,23 @@ class EventBus {
       timestamp: Date.now()
     };
     
+    // Only log at DEBUG level, and for container removal events, use TRACE level to reduce noise
+    const containerRemoved = data.containerRemoved === true;
+    const logLevel = containerRemoved ? 'trace' : 'debug';
+    
     if (this.subscriberCounts[eventType] && this.subscriberCounts[eventType] > 0) {
-      logger.debug(`Publishing event ${eventType} to ${this.subscriberCounts[eventType]} subscribers`);
+      if (logLevel === 'trace') {
+        logger.trace(`Publishing event ${eventType} to ${this.subscriberCounts[eventType]} subscribers`);
+      } else {
+        logger.debug(`Publishing event ${eventType} to ${this.subscriberCounts[eventType]} subscribers`);
+      }
       this.emitter.emit(eventType, data);
     } else {
-      logger.debug(`No subscribers for event ${eventType}`);
+      if (logLevel === 'trace') {
+        logger.trace(`No subscribers for event ${eventType}`);
+      } else {
+        logger.debug(`No subscribers for event ${eventType}`);
+      }
     }
   }
   
