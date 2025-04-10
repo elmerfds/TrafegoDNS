@@ -166,11 +166,11 @@ class TraefikMonitor {
       this.eventBus.publish(EventTypes.TRAEFIK_POLL_STARTED);
       
       // Always log at debug level
-      // Only log at INFO level during regular polling, use DEBUG for container removal events
+      // Use DEBUG level for all polling operations to reduce noise
       if (containerRemoved) {
         logger.debug(`Polling Traefik API for routers due to container removal`);
       } else {
-        logger.info(`Polling Traefik API for routers`);
+        logger.debug(`Polling Traefik API for routers during regular polling`);
       }
       
       // Get all routers from Traefik
