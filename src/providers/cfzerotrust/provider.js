@@ -474,7 +474,8 @@ class CFZeroTrustProvider extends DNSProvider {
       this.removeTrackedHostname(hostname);
       
       // Log at INFO level
-      logger.info(`🗑️ Deleted tunnel hostname: ${hostname} (tunnel: ${tunnelId})`);
+      // Log at DEBUG level to reduce noise during cleanup operations
+      logger.debug(`🗑️ Deleted tunnel hostname: ${hostname} (tunnel: ${tunnelId})`);
       logger.debug(`Deleted tunnel hostname with ID ${id}`);
       
       return true;

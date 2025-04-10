@@ -66,11 +66,11 @@ class DNSManager {
     // Subscribe to Traefik router updates
     this.eventBus.subscribe(EventTypes.TRAEFIK_ROUTERS_UPDATED, async (data) => {
       const { hostnames, containerLabels, containerRemoved = false } = data;
-      // Only log at INFO level if this is a container removal
+      // Always log at debug level, especially for container removal events
       if (containerRemoved) {
-        logger.info(`Received TRAEFIK_ROUTERS_UPDATED event for container removal`);
+        logger.debug(`Received TRAEFIK_ROUTERS_UPDATED event for container removal`);
       } else {
-        logger.debug(`Received TRAEFIK_ROUTERS_UPDATED event for regular polling`);
+        logger.debug(`Received TRAEFIK_ROUTERS_UPDATED event`);
       }
       await this.processHostnames(hostnames, containerLabels, containerRemoved);
     });
@@ -129,11 +129,11 @@ class DNSManager {
    */
   async processHostnames(hostnames, containerLabels, containerRemoved = false) {
     try {
-      // Only log at INFO level if this is a container removal
+      // Always log at debug level
       if (containerRemoved) {
-        logger.info(`DNS Manager processing ${hostnames.length} hostnames for container removal`);
+        logger.debug(`DNS Manager processing ${hostnames.length} hostnames for container removal`);
       } else {
-        logger.debug(`DNS Manager processing ${hostnames.length} hostnames for regular polling`);
+        logger.info(`DNS Manager processing ${hostnames.length} hostnames for DNS management`);
       }
       
       // Reset statistics for this processing run
@@ -273,11 +273,11 @@ class DNSManager {
       logger.debug(`Cleanup condition: cleanupOrphaned=${this.config.cleanupOrphaned}, containerRemoved=${containerRemoved}, processedHostnames.length=${processedHostnames.length}`);
       // Always run cleanup if containerRemoved is true, regardless of processedHostnames.length
       if (this.config.cleanupOrphaned || containerRemoved) {
-        // Only log at INFO level if this is a container removal
+        // Always log at debug level
         if (containerRemoved) {
-          logger.info(`Cleaning up orphaned records due to container removal`);
+          logger.debug(`Cleaning up orphaned records due to container removal`);
         } else {
-          logger.debug(`Cleaning up orphaned records during regular polling`);
+          logger.info(`Cleaning up orphaned records`);
         }
         await this.cleanupOrphanedRecords(processedHostnames);
       } else {
@@ -415,7 +415,7 @@ class DNSManager {
     // Make sure activeHostnames is always an array
     activeHostnames = Array.isArray(activeHostnames) ? activeHostnames : [];
     try {
-      logger.debug(`Cleaning up orphaned records with ${activeHostnames.length} active hostnames`);
+      logger.trace(`Cleaning up orphaned records with ${activeHostnames.length} active hostnames`);
       logger.debug(`Active hostnames: ${activeHostnames.join(', ')}`);
       logger.debug(`Cleanup orphaned setting: ${this.config.cleanupOrphaned}`);
       // Special handling for CloudFlare Zero Trust provider
@@ -493,7 +493,12 @@ class DNSManager {
                 logger.debug(`Calling deleteRecord for ${hostname} with ID ${info.id}`);
                 const deleteResult = await this.dnsProvider.deleteRecord(info.id);
                 // Log the actual deletion at INFO level
-                logger.info(`🗑️ Deleted tunnel hostname: ${hostname} (tunnel: ${info.tunnelId})`);
+                // Only log the first deletion at INFO level, subsequent ones at DEBUG to reduce duplication
+                if (!DNSManager.recentlyDeletedHostnames.has(hostname)) {
+                  logger.info(`🗑️ Deleted tunnel hostname: ${hostname} (tunnel: ${info.tunnelId})`);
+                } else {
+                  logger.debug(`🗑️ Deleted tunnel hostname: ${hostname} (tunnel: ${info.tunnelId})`);
+                }
                 logger.debug(`deleteRecord result: ${deleteResult ? 'success' : 'failed'}`);
                 
                 // Add to recently deleted set with 10-second expiry
