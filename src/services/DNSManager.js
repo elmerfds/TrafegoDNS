@@ -130,11 +130,20 @@ class DNSManager {
   async processHostnames(hostnames, containerLabels, containerRemoved = false) {
     try {
       // Always log at debug level
+      // Track if there are any changes to report
+      const hasChanges = this.previousStats.hostnameCount !== hostnames.length;
+      
+      // Only log at INFO level if there are changes, otherwise use DEBUG
       if (containerRemoved) {
         logger.debug(`DNS Manager processing ${hostnames.length} hostnames for container removal`);
-      } else {
+      } else if (hasChanges) {
         logger.info(`DNS Manager processing ${hostnames.length} hostnames for DNS management`);
+      } else {
+        logger.debug(`DNS Manager processing ${hostnames.length} hostnames for DNS management (no changes)`);
       }
+      
+      // Update previous count for next comparison
+      this.previousStats.hostnameCount = hostnames.length;
       
       // Reset statistics for this processing run
       this.resetStats();
@@ -273,11 +282,42 @@ class DNSManager {
       logger.debug(`Cleanup condition: cleanupOrphaned=${this.config.cleanupOrphaned}, containerRemoved=${containerRemoved}, processedHostnames.length=${processedHostnames.length}`);
       // Always run cleanup if containerRemoved is true, regardless of processedHostnames.length
       if (this.config.cleanupOrphaned || containerRemoved) {
-        // Always log at debug level
+        // Track if we've found any orphaned records to clean up
+        let foundOrphaned = false;
+        
+        // For cfzerotrust provider, we need to check if there are orphaned tunnel hostnames
+        if (this.config.dnsProvider === 'cfzerotrust') {
+          try {
+            // Get current hostnames from the tunnel
+            const tunnelId = this.config.cfzerotrustTunnelId;
+            const tunnelHostnames = await this.dnsProvider.getTunnelHostnames(tunnelId);
+            
+            // Get all active hostnames that should be preserved
+            const normalizedActiveHostnames = new Set(activeHostnames.map(host => host.toLowerCase()));
+            
+            // Check if there are any orphaned hostnames
+            for (const record of tunnelHostnames) {
+              const hostname = record.name;
+              const isActive = normalizedActiveHostnames.has(hostname.toLowerCase());
+              const shouldPreserve = this.recordTracker.shouldPreserveHostname(hostname);
+              
+              if (!isActive && !shouldPreserve) {
+                foundOrphaned = true;
+                break;
+              }
+            }
+          } catch (error) {
+            logger.debug(`Error checking for orphaned tunnel hostnames: ${error.message}`);
+          }
+        }
+        
+        // Only log at INFO level if we're removing a container or if we found orphaned records
         if (containerRemoved) {
           logger.debug(`Cleaning up orphaned records due to container removal`);
-        } else {
+        } else if (foundOrphaned) {
           logger.info(`Cleaning up orphaned records`);
+        } else {
+          logger.debug(`Checking for orphaned records`);
         }
         await this.cleanupOrphanedRecords(processedHostnames);
       } else {
