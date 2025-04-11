@@ -106,10 +106,10 @@ class DirectDNSManager {
       const hasChanged = this.previousStats.hostnameCount !== hostnames.length;
       
       if (hasChanged) {
-        logger.info(`Processing ${hostnames.length} hostnames for DNS management`);
+        logger.debug(`DirectDNSManager processing ${hostnames.length} hostnames for DNS management`);
       } else {
-        // Log at debug level instead of info when nothing has changed
-        logger.debug(`Processing ${hostnames.length} hostnames for DNS management`);
+        // Log at trace level instead of info when nothing has changed
+        logger.trace(`DirectDNSManager processing ${hostnames.length} hostnames for DNS management`);
       }
       
       // Update the previous count for next comparison
