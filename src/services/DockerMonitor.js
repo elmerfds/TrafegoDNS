@@ -121,9 +121,9 @@ class DockerMonitor {
           const containerName = event.Actor.Attributes.name || 'unknown';
           // Only log container start events at INFO level, others at DEBUG
           if (event.status === 'start') {
-            logger.info(`Docker ${event.status} event detected for ${containerName}`);
-          } else {
             logger.debug(`Docker ${event.status} event detected for ${containerName}`);
+          } else {
+            logger.trace(`Docker ${event.status} event detected for ${containerName}`);
           }
           
           // Determine if this is a container removal event
