@@ -753,7 +753,7 @@ class CFZeroTrustProvider extends DNSProvider {
         for (const { record } of pendingChanges.create) {
           const created = updatedRecords.find(r => r.name === record.name);
           if (created) {
-            logger.info(`✨ Created tunnel hostname ${record.name} → ${record.content} (tunnel: ${tunnelId})`);
+            logger.info(`🚇 Created tunnel hostname ${record.name} → ${record.content} (tunnel: ${tunnelId})`);
             results.push(created);
             
             // Update stats counter
