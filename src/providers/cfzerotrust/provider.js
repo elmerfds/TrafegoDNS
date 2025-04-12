@@ -8,6 +8,9 @@ const logger = require('../../utils/logger');
 const { convertToCFZeroTrustFormat } = require('./converter');
 const { validateRecord } = require('./validator');
 
+// Global cache to prevent frequent updates to the same records
+const recentlyUpdatedRecords = new Map();
+
 class CFZeroTrustProvider extends DNSProvider {
   constructor(config) {
     super(config);
@@ -337,6 +340,9 @@ class CFZeroTrustProvider extends DNSProvider {
     const [tunnelId, hostname] = id.split(':');
     
     logger.trace(`CFZeroTrustProvider.updateRecord: Updating hostname=${hostname}, service=${record.content}, tunnelId=${tunnelId}`);
+    // Log the update operation
+    logger.debug(`Updating record ${hostname} → ${record.content}`);
+    
     
     try {
       // Validate the record first
@@ -394,6 +400,16 @@ class CFZeroTrustProvider extends DNSProvider {
       this.updateRecordInCache(updatedRecord);
       
       // Log at INFO level which record was updated
+      // Store in the global cache to prevent frequent updates
+      const cacheKey = `${tunnelId}:${hostname}:${record.content}`;
+      recentlyUpdatedRecords.set(cacheKey, Date.now());
+      
+      // Set a timeout to remove from cache after 5 minutes
+      setTimeout(() => {
+        recentlyUpdatedRecords.delete(cacheKey);
+        logger.debug(`Removed ${hostname} from update throttling cache`);
+      }, 5 * 60 * 1000);
+      
       // Only log at INFO level if this is a significant update (not just a timestamp refresh)
       if (global.statsCounter && global.statsCounter.updated > 0) {
         logger.info(`📝 Updated tunnel hostname ${hostname} → ${record.content} (tunnel: ${tunnelId})`);
@@ -618,17 +634,13 @@ class CFZeroTrustProvider extends DNSProvider {
         if (existing) {
           logger.trace(`CFZeroTrustProvider.processTunnelRecords: Found existing record hostname=${existing.name}`);
           
-          // Check if update is needed
-          const needsUpdate = this.recordNeedsUpdate(existing, recordConfig);
-          logger.trace(`CFZeroTrustProvider.processTunnelRecords: Record ${recordConfig.name} needs update: ${needsUpdate}`);
+          // Check if this record was recently updated (within the last 5 minutes)
+          const cacheKey = `${tunnelId}:${recordConfig.name}:${recordConfig.content}`;
+          const now = Date.now();
+          const recentUpdate = recentlyUpdatedRecords.get(cacheKey);
           
-          if (needsUpdate) {
-            pendingChanges.update.push({
-              id: existing.id,
-              record: recordConfig,
-              existing
-            });
-          } else {
+          if (recentUpdate && (now - recentUpdate) < 5 * 60 * 1000) {
+            logger.debug(`Skipping update for ${recordConfig.name} → ${recordConfig.content} (last updated ${Math.round((now - recentUpdate)/1000)}s ago)`);
             pendingChanges.unchanged.push({
               record: recordConfig,
               existing
@@ -638,6 +650,29 @@ class CFZeroTrustProvider extends DNSProvider {
             if (global.statsCounter) {
               global.statsCounter.upToDate++;
               logger.trace(`CFZeroTrustProvider.processTunnelRecords: Incremented global.statsCounter.upToDate to ${global.statsCounter.upToDate}`);
+            }
+          } else {
+            // Check if update is needed
+            const needsUpdate = this.recordNeedsUpdate(existing, recordConfig);
+            logger.trace(`CFZeroTrustProvider.processTunnelRecords: Record ${recordConfig.name} needs update: ${needsUpdate}`);
+            
+            if (needsUpdate) {
+              pendingChanges.update.push({
+                id: existing.id,
+                record: recordConfig,
+                existing
+              });
+            } else {
+              pendingChanges.unchanged.push({
+                record: recordConfig,
+                existing
+              });
+              
+              // Update stats counter if available
+              if (global.statsCounter) {
+                global.statsCounter.upToDate++;
+                logger.trace(`CFZeroTrustProvider.processTunnelRecords: Incremented global.statsCounter.upToDate to ${global.statsCounter.upToDate}`);
+              }
             }
           }
         } else {
@@ -840,16 +875,6 @@ class CFZeroTrustProvider extends DNSProvider {
         logger.debug(` - Service: ${existing.content} → ${newRecord.content}`);
       if (existingPath !== newPath)
         logger.debug(` - Path: ${existingPath} → ${newPath}`);
-    }
-    
-    // Add a timestamp check to prevent frequent updates to the same record
-    // If the record was updated in the last 5 minutes and nothing has changed, don't update it again
-    if (!needsUpdate && existing.lastUpdated) {
-      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-      if (existing.lastUpdated > fiveMinutesAgo) {
-        logger.debug(`Record ${newRecord.name} was updated recently (${new Date(existing.lastUpdated).toISOString()}), skipping update`);
-        return false;
-      }
     }
     
     logger.trace(`CFZeroTrustProvider.recordNeedsUpdate: Final result - needs update: ${needsUpdate}`);

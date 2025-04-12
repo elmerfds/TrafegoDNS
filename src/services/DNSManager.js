@@ -315,11 +315,11 @@ class DNSManager {
           }
         }
         
-        // Only log at INFO level if we're removing a container or if we found orphaned records
+        // Only log at DEBUG level to reduce noise
         if (containerRemoved) {
           logger.debug(`Cleaning up orphaned records due to container removal`);
         } else if (foundOrphaned) {
-          logger.info(`Cleaning up orphaned records`);
+          logger.debug(`Cleaning up orphaned records`);
         } else {
           logger.debug(`Checking for orphaned records`);
         }
@@ -542,13 +542,8 @@ class DNSManager {
                 // Add additional logging to track the delete operation
                 logger.debug(`Calling deleteRecord for ${hostname} with ID ${info.id}`);
                 const deleteResult = await this.dnsProvider.deleteRecord(info.id);
-                // Log the actual deletion at INFO level
-                // Only log the first deletion at INFO level, subsequent ones at DEBUG to reduce duplication
-                if (!DNSManager.recentlyDeletedHostnames.has(hostname)) {
-                  logger.info(`🗑️ Deleted tunnel hostname: ${hostname} (tunnel: ${info.tunnelId})`);
-                } else {
-                  logger.debug(`🗑️ Deleted tunnel hostname: ${hostname} (tunnel: ${info.tunnelId})`);
-                }
+                // Log all deletions at DEBUG level to reduce noise
+                logger.debug(`🗑️ Deleted tunnel hostname: ${hostname} (tunnel: ${info.tunnelId})`);
                 logger.debug(`deleteRecord result: ${deleteResult ? 'success' : 'failed'}`);
                 
                 // Count successful deletions
@@ -617,8 +612,18 @@ class DNSManager {
                   }
                 }
                 
-                // Log the success message
-                logger.success(message);
+                // Log the success message at INFO level only for the first time we see this set of hostnames
+                // or if it's been more than 30 seconds since we last reported it
+                const lastReported = DNSManager.reportedCleanupSets.get(hostnamesKey) || 0;
+                const timeSinceLastReport = now - lastReported;
+                
+                if (lastReported === 0 || timeSinceLastReport > 30000) {
+                  // First time seeing this set or it's been more than 30 seconds
+                  logger.success(message);
+                } else {
+                  // We've seen this set recently, log at debug level
+                  logger.debug(message);
+                }
                 
                 // Mark these hostnames as reported
                 DNSManager.reportedCleanupSets.set(hostnamesKey, now);
