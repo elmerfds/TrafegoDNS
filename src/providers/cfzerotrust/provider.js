@@ -156,7 +156,8 @@ class CFZeroTrustProvider extends DNSProvider {
           content: rule.service,
           path: rule.path || '',
           tunnelId: tunnelId,
-          config: { ...rule }  // Store the full configuration for reference
+          config: { ...rule },  // Store the full configuration for reference
+          lastUpdated: Date.now() // Add timestamp for when the record was retrieved
         }));
       
       logger.debug(`Found ${records.length} hostnames in tunnel ${tunnelId}`);
@@ -299,7 +300,8 @@ class CFZeroTrustProvider extends DNSProvider {
         content: record.content,
         path: record.path || '',
         tunnelId: tunnelId,
-        config: convertToCFZeroTrustFormat(record)
+        config: convertToCFZeroTrustFormat(record),
+        lastUpdated: Date.now() // Add timestamp for when the record was created
       };
       
       // Update the cache with the new record
@@ -384,15 +386,21 @@ class CFZeroTrustProvider extends DNSProvider {
         content: record.content,
         path: record.path || '',
         tunnelId: tunnelId,
-        config: convertToCFZeroTrustFormat(record)
+        config: convertToCFZeroTrustFormat(record),
+        lastUpdated: Date.now() // Add timestamp for when the record was last updated
       };
       
       // Update the cache
       this.updateRecordInCache(updatedRecord);
       
       // Log at INFO level which record was updated
-      logger.info(`📝 Updated tunnel hostname ${hostname} → ${record.content} (tunnel: ${tunnelId})`);
-      logger.success(`Updated tunnel hostname ${hostname}`);
+      // Only log at INFO level if this is a significant update (not just a timestamp refresh)
+      if (global.statsCounter && global.statsCounter.updated > 0) {
+        logger.info(`📝 Updated tunnel hostname ${hostname} → ${record.content} (tunnel: ${tunnelId})`);
+        logger.success(`Updated tunnel hostname ${hostname}`);
+      } else {
+        logger.debug(`📝 Refreshed tunnel hostname ${hostname} → ${record.content} (tunnel: ${tunnelId})`);
+      }
       
       // Update stats counter if available
       if (global.statsCounter) {
@@ -742,9 +750,20 @@ class CFZeroTrustProvider extends DNSProvider {
             logger.info(`📝 Updated tunnel hostname ${record.name} → ${record.content} (tunnel: ${tunnelId})`);
             results.push(updated);
             
-            // Update stats counter
-            if (global.statsCounter) {
-              global.statsCounter.updated++;
+            // Only increment the updated counter if there was an actual content change
+            // This helps prevent duplicate log messages for records that haven't really changed
+            const existingRecord = pendingChanges.update.find(u => u.record.name === record.name);
+            if (existingRecord && existingRecord.existing) {
+              const significantChange =
+                existingRecord.existing.content !== record.content ||
+                (existingRecord.existing.path || '') !== (record.path || '');
+                
+              if (significantChange && global.statsCounter) {
+                global.statsCounter.updated++;
+                logger.debug(`Incremented update counter for significant change to ${record.name}`);
+              } else {
+                logger.debug(`Not incrementing update counter for ${record.name} (no significant change)`);
+              }
             }
           }
         }
@@ -801,15 +820,15 @@ class CFZeroTrustProvider extends DNSProvider {
     
     // Compare additional attributes
     // For example, if there's a disableChunkedEncoding setting
-    if (newRecord.disableChunkedEncoding !== undefined && 
-        existing.config && 
+    if (newRecord.disableChunkedEncoding !== undefined &&
+        existing.config &&
         existing.config.disableChunkedEncoding !== newRecord.disableChunkedEncoding) {
       needsUpdate = true;
     }
     
     // Compare accessPolicy if provided
-    if (newRecord.accessPolicy !== undefined && 
-        existing.config && 
+    if (newRecord.accessPolicy !== undefined &&
+        existing.config &&
         existing.config.access_policy !== newRecord.accessPolicy) {
       needsUpdate = true;
     }
@@ -817,10 +836,20 @@ class CFZeroTrustProvider extends DNSProvider {
     // If an update is needed, log the specific differences at DEBUG level
     if (needsUpdate && logger.level >= 3) { // DEBUG level or higher
       logger.debug(`Record ${newRecord.name} needs update:`);
-      if (existing.content !== newRecord.content) 
+      if (existing.content !== newRecord.content)
         logger.debug(` - Service: ${existing.content} → ${newRecord.content}`);
-      if (existingPath !== newPath) 
+      if (existingPath !== newPath)
         logger.debug(` - Path: ${existingPath} → ${newPath}`);
+    }
+    
+    // Add a timestamp check to prevent frequent updates to the same record
+    // If the record was updated in the last 5 minutes and nothing has changed, don't update it again
+    if (!needsUpdate && existing.lastUpdated) {
+      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+      if (existing.lastUpdated > fiveMinutesAgo) {
+        logger.debug(`Record ${newRecord.name} was updated recently (${new Date(existing.lastUpdated).toISOString()}), skipping update`);
+        return false;
+      }
     }
     
     logger.trace(`CFZeroTrustProvider.recordNeedsUpdate: Final result - needs update: ${needsUpdate}`);
