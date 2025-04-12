@@ -782,11 +782,10 @@ class CFZeroTrustProvider extends DNSProvider {
         for (const { record } of pendingChanges.update) {
           const updated = updatedRecords.find(r => r.name === record.name);
           if (updated) {
-            logger.debug(`📝 Updated tunnel hostname ${record.name} → ${record.content} (tunnel: ${tunnelId})`);
+            logger.info(`📝 Updated tunnel hostname ${record.name} → ${record.content} (tunnel: ${tunnelId})`);
             results.push(updated);
             
             // Only increment the updated counter if there was an actual content change
-            // This helps prevent duplicate log messages for records that haven't really changed
             const existingRecord = pendingChanges.update.find(u => u.record.name === record.name);
             if (existingRecord && existingRecord.existing) {
               const significantChange =
