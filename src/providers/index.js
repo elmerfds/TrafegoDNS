@@ -27,6 +27,7 @@ module.exports = {
   CloudflareProvider,
   DigitalOceanProvider,
   Route53Provider,
+  CFZeroTrustProvider,
   
   // Constants
   ProviderTypes

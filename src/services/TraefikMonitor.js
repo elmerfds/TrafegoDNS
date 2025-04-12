@@ -47,6 +47,9 @@ class TraefikMonitor {
     // Last container ID to name mapping
     this.lastContainerIdToName = new Map();
     
+    // Track the last set of hostnames published to avoid duplicate events
+    this.lastPublishedHostnames = null;
+    
     // Subscribe to Docker label updates
     this.setupEventSubscriptions();
   }
@@ -198,16 +201,31 @@ class TraefikMonitor {
       
       // Publish router update event - always log at debug level
       // Only log at DEBUG level for container removal events
-      if (containerRemoved) {
-        logger.debug(`Publishing TRAEFIK_ROUTERS_UPDATED event for container removal`);
+      
+      // Check if hostnames have changed since last poll
+      const hostnamesKey = hostnames.sort().join(',');
+      const shouldPublish = containerRemoved ||
+                           !this.lastPublishedHostnames ||
+                           this.lastPublishedHostnames !== hostnamesKey;
+      
+      if (shouldPublish) {
+        if (containerRemoved) {
+          logger.debug(`Publishing TRAEFIK_ROUTERS_UPDATED event for container removal`);
+        } else {
+          logger.debug(`Publishing TRAEFIK_ROUTERS_UPDATED event (hostnames changed)`);
+        }
+        
+        this.eventBus.publish(EventTypes.TRAEFIK_ROUTERS_UPDATED, {
+          hostnames,
+          containerLabels: mergedLabels,
+          containerRemoved: containerRemoved
+        });
+        
+        // Store the hostnames we just published
+        this.lastPublishedHostnames = hostnamesKey;
       } else {
-        logger.debug(`Publishing TRAEFIK_ROUTERS_UPDATED event`);
+        logger.debug(`Skipping TRAEFIK_ROUTERS_UPDATED event (no hostname changes)`);
       }
-      this.eventBus.publish(EventTypes.TRAEFIK_ROUTERS_UPDATED, {
-        hostnames,
-        containerLabels: mergedLabels,
-        containerRemoved: containerRemoved
-      });
       
       // Publish poll completed event
       this.eventBus.publish(EventTypes.TRAEFIK_POLL_COMPLETED, {
