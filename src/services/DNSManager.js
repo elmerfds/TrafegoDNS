@@ -374,7 +374,7 @@ class DNSManager {
   logStats() {
     if (this.stats.total > 0) {
       if (this.stats.created > 0) {
-        logger.success(`Created ${this.stats.created} new DNS records`);
+        logger.debug(`Created ${this.stats.created} new DNS records`);
         
         // Publish event for each creation (for metrics/monitoring)
         this.eventBus.publish(EventTypes.DNS_RECORD_CREATED, {
@@ -383,7 +383,7 @@ class DNSManager {
       }
       
       if (this.stats.updated > 0) {
-        logger.success(`Updated ${this.stats.updated} existing DNS records`);
+        logger.debug(`Updated ${this.stats.updated} existing DNS records`);
         
         // Publish event for each update
         this.eventBus.publish(EventTypes.DNS_RECORD_UPDATED, {
