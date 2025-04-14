@@ -782,7 +782,7 @@ class CFZeroTrustProvider extends DNSProvider {
         for (const { record } of pendingChanges.update) {
           const updated = updatedRecords.find(r => r.name === record.name);
           if (updated) {
-            logger.info(`📝 Updated tunnel hostname ${record.name} → ${record.content} (tunnel: ${tunnelId})`);
+            logger.debug(`📝 Updated tunnel hostname ${record.name} → ${record.content} (tunnel: ${tunnelId})`);
             results.push(updated);
             
             // Only increment the updated counter if there was an actual content change
@@ -794,8 +794,14 @@ class CFZeroTrustProvider extends DNSProvider {
                 
               if (significantChange && global.statsCounter) {
                 global.statsCounter.updated++;
+                
+                // Log at INFO level since this is a significant change
+                logger.info(`📝 Updated tunnel hostname ${record.name} → ${record.content} (tunnel: ${tunnelId})`);
+                
                 logger.debug(`Incremented update counter for significant change to ${record.name}`);
               } else {
+                // For non-significant changes, just log at DEBUG level
+                logger.debug(`📝 Refreshed tunnel hostname ${record.name} → ${record.content} (tunnel: ${tunnelId})`);
                 logger.debug(`Not incrementing update counter for ${record.name} (no significant change)`);
               }
             }
