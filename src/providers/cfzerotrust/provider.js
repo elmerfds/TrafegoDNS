@@ -793,8 +793,7 @@ class CFZeroTrustProvider extends DNSProvider {
                 (existingRecord.existing.path || '') !== (record.path || '');
                 
               if (significantChange) {
-                // Log at INFO level since this is a significant change
-                logger.info(`📝 Updated tunnel hostname ${record.name} → ${record.content} (tunnel: ${tunnelId})`);
+                logger.debug(`📝 Updated tunnel hostname ${record.name} → ${record.content} (tunnel: ${tunnelId})`);
                 
                 // Update counter if available
                 if (global.statsCounter) {
