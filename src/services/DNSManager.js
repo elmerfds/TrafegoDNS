@@ -541,15 +541,17 @@ class DNSManager {
               try {
                 // Add additional logging to track the delete operation
                 logger.debug(`Calling deleteRecord for ${hostname} with ID ${info.id}`);
-                const deleteResult = await this.dnsProvider.deleteRecord(info.id);
-                // Log all deletions at DEBUG level to reduce noise
-                logger.debug(`🗑️ Deleted tunnel hostname: ${hostname} (tunnel: ${info.tunnelId})`);
-                logger.debug(`deleteRecord result: ${deleteResult ? 'success' : 'failed'}`);
-                
-                // Count successful deletions
-                if (deleteResult) {
-                  successfulDeletions++;
+                try {
+                  await this.deleteOrphanedRecord({
+                    id: info.id,
+                    name: hostname,
+                    tunnelId: info.tunnelId
+                  });
+                } catch (error) {
+                  logger.error(`Error initiating delete for ${hostname}: ${error.message}`);
                 }
+                
+                successfulDeletions++;
                 
                 // Add to recently deleted set with 10-second expiry
                 DNSManager.recentlyDeletedHostnames.add(hostname);
@@ -557,27 +559,8 @@ class DNSManager {
                   DNSManager.recentlyDeletedHostnames.delete(hostname);
                   logger.debug(`Removed ${hostname} from recently deleted tracking`);
                 }, 10000);
-                
-                // Check if the provider has removeTrackedHostname method
-                if (typeof this.dnsProvider.removeTrackedHostname === 'function') {
-                  logger.debug(`Removing ${hostname} from tracking`);
-                  this.dnsProvider.removeTrackedHostname(hostname, this.recordTracker);
-                  logger.debug(`Removed ${hostname} from tracking successfully`);
-                }
-                
-                // Also remove from in-memory tracking
-                if (global.tunnelHostnames && global.tunnelHostnames.has(hostname)) {
-                  global.tunnelHostnames.delete(hostname);
-                  logger.debug(`Removed tracked tunnel hostname from memory: ${hostname}`);
-                }
-                
-                // Publish delete event
-                this.eventBus.publish(EventTypes.DNS_RECORD_DELETED, {
-                  name: hostname,
-                  type: 'TUNNEL'
-                });
               } catch (error) {
-                logger.error(`Error deleting orphaned tunnel hostname ${hostname}: ${error.message}`);
+                logger.error(`Error initiating delete for ${hostname}: ${error.message}`);
               }
             }
             
@@ -774,16 +757,7 @@ class DNSManager {
           logger.info(`🗑️ Removing orphaned DNS record: ${displayName} (${record.type})`);
           
           try {
-            await this.dnsProvider.deleteRecord(record.id);
-            
-            // Remove record from tracker
-            this.recordTracker.untrackRecord(record);
-            
-            // Publish delete event
-            this.eventBus.publish(EventTypes.DNS_RECORD_DELETED, {
-              name: displayName,
-              type: record.type
-            });
+            await this.deleteOrphanedRecord(record);
           } catch (error) {
             logger.error(`Error deleting orphaned record ${displayName}: ${error.message}`);
           }
@@ -825,13 +799,9 @@ class DNSManager {
         logger.info(`Found in recordTracker: ${hostname} (ID: ${trackedRecord.id})`);
         
         try {
-          // Delete from CloudFlare
-          await this.dnsProvider.deleteRecord(trackedRecord.id);
+          // Use deleteOrphanedRecord instead of direct API call
+          await this.deleteOrphanedRecord(trackedRecord);
           logger.info(`Deleted record from CloudFlare: ${hostname}`);
-          
-          // Remove from tracking
-          this.recordTracker.untrackRecord(trackedRecord);
-          logger.info(`Removed from recordTracker tracking: ${hostname}`);
         } catch (error) {
           logger.error(`Failed to delete record from CloudFlare: ${error.message}`);
         }
@@ -847,16 +817,18 @@ class DNSManager {
         // Delete if not already deleted and different from tracked record
         if (!trackedRecord || trackedRecord.id !== info.id) {
           try {
-            await this.dnsProvider.deleteRecord(info.id);
+            // Use deleteOrphanedRecord instead of direct API call
+            await this.deleteOrphanedRecord({
+              id: info.id,
+              name: hostname
+            });
             logger.info(`Deleted record from CloudFlare: ${hostname}`);
           } catch (error) {
             logger.error(`Failed to delete record from CloudFlare: ${error.message}`);
           }
         }
         
-        // Remove from memory tracking
-        global.tunnelHostnames.delete(hostname);
-        logger.info(`Removed from in-memory tracking: ${hostname}`);
+        // Remove from memory tracking handled by deleteOrphanedRecord
       } else {
         logger.info(`Not found in memory tracking: ${hostname}`);
       }
@@ -872,7 +844,12 @@ class DNSManager {
           
           if (record) {
             logger.info(`Found directly in tunnel: ${hostname} (ID: ${record.id})`);
-            await this.dnsProvider.deleteRecord(record.id);
+            // Use deleteOrphanedRecord instead of direct API call
+            await this.deleteOrphanedRecord({
+              id: record.id, 
+              name: hostname,
+              tunnelId: tunnelId
+            });
             logger.info(`Deleted record directly from tunnel: ${hostname}`);
           } else {
             logger.info(`Not found directly in tunnel: ${hostname}`);
@@ -1084,6 +1061,57 @@ class DNSManager {
       } catch (error) {
         logger.error(`Error batch processing managed hostnames: ${error.message}`);
       }
+    }
+  }
+
+  /**
+   * Delete an orphaned DNS record and handle all related cleanup
+   * @param {Object} record - The record to delete
+   * @returns {Promise<boolean>} - Success/failure of the delete operation
+   */
+  async deleteOrphanedRecord(record) {
+    try {
+      const displayName = record.displayName || record.name;
+      logger.info(`🗑️ Removing orphaned DNS record: ${displayName} (${record.type || 'TUNNEL'})`);
+      
+      // Delete from provider
+      try {
+        await this.dnsProvider.deleteRecord(record.id);
+      } catch (error) {
+        // Handle 404 errors gracefully - record already deleted
+        if (error.response && error.response.status === 404) {
+          logger.debug(`DNS record ${displayName} already deleted (404)`);
+          // Continue with cleanup since the record is gone anyway
+        } else {
+          // Re-throw other errors
+          throw error;
+        }
+      }
+      
+      // Remove from tracking
+      if (this.recordTracker) {
+        this.recordTracker.untrackRecord(record);
+      }
+      
+      // Special handling for cfzerotrust provider
+      if (this.config.dnsProvider === 'cfzerotrust' && record.name) {
+        // Also remove from in-memory tracking
+        if (global.tunnelHostnames && global.tunnelHostnames.has(record.name)) {
+          global.tunnelHostnames.delete(record.name);
+          logger.debug(`Removed tracked tunnel hostname from memory: ${record.name}`);
+        }
+      }
+      
+      // Publish delete event
+      this.eventBus.publish(EventTypes.DNS_RECORD_DELETED, {
+        name: displayName,
+        type: record.type || 'TUNNEL'
+      });
+      
+      return true;
+    } catch (error) {
+      logger.error(`Error deleting orphaned record ${record.displayName || record.name}: ${error.message}`);
+      return false;
     }
   }
 }
