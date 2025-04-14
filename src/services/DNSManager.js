@@ -457,7 +457,17 @@ class DNSManager {
    */
   async cleanupOrphanedRecords(activeHostnames) {
     // Generate unique context for this cleanup operation
-    this.currentCleanupContext = `cleanup-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const cleanupId = `cleanup-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    
+    // Check if we're already running a cleanup within the last 3 seconds
+    const now = Date.now();
+    if (this.lastCleanupTime && (now - this.lastCleanupTime < 3000)) {
+      logger.debug(`Skipping duplicate cleanup run (previous run ${now - this.lastCleanupTime}ms ago)`);
+      return;
+    }
+    
+    // Set last cleanup time
+    this.lastCleanupTime = now;
     
     // Make sure activeHostnames is always an array
     activeHostnames = Array.isArray(activeHostnames) ? activeHostnames : [];
