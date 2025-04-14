@@ -762,10 +762,7 @@ class DNSManager {
           // Use the saved display name for logging
           const displayName = record.displayName || 
                              (record.name === '@' ? this.config.getProviderDomain() 
-                                                 : `${record.name}.${this.config.getProviderDomain()}`);
-                             
-          logger.info(`🗑️ Removing orphaned DNS record: ${displayName} (${record.type})`);
-          
+                                                 : `${record.name}.${this.config.getProviderDomain()}`);                                     
           try {
             await this.deleteOrphanedRecord(record);
           } catch (error) {
