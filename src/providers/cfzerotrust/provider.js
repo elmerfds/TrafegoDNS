@@ -35,13 +35,6 @@ class CFZeroTrustProvider extends DNSProvider {
       timeout: config.apiTimeout  // Use the configurable timeout
     });
     
-    // Initialize API connection status tracking
-    this.apiStatus = {
-      connected: true,
-      failures: { count: 0, firstTime: 0, lastReported: 0 },
-      endpoints: {}
-    };
-    
     logger.trace('CFZeroTrustProvider.constructor: Axios client initialized');
   }
   
@@ -140,17 +133,6 @@ class CFZeroTrustProvider extends DNSProvider {
    * Get hostnames for a specific tunnel
    */
   async getTunnelHostnames(tunnelId) {
-    // Initialize tracking for this specific tunnel if needed
-    if (!this.apiStatus.endpoints[tunnelId]) {
-      this.apiStatus.endpoints[tunnelId] = {
-        failures: 0, 
-        lastSuccess: Date.now(),
-        lastFailure: 0
-      };
-    }
-
-    const endpoint = this.apiStatus.endpoints[tunnelId];
-    
     try {
       logger.trace(`CFZeroTrustProvider.getTunnelHostnames: Getting hostnames for tunnel ${tunnelId}`);
       
@@ -181,58 +163,10 @@ class CFZeroTrustProvider extends DNSProvider {
           lastUpdated: Date.now() // Add timestamp for when the record was retrieved
         }));
       
-      // Reset failure counters on success
-      if (this.apiStatus.failures.count > 0) {
-        // Log recovery message (rate-limited by the logger)
-        logger.success(`Connection to CloudFlare Zero Trust API restored after ${this.apiStatus.failures.count} failures`);
-      }
-      
-      this.apiStatus.connected = true;
-      this.apiStatus.failures.count = 0;
-      endpoint.failures = 0;
-      endpoint.lastSuccess = Date.now();
-      
       logger.debug(`Found ${records.length} hostnames in tunnel ${tunnelId}`);
       return records;
     } catch (error) {
-      // Update connection status and failure tracking
-      const now = Date.now();
-      this.apiStatus.connected = false;
-      
-      // Update endpoint-specific status
-      endpoint.failures++;
-      endpoint.lastFailure = now;
-      
-      // Update global failure tracking
-      if (this.apiStatus.failures.count === 0) {
-        this.apiStatus.failures.firstTime = now;
-      }
-      this.apiStatus.failures.count++;
-      
-      // Determine how to log this error
-      const timeSinceFirstFailure = now - this.apiStatus.failures.firstTime;
-      const timeSinceLastReport = now - this.apiStatus.failures.lastReported;
-      
-      // Log strategies:
-      // 1. Always log the first failure in detail
-      // 2. Log a summary after multiple failures
-      // 3. Update status periodically even if still failing
-      if (this.apiStatus.failures.count === 1) {
-        // First failure - log in detail
-        logger.error(`Failed to get hostnames for tunnel ${tunnelId}: ${error.message}`);
-        this.apiStatus.failures.lastReported = now;
-      } 
-      else if (timeSinceLastReport > 60000) {  // Limit to once per minute
-        // Periodic summary of continued failures
-        logger.error(`Still unable to connect to CloudFlare API: ${this.apiStatus.failures.count} failures over ${Math.round(timeSinceFirstFailure/1000)}s`);
-        logger.debug(`Latest error for tunnel ${tunnelId}: ${error.message}`);
-        this.apiStatus.failures.lastReported = now;
-      }
-      else {
-        // Log at trace level to avoid spamming logs but maintain visibility
-        logger.trace(`Failed to get hostnames for tunnel ${tunnelId}: ${error.message} (failure #${this.apiStatus.failures.count})`);
-      }
-      
+      logger.error(`Failed to get hostnames for tunnel ${tunnelId}: ${error.message}`);
       return [];
     }
   }
