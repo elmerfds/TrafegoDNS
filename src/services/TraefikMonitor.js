@@ -27,6 +27,15 @@ class TraefikMonitor {
       };
     }
     
+    // Initialize connection status tracking
+    this.connectionStatus = {
+      connected: false,
+      consecutiveErrors: 0,
+      lastErrorCode: null,
+      lastErrorTime: 0,
+      lastSuccessTime: 0
+    };
+    
     // Track previous poll statistics to reduce logging noise
     this.previousStats = {
       hostnameCount: 0
@@ -251,22 +260,110 @@ class TraefikMonitor {
   async getRouters() {
     try {
       const response = await this.client.get('/http/routers');
+      
+      // Successfully connected - update status
+      const wasDisconnected = !this.connectionStatus.connected;
+      this.connectionStatus.connected = true;
+      this.connectionStatus.consecutiveErrors = 0;
+      this.connectionStatus.lastSuccessTime = Date.now();
+      
+      // Log recovery if we were previously disconnected
+      if (wasDisconnected) {
+        logger.success(`Connection to Traefik API restored successfully`);
+      }
+      
       return response.data;
     } catch (error) {
-      // Check for specific error types for better error messages
-      if (error.code === 'ECONNREFUSED') {
-        logger.error(`Connection refused to Traefik API at ${this.config.traefikApiUrl}. Is Traefik running?`);
-        throw new Error(`Connection refused to Traefik API at ${this.config.traefikApiUrl}. Is Traefik running?`);
+      // Update failure tracking
+      this.connectionStatus.connected = false;
+      this.connectionStatus.consecutiveErrors++;
+      this.connectionStatus.lastErrorTime = Date.now();
+      
+      // Extract error code for better classification
+      let errorCode = error.code;
+      if (error.message && error.message.includes('getaddrinfo EAI_AGAIN')) {
+        errorCode = 'EAI_AGAIN';
+      } else if (error.message && error.message.includes('timeout')) {
+        errorCode = 'TIMEOUT';
+      }
+      this.connectionStatus.lastErrorCode = errorCode;
+      
+      // Check for specific error types and provide better context
+      const errorCount = this.connectionStatus.consecutiveErrors;
+      const timeSinceLastSuccess = Date.now() - this.connectionStatus.lastSuccessTime;
+      const minutesDown = Math.round(timeSinceLastSuccess / 60000);
+      
+      // Special handling for first error vs. persistent errors
+      if (errorCount === 1) {
+        // First error - provide detailed message
+        if (errorCode === 'ECONNREFUSED') {
+          logger.error(`Connection refused to Traefik API at ${this.config.traefikApiUrl}. Verify Traefik is running and TRAEFIK_API_URL is correct.`);
+        } else if (errorCode === 'EAI_AGAIN') {
+          logger.error(`DNS resolution failed for Traefik host. This is typically a temporary network or DNS issue.`);
+        } else if (error.response && error.response.status === 401) {
+          logger.error('Authentication failed for Traefik API. Check TRAEFIK_API_USERNAME and TRAEFIK_API_PASSWORD.');
+        } else {
+          logger.error(`Failed to get Traefik routers: ${error.message}`);
+        }
+      } 
+      else if (errorCount % 5 === 0 || (errorCount > 10 && minutesDown >= 5)) {
+        // Periodic summary for persistent issues
+        const errorContext = this.getErrorContext(errorCode);
+        
+        // Log persistent error with troubleshooting guidance
+        logger.error(`Persistent Traefik connection issues: ${errorCount} consecutive failures over ${minutesDown} minutes`);
+        logger.debug(`Latest error: ${error.message}`);
+        logger.debug(`Troubleshooting: ${errorContext}`);
+        
+        // After extended downtime, provide more detailed guidance
+        if (minutesDown >= 15 && errorCount % 15 === 0) {
+          this.logDiagnosticInformation();
+        }
+      }
+      else {
+        // Intermediate errors - log at debug level to reduce noise
+        logger.debug(`Failed to get Traefik routers: ${error.message} (attempt ${errorCount})`);
       }
       
-      if (error.response && error.response.status === 401) {
-        logger.error('Authentication failed for Traefik API. Check your username and password.');
-        throw new Error('Authentication failed for Traefik API. Check your username and password.');
-      }
-      
-      logger.error(`Failed to get Traefik routers: ${error.message}`);
       throw error;
     }
+  }
+
+  /**
+   * Get context-specific troubleshooting information for different error codes
+   */
+  getErrorContext(errorCode) {
+    switch(errorCode) {
+      case 'ECONNREFUSED':
+        return "The Traefik service appears to be down or not accepting connections. Check if Traefik is running.";
+      case 'EAI_AGAIN':
+        return "DNS resolution is failing. This could be a temporary network issue or DNS server problem.";
+      case 'ETIMEDOUT':
+      case 'TIMEOUT':
+        return "Connection to Traefik timed out. Check network connectivity and Traefik's status.";
+      case 'ENOTFOUND':
+        return "The Traefik hostname couldn't be resolved. Verify TRAEFIK_API_URL is correct.";
+      default:
+        return "Check Traefik API URL, network connectivity, and Traefik's status.";
+    }
+  }
+
+  /**
+   * Log detailed diagnostic information for persistent connection issues
+   */
+  logDiagnosticInformation() {
+    logger.warn("Diagnostic information for persistent Traefik connection issues:");
+    logger.warn(`- Traefik API URL: ${this.config.traefikApiUrl}`);
+    logger.warn(`- Connection status: ${JSON.stringify({
+      consecutiveErrors: this.connectionStatus.consecutiveErrors,
+      lastErrorCode: this.connectionStatus.lastErrorCode,
+      minutesDown: Math.round((Date.now() - this.connectionStatus.lastSuccessTime) / 60000)
+    })}`);
+    logger.warn("Troubleshooting steps:");
+    logger.warn("1. Verify Traefik is running: docker ps | grep traefik");
+    logger.warn(`2. Check Traefik network: docker exec traefik ping -c 1 ${new URL(this.config.traefikApiUrl).hostname}`);
+    logger.warn("3. Verify API URL in configuration is correct");
+    logger.warn("4. Check for network or DNS issues in your environment");
   }
   
   /**

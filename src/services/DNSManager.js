@@ -27,6 +27,19 @@ class DNSManager {
     // Track which preserved records we've already logged to avoid spam
     this.loggedPreservedRecords = new Set();
     
+    // Add tracking for cleanup operations
+    this.cleanupErrorTracking = {
+      lastCleanupAttempt: 0,
+      consecutiveFailures: 0,
+      lastErrorTime: 0,
+      lastErrorMessage: '',
+      throttleWindows: new Map(),
+      lastSuccessfulCleanup: Date.now() // Initialize to now
+    };
+    
+    // Track the last successful cleanup time
+    this.lastCleanupTime = null;
+    
     // Initialise counters for statistics
     this.stats = {
       created: 0,
@@ -456,6 +469,18 @@ class DNSManager {
    * Clean up orphaned DNS records
    */
   async cleanupOrphanedRecords(activeHostnames) {
+    // Initialize error tracking if needed
+    if (!this.cleanupErrorTracking) {
+      this.cleanupErrorTracking = {
+        lastCleanupAttempt: 0,
+        consecutiveFailures: 0,
+        lastErrorTime: 0,
+        lastErrorMessage: '',
+        throttleWindows: new Map(),
+        lastSuccessfulCleanup: 0
+      };
+    }
+    
     // Generate unique context for this cleanup operation
     const cleanupId = `cleanup-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     
@@ -468,6 +493,7 @@ class DNSManager {
     
     // Set last cleanup time
     this.lastCleanupTime = now;
+    this.cleanupErrorTracking.lastCleanupAttempt = now;
     
     // Make sure activeHostnames is always an array
     activeHostnames = Array.isArray(activeHostnames) ? activeHostnames : [];
@@ -475,19 +501,56 @@ class DNSManager {
       logger.trace(`Cleaning up orphaned records with ${activeHostnames.length} active hostnames`);
       logger.debug(`Active hostnames: ${activeHostnames.join(', ')}`);
       logger.debug(`Cleanup orphaned setting: ${this.config.cleanupOrphaned}`);
+      
       // Special handling for CloudFlare Zero Trust provider
       if (this.config.dnsProvider === 'cfzerotrust') {
         logger.debug('CloudFlare Zero Trust provider detected - running tunnel hostname cleanup');
         
         try {
+          // Instead of logging each time, only log when changes are detected
+          let orphanedFound = false;
           logger.debug('Checking for orphaned CloudFlare Zero Trust tunnel hostnames...');
-          
-          
-          // Get current hostnames directly from the tunnel API instead of relying solely on tracking
+
+          // Get current hostnames directly from the tunnel API
           const tunnelId = this.config.cfzerotrustTunnelId;
-          logger.debug(`Getting current hostnames from tunnel ${tunnelId}...`);
-          const tunnelHostnames = await this.dnsProvider.getTunnelHostnames(tunnelId);
-          logger.debug(`Found ${tunnelHostnames.length} hostnames in tunnel ${tunnelId}`);
+          let tunnelHostnames = [];
+          
+          try {
+            logger.debug(`Getting current hostnames from tunnel ${tunnelId}...`);
+            tunnelHostnames = await this.dnsProvider.getTunnelHostnames(tunnelId);
+            logger.debug(`Found ${tunnelHostnames.length} hostnames in tunnel ${tunnelId}`);
+            
+            // Reset error tracking on success
+            if (this.cleanupErrorTracking.consecutiveFailures > 0) {
+              this.cleanupErrorTracking.consecutiveFailures = 0;
+            }
+          } catch (tunnelError) {
+            // Enhance error tracking for tunnel errors
+            this.cleanupErrorTracking.consecutiveFailures++;
+            this.cleanupErrorTracking.lastErrorTime = now;
+            this.cleanupErrorTracking.lastErrorMessage = tunnelError.message;
+            
+            // Apply throttling to reduce log spam
+            const errorKey = `tunnel:${tunnelId}`;
+            const lastErrorTime = this.cleanupErrorTracking.throttleWindows.get(errorKey) || 0;
+            const timeSinceLastError = now - lastErrorTime;
+            
+            // Only log detailed errors if outside throttle window (1 minute)
+            if (timeSinceLastError > 60000) {
+              logger.error(`Error getting hostnames from tunnel ${tunnelId}: ${tunnelError.message}`);
+              this.cleanupErrorTracking.throttleWindows.set(errorKey, now);
+              
+              // Add diagnostic information for persistent errors
+              if (this.cleanupErrorTracking.consecutiveFailures >= 5) {
+                this.logCleanupDiagnostics();
+              }
+            } else {
+              // Log at debug level instead to reduce spam
+              logger.debug(`Still unable to get hostnames from tunnel ${tunnelId}: ${tunnelError.message.substring(0, 50)}...`);
+            }
+            
+            // Continue with the cleanup process using current knowledge
+          }
           
           // Get all active hostnames that should be preserved
           const normalizedActiveHostnames = new Set(activeHostnames.map(host => host.toLowerCase()));
@@ -495,6 +558,9 @@ class DNSManager {
           
           // Find orphaned tunnel hostnames
           let orphanedTunnelHostnames = [];
+          
+          // Build a cleanup summary rather than logging each hostname individually
+          const cleanupCandidates = [];
           
           // Check each tunnel hostname
           for (const record of tunnelHostnames) {
@@ -515,7 +581,7 @@ class DNSManager {
                                h.hostname.toLowerCase() === hostname.toLowerCase());
             
             if (isManaged) {
-              logger.debug(`Skipping managed hostname: ${hostname}`);
+              logger.debug(`Skipping managed hostname: ${hostname}`);                  
               continue;
             }
             
@@ -525,9 +591,10 @@ class DNSManager {
               continue;
             }
             
-            // This is an orphaned hostname - log at debug level to reduce noise
+            // This is an orphaned hostname - add to cleanup candidates list
             logger.debug(`Found orphaned tunnel hostname: ${hostname} (tunnel: ${record.tunnelId}, id: ${record.id})`);
-            orphanedTunnelHostnames.push({
+            orphanedFound = true;
+            cleanupCandidates.push({
               hostname,
               info: {
                 tunnelId: record.tunnelId,
@@ -536,108 +603,81 @@ class DNSManager {
             });
           }
           
-          // Delete orphaned tunnel hostnames
-          if (orphanedTunnelHostnames.length > 0) {
-            // Only log once at the beginning of the cleanup process
-            logger.debug(`Found ${orphanedTunnelHostnames.length} orphaned tunnel hostnames to clean up`);
+          // Log a single summary if orphaned hostnames were found
+          if (cleanupCandidates.length > 0) {
+            logger.info(`Found ${cleanupCandidates.length} orphaned tunnel hostnames to clean up`);
             
-            // Track successful deletions for summary
+            // Process cleanup candidates in batches to avoid API rate limits
+            const batchSize = 5;
             let successfulDeletions = 0;
             
-            for (const { hostname, info } of orphanedTunnelHostnames) {
-              // Only log at DEBUG level for the preparation
-              logger.debug(`Preparing to remove orphaned tunnel hostname: ${hostname} (tunnel: ${info.tunnelId}, id: ${info.id})`);
+            for (let i = 0; i < cleanupCandidates.length; i += batchSize) {
+              const batch = cleanupCandidates.slice(i, i + batchSize);
               
-              try {
-                // Add additional logging to track the delete operation
-                logger.debug(`Calling deleteRecord for ${hostname} with ID ${info.id}`);
+              logger.debug(`Processing cleanup batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(cleanupCandidates.length/batchSize)} (${batch.length} hostnames)`);
+              
+              // Process batch sequentially to be gentle with the API
+              for (const { hostname, info } of batch) {
                 try {
                   await this.deleteOrphanedRecord({
                     id: info.id,
                     name: hostname,
                     tunnelId: info.tunnelId
                   });
+                  
+                  successfulDeletions++;
+                  
+                  // Add to recently deleted set with 10-second expiry
+                  DNSManager.recentlyDeletedHostnames.add(hostname);
+                  setTimeout(() => {
+                    DNSManager.recentlyDeletedHostnames.delete(hostname);
+                  }, 10000);
                 } catch (error) {
-                  logger.error(`Error initiating delete for ${hostname}: ${error.message}`);
+                  logger.error(`Error deleting ${hostname}: ${error.message}`);
                 }
                 
-                successfulDeletions++;
-                
-                // Add to recently deleted set with 10-second expiry
-                DNSManager.recentlyDeletedHostnames.add(hostname);
-                setTimeout(() => {
-                  DNSManager.recentlyDeletedHostnames.delete(hostname);
-                  logger.debug(`Removed ${hostname} from recently deleted tracking`);
-                }, 10000);
-              } catch (error) {
-                logger.error(`Error initiating delete for ${hostname}: ${error.message}`);
+                // Small delay between operations to be gentler on the API
+                await new Promise(resolve => setTimeout(resolve, 200));
               }
             }
             
-            // Only log this message once at the end of the cleanup process
+            // Report cleanup results with a single message
             if (successfulDeletions > 0) {
-              // Create a list of the hostnames that were deleted
-              const deletedHostnames = orphanedTunnelHostnames
-                .filter(item => item.hostname)
-                .map(item => item.hostname)
-                .slice(0, successfulDeletions); // Only include ones that were successfully deleted
-              
-              // Create a unique key based on the sorted hostnames
-              const hostnamesKey = deletedHostnames.sort().join(',');
-              const now = Date.now();
-              
-              // Only log if we haven't reported this exact set of hostnames recently
-              if (!DNSManager.reportedCleanupSets.has(hostnamesKey) || 
-                  (now - DNSManager.reportedCleanupSets.get(hostnamesKey)) > 5000) {
-                  
-                // Include hostname in message for single deletions
-                let message = '';
-                if (successfulDeletions === 1) {
-                  message = `Removed 1 orphaned tunnel hostname: ${deletedHostnames[0]}`;
-                } else {
-                  // For multiple, show count and first couple of examples
-                  const displayNames = deletedHostnames.slice(0, 2);
-                  const remainingCount = successfulDeletions - displayNames.length;
-                  
-                  message = `Removed ${successfulDeletions} orphaned tunnel hostnames: ${displayNames.join(', ')}`;
-                  if (remainingCount > 0) {
-                    message += ` and ${remainingCount} more`;
-                  }
-                }
-                
-                // Log the success message at INFO level only for the first time we see this set of hostnames
-                // or if it's been more than 30 seconds since we last reported it
-                const lastReported = DNSManager.reportedCleanupSets.get(hostnamesKey) || 0;
-                const timeSinceLastReport = now - lastReported;
-                
-                if (lastReported === 0 || timeSinceLastReport > 30000) {
-                  // First time seeing this set or it's been more than 30 seconds
-                  logger.success(message);
-                } else {
-                  // We've seen this set recently, log at debug level
-                  logger.debug(message);
-                }
-                
-                // Mark these hostnames as reported
-                DNSManager.reportedCleanupSets.set(hostnamesKey, now);
-                
-                // Clean up old entries after 10 seconds
-                setTimeout(() => {
-                  DNSManager.reportedCleanupSets.delete(hostnamesKey);
-                }, 10000);
-              } else {
-                logger.debug(`Skipping duplicate cleanup report for: ${hostnamesKey}`);
-              }
+              logger.success(`Successfully removed ${successfulDeletions} orphaned tunnel hostnames`);
+              this.cleanupErrorTracking.lastSuccessfulCleanup = now;
             }
-          } else {
+          } else if (!orphanedFound) {
             logger.debug('No orphaned tunnel hostnames found');
           }
         } catch (error) {
-          logger.error(`Error cleaning up orphaned tunnel hostnames: ${error.message}`);
+          // Track cleanup errors to provide better diagnostics
+          this.cleanupErrorTracking.consecutiveFailures++;
+          this.cleanupErrorTracking.lastErrorTime = now;
+          this.cleanupErrorTracking.lastErrorMessage = error.message;
+          
+          // Apply throttling to reduce log spam
+          const errorKey = 'cleanup:overall';
+          const lastErrorTime = this.cleanupErrorTracking.throttleWindows.get(errorKey) || 0;
+          const timeSinceLastError = now - lastErrorTime;
+          
+          if (timeSinceLastError > 60000) {
+            logger.error(`Error cleaning up orphaned tunnel hostnames: ${error.message}`);
+            this.cleanupErrorTracking.throttleWindows.set(errorKey, now);
+            
+            // Add diagnostic information for persistent errors
+            if (this.cleanupErrorTracking.consecutiveFailures >= 5) {
+              this.logCleanupDiagnostics();
+            }
+          } else {
+            // Log at debug level to reduce spam
+            logger.debug(`Error in tunnel cleanup (throttled): ${error.message.substring(0, 50)}...`);
+          }
         }
         
         return; // Skip the regular DNS cleanup for this provider
       }
+      
+      // ------ REGULAR DNS PROVIDER CLEANUP (non-CloudFlare Zero Trust) ------
       
       // Get all DNS records for our zone (from cache when possible)
       const allRecords = await this.dnsProvider.getRecordsFromCache(true); // Force refresh
@@ -758,28 +798,142 @@ class DNSManager {
       if (orphanedRecords.length > 0) {
         logger.info(`Found ${orphanedRecords.length} orphaned DNS records to clean up`);
         
-        for (const record of orphanedRecords) {
-          // Use the saved display name for logging
-          const displayName = record.displayName || 
-                             (record.name === '@' ? this.config.getProviderDomain() 
-                                                 : `${record.name}.${this.config.getProviderDomain()}`);                                     
-          try {
-            await this.deleteOrphanedRecord(record);
-          } catch (error) {
-            logger.error(`Error deleting orphaned record ${displayName}: ${error.message}`);
+        // Process in batches to avoid flooding the logs and for better API performance
+        const batchSize = 10;
+        let successfulDeletions = 0;
+        
+        for (let i = 0; i < orphanedRecords.length; i += batchSize) {
+          const batch = orphanedRecords.slice(i, i + batchSize);
+          
+          logger.debug(`Processing deletion batch ${Math.floor(i/batchSize) + 1} of ${Math.ceil(orphanedRecords.length/batchSize)}`);
+          
+          // Process batch
+          for (const record of batch) {
+            // Use the saved display name for logging
+            const displayName = record.displayName || 
+                               (record.name === '@' ? this.config.getProviderDomain() 
+                                                  : `${record.name}.${this.config.getProviderDomain()}`);
+            try {
+              await this.deleteOrphanedRecord(record);
+              successfulDeletions++;
+            } catch (error) {
+              logger.error(`Error deleting orphaned record ${displayName}: ${error.message}`);
+            }
+            
+            // Small delay between operations to be gentler on the API
+            await new Promise(resolve => setTimeout(resolve, 100));
           }
         }
         
-        logger.success(`Removed ${orphanedRecords.length} orphaned DNS records`);
+        if (successfulDeletions > 0) {
+          logger.success(`Removed ${successfulDeletions} orphaned DNS records`);
+          this.cleanupErrorTracking.lastSuccessfulCleanup = now;
+        }
       } else {
         logger.debug('No orphaned DNS records found');
       }
     } catch (error) {
-      logger.error(`Error cleaning up orphaned records: ${error.message}`);
+      // Enhance error tracking for other errors
+      this.cleanupErrorTracking.consecutiveFailures++;
+      this.cleanupErrorTracking.lastErrorTime = now;
+      this.cleanupErrorTracking.lastErrorMessage = error.message;
+      
+      // Apply throttling to reduce log spam
+      const errorKey = 'cleanup:overall';
+      const lastErrorTime = this.cleanupErrorTracking.throttleWindows.get(errorKey) || 0;
+      const timeSinceLastError = now - lastErrorTime;
+      
+      if (timeSinceLastError > 60000) {
+        logger.error(`Error cleaning up orphaned records: ${error.message}`);
+        this.cleanupErrorTracking.throttleWindows.set(errorKey, now);
+        
+        // Add diagnostic information for persistent errors
+        if (this.cleanupErrorTracking.consecutiveFailures >= 5) {
+          this.logCleanupDiagnostics();
+        }
+      } else {
+        // Log at debug level to reduce spam
+        logger.debug(`Error in record cleanup (throttled): ${error.message.substring(0, 50)}...`);
+      }
+      
       this.eventBus.publish(EventTypes.ERROR_OCCURRED, {
         source: 'DNSManager.cleanupOrphanedRecords',
         error: error.message
       });
+    }
+  }
+
+  /**
+   * Log diagnostic information for persistent cleanup issues
+   */
+  logCleanupDiagnostics() {
+    logger.warn("Diagnostic information for persistent cleanup issues:");
+    logger.warn(`- DNS Provider: ${this.config.dnsProvider}`);
+    logger.warn(`- Consecutive failures: ${this.cleanupErrorTracking.consecutiveFailures}`);
+    logger.warn(`- Time since last successful cleanup: ${Math.round((Date.now() - (this.cleanupErrorTracking.lastSuccessfulCleanup || 0))/60000)} minutes`);
+    
+    if (this.config.dnsProvider === 'cfzerotrust') {
+      logger.warn("CloudFlare Zero Trust troubleshooting steps:");
+      logger.warn("1. Verify CloudFlare API connectivity");
+      logger.warn("2. Check CLOUDFLARE_TOKEN has correct permissions");
+      logger.warn("3. Verify CFZEROTRUST_TUNNEL_ID is correct");
+      logger.warn("4. Check for network or DNS issues in your environment");
+    } else {
+      logger.warn("General troubleshooting steps:");
+      logger.warn("1. Verify DNS provider API connectivity");
+      logger.warn("2. Check API credentials have correct permissions");
+      logger.warn("3. Check for network or DNS issues in your environment");
+    }
+  }
+  
+  /**
+   * Delete an orphaned DNS record and handle all related cleanup
+   * @param {Object} record - The record to delete
+   * @returns {Promise<boolean>} - Success/failure of the delete operation
+   */
+  async deleteOrphanedRecord(record) {
+    try {
+      const displayName = record.displayName || record.name;
+      logger.info(`🗑️ Removing orphaned DNS record: ${displayName} (${record.type || 'TUNNEL'})`);
+      
+      // Delete from provider
+      try {
+        await this.dnsProvider.deleteRecord(record.id);
+      } catch (error) {
+        // Handle 404 errors gracefully - record already deleted
+        if (error.response && error.response.status === 404) {
+          logger.debug(`DNS record ${displayName} already deleted (404)`);
+          // Continue with cleanup since the record is gone anyway
+        } else {
+          // Re-throw other errors
+          throw error;
+        }
+      }
+      
+      // Remove from tracking
+      if (this.recordTracker) {
+        this.recordTracker.untrackRecord(record);
+      }
+      
+      // Special handling for cfzerotrust provider
+      if (this.config.dnsProvider === 'cfzerotrust' && record.name) {
+        // Also remove from in-memory tracking
+        if (global.tunnelHostnames && global.tunnelHostnames.has(record.name)) {
+          global.tunnelHostnames.delete(record.name);
+          logger.debug(`Removed tracked tunnel hostname from memory: ${record.name}`);
+        }
+      }
+      
+      // Publish delete event
+      this.eventBus.publish(EventTypes.DNS_RECORD_DELETED, {
+        name: displayName,
+        type: record.type || 'TUNNEL'
+      });
+      
+      return true;
+    } catch (error) {
+      logger.error(`Error deleting orphaned record ${record.displayName || record.name}: ${error.message}`);
+      return false;
     }
   }
   
@@ -1068,57 +1222,6 @@ class DNSManager {
       } catch (error) {
         logger.error(`Error batch processing managed hostnames: ${error.message}`);
       }
-    }
-  }
-
-  /**
-   * Delete an orphaned DNS record and handle all related cleanup
-   * @param {Object} record - The record to delete
-   * @returns {Promise<boolean>} - Success/failure of the delete operation
-   */
-  async deleteOrphanedRecord(record) {
-    try {
-      const displayName = record.displayName || record.name;
-      logger.info(`🗑️ Removing orphaned DNS record: ${displayName} (${record.type || 'TUNNEL'})`);
-      
-      // Delete from provider
-      try {
-        await this.dnsProvider.deleteRecord(record.id);
-      } catch (error) {
-        // Handle 404 errors gracefully - record already deleted
-        if (error.response && error.response.status === 404) {
-          logger.debug(`DNS record ${displayName} already deleted (404)`);
-          // Continue with cleanup since the record is gone anyway
-        } else {
-          // Re-throw other errors
-          throw error;
-        }
-      }
-      
-      // Remove from tracking
-      if (this.recordTracker) {
-        this.recordTracker.untrackRecord(record);
-      }
-      
-      // Special handling for cfzerotrust provider
-      if (this.config.dnsProvider === 'cfzerotrust' && record.name) {
-        // Also remove from in-memory tracking
-        if (global.tunnelHostnames && global.tunnelHostnames.has(record.name)) {
-          global.tunnelHostnames.delete(record.name);
-          logger.debug(`Removed tracked tunnel hostname from memory: ${record.name}`);
-        }
-      }
-      
-      // Publish delete event
-      this.eventBus.publish(EventTypes.DNS_RECORD_DELETED, {
-        name: displayName,
-        type: record.type || 'TUNNEL'
-      });
-      
-      return true;
-    } catch (error) {
-      logger.error(`Error deleting orphaned record ${record.displayName || record.name}: ${error.message}`);
-      return false;
     }
   }
 }
