@@ -660,26 +660,62 @@ services:
 | `DNS_CACHE_REFRESH_INTERVAL` | How often to refresh DNS cache (ms) | `3600000` (1 hour) | No |
 | `API_TIMEOUT` | API request timeout (ms) | `60000` (1 minute) | No |
 
-## Automated Cleanup of Orphaned Records
+## Automated Cleanup of Orphaned Records with Grace Period
 
 When containers are removed, their DNS records can be automatically cleaned up by enabling the `CLEANUP_ORPHANED` setting:
 
 ```yaml
 environment:
   - CLEANUP_ORPHANED=true
+  - CLEANUP_GRACE_PERIOD=60  # Minutes before deletion (default: 60)
 ```
 
-This will:
-- Track all active hostnames being managed
-- Compare them with existing DNS records
-- Remove any records that no longer match active hostnames
-- Skip system records (NS, SOA, CAA) and apex domain records
+This process includes a grace period to prevent premature deletion during container updates or service maintenance:
 
-To avoid premature deletion, the system will:
-- Perform hostname normalisation to ensure case-insensitive comparison
-- Skip records that don't match the managed domain pattern
-- Only delete records that were created by this tool
-- Log all orphaned records before deletion for verification
+1. When a hostname is first detected as orphaned (no longer associated with an active container), it's **marked for deletion** but not immediately removed.
+2. Only after the configurable grace period has elapsed (default: 60 minutes) will the record actually be deleted.
+3. If the container/service comes back online within the grace period, the record is automatically "unmarked" and preserved.
+
+### How It Works
+
+The grace period feature provides several benefits:
+
+- **Prevents data loss during container updates**: Services that temporarily go offline during rolling updates won't lose their DNS records.
+- **Accommodates maintenance windows**: Planned maintenance that takes services offline won't trigger DNS record deletion.
+- **Provides recovery window**: If a container is accidentally stopped, you have time to restart it before DNS records are removed.
+- **Clear logging**: The system clearly logs when records are marked for deletion and when they're actually deleted.
+
+### Configuration
+
+- `CLEANUP_ORPHANED`: Set to `true` to enable the orphaned record detection and cleanup.
+- `CLEANUP_GRACE_PERIOD`: Time in minutes to wait before deleting orphaned records (default: 60 minutes).
+- `PRESERVED_HOSTNAMES`: List of hostnames to never delete, even if orphaned.
+
+### Logs During Operation
+
+When using the grace period feature, you'll see these log entries:
+
+1. When a record is first marked as orphaned:
+   ```
+   🕒 Marking DNS record as orphaned (will be deleted after 60 minutes): app.example.com (A)
+   ```
+
+2. If the service comes back online within the grace period:
+   ```
+   ✅ DNS record is active again, removing orphaned mark: app.example.com (A)
+   ```
+
+3. When the grace period elapses and the record is deleted:
+   ```
+   🗑️ Grace period elapsed (63 minutes), removing orphaned DNS record: app.example.com (A)
+   ```
+
+4. Summary logs after each cleanup cycle:
+   ```
+   Orphaned records: 3 newly marked, 2 deleted after grace period, 1 reactivated
+   ```
+
+This mechanism ensures your DNS records remain stable during normal operational changes while still cleaning up truly abandoned records after a reasonable waiting period.
 
 ### Preserving Specific DNS Records
 
