@@ -37,7 +37,7 @@ services:
       
       # DNS record management
       - CLEANUP_ORPHANED=true  # Set to true to automatically remove DNS records when containers are removed
-      - CLEANUP_GRACE_PERIOD=60  # Grace period in minutes before deleting orphaned records
+      - CLEANUP_GRACE_PERIOD=15  # Grace period in minutes before deleting orphaned records
       - PRESERVED_HOSTNAMES=static.example.com,api.example.com,*.admin.example.com  # Hostnames to preserve (even when orphaned)
       - MANAGED_HOSTNAMES=blog.example.com:A:192.168.1.10:3600:false,mail.example.com:MX:mail.example.com:3600:false  # Manually managed hostnames
       
