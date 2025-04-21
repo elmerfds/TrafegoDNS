@@ -132,6 +132,9 @@ class StatusReporter {
       logger.info(`  📊 Log Level: ${logger.levelNames[logger.level]}`);
       logger.info(`  🐳 Docker Events: ${this.config.watchDockerEvents ? 'Yes' : 'No'}`);
       logger.info(`  🧹 Cleanup Orphaned: ${this.config.cleanupOrphaned ? 'Yes' : 'No'}`);
+      if (this.config.cleanupOrphaned) {
+        logger.info(`  🕒 Cleanup Grace Period: ${this.config.cleanupGracePeriod} minutes`);
+      }
       
       // Add preserved hostnames if available
       if (this.recordTracker && this.recordTracker.preservedHostnames) {

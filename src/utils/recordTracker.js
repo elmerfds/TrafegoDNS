@@ -282,6 +282,102 @@ class RecordTracker {
       logger.debug(`Updated tracked DNS record ID: ${oldRecord.name} (${oldRecord.type})`);
     }
   }
+
+  /**
+   * Mark a record as orphaned with current timestamp
+   * @param {Object} record - The record to mark
+   * @returns {boolean} - True if the record was successfully marked
+   */
+  markRecordOrphaned(record) {
+    const key = this.getRecordKey(
+      this.provider,
+      this.providerDomain,
+      record.name,
+      record.type
+    );
+    
+    if (this.trackedRecords.has(key)) {
+      const trackedRecord = this.trackedRecords.get(key);
+      trackedRecord.orphanedAt = new Date().toISOString();
+      this.trackedRecords.set(key, trackedRecord);
+      this.saveTrackedRecords();
+      logger.debug(`Marked DNS record as orphaned: ${record.name} (${record.type})`);
+      return true;
+    }
+    
+    return false;
+  }
+  
+  /**
+   * Remove orphaned mark from a record
+   * @param {Object} record - The record to unmark
+   * @returns {boolean} - True if the record was successfully unmarked
+   */
+  unmarkRecordOrphaned(record) {
+    const key = this.getRecordKey(
+      this.provider,
+      this.providerDomain,
+      record.name,
+      record.type
+    );
+    
+    if (this.trackedRecords.has(key)) {
+      const trackedRecord = this.trackedRecords.get(key);
+      if (trackedRecord.orphanedAt) {
+        delete trackedRecord.orphanedAt;
+        this.trackedRecords.set(key, trackedRecord);
+        this.saveTrackedRecords();
+        logger.debug(`Removed orphaned mark from DNS record: ${record.name} (${record.type})`);
+        return true;
+      }
+    }
+    
+    return false;
+  }
+  
+  /**
+   * Check if a record is marked as orphaned
+   * @param {Object} record - The record to check
+   * @returns {boolean} - True if the record is marked as orphaned
+   */
+  isRecordOrphaned(record) {
+    const key = this.getRecordKey(
+      this.provider,
+      this.providerDomain,
+      record.name,
+      record.type
+    );
+    
+    if (this.trackedRecords.has(key)) {
+      return !!this.trackedRecords.get(key).orphanedAt;
+    }
+    
+    return false;
+  }
+  
+  /**
+   * Get the timestamp when a record was marked as orphaned
+   * @param {Object} record - The record to check
+   * @returns {Date|null} - Date object when the record was orphaned, or null if not orphaned
+   */
+  getRecordOrphanedTime(record) {
+    const key = this.getRecordKey(
+      this.provider,
+      this.providerDomain,
+      record.name,
+      record.type
+    );
+    
+    if (this.trackedRecords.has(key)) {
+      const orphanedAt = this.trackedRecords.get(key).orphanedAt;
+      if (orphanedAt) {
+        return new Date(orphanedAt);
+      }
+    }
+    
+    return null;
+  }
+
   /**
    * Load managed hostnames from environment variable
    */
