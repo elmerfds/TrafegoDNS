@@ -296,8 +296,12 @@ class DNSManager {
       // Log all active hostnames in trace mode
       logger.trace(`Active hostnames: ${Array.from(normalizedActiveHostnames).join(', ')}`);
       
+      // For tracking counts in this run
+      let newlyOrphanedCount = 0;
+      let readyForDeletionCount = 0;
+      let reactivatedCount = 0;
+      
       // Find records that were created by this tool but no longer exist in Traefik
-      const orphanedRecords = [];
       const domainSuffix = `.${this.config.getProviderDomain()}`;
       const domainName = this.config.getProviderDomain().toLowerCase();
       
@@ -394,43 +398,63 @@ class DNSManager {
         
         // Check if this record is still active
         if (!normalizedActiveHostnames.has(recordFqdn)) {
-          logger.debug(`Found orphaned record: ${recordFqdn} (${record.type})`);
-          orphanedRecords.push({
-            ...record,
-            displayName: recordFqdn // Save the normalized display name
-          });
+          // Check if the record was already marked as orphaned
+          if (this.recordTracker.isRecordOrphaned(record)) {
+            // Check if grace period has elapsed
+            const orphanedTime = this.recordTracker.getRecordOrphanedTime(record);
+            const now = new Date();
+            const elapsedMinutes = (now - orphanedTime) / (1000 * 60);
+            
+            if (elapsedMinutes >= this.config.cleanupGracePeriod) {
+              // Grace period elapsed, we can delete the record
+              readyForDeletionCount++;
+              
+              // Format the display name for better reporting
+              const displayName = recordFqdn || 
+                                 (record.name === '@' ? this.config.getProviderDomain() 
+                                                    : `${record.name}.${this.config.getProviderDomain()}`);
+              
+              logger.info(`🗑️ Grace period elapsed (${Math.floor(elapsedMinutes)} minutes), removing orphaned DNS record: ${displayName} (${record.type})`);
+              
+              try {
+                await this.dnsProvider.deleteRecord(record.id);
+                
+                // Remove record from tracker
+                this.recordTracker.untrackRecord(record);
+                
+                // Publish delete event
+                this.eventBus.publish(EventTypes.DNS_RECORD_DELETED, {
+                  name: displayName,
+                  type: record.type
+                });
+              } catch (error) {
+                logger.error(`Error deleting orphaned record ${displayName}: ${error.message}`);
+              }
+            } else {
+              // Grace period not elapsed yet, log the remaining time
+              const remainingMinutes = Math.ceil(this.config.cleanupGracePeriod - elapsedMinutes);
+              
+              logger.debug(`Orphaned DNS record ${recordFqdn} (${record.type}) will be deleted in ${remainingMinutes} minutes`);
+            }
+          } else {
+            // Record is newly orphaned, mark it
+            logger.info(`🕒 Marking DNS record as orphaned (will be deleted after ${this.config.cleanupGracePeriod} minutes): ${recordFqdn} (${record.type})`);
+            this.recordTracker.markRecordOrphaned(record);
+            newlyOrphanedCount++;
+          }
+        } else {
+          // Record is active again (found in active hostnames), unmark as orphaned if needed
+          if (this.recordTracker.isRecordOrphaned(record)) {
+            logger.info(`✅ DNS record is active again, removing orphaned mark: ${recordFqdn} (${record.type})`);
+            this.recordTracker.unmarkRecordOrphaned(record);
+            reactivatedCount++;
+          }
         }
       }
       
-      // Delete orphaned records
-      if (orphanedRecords.length > 0) {
-        logger.info(`Found ${orphanedRecords.length} orphaned DNS records to clean up`);
-        
-        for (const record of orphanedRecords) {
-          // Use the saved display name for logging
-          const displayName = record.displayName || 
-                             (record.name === '@' ? this.config.getProviderDomain() 
-                                                 : `${record.name}.${this.config.getProviderDomain()}`);
-                             
-          logger.info(`🗑️ Removing orphaned DNS record: ${displayName} (${record.type})`);
-          
-          try {
-            await this.dnsProvider.deleteRecord(record.id);
-            
-            // Remove record from tracker
-            this.recordTracker.untrackRecord(record);
-            
-            // Publish delete event
-            this.eventBus.publish(EventTypes.DNS_RECORD_DELETED, {
-              name: displayName,
-              type: record.type
-            });
-          } catch (error) {
-            logger.error(`Error deleting orphaned record ${displayName}: ${error.message}`);
-          }
-        }
-        
-        logger.success(`Removed ${orphanedRecords.length} orphaned DNS records`);
+      // Log summary of actions
+      if (newlyOrphanedCount > 0 || readyForDeletionCount > 0 || reactivatedCount > 0) {
+        logger.info(`Orphaned records: ${newlyOrphanedCount} newly marked, ${readyForDeletionCount} deleted after grace period, ${reactivatedCount} reactivated`);
       } else {
         logger.debug('No orphaned DNS records found');
       }

@@ -129,6 +129,7 @@ class ConfigManager {
     this.pollInterval = EnvironmentLoader.getInt('POLL_INTERVAL', 60000);
     this.watchDockerEvents = EnvironmentLoader.getBool('WATCH_DOCKER_EVENTS', true);
     this.cleanupOrphaned = EnvironmentLoader.getBool('CLEANUP_ORPHANED', false);
+    this.cleanupGracePeriod = EnvironmentLoader.getInt('CLEANUP_GRACE_PERIOD', 15); // Default to 60 minutes
     
     // Cache refresh interval in milliseconds (default: 1 hour)
     this.cacheRefreshInterval = EnvironmentLoader.getInt('DNS_CACHE_REFRESH_INTERVAL', 3600000);
