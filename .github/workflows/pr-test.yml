@@ -96,7 +96,7 @@ jobs:
       
       # Build Docker image for PR testing
       - name: Build and push PR test image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./docker-s6/Dockerfile
