@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <Container version="2">
-    <Name>TrafegoDNS</Name>
+    <n>TrafegoDNS</n>
     <Repository>ghcr.io/elmerfds/trafegodns:latest</Repository>
     <Registry>https://github.com/elmerfds/TrafegoDNS</Registry>
     <Network>bridge</Network>
@@ -14,6 +14,7 @@
     - Two operation modes: Traefik API integration or direct Docker labels
     - Optional cleanup of orphaned DNS records
     - Real-time monitoring of Docker container events
+    - REST API with authentication for advanced management
     - Please refer to the readme before deploying this container: https://github.com/elmerfds/TrafegoDNS</Overview>
     <Category>Tools: Network:Management Status:Stable</Category>
     <TemplateURL>https://raw.githubusercontent.com/elmerfds/TrafegoDNS/main/templates/unraid-TrafegoDNS.xml</TemplateURL>
@@ -22,6 +23,7 @@
     <DonateLink>https://github.com/elmerfds/TrafegoDNS</DonateLink>
     <Config Name="Operation Mode" Target="OPERATION_MODE" Default="traefik|direct" Mode="" Description="Choose how to detect hostnames: Traefik API or direct container labels" Type="Variable" Display="always" Required="true" Mask="false">traefik</Config>
     <Config Name="DNS Provider" Target="DNS_PROVIDER" Default="cloudflare|digitalocean|route53" Mode="" Description="Select DNS provider to use" Type="Variable" Display="always" Required="true" Mask="false">cloudflare</Config>
+    <Config Name="API Port" Target="3000" Default="3000" Mode="tcp" Description="Port for the TrafegoDNS API" Type="Port" Display="always" Required="false" Mask="false">3000</Config>
     <Config Name="Cloudflare Token" Target="CLOUDFLARE_TOKEN" Default="" Mode="" Description="Cloudflare API token (requires DNS edit permissions) - Required when using Cloudflare provider" Type="Variable" Display="always" Required="false" Mask="true"></Config>
     <Config Name="Cloudflare Zone" Target="CLOUDFLARE_ZONE" Default="" Mode="" Description="Your domain name managed in Cloudflare (e.g., example.com) - Required when using Cloudflare provider" Type="Variable" Display="always" Required="false" Mask="false"></Config>
     <Config Name="DigitalOcean Token" Target="DO_TOKEN" Default="" Mode="" Description="DigitalOcean API token (requires write access) - Required when using DigitalOcean provider" Type="Variable" Display="always" Required="false" Mask="true"></Config>
@@ -42,4 +44,8 @@
     <Config Name="Traefik API Password" Target="TRAEFIK_API_PASSWORD" Default="" Mode="" Description="Optional basic auth password for Traefik API - Only used when Operation Mode is 'traefik'" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
     <Config Name="Route53 Zone ID" Target="ROUTE53_ZONE_ID" Default="" Mode="" Description="Alternative to ROUTE53_ZONE: Your Route53 hosted zone ID - Only used when DNS Provider is 'route53'" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
     <Config Name="Route53 Region" Target="ROUTE53_REGION" Default="eu-west-2" Mode="" Description="AWS region for Route53 API calls - Only used when DNS Provider is 'route53'" Type="Variable" Display="advanced" Required="false" Mask="false">eu-west-2</Config>
+    <Config Name="Use API Mode" Target="USE_API_MODE" Default="true|false" Mode="" Description="Enable or disable API server" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+    <Config Name="API Port (ENV)" Target="API_PORT" Default="3000" Mode="" Description="Port for the API server (must match the port mapping)" Type="Variable" Display="advanced" Required="false" Mask="false">3000</Config>
+    <Config Name="API Only Mode" Target="API_ONLY" Default="true|false" Mode="" Description="Run in API-only mode without CLI interface" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+    <Config Name="Local Auth Bypass" Target="LOCAL_AUTH_BYPASS" Default="true|false" Mode="" Description="Allow local connections to bypass authentication" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
 </Container>

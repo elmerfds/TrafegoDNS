@@ -1,0 +1,80 @@
+#!/command/with-contenv bash
+
+echo "**** Setting up CLI tool access ****"
+
+# Ensure CLI scripts are executable
+chmod +x /app/bin/trafego
+chmod +x /usr/local/bin/trafego
+chmod +x /usr/bin/trafego
+
+# Add the in-container script for direct access
+cp /app/docker-s6/scripts/cli-inside-container.sh /usr/local/bin/trafego-with-app
+chmod +x /usr/local/bin/trafego-with-app
+
+# Replace the standard CLI with the in-container version
+mv /usr/local/bin/trafego /usr/local/bin/trafego-direct
+ln -sf /usr/local/bin/trafego-with-app /usr/local/bin/trafego
+
+# Create alias for direct access to monitor
+cat > /usr/local/bin/process-dns << 'EOF'
+#!/bin/bash
+# Directly process DNS through the application
+NODE_ENV=production node -e "
+  try {
+    // Load the app
+    const app = require('/app/src/app');
+
+    // Wait for services to initialize
+    setTimeout(async () => {
+      console.log('Processing DNS records...');
+
+      if (global.services && global.services.Monitor) {
+        const force = process.argv.includes('--force') || process.argv.includes('-f');
+        const result = await global.services.Monitor.processHostnames(force);
+        console.log('DNS processing complete:', result);
+      } else {
+        console.error('Monitor service not available');
+      }
+      process.exit(0);
+    }, 1000);
+  } catch (err) {
+    console.error('Failed to process DNS:', err.message);
+    process.exit(1);
+  }"
+EOF
+
+chmod +x /usr/local/bin/process-dns
+
+# Install the direct database commands
+cp /app/docker-s6/scripts/direct-db-records.sh /usr/local/bin/trafego-records
+chmod +x /usr/local/bin/trafego-records
+
+# Install convenience wrapper
+cp /app/docker-s6/scripts/trafego-db-records /usr/local/bin/trafego-db-records
+chmod +x /usr/local/bin/trafego-db-records
+ln -sf /usr/local/bin/trafego-db-records /usr/local/bin/db-records
+
+# Create environment file for CLI
+cat > /etc/profile.d/trafego-cli.sh << 'EOF'
+# Environment variables for TrafegoDNS CLI
+export CLI_TOKEN=trafegodns-cli
+export API_URL=http://localhost:3000
+export CONTAINER=true
+export TRAFEGO_CLI=true
+export TRAFEGO_INTERNAL_TOKEN=trafegodns-cli
+EOF
+
+chmod +x /etc/profile.d/trafego-cli.sh
+
+# Verify that the CLI tool is available
+if [ -x "$(command -v trafego)" ]; then
+  echo "**** CLI tool 'trafego' is available in PATH ****"
+else
+  echo "**** WARNING: CLI tool 'trafego' is not available in PATH ****"
+fi
+
+# Set up database directory if needed
+mkdir -p /config/data
+chown -R abc:abc /config/data
+
+echo "**** CLI setup complete ****"

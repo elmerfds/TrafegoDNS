@@ -1,0 +1,19 @@
+#!/bin/bash
+# Dedicated wrapper for trafego db records command
+# This script ensures the command works regardless of environment
+
+# Set required environment variables
+export CLI_TOKEN=trafegodns-cli
+export API_URL=http://localhost:3000
+export CONTAINER=true
+export TRAFEGO_CLI=true
+export TRAFEGO_INTERNAL_TOKEN=trafegodns-cli
+export LOCAL_AUTH_BYPASS=true
+
+# First try the direct records command for maximum reliability
+if [ -x "$(command -v trafego-records)" ]; then
+  exec trafego-records "$@"
+fi
+
+# If direct script not available, try the regular CLI with environment vars
+exec CLI_TOKEN=trafegodns-cli API_URL=http://localhost:3000 node /app/bin/trafego db records "$@"

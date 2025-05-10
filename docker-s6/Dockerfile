@@ -3,6 +3,11 @@ FROM node:23-alpine AS dependencies
 WORKDIR /app
 COPY package.json .
 RUN npm install --package-lock-only
+
+# Install build dependencies for native modules
+RUN apk add --no-cache python3 make g++ sqlite-dev
+
+# Install production dependencies
 RUN npm install --omit=dev
 
 # Stage 2: Build the application
@@ -11,6 +16,7 @@ WORKDIR /app
 COPY --from=dependencies /app/package*.json ./
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY src ./src
+COPY bin ./bin
 
 # Stage 3: Create the production image with s6-overlay
 FROM node:23-alpine
@@ -48,6 +54,7 @@ RUN addgroup -g 1001 abc && \
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/src ./src
+COPY --from=build /app/bin ./bin
 RUN chown -R abc:abc /app
 
 # Create necessary directories for s6-overlay scripts
@@ -55,6 +62,26 @@ RUN mkdir -p /etc/cont-init.d /etc/services.d/trafegodns
 
 # Copy your prepared scripts
 COPY docker-s6/root/ /
+
+# Create CLI directory structure
+RUN mkdir -p /app/docker-s6/scripts /usr/local/bin /usr/bin
+
+# Copy CLI setup scripts
+COPY docker-s6/scripts/setup-cli.sh /app/docker-s6/scripts/setup-cli.sh
+COPY docker-s6/scripts/cli-inside-container.sh /app/docker-s6/scripts/cli-inside-container.sh
+COPY docker-s6/scripts/direct-db-records.sh /app/docker-s6/scripts/direct-db-records.sh
+COPY docker-s6/scripts/trafego-db-records /app/docker-s6/scripts/trafego-db-records
+RUN chmod +x /app/docker-s6/scripts/setup-cli.sh /app/docker-s6/scripts/cli-inside-container.sh /app/docker-s6/scripts/direct-db-records.sh /app/docker-s6/scripts/trafego-db-records
+
+# Set up CLI tool
+RUN mkdir -p /usr/local/bin && \
+    echo '#!/bin/sh' > /usr/local/bin/trafego && \
+    echo 'exec node /app/bin/trafego "$@"' >> /usr/local/bin/trafego && \
+    chmod +x /usr/local/bin/trafego
+
+# Run the setup script
+RUN /app/docker-s6/scripts/setup-cli.sh && \
+    ln -sf /usr/local/bin/trafego /bin/trafego
 
 # Update the scripts to use command/with-contenv and fix any issues
 RUN for script in /etc/cont-init.d/* /etc/services.d/trafegodns/*; do \
@@ -74,8 +101,17 @@ RUN head -1 /etc/cont-init.d/* /etc/services.d/trafegodns/*
 # Configure volumes
 VOLUME /config
 
+# Expose API port
+EXPOSE 3000
+
 # Avoid timeout errors adjusting permissions during first run
 ENV S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0
+
+# CLI tool configuration
+ENV CLI_TOKEN=trafegodns-cli
+ENV API_URL=http://localhost:3000
+ENV CONTAINER=true
+ENV TRAFEGO_CLI=true
 
 # Set entrypoint to s6-overlay init
 ENTRYPOINT ["/init"]

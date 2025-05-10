@@ -2,9 +2,9 @@
  * Services module index
  * Exports all service components
  */
-const DNSManager = require('./DNSManager');
+const DNSManager = require('./dnsManager');
 const TraefikMonitor = require('./TraefikMonitor');
-const DockerMonitor = require('./DockerMonitor');
+const DockerMonitor = require('./dockerMonitor');
 const StatusReporter = require('./StatusReporter');
 const DirectDNSManager = require('./DirectDNSManager');
 
