@@ -8,6 +8,7 @@ const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../utils/logger');
 const crypto = require('crypto');
+const fs = require('fs');
 
 class ApiClient {
   constructor(config) {
@@ -16,7 +17,7 @@ class ApiClient {
     // Determine if we're running in a container
     const isContainer = process.env.CONTAINER === 'true' ||
                         process.env.IN_CONTAINER === 'true' ||
-                        require('fs').existsSync('/.dockerenv');
+                        fs.existsSync('/.dockerenv');
 
     // Try to determine API URL - default to localhost if not specified
     const apiUrl = this.config.apiUrl ||
@@ -28,14 +29,18 @@ class ApiClient {
                          process.env.CLI_TOKEN ||
                          'trafegodns-cli';
 
+    // Check if we are running inside the container and can access services directly
+    this.hasDirectAccess = isContainer && !!global.services;
+
     // Set up axios client with base configuration
     this.client = axios.create({
       baseURL: `${apiUrl}/api/v1`,
       timeout: this.config.apiTimeout || 60000,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.internalToken}`,
-        'X-Trafego-CLI': '1'
+        'X-Trafego-CLI': this.internalToken,    // Use special header for CLI
+        'X-API-KEY': this.internalToken,        // Add API key header for compatibility
+        'X-Trafego-Internal': 'true'            // Mark as internal request
       }
     });
     
@@ -84,6 +89,16 @@ class ApiClient {
    * Get all DNS records
    */
   async getDnsRecords(params = {}) {
+    // Try direct access first if available
+    if (this.hasDirectAccess && global.services?.DNSManager) {
+      try {
+        const records = await global.services.DNSManager.dnsProvider.getRecordsFromCache(true);
+        return { status: 'success', data: records };
+      } catch (err) {
+        logger.debug(`Direct access failed, falling back to API: ${err.message}`);
+      }
+    }
+    
     return this.client.get('/dns/records', { params });
   }
   
@@ -126,6 +141,16 @@ class ApiClient {
    * Force DNS refresh
    */
   async refreshDns() {
+    // Try direct access first if available
+    if (this.hasDirectAccess && global.services?.DNSManager) {
+      try {
+        await global.services.DNSManager.refreshRecords();
+        return { status: 'success', message: 'DNS records refreshed successfully' };
+      } catch (err) {
+        logger.debug(`Direct access failed, falling back to API: ${err.message}`);
+      }
+    }
+    
     return this.client.post('/dns/refresh');
   }
 
@@ -134,6 +159,20 @@ class ApiClient {
    * @param {boolean} force - Force update of all records
    */
   async processDnsRecords(force = false) {
+    // Try direct access first if available
+    if (this.hasDirectAccess && global.services?.Monitor) {
+      try {
+        const result = await global.services.Monitor.processHostnames(force);
+        return { 
+          status: 'success', 
+          message: 'DNS records processed successfully', 
+          data: result 
+        };
+      } catch (err) {
+        logger.debug(`Direct access failed, falling back to API: ${err.message}`);
+      }
+    }
+    
     return this.client.post('/dns/process', { force });
   }
   

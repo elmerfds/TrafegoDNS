@@ -27,6 +27,7 @@ A service that automatically manages DNS records based on container configuratio
 - [Provider-Specific TTL Requirements](#provider-specific-ttl-requirements)
 - [Usage Examples](#usage-examples)
 - [Environment Variables](#environment-variables)
+- [Command Line Interface](#command-line-interface)
 - [Automated Cleanup of Orphaned Records](#automated-cleanup-of-orphaned-records)
   - [Preserving Specific DNS Records](#preserving-specific-dns-records)
 - [Manual Hostname Management](#manual-hostname-management)
@@ -659,6 +660,58 @@ services:
 | `LOG_LEVEL` | Logging verbosity (ERROR, WARN, INFO, DEBUG, TRACE) | `INFO` | No |
 | `DNS_CACHE_REFRESH_INTERVAL` | How often to refresh DNS cache (ms) | `3600000` (1 hour) | No |
 | `API_TIMEOUT` | API request timeout (ms) | `60000` (1 minute) | No |
+
+## Command Line Interface
+
+TrafegoDNS includes a command-line interface (CLI) for managing DNS records and other functionality directly from the terminal.
+
+### Using the CLI
+
+The CLI is automatically included in the Docker container and can be used with:
+
+```bash
+docker exec -it trafegodns trafego
+```
+
+Or if you're using the application locally:
+
+```bash
+npm run cli
+```
+
+### Available Commands
+
+- **DNS Management**:
+  - `trafego dns process` - Process hostnames and update DNS records
+  - `trafego dns refresh` - Refresh DNS records from provider
+
+- **Database Management**:
+  - `trafego db records` - List DNS records
+  - `trafego db status` - Show database status
+  - `trafego db cleanup` - Clean up orphaned records
+
+### Examples
+
+Force process all DNS records:
+```bash
+trafego dns process --force
+```
+
+List all DNS records:
+```bash
+trafego db records
+```
+
+Display database status:
+```bash
+trafego db status
+```
+
+For help with any command:
+```bash
+trafego --help
+trafego dns --help
+```
 
 ## Automated Cleanup of Orphaned Records
 

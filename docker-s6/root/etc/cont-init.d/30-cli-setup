@@ -7,25 +7,13 @@ chmod +x /app/bin/trafego
 chmod +x /usr/local/bin/trafego
 chmod +x /usr/bin/trafego
 
-# Create a special wrapper that loads the app environment first
-cat > /usr/local/bin/trafego-with-app << 'EOF'
-#!/bin/bash
-# First require the application to load
-NODE_ENV=production CLI_MODE=true node -e "
-  try {
-    // Load minimal app environment
-    require('/app/src/app');
-    console.log('Application environment loaded');
-  } catch (err) {
-    console.error('Failed to load application environment:', err.message);
-  }
-  process.exit(0);"
-
-# Then run the actual CLI command
-exec node /app/bin/trafego "$@"
-EOF
-
+# Add the in-container script for direct access
+cp /app/docker-s6/scripts/cli-inside-container.sh /usr/local/bin/trafego-with-app
 chmod +x /usr/local/bin/trafego-with-app
+
+# Replace the standard CLI with the in-container version
+mv /usr/local/bin/trafego /usr/local/bin/trafego-direct
+ln -sf /usr/local/bin/trafego-with-app /usr/local/bin/trafego
 
 # Create alias for direct access to monitor
 cat > /usr/local/bin/process-dns << 'EOF'

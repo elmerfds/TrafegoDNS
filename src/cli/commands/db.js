@@ -217,9 +217,20 @@ async function cleanupOrphaned(args, context) {
     // Try API client first
     if (apiClient) {
       console.log(chalk.yellow('Running cleanup via API...'));
-      result = await apiClient.runDnsCleanup();
-      console.log(chalk.green('Cleanup completed successfully'));
-      return;
+      try {
+        if (apiClient.runDnsCleanup) {
+          result = await apiClient.runDnsCleanup();
+        } else if (apiClient.client && apiClient.client.post) {
+          result = await apiClient.client.post('/dns/cleanup');
+        } else {
+          throw new Error('No suitable API method found');
+        }
+        console.log(chalk.green('Cleanup completed successfully'));
+        return;
+      } catch (err) {
+        console.warn(chalk.yellow(`API method failed: ${err.message}`));
+        console.log(chalk.yellow('Trying alternative methods...'));
+      }
     }
     
     // Then try action broker
@@ -270,9 +281,20 @@ async function refreshRecords(args, context) {
     // Try API client first
     if (apiClient) {
       console.log(chalk.yellow('Refreshing DNS records via API...'));
-      await apiClient.refreshDnsRecords();
-      console.log(chalk.green('DNS records refreshed successfully'));
-      return;
+      try {
+        if (apiClient.refreshDnsRecords) {
+          await apiClient.refreshDnsRecords();
+        } else if (apiClient.refreshDns) {
+          await apiClient.refreshDns();
+        } else {
+          throw new Error('No suitable API method found');
+        }
+        console.log(chalk.green('DNS records refreshed successfully'));
+        return;
+      } catch (err) {
+        console.warn(chalk.yellow(`API method failed: ${err.message}`));
+        console.log(chalk.yellow('Trying alternative methods...'));
+      }
     }
     
     // Then try action broker

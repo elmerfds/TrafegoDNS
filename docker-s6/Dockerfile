@@ -66,9 +66,10 @@ COPY docker-s6/root/ /
 # Create CLI directory structure
 RUN mkdir -p /app/docker-s6/scripts /usr/local/bin /usr/bin
 
-# Copy setup script
+# Copy CLI setup scripts
 COPY docker-s6/scripts/setup-cli.sh /app/docker-s6/scripts/setup-cli.sh
-RUN chmod +x /app/docker-s6/scripts/setup-cli.sh
+COPY docker-s6/scripts/cli-inside-container.sh /app/docker-s6/scripts/cli-inside-container.sh
+RUN chmod +x /app/docker-s6/scripts/setup-cli.sh /app/docker-s6/scripts/cli-inside-container.sh
 
 # Set up CLI tool
 RUN mkdir -p /usr/local/bin && \
