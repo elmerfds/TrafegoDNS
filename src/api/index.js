@@ -8,7 +8,6 @@ const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const http = require('http');
 const swaggerUi = require('swagger-ui-express');
-const swaggerJsDoc = require('swagger-jsdoc');
 const logger = require('../utils/logger');
 const { errorHandler } = require('./v1/middleware/errorMiddleware');
 const { globalLimiter } = require('./v1/middleware/rateLimitMiddleware');
@@ -21,8 +20,20 @@ const v1Routes = require('./v1/routes');
 // Create Express app
 const app = express();
 
+// Serve static files from the 'public' directory
+app.use(express.static(__dirname + '/public'));
+
 // Middleware
-app.use(helmet()); // Security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:"]
+    }
+  }
+})); // Security headers with CSP configured for documentation
 app.use(configureCors()); // CORS handling with configuration
 app.use(express.json()); // Parse JSON request body
 app.use(express.urlencoded({ extended: false })); // Parse URL-encoded request body
@@ -34,55 +45,31 @@ app.use(globalLimiter); // Apply rate limiting to all routes
 const EnvironmentLoader = require('../config/EnvironmentLoader');
 
 // API documentation setup - only in development mode or if explicitly enabled
-const enableSwagger = EnvironmentLoader.isEnabled('ENABLE_SWAGGER') ||
+const enableSwagger = EnvironmentLoader.isEnabled('ENABLE_SWAGGER') || 
                      process.env.NODE_ENV === 'development';
 
 logger.info(`Swagger API documentation ${enableSwagger ? 'enabled' : 'disabled'} (ENABLE_SWAGGER=${process.env.ENABLE_SWAGGER})`);
 
 if (enableSwagger) {
   try {
-    const swaggerOptions = {
-      definition: {
-        openapi: '3.0.0',
-        info: {
-          title: 'TrafegoDNS API',
-          version: '1.0.0',
-          description: 'API for managing DNS records via TrafegoDNS',
-          license: {
-            name: 'MIT',
-            url: 'https://opensource.org/licenses/MIT'
-          },
-          contact: {
-            name: 'API Support',
-            url: 'https://github.com/elmerfds/TrafegoDNS'
-          }
-        },
-        servers: [
-          {
-            url: '/api/v1',
-            description: 'API v1'
-          }
-        ]
-      },
-      // Use absolute path to avoid issues in different environments
-      apis: [__dirname + '/v1/routes/*.js']
-    };
-
-    const swaggerDocs = swaggerJsDoc(swaggerOptions);
-    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
-    logger.info('API documentation available at /api-docs');
+    // Import static Swagger definition instead of using JSDoc
+    const swaggerDocument = require('./swaggerDefinition');
+    
+    // Use swagger-ui-express directly with our document
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+    logger.info('API documentation available at /api-docs (using static definition)');
   } catch (error) {
     logger.warn(`Failed to initialize Swagger documentation: ${error.message}`);
     logger.debug(error.stack);
-
+    
     // Add a placeholder endpoint that explains swagger is disabled
     app.get('/api-docs', (req, res) => {
-      res.send('API documentation is currently unavailable. Enable it by setting ENABLE_SWAGGER=true');
+      res.send(`API documentation is currently unavailable. Error: ${error.message}`);
     });
   }
 } else {
   logger.info('API documentation disabled. Enable it by setting ENABLE_SWAGGER=true');
-
+  
   // Add a placeholder endpoint that explains swagger is disabled
   app.get('/api-docs', (req, res) => {
     res.send('API documentation is disabled. Enable it by setting ENABLE_SWAGGER=true');
@@ -95,6 +82,11 @@ app.use('/api/v1', v1Routes);
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'API is running' });
+});
+
+// Root route - redirect to documentation
+app.get('/', (req, res) => {
+  res.redirect('/index.html');
 });
 
 // 404 Handler for API routes
