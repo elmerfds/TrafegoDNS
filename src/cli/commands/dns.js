@@ -16,23 +16,52 @@ async function refreshRecords(args, context) {
     // Try API client first
     if (apiClient) {
       console.log(chalk.yellow('Refreshing DNS records via API...'));
-      await apiClient.refreshDnsRecords();
-      console.log(chalk.green('DNS records refreshed successfully'));
-      return;
+      try {
+        if (apiClient.refreshDnsRecords) {
+          await apiClient.refreshDnsRecords();
+        } else if (apiClient.refreshDns) {
+          await apiClient.refreshDns();
+        } else {
+          throw new Error('No suitable refresh method found in API client');
+        }
+        console.log(chalk.green('DNS records refreshed successfully'));
+        return;
+      } catch (err) {
+        console.warn(chalk.yellow(`API refresh failed: ${err.message}, trying alternate methods...`));
+      }
     }
     
     // Then try action broker
     if (actionBroker) {
       console.log(chalk.yellow('Refreshing DNS records via action broker...'));
-      await actionBroker.dispatch({
-        type: 'DNS_REFRESH',
-        metadata: { source: 'cli' }
-      });
-      console.log(chalk.green('DNS records refreshed successfully'));
-      return;
+      try {
+        await actionBroker.dispatch({
+          type: 'DNS_REFRESH',
+          metadata: { source: 'cli' }
+        });
+        console.log(chalk.green('DNS records refreshed successfully'));
+        return;
+      } catch (err) {
+        console.warn(chalk.yellow(`Action broker failed: ${err.message}, trying direct access...`));
+      }
     }
-    
-    console.log(chalk.red('Cannot refresh DNS records: No API client or action broker available'));
+
+    // Try direct service access
+    try {
+      if (global.services && global.services.DNSManager) {
+        console.log(chalk.yellow('Refreshing DNS records via direct service access...'));
+        if (typeof global.services.DNSManager.refreshRecords === 'function') {
+          await global.services.DNSManager.refreshRecords();
+          console.log(chalk.green('DNS records refreshed successfully'));
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn(chalk.yellow(`Direct service access failed: ${err.message}`));
+    }
+
+    console.log(chalk.red('Cannot refresh DNS records: No API client, action broker, or direct service access available'));
+    console.log('Make sure you are running this command from within the TrafegoDNS container with appropriate permissions');
   } catch (error) {
     console.error(chalk.red(`Error refreshing DNS records: ${error.message}`));
   }

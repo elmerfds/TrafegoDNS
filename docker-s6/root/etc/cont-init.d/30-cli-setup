@@ -4,8 +4,58 @@ echo "**** Setting up CLI tool access ****"
 
 # Ensure CLI scripts are executable
 chmod +x /app/bin/trafego
-chmod +x /usr/local/bin/trafego 
+chmod +x /usr/local/bin/trafego
 chmod +x /usr/bin/trafego
+
+# Create a special wrapper that loads the app environment first
+cat > /usr/local/bin/trafego-with-app << 'EOF'
+#!/bin/bash
+# First require the application to load
+NODE_ENV=production CLI_MODE=true node -e "
+  try {
+    // Load minimal app environment
+    require('/app/src/app');
+    console.log('Application environment loaded');
+  } catch (err) {
+    console.error('Failed to load application environment:', err.message);
+  }
+  process.exit(0);"
+
+# Then run the actual CLI command
+exec node /app/bin/trafego "$@"
+EOF
+
+chmod +x /usr/local/bin/trafego-with-app
+
+# Create alias for direct access to monitor
+cat > /usr/local/bin/process-dns << 'EOF'
+#!/bin/bash
+# Directly process DNS through the application
+NODE_ENV=production node -e "
+  try {
+    // Load the app
+    const app = require('/app/src/app');
+
+    // Wait for services to initialize
+    setTimeout(async () => {
+      console.log('Processing DNS records...');
+
+      if (global.services && global.services.Monitor) {
+        const force = process.argv.includes('--force') || process.argv.includes('-f');
+        const result = await global.services.Monitor.processHostnames(force);
+        console.log('DNS processing complete:', result);
+      } else {
+        console.error('Monitor service not available');
+      }
+      process.exit(0);
+    }, 1000);
+  } catch (err) {
+    console.error('Failed to process DNS:', err.message);
+    process.exit(1);
+  }"
+EOF
+
+chmod +x /usr/local/bin/process-dns
 
 # Verify that the CLI tool is available
 if [ -x "$(command -v trafego)" ]; then

@@ -25,7 +25,9 @@ try {
     const ApiClient = require('../src/cli/apiClient');
     context.apiClient = new ApiClient({
       apiUrl: process.env.API_URL || 'http://localhost:3000',
-      apiToken: process.env.CLI_TOKEN || 'trafegodns-cli'
+      localAuthBypass: {
+        cliToken: process.env.CLI_TOKEN || 'trafegodns-cli'
+      }
     });
   }
 } catch (error) {

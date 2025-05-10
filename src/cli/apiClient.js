@@ -11,20 +11,30 @@ const crypto = require('crypto');
 
 class ApiClient {
   constructor(config) {
-    this.config = config;
-    
+    this.config = config || {};
+
+    // Determine if we're running in a container
+    const isContainer = process.env.CONTAINER === 'true' ||
+                        process.env.IN_CONTAINER === 'true' ||
+                        require('fs').existsSync('/.dockerenv');
+
+    // Try to determine API URL - default to localhost if not specified
+    const apiUrl = this.config.apiUrl ||
+                   process.env.API_URL ||
+                   (isContainer ? 'http://localhost:3000' : 'http://localhost:3000');
+
     // Generate a secure internal token
-    this.internalToken = config.localAuthBypass?.internalToken || 
-                         process.env.TRAFEGO_INTERNAL_TOKEN || 
-                         crypto.randomBytes(32).toString('hex');
-    
+    this.internalToken = this.config.localAuthBypass?.cliToken ||
+                         process.env.CLI_TOKEN ||
+                         'trafegodns-cli';
+
     // Set up axios client with base configuration
     this.client = axios.create({
-      baseURL: `http://localhost:${process.env.API_PORT || 3000}/api/v1`,
-      timeout: config.apiTimeout || 60000,
+      baseURL: `${apiUrl}/api/v1`,
+      timeout: this.config.apiTimeout || 60000,
       headers: {
         'Content-Type': 'application/json',
-        'X-Trafego-Internal': this.internalToken,
+        'Authorization': `Bearer ${this.internalToken}`,
         'X-Trafego-CLI': '1'
       }
     });

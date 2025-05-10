@@ -77,7 +77,8 @@ RUN mkdir -p /usr/local/bin && \
     chmod +x /usr/local/bin/trafego
 
 # Run the setup script
-RUN /app/docker-s6/scripts/setup-cli.sh
+RUN /app/docker-s6/scripts/setup-cli.sh && \
+    ln -sf /usr/local/bin/trafego /bin/trafego
 
 # Update the scripts to use command/with-contenv and fix any issues
 RUN for script in /etc/cont-init.d/* /etc/services.d/trafegodns/*; do \
@@ -106,6 +107,8 @@ ENV S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0
 # CLI tool configuration
 ENV CLI_TOKEN=trafegodns-cli
 ENV API_URL=http://localhost:3000
+ENV CONTAINER=true
+ENV TRAFEGO_CLI=true
 
 # Set entrypoint to s6-overlay init
 ENTRYPOINT ["/init"]
