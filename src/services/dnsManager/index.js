@@ -66,7 +66,18 @@ class DNSManager {
    */
   async processHostnames(hostnames, containerLabels) {
     try {
-      logger.info(`Processing ${hostnames.length} hostnames for DNS management`);
+      // Only log at INFO level if the hostname count has changed or it's the first run
+      const hasCountChanged = this.previousStats.hostnameCount !== hostnames.length;
+
+      if (hasCountChanged) {
+        logger.info(`Processing ${hostnames.length} hostnames for DNS management`);
+      } else {
+        // Log at debug level if nothing changed to reduce noise
+        logger.debug(`Processing ${hostnames.length} hostnames for DNS management`);
+      }
+
+      // Update previous stats with current hostname count
+      this.previousStats.hostnameCount = hostnames.length;
 
       // Track if we've already logged the preserved hostnames
       // We only want to log this once during startup, not on every poll

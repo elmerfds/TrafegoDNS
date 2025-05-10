@@ -23,7 +23,8 @@ function createStats() {
  */
 function createPreviousStats() {
   return {
-    upToDateCount: 0
+    upToDateCount: 0,
+    hostnameCount: 0
   };
 }
 
