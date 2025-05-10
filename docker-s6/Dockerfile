@@ -69,7 +69,9 @@ RUN mkdir -p /app/docker-s6/scripts /usr/local/bin /usr/bin
 # Copy CLI setup scripts
 COPY docker-s6/scripts/setup-cli.sh /app/docker-s6/scripts/setup-cli.sh
 COPY docker-s6/scripts/cli-inside-container.sh /app/docker-s6/scripts/cli-inside-container.sh
-RUN chmod +x /app/docker-s6/scripts/setup-cli.sh /app/docker-s6/scripts/cli-inside-container.sh
+COPY docker-s6/scripts/direct-db-records.sh /app/docker-s6/scripts/direct-db-records.sh
+COPY docker-s6/scripts/trafego-db-records /app/docker-s6/scripts/trafego-db-records
+RUN chmod +x /app/docker-s6/scripts/setup-cli.sh /app/docker-s6/scripts/cli-inside-container.sh /app/docker-s6/scripts/direct-db-records.sh /app/docker-s6/scripts/trafego-db-records
 
 # Set up CLI tool
 RUN mkdir -p /usr/local/bin && \

@@ -45,6 +45,27 @@ EOF
 
 chmod +x /usr/local/bin/process-dns
 
+# Install the direct database commands
+cp /app/docker-s6/scripts/direct-db-records.sh /usr/local/bin/trafego-records
+chmod +x /usr/local/bin/trafego-records
+
+# Install convenience wrapper
+cp /app/docker-s6/scripts/trafego-db-records /usr/local/bin/trafego-db-records
+chmod +x /usr/local/bin/trafego-db-records
+ln -sf /usr/local/bin/trafego-db-records /usr/local/bin/db-records
+
+# Create environment file for CLI
+cat > /etc/profile.d/trafego-cli.sh << 'EOF'
+# Environment variables for TrafegoDNS CLI
+export CLI_TOKEN=trafegodns-cli
+export API_URL=http://localhost:3000
+export CONTAINER=true
+export TRAFEGO_CLI=true
+export TRAFEGO_INTERNAL_TOKEN=trafegodns-cli
+EOF
+
+chmod +x /etc/profile.d/trafego-cli.sh
+
 # Verify that the CLI tool is available
 if [ -x "$(command -v trafego)" ]; then
   echo "**** CLI tool 'trafego' is available in PATH ****"
