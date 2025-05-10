@@ -1,6 +1,7 @@
 /**
  * User Model
  * Defines the schema and methods for users
+ * Compatible with both SQLite and JSON storage
  */
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
@@ -11,6 +12,15 @@ const logger = require('../../../utils/logger');
 const DATA_DIR = path.join(process.env.CONFIG_DIR || '/config', 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const TOKENS_FILE = path.join(DATA_DIR, 'revoked-tokens.json');
+
+// Try to load database module
+let database;
+try {
+  database = require('../../../database');
+} catch (error) {
+  logger.debug('SQLite database module not available, using JSON storage for users');
+  database = null;
+}
 
 // User model
 class UserModel {
@@ -27,6 +37,40 @@ class UserModel {
    */
   init() {
     try {
+      // Use SQLite if available and initialized
+      if (database && database.isInitialized()) {
+        logger.debug('Using SQLite database for user management');
+        this.userRepository = database.repositories.user;
+        this.tokenRepository = database.repositories.revokedToken;
+
+        // Check if admin user exists, create if not
+        this.userRepository.findByUsername('admin')
+          .then(admin => {
+            if (!admin) {
+              // Create default admin user
+              this.userRepository.createUser({
+                username: 'admin',
+                password: 'admin123',
+                role: 'admin'
+              }).then(() => {
+                logger.info('Created default admin user in SQLite database');
+              }).catch(err => {
+                logger.error(`Failed to create default admin user: ${err.message}`);
+              });
+            }
+          })
+          .catch(err => {
+            logger.error(`Failed to check for admin user: ${err.message}`);
+          });
+
+        this.initialized = true;
+        logger.info('User database initialized successfully (SQLite)');
+        return;
+      }
+
+      // Fallback to JSON storage
+      logger.debug('Using JSON storage for user management');
+
       // Create data directory if it doesn't exist
       if (!fs.existsSync(DATA_DIR)) {
         fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -58,12 +102,12 @@ class UserModel {
 
       // Load users from file
       this.loadUsers();
-      
+
       // Load revoked tokens from file
       this.loadRevokedTokens();
-      
+
       this.initialized = true;
-      logger.info('User database initialized successfully');
+      logger.info('User database initialized successfully (JSON)');
     } catch (error) {
       logger.error(`Failed to initialize user database: ${error.message}`);
       throw error;
@@ -137,29 +181,49 @@ class UserModel {
   /**
    * Find user by ID
    * @param {string} id - User ID
-   * @returns {Object|null} - User object or null if not found
+   * @returns {Promise<Object|null>} - User object or null if not found
    */
-  findById(id) {
+  async findById(id) {
+    // Use SQLite if available
+    if (this.userRepository) {
+      return this.userRepository.findById(id);
+    }
+
+    // Fallback to JSON
     return this.users.find(user => user.id === id) || null;
   }
 
   /**
    * Find user by username
    * @param {string} username - Username
-   * @returns {Object|null} - User object or null if not found
+   * @returns {Promise<Object|null>} - User object or null if not found
    */
-  findByUsername(username) {
+  async findByUsername(username) {
+    // Use SQLite if available
+    if (this.userRepository) {
+      return this.userRepository.findByUsername(username);
+    }
+
+    // Fallback to JSON
     return this.users.find(user => user.username.toLowerCase() === username.toLowerCase()) || null;
   }
 
   /**
    * Create a new user
    * @param {Object} userData - User data
-   * @returns {Object} - Created user object
+   * @returns {Promise<Object>} - Created user object
    */
   async create(userData) {
+    // Use SQLite if available
+    if (this.userRepository) {
+      return this.userRepository.createUser(userData);
+    }
+
+    // Fallback to JSON storage
+
     // Check if username already exists
-    if (this.findByUsername(userData.username)) {
+    const existingUser = await this.findByUsername(userData.username);
+    if (existingUser) {
       throw new Error('Username already exists');
     }
 
@@ -195,9 +259,15 @@ class UserModel {
    * Update a user
    * @param {string} id - User ID
    * @param {Object} userData - User data to update
-   * @returns {Object} - Updated user object
+   * @returns {Promise<Object>} - Updated user object
    */
   async update(id, userData) {
+    // Use SQLite if available
+    if (this.userRepository) {
+      return this.userRepository.updateUser(id, userData);
+    }
+
+    // Fallback to JSON storage
     const index = this.users.findIndex(u => u.id === id);
 
     if (index === -1) {
@@ -208,10 +278,12 @@ class UserModel {
     const currentUser = this.users[index];
 
     // Check if updating username and if it already exists
-    if (userData.username && 
-        userData.username !== currentUser.username && 
-        this.findByUsername(userData.username)) {
-      throw new Error('Username already exists');
+    if (userData.username &&
+        userData.username !== currentUser.username) {
+      const existingUser = await this.findByUsername(userData.username);
+      if (existingUser) {
+        throw new Error('Username already exists');
+      }
     }
 
     // Hash password if provided
@@ -243,9 +315,15 @@ class UserModel {
   /**
    * Delete a user
    * @param {string} id - User ID
-   * @returns {boolean} - Success status
+   * @returns {Promise<boolean>} - Success status
    */
-  delete(id) {
+  async delete(id) {
+    // Use SQLite if available
+    if (this.userRepository) {
+      return this.userRepository.delete(id);
+    }
+
+    // Fallback to JSON storage
     const initialLength = this.users.length;
     this.users = this.users.filter(u => u.id !== id);
 
@@ -262,18 +340,26 @@ class UserModel {
    * Add token to revoked list
    * @param {string} token - Token to revoke
    * @param {number} expiresAt - Timestamp when token expires
+   * @returns {Promise<boolean>} - Success status
    */
-  revokeToken(token, expiresAt) {
+  async revokeToken(token, expiresAt) {
+    // Use SQLite if available
+    if (this.tokenRepository) {
+      await this.tokenRepository.revokeToken(token, expiresAt);
+      return true;
+    }
+
+    // Fallback to JSON storage
     // Store just a hash of the token to save space
     const crypto = require('crypto');
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    
+
     this.revokedTokens.push({
       token: tokenHash,
       revokedAt: Date.now(),
       expiresAt
     });
-    
+
     this.saveRevokedTokens();
     return true;
   }
@@ -281,12 +367,18 @@ class UserModel {
   /**
    * Check if token is revoked
    * @param {string} token - Token to check
-   * @returns {boolean} - Whether token is revoked
+   * @returns {Promise<boolean>} - Whether token is revoked
    */
-  isTokenRevoked(token) {
+  async isTokenRevoked(token) {
+    // Use SQLite if available
+    if (this.tokenRepository) {
+      return this.tokenRepository.isTokenRevoked(token);
+    }
+
+    // Fallback to JSON storage
     const crypto = require('crypto');
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    
+
     return this.revokedTokens.some(t => t.token === tokenHash);
   }
 
@@ -294,11 +386,17 @@ class UserModel {
    * Verify user credentials
    * @param {string} username - Username
    * @param {string} password - Password
-   * @returns {Object|null} - User object without password or null if invalid
+   * @returns {Promise<Object|null>} - User object without password or null if invalid
    */
   async verifyCredentials(username, password) {
+    // Use SQLite if available
+    if (this.userRepository) {
+      return this.userRepository.verifyCredentials(username, password);
+    }
+
+    // Fallback to JSON storage
     // Find user by username
-    const user = this.findByUsername(username);
+    const user = await this.findByUsername(username);
 
     if (!user) {
       return null;
@@ -318,9 +416,15 @@ class UserModel {
 
   /**
    * Get all users
-   * @returns {Array} - Array of users (without passwords)
+   * @returns {Promise<Array>} - Array of users (without passwords)
    */
-  getAllUsers() {
+  async getAllUsers() {
+    // Use SQLite if available
+    if (this.userRepository) {
+      return this.userRepository.getAllUsers();
+    }
+
+    // Fallback to JSON storage
     return this.users.map(user => {
       const { passwordHash, ...userWithoutPassword } = user;
       return userWithoutPassword;

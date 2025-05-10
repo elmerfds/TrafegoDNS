@@ -29,6 +29,29 @@ async function start() {
       cliToken: process.env.CLI_TOKEN || 'trafegodns-cli'
     };
 
+    // Initialize database if enabled (default true)
+    const useDatabase = process.env.USE_DATABASE !== 'false';
+
+    if (useDatabase) {
+      logger.info('🔍 Initializing SQLite database');
+      try {
+        const database = require('./database');
+        await database.initialize();
+
+        // Log success or failure
+        if (database.isInitialized()) {
+          logger.info('✅ SQLite database initialized successfully');
+        } else {
+          logger.warn('⚠️ SQLite database initialization failed, falling back to JSON storage');
+        }
+      } catch (dbError) {
+        logger.warn(`⚠️ SQLite database initialization error: ${dbError.message}`);
+        logger.info('⚠️ Continuing with JSON storage fallback');
+      }
+    } else {
+      logger.info('📝 SQLite database disabled, using JSON storage');
+    }
+
     // Initialize API mode (default true)
     const useApiMode = process.env.USE_API_MODE !== 'false';
 
@@ -147,7 +170,8 @@ async function start() {
         dnsManager: true,
         monitor: true,
         docker: dockerMonitor && dockerMonitor.isConnected(),
-        api: apiServer ? true : false
+        api: apiServer ? true : false,
+        database: useDatabase && require('./database').isInitialized()
       }
     });
   } catch (error) {

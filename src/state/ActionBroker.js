@@ -104,9 +104,12 @@ class ActionBroker {
    * @param {string} eventType - Event to emit after update
    */
   updateState(statePath, value, action, eventType) {
+    // Get old value for audit logging
+    const oldValue = this.stateStore.getState(statePath);
+
     // Update the state
     const newState = this.stateStore._updateState(statePath, value, action.metadata);
-    
+
     // Emit specific event if provided
     if (eventType) {
       this.eventBus.emit(eventType, {
@@ -115,7 +118,7 @@ class ActionBroker {
         metadata: action.metadata
       });
     }
-    
+
     // Always emit the generic state change event
     this.eventBus.emit('state:changed', {
       path: statePath,
@@ -123,7 +126,28 @@ class ActionBroker {
       value,
       metadata: action.metadata
     });
-    
+
+    // Log state change to audit log if database is available
+    try {
+      const database = require('../database');
+      if (database.isInitialized()) {
+        database.repositories.auditLog.logStateChange(
+          action.type,
+          statePath,
+          oldValue,
+          value,
+          action.metadata?.userId || null,
+          action.metadata?.source || null
+        ).catch(err => {
+          // Just log the error, don't disrupt the main flow
+          const logger = require('../utils/logger');
+          logger.debug(`Failed to log state change to audit log: ${err.message}`);
+        });
+      }
+    } catch (error) {
+      // Ignore if database module is not available
+    }
+
     return newState;
   }
 }
