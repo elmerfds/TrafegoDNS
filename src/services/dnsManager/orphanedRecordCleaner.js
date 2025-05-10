@@ -15,29 +15,33 @@ const EventTypes = require('../../events/EventTypes');
  * @param {Set} loggedPreservedRecords - Set to track already logged preserved records
  */
 async function cleanupOrphanedRecords(
-  activeHostnames, 
-  dnsProvider, 
-  recordTracker, 
-  config, 
+  activeHostnames,
+  dnsProvider,
+  recordTracker,
+  config,
   eventBus,
   loggedPreservedRecords
 ) {
   try {
     logger.debug('Checking for orphaned DNS records...');
-    
+
     // Get all DNS records for our zone (from cache when possible)
     const allRecords = await dnsProvider.getRecordsFromCache(true); // Force refresh
-    
+
     // Normalize active hostnames for comparison
     const normalizedActiveHostnames = new Set(activeHostnames.map(host => host.toLowerCase()));
-    
+
     // Log all active hostnames in trace mode
     logger.trace(`Active hostnames: ${Array.from(normalizedActiveHostnames).join(', ')}`);
-    
+
     // For tracking counts in this run
     let newlyOrphanedCount = 0;
     let readyForDeletionCount = 0;
     let reactivatedCount = 0;
+
+    // Track preserved records for batch logging
+    const newlyPreservedList = [];
+    const newlyPreservedManaged = [];
     
     // Find records that were created by this tool but no longer exist in Traefik
     const domainSuffix = `.${config.getProviderDomain()}`;
@@ -103,34 +107,34 @@ async function cleanupOrphanedRecords(
       if (recordTracker.shouldPreserveHostname(recordFqdn)) {
         // Create a unique key for this record for tracking log messages
         const recordKey = `${recordFqdn}-${record.type}`;
-        
-        // If we haven't logged this record yet, log at INFO level
+
+        // If we haven't logged this record yet, collect it for batch logging
         if (!loggedPreservedRecords.has(recordKey)) {
-          logger.info(`Preserving DNS record (in preserved list): ${recordFqdn} (${record.type})`);
+          newlyPreservedList.push(`${recordFqdn} (${record.type})`);
           loggedPreservedRecords.add(recordKey);
         } else {
           // We've already logged this one, use DEBUG level to avoid spam
           logger.debug(`Preserving DNS record (in preserved list): ${recordFqdn} (${record.type})`);
         }
-        
+
         continue;
       }
-      
+
       // Also check if this record is in the managed hostnames list
-      if (recordTracker.managedHostnames && 
+      if (recordTracker.managedHostnames &&
           recordTracker.managedHostnames.some(h => h.hostname.toLowerCase() === recordFqdn.toLowerCase())) {
         // Create a unique key for this record for tracking log messages
         const recordKey = `${recordFqdn}-${record.type}-managed`;
-        
-        // If we haven't logged this record yet, log at INFO level
+
+        // If we haven't logged this record yet, collect it for batch logging
         if (!loggedPreservedRecords.has(recordKey)) {
-          logger.info(`Preserving DNS record (in managed list): ${recordFqdn} (${record.type})`);
+          newlyPreservedManaged.push(`${recordFqdn} (${record.type})`);
           loggedPreservedRecords.add(recordKey);
         } else {
           // We've already logged this one, use DEBUG level to avoid spam
           logger.debug(`Preserving DNS record (in managed list): ${recordFqdn} (${record.type})`);
         }
-        
+
         continue;
       }
       
@@ -195,6 +199,15 @@ async function cleanupOrphanedRecords(
       logger.info(`Orphaned records: ${newlyOrphanedCount} newly marked, ${readyForDeletionCount} deleted after grace period, ${reactivatedCount} reactivated`);
     } else {
       logger.debug('No orphaned DNS records found');
+    }
+
+    // Log consolidated preserved records if any new ones were found
+    if (newlyPreservedList.length > 0) {
+      logger.info(`Preserving DNS records (in preserved list): ${newlyPreservedList.join(', ')}`);
+    }
+
+    if (newlyPreservedManaged.length > 0) {
+      logger.info(`Preserving DNS records (in managed list): ${newlyPreservedManaged.join(', ')}`);
     }
   } catch (error) {
     logger.error(`Error cleaning up orphaned records: ${error.message}`);

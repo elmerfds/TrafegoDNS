@@ -26,7 +26,10 @@ class DNSManager {
     
     // Track which preserved records we've already logged to avoid spam
     this.loggedPreservedRecords = new Set();
-    
+
+    // Flag to track if we've logged the preserved hostnames list (to avoid repeated logging)
+    this.hasLoggedPreservedHostnames = false;
+
     // Initialize counters for statistics
     this.stats = createStats();
     
@@ -65,10 +68,13 @@ class DNSManager {
     try {
       logger.info(`Processing ${hostnames.length} hostnames for DNS management`);
 
-      // Now is a good time to log preserved hostnames - after hostname processing starts
-      // but before we actually process them
-      if (this.recordTracker.preservedHostnames && this.recordTracker.preservedHostnames.length > 0) {
+      // Track if we've already logged the preserved hostnames
+      // We only want to log this once during startup, not on every poll
+      if (!this.hasLoggedPreservedHostnames &&
+          this.recordTracker.preservedHostnames &&
+          this.recordTracker.preservedHostnames.length > 0) {
         logger.info(`Loaded ${this.recordTracker.preservedHostnames.length} preserved hostnames: ${this.recordTracker.preservedHostnames.join(', ')}`);
+        this.hasLoggedPreservedHostnames = true;
       }
 
       // Reset statistics for this processing run
