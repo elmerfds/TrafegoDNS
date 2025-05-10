@@ -61,20 +61,31 @@ async function start() {
     if (useApiMode) {
       logger.info('🚀 Starting API server and using API mode');
 
-      // Start API server
-      const apiPort = process.env.API_PORT || 3000;
-      apiServer = startApiServer(apiPort, config, eventBus);
+      try {
+        // Start API server
+        const apiPort = process.env.API_PORT || 3000;
+        apiServer = startApiServer(apiPort, config, eventBus);
 
-      // Inject local auth bypass middleware
-      apiServer.app.use(localAuthBypass(config));
+        // Inject local auth bypass middleware
+        apiServer.app.use(localAuthBypass(config));
 
-      // Create API client for internal use
-      apiClient = new ApiClient(config);
+        // Create API client for internal use
+        apiClient = new ApiClient(config);
 
-      // Connect API client to services
-      dnsManager.apiClient = apiClient;
-      monitor.apiClient = apiClient;
-      dockerMonitor.apiClient = apiClient;
+        // Connect API client to services
+        dnsManager.apiClient = apiClient;
+        monitor.apiClient = apiClient;
+        dockerMonitor.apiClient = apiClient;
+
+        logger.info(`✅ API server started successfully on port ${apiPort}`);
+      } catch (apiError) {
+        logger.error(`❌ Failed to start API server: ${apiError.message}`);
+        logger.error(`API server stack trace: ${apiError.stack}`);
+
+        // Continue running without API if it fails
+        logger.warn('Continuing with core functionality without API server');
+        useApiMode = false;
+      }
     } else {
       logger.info('🚀 Starting in direct CLI mode (API server disabled)');
     }

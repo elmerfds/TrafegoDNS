@@ -74,6 +74,9 @@ RUN head -1 /etc/cont-init.d/* /etc/services.d/trafegodns/*
 # Configure volumes
 VOLUME /config
 
+# Expose API port
+EXPOSE 3000
+
 # Avoid timeout errors adjusting permissions during first run
 ENV S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0
 

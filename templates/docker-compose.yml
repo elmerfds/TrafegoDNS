@@ -20,6 +20,11 @@ services:
       - API_PORT=3000            # API server port
       - API_ONLY=false           # Run in API-only mode without CLI (default: false)
       - LOCAL_AUTH_BYPASS=true   # Allow local connections to bypass auth (default: true)
+      - ENABLE_SWAGGER=false     # Enable Swagger API docs (increases memory usage)
+
+      # JWT Authentication (generate secure values with scripts/generate-jwt-secrets.js)
+      # - JWT_ACCESS_SECRET=      # Secret for JWT access tokens
+      # - JWT_REFRESH_SECRET=     # Secret for JWT refresh tokens
 
       # DNS Provider (choose one)
       - DNS_PROVIDER=cloudflare  # Options: cloudflare, digitalocean, route53

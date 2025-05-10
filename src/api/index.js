@@ -30,35 +30,56 @@ app.use(cookieParser()); // Parse cookies
 app.use(morgan('dev')); // HTTP request logging
 app.use(globalLimiter); // Apply rate limiting to all routes
 
-// API documentation setup
-const swaggerOptions = {
-  definition: {
-    openapi: '3.0.0',
-    info: {
-      title: 'TrafegoDNS API',
-      version: '1.0.0',
-      description: 'API for managing DNS records via TrafegoDNS',
-      license: {
-        name: 'MIT',
-        url: 'https://opensource.org/licenses/MIT'
+// API documentation setup - only in development mode or if explicitly enabled
+if (process.env.ENABLE_SWAGGER === 'true' || process.env.NODE_ENV === 'development') {
+  try {
+    const swaggerOptions = {
+      definition: {
+        openapi: '3.0.0',
+        info: {
+          title: 'TrafegoDNS API',
+          version: '1.0.0',
+          description: 'API for managing DNS records via TrafegoDNS',
+          license: {
+            name: 'MIT',
+            url: 'https://opensource.org/licenses/MIT'
+          },
+          contact: {
+            name: 'API Support',
+            url: 'https://github.com/elmerfds/TrafegoDNS'
+          }
+        },
+        servers: [
+          {
+            url: '/api/v1',
+            description: 'API v1'
+          }
+        ]
       },
-      contact: {
-        name: 'API Support',
-        url: 'https://github.com/elmerfds/TrafegoDNS'
-      }
-    },
-    servers: [
-      {
-        url: '/api/v1',
-        description: 'API v1'
-      }
-    ]
-  },
-  apis: ['./src/api/v1/routes/*.js'] // Path to the API docs
-};
+      // Use absolute path to avoid issues in different environments
+      apis: [__dirname + '/v1/routes/*.js']
+    };
 
-const swaggerDocs = swaggerJsDoc(swaggerOptions);
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+    const swaggerDocs = swaggerJsDoc(swaggerOptions);
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+    logger.info('API documentation available at /api-docs');
+  } catch (error) {
+    logger.warn(`Failed to initialize Swagger documentation: ${error.message}`);
+    logger.debug(error.stack);
+
+    // Add a placeholder endpoint that explains swagger is disabled
+    app.get('/api-docs', (req, res) => {
+      res.send('API documentation is currently unavailable. Enable it by setting ENABLE_SWAGGER=true');
+    });
+  }
+} else {
+  logger.info('API documentation disabled. Enable it by setting ENABLE_SWAGGER=true');
+
+  // Add a placeholder endpoint that explains swagger is disabled
+  app.get('/api-docs', (req, res) => {
+    res.send('API documentation is disabled. Enable it by setting ENABLE_SWAGGER=true');
+  });
+}
 
 // API Routes
 app.use('/api/v1', v1Routes);
