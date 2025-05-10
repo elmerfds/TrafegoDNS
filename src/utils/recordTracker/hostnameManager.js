@@ -7,21 +7,26 @@ const logger = require('../logger');
 /**
  * Load preserved hostnames from environment variable
  * @param {Object} config - Configuration object
+ * @param {boolean} suppressLog - Whether to suppress the log message
  * @returns {Array} - Array of preserved hostname patterns
  */
-function loadPreservedHostnames(config) {
+function loadPreservedHostnames(config, suppressLog = false) {
   const hostnameStr = process.env.PRESERVED_HOSTNAMES || '';
-  
+
   if (!hostnameStr) {
     logger.debug('No preserved hostnames configured');
     return [];
   }
-  
+
   const hostnames = hostnameStr.split(',')
     .map(h => h.trim())
     .filter(h => h.length > 0);
-  
-  logger.info(`Loaded ${hostnames.length} preserved hostnames: ${hostnames.join(', ')}`);
+
+  // Only log if not suppressed - this allows us to delay the log message
+  if (!suppressLog) {
+    logger.info(`Loaded ${hostnames.length} preserved hostnames: ${hostnames.join(', ')}`);
+  }
+
   return hostnames;
 }
 

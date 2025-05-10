@@ -51,8 +51,9 @@ class RecordTracker {
     this.providerDomain = config.getProviderDomain();
     this.provider = config.dnsProvider;
     
-    // Load preserved hostnames from config
-    this.preservedHostnames = loadPreservedHostnames(config);
+    // Load preserved hostnames from config, but suppress the log for now
+    // We'll display the log at a more appropriate time in the startup sequence
+    this.preservedHostnames = loadPreservedHostnames(config, true);
 
     // Load managed hostnames from config
     this.managedHostnames = loadManagedHostnames(config);    

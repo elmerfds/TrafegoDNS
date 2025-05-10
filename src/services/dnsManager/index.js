@@ -63,8 +63,14 @@ class DNSManager {
    */
   async processHostnames(hostnames, containerLabels) {
     try {
-      logger.debug(`DNS Manager processing ${hostnames.length} hostnames`);
-      
+      logger.info(`Processing ${hostnames.length} hostnames for DNS management`);
+
+      // Now is a good time to log preserved hostnames - after hostname processing starts
+      // but before we actually process them
+      if (this.recordTracker.preservedHostnames && this.recordTracker.preservedHostnames.length > 0) {
+        logger.info(`Loaded ${this.recordTracker.preservedHostnames.length} preserved hostnames: ${this.recordTracker.preservedHostnames.join(', ')}`);
+      }
+
       // Reset statistics for this processing run
       this.stats = createStats();
       
