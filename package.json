@@ -23,6 +23,9 @@
     "joi": "^17.12.2",
     "morgan": "^1.10.0",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.0"
+    "swagger-ui-express": "^5.0.0",
+    "express-rate-limit": "^7.1.5",
+    "socket.io": "^4.7.4",
+    "ws": "^8.16.0"
   }
 }

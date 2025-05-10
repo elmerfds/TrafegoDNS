@@ -13,6 +13,7 @@ const {
   runCleanup
 } = require('../controllers/dnsController');
 const { authenticate, authorize } = require('../middleware/authMiddleware');
+const { writeLimiter } = require('../middleware/rateLimitMiddleware');
 
 /**
  * @swagger
@@ -22,9 +23,41 @@ const { authenticate, authorize } = require('../middleware/authMiddleware');
  *    tags: [DNS]
  *    security:
  *      - BearerAuth: []
+ *    parameters:
+ *      - in: query
+ *        name: page
+ *        schema:
+ *          type: integer
+ *          minimum: 1
+ *          default: 1
+ *        description: Page number for pagination
+ *      - in: query
+ *        name: limit
+ *        schema:
+ *          type: integer
+ *          minimum: 1
+ *          maximum: 100
+ *          default: 10
+ *        description: Number of records per page
+ *      - in: query
+ *        name: type
+ *        schema:
+ *          type: string
+ *        description: Filter by record type (e.g., A, CNAME)
+ *      - in: query
+ *        name: name
+ *        schema:
+ *          type: string
+ *        description: Filter by record name (substring match)
+ *      - in: query
+ *        name: managed
+ *        schema:
+ *          type: string
+ *          enum: [true, false]
+ *        description: Filter by managed status
  *    responses:
  *      200:
- *        description: List of DNS records
+ *        description: Paginated list of DNS records
  *        content:
  *          application/json:
  *            schema:
@@ -34,20 +67,17 @@ const { authenticate, authorize } = require('../middleware/authMiddleware');
  *                  type: string
  *                  example: success
  *                data:
- *                  type: object
- *                  properties:
- *                    records:
- *                      type: array
- *                      items:
- *                        type: object
- *                        properties:
- *                          id:
- *                            type: string
- *                          type:
- *                            type: string
- *                          name:
- *                            type: string
- *                          content:
+ *                  type: array
+ *                  items:
+ *                    type: object
+ *                    properties:
+ *                      id:
+ *                        type: string
+ *                      type:
+ *                        type: string
+ *                      name:
+ *                        type: string
+ *                      content:
  *                            type: string
  *                          ttl:
  *                            type: number
@@ -191,7 +221,7 @@ router.get('/records/:id', authenticate, getRecord);
  *      500:
  *        description: Server error
  */
-router.post('/records', authenticate, authorize(['admin', 'operator']), createRecord);
+router.post('/records', authenticate, authorize(['admin', 'operator']), writeLimiter, createRecord);
 
 /**
  * @swagger
@@ -257,7 +287,7 @@ router.post('/records', authenticate, authorize(['admin', 'operator']), createRe
  *      500:
  *        description: Server error
  */
-router.put('/records/:id', authenticate, authorize(['admin', 'operator']), updateRecord);
+router.put('/records/:id', authenticate, authorize(['admin', 'operator']), writeLimiter, updateRecord);
 
 /**
  * @swagger
@@ -298,7 +328,7 @@ router.put('/records/:id', authenticate, authorize(['admin', 'operator']), updat
  *      500:
  *        description: Server error
  */
-router.delete('/records/:id', authenticate, authorize(['admin', 'operator']), deleteRecord);
+router.delete('/records/:id', authenticate, authorize(['admin', 'operator']), writeLimiter, deleteRecord);
 
 /**
  * @swagger

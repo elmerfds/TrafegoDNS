@@ -5,6 +5,7 @@
 const asyncHandler = require('express-async-handler');
 const { ApiError } = require('../middleware/errorMiddleware');
 const logger = require('../../../utils/logger');
+const { getPaginationParams, formatPaginatedResponse } = require('../utils/paginationUtils');
 
 /**
  * @desc    Get all DNS records
@@ -23,8 +24,11 @@ const getRecords = asyncHandler(async (req, res) => {
     // Get records from provider
     const records = await DNSManager.dnsProvider.getRecordsFromCache(true);
     
+    // Extract filter parameters
+    const { type, name, managed } = req.query;
+
     // Transform records to a consistent format
-    const formattedRecords = records.map(record => {
+    let formattedRecords = records.map(record => {
       return {
         id: record.id,
         type: record.type,
@@ -38,15 +42,34 @@ const getRecords = asyncHandler(async (req, res) => {
         modified: record.modified_on || record.updated_at || null
       };
     });
-    
-    res.json({
-      status: 'success',
-      data: {
-        records: formattedRecords,
-        provider: DNSManager.config.dnsProvider,
-        domain: DNSManager.config.getProviderDomain()
-      }
-    });
+
+    // Apply filters if provided
+    if (type) {
+      formattedRecords = formattedRecords.filter(record =>
+        record.type.toLowerCase() === type.toLowerCase());
+    }
+
+    if (name) {
+      formattedRecords = formattedRecords.filter(record =>
+        record.name.toLowerCase().includes(name.toLowerCase()));
+    }
+
+    if (managed !== undefined) {
+      const isManaged = managed === 'true';
+      formattedRecords = formattedRecords.filter(record => record.managed === isManaged);
+    }
+
+    // Get pagination parameters
+    const paginationParams = getPaginationParams(req.query);
+
+    // Format paginated response
+    const response = formatPaginatedResponse(req, formattedRecords, paginationParams);
+
+    // Add provider information
+    response.provider = DNSManager.config.dnsProvider;
+    response.domain = DNSManager.config.getProviderDomain();
+
+    res.json(response);
   } catch (error) {
     logger.error(`Error fetching DNS records: ${error.message}`);
     throw new ApiError(`Failed to fetch DNS records: ${error.message}`, 500, 'DNS_FETCH_ERROR');

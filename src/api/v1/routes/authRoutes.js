@@ -10,6 +10,7 @@ const {
   getProfile
 } = require('../controllers/authController');
 const { authenticate } = require('../middleware/authMiddleware');
+const { authLimiter } = require('../middleware/rateLimitMiddleware');
 
 /**
  * @swagger
@@ -61,7 +62,7 @@ const { authenticate } = require('../middleware/authMiddleware');
  *      401:
  *        description: Invalid credentials
  */
-router.post('/login', login);
+router.post('/login', authLimiter, login);
 
 /**
  * @swagger
