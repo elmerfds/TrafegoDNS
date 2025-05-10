@@ -20,7 +20,8 @@ services:
       - API_PORT=3000            # API server port
       - API_ONLY=false           # Run in API-only mode without CLI (default: false)
       - LOCAL_AUTH_BYPASS=true   # Allow local connections to bypass auth (default: true)
-      - ENABLE_SWAGGER=false     # Enable Swagger API docs (increases memory usage)
+      - ENABLE_SWAGGER=true      # Enable Swagger API docs (increases memory usage)
+      - DEBUG_MODE=true          # Enable additional debugging endpoints
 
       # JWT Authentication (generate secure values with scripts/generate-jwt-secrets.js)
       # - JWT_ACCESS_SECRET=      # Secret for JWT access tokens

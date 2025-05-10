@@ -30,8 +30,16 @@ app.use(cookieParser()); // Parse cookies
 app.use(morgan('dev')); // HTTP request logging
 app.use(globalLimiter); // Apply rate limiting to all routes
 
+// Import environment loader
+const EnvironmentLoader = require('../config/EnvironmentLoader');
+
 // API documentation setup - only in development mode or if explicitly enabled
-if (process.env.ENABLE_SWAGGER === 'true' || process.env.NODE_ENV === 'development') {
+const enableSwagger = EnvironmentLoader.isEnabled('ENABLE_SWAGGER') ||
+                     process.env.NODE_ENV === 'development';
+
+logger.info(`Swagger API documentation ${enableSwagger ? 'enabled' : 'disabled'} (ENABLE_SWAGGER=${process.env.ENABLE_SWAGGER})`);
+
+if (enableSwagger) {
   try {
     const swaggerOptions = {
       definition: {

@@ -6,6 +6,7 @@ const asyncHandler = require('express-async-handler');
 const os = require('os');
 const { ApiError } = require('../../../utils/apiError');
 const logger = require('../../../utils/logger');
+const EnvironmentLoader = require('../../../config/EnvironmentLoader');
 
 /**
  * @desc    Get system status
@@ -115,8 +116,61 @@ const getLogs = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * @desc    Get environment variables for debugging (only in development)
+ * @route   GET /api/v1/status/env
+ * @access  Private/Admin
+ */
+const getEnvironment = asyncHandler(async (req, res) => {
+  // Allow in development mode or if explicitly enabled
+  const showEnvVars = EnvironmentLoader.isEnabled('DEBUG_MODE') ||
+                      process.env.NODE_ENV === 'development';
+
+  if (!showEnvVars) {
+    return res.json({
+      status: 'error',
+      message: 'Environment variables are only available in development mode or with DEBUG_MODE=true'
+    });
+  }
+
+  // Include only relevant, non-sensitive variables
+  const safeVars = [
+    'NODE_ENV',
+    'ENABLE_SWAGGER',
+    'USE_API_MODE',
+    'API_PORT',
+    'API_ONLY',
+    'LOCAL_AUTH_BYPASS',
+    'LOG_LEVEL',
+    'OPERATION_MODE',
+    'DNS_PROVIDER',
+    'DEBUG_MODE'
+  ];
+
+  // Use EnvironmentLoader to get debug info
+  const envVars = EnvironmentLoader.getDebugInfo(safeVars);
+
+  // Add helper variables with processed values
+  const processedValues = {
+    // Add boolean interpretation of key variables
+    SWAGGER_ENABLED: EnvironmentLoader.isEnabled('ENABLE_SWAGGER'),
+    API_ENABLED: EnvironmentLoader.isEnabled('USE_API_MODE'),
+    DEBUG_ENABLED: EnvironmentLoader.isEnabled('DEBUG_MODE'),
+    LOCAL_BYPASS_ENABLED: EnvironmentLoader.isEnabled('LOCAL_AUTH_BYPASS')
+  };
+
+  res.json({
+    status: 'success',
+    data: {
+      environment: envVars,
+      processedValues
+    }
+  });
+});
+
 module.exports = {
   getStatus,
   getMetrics,
-  getLogs
+  getLogs,
+  getEnvironment
 };

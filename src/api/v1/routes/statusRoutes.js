@@ -6,7 +6,8 @@ const router = express.Router();
 const {
   getStatus,
   getMetrics,
-  getLogs
+  getLogs,
+  getEnvironment
 } = require('../controllers/statusController');
 const { authenticate, authorize } = require('../middleware/authMiddleware');
 
@@ -112,5 +113,42 @@ router.get('/metrics', authenticate, getMetrics);
  *        description: Insufficient permissions
  */
 router.get('/logs', authenticate, authorize(['admin', 'operator']), getLogs);
+
+/**
+ * @swagger
+ * /status/env:
+ *  get:
+ *    summary: Get environment variables (dev only)
+ *    description: Returns non-sensitive environment variables (only in development)
+ *    tags: [Status]
+ *    security:
+ *      - BearerAuth: []
+ *    responses:
+ *      200:
+ *        description: Environment variables
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                data:
+ *                  type: object
+ *                  properties:
+ *                    environment:
+ *                      type: object
+ *      401:
+ *        description: Not authenticated
+ *      403:
+ *        description: Insufficient permissions
+ */
+router.get('/env', authenticate, authorize(['admin']), getEnvironment);
+
+// Health endpoint - always public
+router.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', message: 'API is operational' });
+});
 
 module.exports = router;
