@@ -5,42 +5,50 @@ services:
     image: eafxx/trafegodns:latest
     container_name: trafegodns
     restart: unless-stopped
+    ports:
+      - "3000:3000"  # Expose API port
     environment:
       # User/Group Permissions (optional)
       - PUID=1000                # User ID to run as
       - PGID=1000                # Group ID to run as
-      
+
       # Operation mode
-      - OPERATION_MODE=traefik  # Options: traefik, direct
-      
+      - OPERATION_MODE=traefik   # Options: traefik, direct
+
+      # API settings
+      - USE_API_MODE=true        # Enable API server (default: true)
+      - API_PORT=3000            # API server port
+      - API_ONLY=false           # Run in API-only mode without CLI (default: false)
+      - LOCAL_AUTH_BYPASS=true   # Allow local connections to bypass auth (default: true)
+
       # DNS Provider (choose one)
       - DNS_PROVIDER=cloudflare  # Options: cloudflare, digitalocean, route53
-      
+
       # Cloudflare settings (if using Cloudflare)
       - CLOUDFLARE_TOKEN=your_cloudflare_api_token
       - CLOUDFLARE_ZONE=example.com
-      
+
       # DigitalOcean settings (if using DigitalOcean)
       # - DO_TOKEN=your_digitalocean_api_token
       # - DO_DOMAIN=example.com
-      
+
       # Route53 settings (if using Route53)
       # - ROUTE53_ACCESS_KEY=your_aws_access_key
       # - ROUTE53_SECRET_KEY=your_aws_secret_key
       # - ROUTE53_ZONE=example.com
       # - ROUTE53_ZONE_ID=Z1234567890ABC  # Alternative to ROUTE53_ZONE
       # - ROUTE53_REGION=eu-west-2  # Optional, defaults to eu-west-2 (London)
-      
+
       # Traefik API settings (for traefik mode)
       - TRAEFIK_API_URL=http://traefik:8080/api
       - LOG_LEVEL=INFO
-      
+
       # DNS record management
       - CLEANUP_ORPHANED=true  # Set to true to automatically remove DNS records when containers are removed
       - CLEANUP_GRACE_PERIOD=15  # Grace period in minutes before deleting orphaned records
       - PRESERVED_HOSTNAMES=static.example.com,api.example.com,*.admin.example.com  # Hostnames to preserve (even when orphaned)
       - MANAGED_HOSTNAMES=blog.example.com:A:192.168.1.10:3600:false,mail.example.com:MX:mail.example.com:3600:false  # Manually managed hostnames
-      
+
       # API and network timeout settings
       - API_TIMEOUT=60000  # API request timeout in milliseconds (60 seconds)
     volumes:
@@ -48,6 +56,12 @@ services:
       - ./config:/config   # Persistent configuration storage
     networks:
       - traefik-network
+    labels:
+      # Optional: Configure Traefik routing for the API if needed
+      - "traefik.enable=true"
+      - "traefik.http.routers.trafegodns-api.rule=Host(`trafegodns.example.com`)"
+      - "traefik.http.routers.trafegodns-api.entrypoints=websecure"
+      - "traefik.http.services.trafegodns-api.loadbalancer.server.port=3000"
 
 networks:
   traefik-network:

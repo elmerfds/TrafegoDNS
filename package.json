@@ -5,6 +5,9 @@
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
+    "start:api": "NODE_ENV=production API_ONLY=true node src/app.js",
+    "start:cli": "NODE_ENV=production DISABLE_API=true node src/app.js",
+    "dev": "NODE_ENV=development node src/app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
@@ -26,6 +29,7 @@
     "swagger-ui-express": "^5.0.0",
     "express-rate-limit": "^7.1.5",
     "socket.io": "^4.7.4",
+    "uuid": "^9.0.1",
     "ws": "^8.16.0"
   }
 }
