@@ -1,0 +1,21 @@
+#!/command/with-contenv bash
+
+echo "**** Setting up CLI tool access ****"
+
+# Ensure CLI scripts are executable
+chmod +x /app/bin/trafego
+chmod +x /usr/local/bin/trafego 
+chmod +x /usr/bin/trafego
+
+# Verify that the CLI tool is available
+if [ -x "$(command -v trafego)" ]; then
+  echo "**** CLI tool 'trafego' is available in PATH ****"
+else
+  echo "**** WARNING: CLI tool 'trafego' is not available in PATH ****"
+fi
+
+# Set up database directory if needed
+mkdir -p /config/data
+chown -R abc:abc /config/data
+
+echo "**** CLI setup complete ****"

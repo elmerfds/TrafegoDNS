@@ -16,6 +16,7 @@ WORKDIR /app
 COPY --from=dependencies /app/package*.json ./
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY src ./src
+COPY bin ./bin
 
 # Stage 3: Create the production image with s6-overlay
 FROM node:23-alpine
@@ -53,6 +54,7 @@ RUN addgroup -g 1001 abc && \
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/src ./src
+COPY --from=build /app/bin ./bin
 RUN chown -R abc:abc /app
 
 # Create necessary directories for s6-overlay scripts
@@ -61,11 +63,21 @@ RUN mkdir -p /etc/cont-init.d /etc/services.d/trafegodns
 # Copy your prepared scripts
 COPY docker-s6/root/ /
 
+# Create CLI directory structure
+RUN mkdir -p /app/docker-s6/scripts /usr/local/bin /usr/bin
+
+# Copy setup script
+COPY docker-s6/scripts/setup-cli.sh /app/docker-s6/scripts/setup-cli.sh
+RUN chmod +x /app/docker-s6/scripts/setup-cli.sh
+
 # Set up CLI tool
 RUN mkdir -p /usr/local/bin && \
     echo '#!/bin/sh' > /usr/local/bin/trafego && \
     echo 'exec node /app/bin/trafego "$@"' >> /usr/local/bin/trafego && \
     chmod +x /usr/local/bin/trafego
+
+# Run the setup script
+RUN /app/docker-s6/scripts/setup-cli.sh
 
 # Update the scripts to use command/with-contenv and fix any issues
 RUN for script in /etc/cont-init.d/* /etc/services.d/trafegodns/*; do \
@@ -90,6 +102,10 @@ EXPOSE 3000
 
 # Avoid timeout errors adjusting permissions during first run
 ENV S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0
+
+# CLI tool configuration
+ENV CLI_TOKEN=trafegodns-cli
+ENV API_URL=http://localhost:3000
 
 # Set entrypoint to s6-overlay init
 ENTRYPOINT ["/init"]
