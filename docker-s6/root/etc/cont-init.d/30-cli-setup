@@ -15,48 +15,23 @@ chmod +x /usr/local/bin/trafego-with-app
 mv /usr/local/bin/trafego /usr/local/bin/trafego-direct
 ln -sf /usr/local/bin/trafego-with-app /usr/local/bin/trafego
 
-# Create alias for direct access to monitor
-cat > /usr/local/bin/process-dns << 'EOF'
+# Create a simple DNS view command
+cat > /usr/local/bin/view-dns << 'EOF'
 #!/bin/bash
-# Directly process DNS through the application
-NODE_ENV=production node -e "
-  try {
-    // Load the app
-    const app = require('/app/src/app');
-
-    // Wait for services to initialize
-    setTimeout(async () => {
-      console.log('Processing DNS records...');
-
-      if (global.services && global.services.Monitor) {
-        const force = process.argv.includes('--force') || process.argv.includes('-f');
-        const result = await global.services.Monitor.processHostnames(force);
-        console.log('DNS processing complete:', result);
-      } else {
-        console.error('Monitor service not available');
-      }
-      process.exit(0);
-    }, 1000);
-  } catch (err) {
-    console.error('Failed to process DNS:', err.message);
-    process.exit(1);
-  }"
+trafegodns records
 EOF
 
-chmod +x /usr/local/bin/process-dns
+chmod +x /usr/local/bin/view-dns
 
-# Install the improved direct database commands
-cp /app/docker-s6/scripts/direct-db-query.js /usr/local/bin/trafego-records
-chmod +x /usr/local/bin/trafego-records
-ln -sf /usr/local/bin/trafego-records /usr/local/bin/db-records
+# Install the unified CLI tool
+cp /app/docker-s6/scripts/unified-cli.sh /usr/local/bin/trafegodns
+chmod +x /usr/local/bin/trafegodns
 
-# Install the improved direct DNS commands
-cp /app/docker-s6/scripts/direct-dns-process.js /usr/local/bin/process-dns
-chmod +x /usr/local/bin/process-dns
-
-# Install convenience wrapper
-cp /app/docker-s6/scripts/trafego-db-records /usr/local/bin/trafego-db-records
-chmod +x /usr/local/bin/trafego-db-records
+# Create symlinks for common commands
+ln -sf /usr/local/bin/trafegodns /usr/local/bin/trafego-records
+ln -sf /usr/local/bin/trafegodns /usr/local/bin/db-records
+ln -sf /usr/local/bin/trafegodns /usr/local/bin/process-dns
+ln -sf /usr/local/bin/trafegodns /usr/local/bin/dns-status
 
 # Run environment setup script
 /app/docker-s6/scripts/setup-env.sh

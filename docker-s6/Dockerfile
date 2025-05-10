@@ -69,15 +69,10 @@ RUN mkdir -p /app/docker-s6/scripts /usr/local/bin /usr/bin
 # Copy CLI setup scripts
 COPY docker-s6/scripts/setup-cli.sh /app/docker-s6/scripts/setup-cli.sh
 COPY docker-s6/scripts/cli-inside-container.sh /app/docker-s6/scripts/cli-inside-container.sh
-COPY docker-s6/scripts/direct-db-records.sh /app/docker-s6/scripts/direct-db-records.sh
-COPY docker-s6/scripts/trafego-db-records /app/docker-s6/scripts/trafego-db-records
-COPY docker-s6/scripts/direct-db-query.js /app/docker-s6/scripts/direct-db-query.js
-COPY docker-s6/scripts/direct-dns-process.js /app/docker-s6/scripts/direct-dns-process.js
 COPY docker-s6/scripts/setup-env.sh /app/docker-s6/scripts/setup-env.sh
+COPY docker-s6/scripts/unified-cli.sh /app/docker-s6/scripts/unified-cli.sh
 RUN chmod +x /app/docker-s6/scripts/setup-cli.sh /app/docker-s6/scripts/cli-inside-container.sh \
-    /app/docker-s6/scripts/direct-db-records.sh /app/docker-s6/scripts/trafego-db-records \
-    /app/docker-s6/scripts/direct-db-query.js /app/docker-s6/scripts/direct-dns-process.js \
-    /app/docker-s6/scripts/setup-env.sh
+    /app/docker-s6/scripts/setup-env.sh /app/docker-s6/scripts/unified-cli.sh
 
 # Set up CLI tool
 RUN mkdir -p /usr/local/bin && \
@@ -118,6 +113,7 @@ ENV CLI_TOKEN=trafegodns-cli
 ENV API_URL=http://localhost:3000
 ENV CONTAINER=true
 ENV TRAFEGO_CLI=true
+ENV CONFIG_DIR=/config
 
 # Set entrypoint to s6-overlay init
 ENTRYPOINT ["/init"]
