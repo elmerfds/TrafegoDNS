@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="TrafegoDNS API Documentation">
   <title>TrafegoDNS API Documentation</title>
-  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@4.5.0/swagger-ui.css" />
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@4.5.0/swagger-ui.css" crossorigin="anonymous" />
   <style>
     body {
       margin: 0;
@@ -14,25 +14,48 @@
     .swagger-ui .topbar {
       display: none;
     }
+    .info {
+      padding: 20px;
+      background-color: #f8f9fa;
+      border-bottom: 1px solid #eee;
+      margin-bottom: 20px;
+    }
+    .info a {
+      color: #3b4151;
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
+  <div class="info">
+    <h1>TrafegoDNS API Documentation</h1>
+    <p>This page displays the API documentation for TrafegoDNS. If you encounter any issues with this page, you can <a href="/docs">view the simpler HTML documentation</a>.</p>
+  </div>
   <div id="swagger-ui"></div>
-  <script src="https://unpkg.com/swagger-ui-dist@4.5.0/swagger-ui-bundle.js" crossorigin></script>
+  <script src="https://unpkg.com/swagger-ui-dist@4.5.0/swagger-ui-bundle.js" crossorigin="anonymous"></script>
+
   <script>
-    window.onload = () => {
-      window.ui = SwaggerUIBundle({
-        url: '/api/v1/swagger.json',
+    // Get the current URL to build the proper path to the swagger.json file
+    function getCurrentHost() {
+      return window.location.protocol + '//' + window.location.host;
+    }
+
+    window.onload = function() {
+      // Initialize Swagger UI with proper host-relative URL
+      const ui = SwaggerUIBundle({
+        url: getCurrentHost() + '/api/v1/swagger.json',
         dom_id: '#swagger-ui',
         deepLinking: true,
-        docExpansion: 'list',
-        defaultModelsExpandDepth: 1,
-        defaultModelExpandDepth: 1,
         presets: [
           SwaggerUIBundle.presets.apis
         ],
-        plugins: [],
-        layout: "BaseLayout"
+        layout: "BaseLayout",
+        docExpansion: 'list',
+        defaultModelsExpandDepth: 1,
+        defaultModelExpandDepth: 1,
+        syntaxHighlight: {
+          theme: 'monokai'
+        }
       });
     };
   </script>

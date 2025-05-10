@@ -56,46 +56,20 @@ const enableSwagger = EnvironmentLoader.isEnabled('ENABLE_SWAGGER') ||
 
 logger.info(`Swagger API documentation ${enableSwagger ? 'enabled' : 'disabled'} (ENABLE_SWAGGER=${process.env.ENABLE_SWAGGER})`);
 
-if (enableSwagger) {
-  try {
-    // Import static Swagger definition instead of using JSDoc
-    const swaggerDocument = require('./swaggerDefinition');
-    
-    // Configure Swagger UI options to fix HTTPS issues
-    const swaggerUiOptions = {
-      swaggerOptions: {
-        url: '/api/v1/swagger.json', // Use a relative URL
-        docExpansion: 'list'
-      },
-      customCss: '.swagger-ui .topbar { display: none }',
-      customSiteTitle: 'TrafegoDNS API Documentation'
-    };
+// Always serve the Swagger JSON at a specific endpoint regardless of enableSwagger setting
+const swaggerDocument = require('./swaggerDefinition');
+app.get('/api/v1/swagger.json', (req, res) => {
+  res.json(swaggerDocument);
+});
 
-    // Serve the Swagger JSON at a specific endpoint
-    app.get('/api/v1/swagger.json', (req, res) => {
-      res.json(swaggerDocument);
-    });
+// Instead of using swagger-ui-express directly, just redirect to our custom implementation
+// This avoids any issues with HTTPS requirements and CSP
+app.get('/api-docs', (req, res) => {
+  res.redirect('/swagger.html');
+});
 
-    // Use swagger-ui-express with custom options
-    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, swaggerUiOptions));
-    logger.info('API documentation available at /api-docs (using static definition)');
-  } catch (error) {
-    logger.warn(`Failed to initialize Swagger documentation: ${error.message}`);
-    logger.debug(error.stack);
-    
-    // Add a placeholder endpoint that explains swagger is disabled
-    app.get('/api-docs', (req, res) => {
-      res.send(`API documentation is currently unavailable. Error: ${error.message}`);
-    });
-  }
-} else {
-  logger.info('API documentation disabled. Enable it by setting ENABLE_SWAGGER=true');
-  
-  // Add a placeholder endpoint that explains swagger is disabled
-  app.get('/api-docs', (req, res) => {
-    res.send('API documentation is disabled. Enable it by setting ENABLE_SWAGGER=true');
-  });
-}
+logger.info('API documentation available at /swagger.html (using CDN-based Swagger UI)');
+logger.info('API specification available at /api/v1/swagger.json');
 
 // API Routes
 app.use('/api/v1', v1Routes);
@@ -105,12 +79,12 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'API is running' });
 });
 
-// Documentation routes - keep them away from root which will be for the main UI
+// Documentation routes - clean and simple redirects
 app.get('/docs', (req, res) => {
   res.redirect('/docs.html');
 });
 
-// Custom Swagger UI route
+// For backward compatibility, redirect any old routes to the new ones
 app.get('/docs/swagger', (req, res) => {
   res.redirect('/swagger.html');
 });
