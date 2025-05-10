@@ -3,6 +3,11 @@ FROM node:23-alpine AS dependencies
 WORKDIR /app
 COPY package.json .
 RUN npm install --package-lock-only
+
+# Install build dependencies for native modules
+RUN apk add --no-cache python3 make g++ sqlite-dev
+
+# Install production dependencies
 RUN npm install --omit=dev
 
 # Stage 2: Build the application

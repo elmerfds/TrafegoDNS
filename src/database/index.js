@@ -2,8 +2,31 @@
  * Database module entry point
  * Initializes and exports database connection, repositories, and utilities
  */
-const db = require('./connection');
 const logger = require('../utils/logger');
+
+// Try to determine which SQLite implementation to use
+let db;
+try {
+  // Check if better-sqlite3 is installed and can be loaded
+  require.resolve('better-sqlite3');
+  logger.debug('Using better-sqlite3 implementation');
+  db = require('./better-sqlite');
+} catch (error) {
+  try {
+    // Check if sqlite3/sqlite is installed and can be loaded
+    require.resolve('sqlite3');
+    logger.debug('Using sqlite3 implementation');
+    db = require('./connection');
+  } catch (error2) {
+    logger.warn('No SQLite implementation available, will use JSON storage');
+    // Create a dummy db object that will always return false for isInitialized
+    db = {
+      initialize: async () => false,
+      isInitialized: () => false,
+      close: async () => {}
+    };
+  }
+}
 
 // Import repositories
 const DnsRecordRepository = require('./repository/dnsRecordRepository');

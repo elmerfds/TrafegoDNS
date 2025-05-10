@@ -30,7 +30,10 @@
     "express-rate-limit": "^7.1.5",
     "socket.io": "^4.7.4",
     "uuid": "^9.0.1",
-    "ws": "^8.16.0",
+    "ws": "^8.16.0"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^9.2.2",
     "sqlite3": "^5.1.6",
     "sqlite": "^5.0.1"
   }
