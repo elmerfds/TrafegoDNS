@@ -56,8 +56,28 @@ function updateLabelsForContainer(cache, container) {
  */
 function getLabelsForContainer(cache, id) {
   if (!id) return {};
-  
+
   return cache[id] || {};
+}
+
+/**
+ * Get all labels from the cache
+ * @param {Object} cache - Label cache object
+ * @returns {Object} - All container labels
+ */
+function getAllLabels(cache) {
+  // Create a flattened object of all labels
+  const allLabels = {};
+
+  Object.keys(cache).forEach(containerId => {
+    const containerLabels = cache[containerId];
+    Object.keys(containerLabels).forEach(labelKey => {
+      // Store unique labels with their values
+      allLabels[labelKey] = containerLabels[labelKey];
+    });
+  });
+
+  return allLabels;
 }
 
 /**
@@ -89,5 +109,6 @@ module.exports = {
   extractLabelsFromContainer,
   updateLabelsForContainer,
   getLabelsForContainer,
+  getAllLabels,
   updateLabelCacheFromContainers
 };
