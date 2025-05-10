@@ -32,7 +32,13 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:"]
     }
-  }
+  },
+  // Disable HTTPS requirement for development environments
+  strictTransportSecurity: false,
+  // Don't set origin policies for API - allows HTTP and different origins
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+  crossOriginEmbedderPolicy: false,
+  originAgentCluster: false
 })); // Security headers with CSP configured for documentation
 app.use(configureCors()); // CORS handling with configuration
 app.use(express.json()); // Parse JSON request body
@@ -55,8 +61,23 @@ if (enableSwagger) {
     // Import static Swagger definition instead of using JSDoc
     const swaggerDocument = require('./swaggerDefinition');
     
-    // Use swagger-ui-express directly with our document
-    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+    // Configure Swagger UI options to fix HTTPS issues
+    const swaggerUiOptions = {
+      swaggerOptions: {
+        url: '/api/v1/swagger.json', // Use a relative URL
+        docExpansion: 'list'
+      },
+      customCss: '.swagger-ui .topbar { display: none }',
+      customSiteTitle: 'TrafegoDNS API Documentation'
+    };
+
+    // Serve the Swagger JSON at a specific endpoint
+    app.get('/api/v1/swagger.json', (req, res) => {
+      res.json(swaggerDocument);
+    });
+
+    // Use swagger-ui-express with custom options
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, swaggerUiOptions));
     logger.info('API documentation available at /api-docs (using static definition)');
   } catch (error) {
     logger.warn(`Failed to initialize Swagger documentation: ${error.message}`);
@@ -84,9 +105,14 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'API is running' });
 });
 
-// Root route - redirect to documentation
-app.get('/', (req, res) => {
-  res.redirect('/index.html');
+// Documentation routes - keep them away from root which will be for the main UI
+app.get('/docs', (req, res) => {
+  res.redirect('/docs.html');
+});
+
+// Custom Swagger UI route
+app.get('/docs/swagger', (req, res) => {
+  res.redirect('/swagger.html');
 });
 
 // 404 Handler for API routes

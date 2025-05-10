@@ -3,185 +3,60 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TrafegoDNS API Documentation</title>
+  <title>TrafegoDNS</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-      max-width: 960px;
-      margin: 0 auto;
-      padding: 20px;
-      line-height: 1.6;
-      color: #333;
-    }
-    header {
       display: flex;
+      flex-direction: column;
       align-items: center;
-      margin-bottom: 30px;
-      border-bottom: 1px solid #eee;
-      padding-bottom: 20px;
-    }
-    header img {
-      width: 80px;
-      margin-right: 20px;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      background-color: #f5f5f5;
+      color: #333;
+      padding: 20px;
+      text-align: center;
     }
     h1 {
-      margin: 0;
+      margin-bottom: 0;
       color: #2c3e50;
     }
-    h2 {
+    p {
+      max-width: 600px;
+      line-height: 1.6;
+    }
+    .links {
       margin-top: 30px;
-      color: #3498db;
-      border-bottom: 1px solid #eee;
-      padding-bottom: 10px;
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
     }
-    h3 {
-      margin-top: 20px;
-      color: #2c3e50;
-    }
-    a {
-      color: #3498db;
+    .link-card {
+      background-color: white;
+      border-radius: 8px;
+      padding: 15px 25px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
       text-decoration: none;
-    }
-    a:hover {
-      text-decoration: underline;
-    }
-    .endpoint {
-      margin-bottom: 20px;
-      padding: 15px;
-      border-radius: 5px;
-      background-color: #f9f9f9;
-      border-left: 5px solid #3498db;
-    }
-    .method {
-      display: inline-block;
-      padding: 3px 6px;
-      border-radius: 3px;
-      font-size: 13px;
+      color: #3498db;
       font-weight: bold;
-      margin-right: 10px;
+      transition: transform 0.2s, box-shadow 0.2s;
     }
-    .get { background-color: #61affe; color: white; }
-    .post { background-color: #49cc90; color: white; }
-    .put { background-color: #fca130; color: white; }
-    .delete { background-color: #f93e3e; color: white; }
-    .path {
-      font-family: monospace;
-      font-size: 16px;
-    }
-    .card {
-      border: 1px solid #eee;
-      border-radius: 5px;
-      padding: 15px;
-      margin-bottom: 20px;
-    }
-    .info {
-      background-color: #f8f9fa;
-      padding: 15px;
-      border-radius: 5px;
-      margin-bottom: 20px;
-    }
-    .footer {
-      margin-top: 40px;
-      border-top: 1px solid #eee;
-      padding-top: 20px;
-      color: #666;
-      font-size: 14px;
+    .link-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 6px 8px rgba(0,0,0,0.15);
     }
   </style>
 </head>
 <body>
-  <header>
-    <div>
-      <h1>TrafegoDNS API Documentation</h1>
-      <p>API for managing DNS records with TrafegoDNS</p>
-    </div>
-  </header>
-
-  <div class="info">
-    <p>This page provides a simple overview of the TrafegoDNS API endpoints. For a more interactive documentation, you can use the <a href="/api-docs">Swagger UI</a>.</p>
-  </div>
-
-  <h2>Authentication</h2>
-  <div class="endpoint">
-    <div><span class="method post">POST</span> <span class="path">/api/v1/auth/login</span></div>
-    <p>Authenticate user and get access token</p>
-    <div class="card">
-      <p><strong>Request Body:</strong></p>
-      <pre>{
-  "username": "admin",
-  "password": "your_password"
-}</pre>
-    </div>
-  </div>
-
-  <div class="endpoint">
-    <div><span class="method post">POST</span> <span class="path">/api/v1/auth/refresh</span></div>
-    <p>Refresh access token using refresh token cookie</p>
-  </div>
-
-  <div class="endpoint">
-    <div><span class="method post">POST</span> <span class="path">/api/v1/auth/logout</span></div>
-    <p>Logout user and invalidate tokens</p>
-  </div>
-
-  <h2>DNS Records</h2>
-  <div class="endpoint">
-    <div><span class="method get">GET</span> <span class="path">/api/v1/dns/records</span></div>
-    <p>Get all DNS records with optional filtering</p>
-    <div class="card">
-      <p><strong>Query Parameters:</strong></p>
-      <ul>
-        <li><code>page</code> - Page number for pagination</li>
-        <li><code>limit</code> - Records per page</li>
-        <li><code>type</code> - Filter by record type (A, AAAA, CNAME, etc.)</li>
-        <li><code>name</code> - Filter by record name</li>
-      </ul>
-    </div>
-  </div>
-
-  <div class="endpoint">
-    <div><span class="method get">GET</span> <span class="path">/api/v1/dns/records/:id</span></div>
-    <p>Get a specific DNS record by ID</p>
-  </div>
-
-  <div class="endpoint">
-    <div><span class="method post">POST</span> <span class="path">/api/v1/dns/records</span></div>
-    <p>Create a new DNS record</p>
-    <div class="card">
-      <p><strong>Request Body:</strong></p>
-      <pre>{
-  "type": "A",
-  "name": "example.com",
-  "content": "192.168.1.1",
-  "ttl": 3600,
-  "proxied": true
-}</pre>
-    </div>
-  </div>
-
-  <div class="endpoint">
-    <div><span class="method put">PUT</span> <span class="path">/api/v1/dns/records/:id</span></div>
-    <p>Update an existing DNS record</p>
-  </div>
-
-  <div class="endpoint">
-    <div><span class="method delete">DELETE</span> <span class="path">/api/v1/dns/records/:id</span></div>
-    <p>Delete a DNS record</p>
-  </div>
-
-  <h2>Status Information</h2>
-  <div class="endpoint">
-    <div><span class="method get">GET</span> <span class="path">/api/v1/status</span></div>
-    <p>Get system status information</p>
-  </div>
-
-  <div class="endpoint">
-    <div><span class="method get">GET</span> <span class="path">/api/v1/status/health</span></div>
-    <p>Check API health status (public endpoint)</p>
-  </div>
-
-  <div class="footer">
-    <p>For more detailed information, refer to the <a href="/api-docs">Swagger documentation</a>.</p>
+  <h1>TrafegoDNS</h1>
+  <p>Future home of the TrafegoDNS Web UI</p>
+  
+  <div class="links">
+    <a href="/docs" class="link-card">API Documentation</a>
+    <a href="/api-docs" class="link-card">Swagger UI</a>
+    <a href="/api/health" class="link-card">API Health Check</a>
   </div>
 </body>
 </html>
