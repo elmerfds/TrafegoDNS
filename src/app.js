@@ -113,6 +113,22 @@ async function start() {
       ConfigManager: config
     };
 
+    // Initialize state management system
+    const { initializeStateManagement } = require('./state');
+    const { stateStore, actionBroker } = initializeStateManagement(eventBus, {
+      DNSManager: dnsManager,
+      DockerMonitor: dockerMonitor,
+      StatusReporter: statusReporter,
+      Monitor: monitor,
+      TraefikMonitor: config.operationMode.toLowerCase() !== 'direct' ? monitor : null,
+      DirectDNSManager: config.operationMode.toLowerCase() === 'direct' ? monitor : null,
+      ConfigManager: config
+    });
+
+    // Make state available globally
+    global.stateStore = stateStore;
+    global.actionBroker = actionBroker;
+
     logger.complete('TráfegoDNS running successfully');
 
     // Export API client for CLI usage
@@ -121,8 +137,19 @@ async function start() {
     // Create CLI client for API interactions
     if (useApiMode && !process.env.API_ONLY) {
       const cliModule = require('./cli');
-      await cliModule.start(apiClient, config, eventBus);
+      await cliModule.start(apiClient, config, eventBus, actionBroker);
     }
+
+    // Signal that system has started
+    eventBus.emit('system:startup', {
+      timestamp: new Date().toISOString(),
+      services: {
+        dnsManager: true,
+        monitor: true,
+        docker: dockerMonitor && dockerMonitor.isConnected(),
+        api: apiServer ? true : false
+      }
+    });
   } catch (error) {
     logger.error(`Failed to start TráfegoDNS: ${error.message}`);
     process.exit(1);
