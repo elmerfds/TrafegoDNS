@@ -16,26 +16,26 @@ const getRecords = asyncHandler(async (req, res) => {
   // Get DNSManager from global services
   const { DNSManager } = global.services || {};
   const { actionBroker, stateStore } = global;
-
+  
   if (!DNSManager || !DNSManager.dnsProvider) {
     throw new ApiError('DNS provider not initialized', 500, 'DNS_PROVIDER_NOT_INITIALIZED');
   }
-
+  
   try {
     // Get records using action broker if available
     let records;
-
+    
     if (actionBroker) {
       try {
         // Dispatch action to fetch records
         await actionBroker.dispatch({
           type: 'DNS_RECORDS_FETCH',
-          metadata: {
+          metadata: { 
             source: 'api',
             requestId: req.id
           }
         });
-
+        
         // Get records from state store
         records = stateStore.getState('dns.records');
       } catch (stateError) {
@@ -46,7 +46,7 @@ const getRecords = asyncHandler(async (req, res) => {
       // Direct provider fallback
       records = await DNSManager.dnsProvider.getRecordsFromCache(true);
     }
-
+    
     // Extract filter parameters
     const { type, name, managed } = req.query;
 
@@ -113,15 +113,26 @@ const getRecord = asyncHandler(async (req, res) => {
   
   // Get DNSManager from global services
   const { DNSManager } = global.services || {};
+  const { stateStore } = global;
   
   if (!DNSManager || !DNSManager.dnsProvider) {
     throw new ApiError('DNS provider not initialized', 500, 'DNS_PROVIDER_NOT_INITIALIZED');
   }
   
   try {
-    // Get all records and find the one with matching ID
-    const records = await DNSManager.dnsProvider.getRecordsFromCache(false);
-    const record = records.find(r => r.id === recordId);
+    // Try to get from state store first if available
+    let record;
+    
+    if (stateStore) {
+      const records = stateStore.getState('dns.records') || [];
+      record = records.find(r => r.id === recordId);
+    }
+    
+    // Fall back to provider cache if not found in state store
+    if (!record) {
+      const records = await DNSManager.dnsProvider.getRecordsFromCache(false);
+      record = records.find(r => r.id === recordId);
+    }
     
     if (!record) {
       throw new ApiError(`Record with ID ${recordId} not found`, 404, 'RECORD_NOT_FOUND');
@@ -158,20 +169,20 @@ const getRecord = asyncHandler(async (req, res) => {
  */
 const createRecord = asyncHandler(async (req, res) => {
   const { type, name, content, ttl, proxied } = req.body;
-
+  
   // Validate required fields
   if (!type || !name || !content) {
     throw new ApiError('Type, name, and content are required', 400, 'MISSING_REQUIRED_FIELDS');
   }
-
+  
   // Get DNSManager from global services
   const { DNSManager } = global.services || {};
   const { actionBroker } = global;
-
+  
   if (!DNSManager || !DNSManager.dnsProvider) {
     throw new ApiError('DNS provider not initialized', 500, 'DNS_PROVIDER_NOT_INITIALIZED');
   }
-
+  
   try {
     // Prepare the record configuration
     const recordConfig = {
@@ -181,7 +192,7 @@ const createRecord = asyncHandler(async (req, res) => {
       ttl: ttl || DNSManager.config.defaultTTL,
       proxied: proxied === true
     };
-
+    
     // Add type-specific fields if applicable
     if (type.toUpperCase() === 'MX' && req.body.priority) {
       recordConfig.priority = parseInt(req.body.priority);
@@ -193,9 +204,9 @@ const createRecord = asyncHandler(async (req, res) => {
       if (req.body.flags !== undefined) recordConfig.flags = parseInt(req.body.flags);
       if (req.body.tag) recordConfig.tag = req.body.tag;
     }
-
+    
     let createdRecord;
-
+    
     // Use action broker if available, otherwise fallback to direct method
     if (actionBroker) {
       try {
@@ -222,7 +233,7 @@ const createRecord = asyncHandler(async (req, res) => {
       // Track the record
       DNSManager.recordTracker.trackRecord(createdRecord);
     }
-
+    
     // Format the record for response
     const formattedRecord = {
       id: createdRecord.id,
@@ -236,7 +247,7 @@ const createRecord = asyncHandler(async (req, res) => {
       created: createdRecord.created_on || createdRecord.created_at || new Date().toISOString(),
       modified: createdRecord.modified_on || createdRecord.updated_at || new Date().toISOString()
     };
-
+    
     res.status(201).json({
       status: 'success',
       message: `Successfully created ${type} record for ${name}`,
@@ -256,44 +267,44 @@ const createRecord = asyncHandler(async (req, res) => {
 const updateRecord = asyncHandler(async (req, res) => {
   const recordId = req.params.id;
   const { content, ttl, proxied } = req.body;
-
+  
   if (!recordId) {
     throw new ApiError('Record ID is required', 400, 'MISSING_RECORD_ID');
   }
-
+  
   // At least one field must be provided for update
   if (!content && ttl === undefined && proxied === undefined) {
     throw new ApiError('At least one field must be provided for update', 400, 'MISSING_UPDATE_FIELDS');
   }
-
+  
   // Get DNSManager from global services
   const { DNSManager } = global.services || {};
   const { actionBroker, stateStore } = global;
-
+  
   if (!DNSManager || !DNSManager.dnsProvider) {
     throw new ApiError('DNS provider not initialized', 500, 'DNS_PROVIDER_NOT_INITIALIZED');
   }
-
+  
   try {
     // Get the record to update
     let record;
-
+    
     // Try to get from state store first if available
     if (stateStore) {
       const records = stateStore.getState('dns.records') || [];
       record = records.find(r => r.id === recordId);
     }
-
+    
     // Fall back to provider cache if not found in state store
     if (!record) {
       const records = await DNSManager.dnsProvider.getRecordsFromCache(false);
       record = records.find(r => r.id === recordId);
     }
-
+    
     if (!record) {
       throw new ApiError(`Record with ID ${recordId} not found`, 404, 'RECORD_NOT_FOUND');
     }
-
+    
     // Create update payload
     const updatePayload = {
       id: recordId,
@@ -301,7 +312,7 @@ const updateRecord = asyncHandler(async (req, res) => {
       ttl: ttl !== undefined ? ttl : undefined,
       proxied: proxied !== undefined ? proxied : undefined
     };
-
+    
     // Add type-specific fields if applicable
     if (record.type === 'MX' && req.body.priority) {
       updatePayload.priority = parseInt(req.body.priority);
@@ -313,9 +324,9 @@ const updateRecord = asyncHandler(async (req, res) => {
       if (req.body.flags !== undefined) updatePayload.flags = parseInt(req.body.flags);
       if (req.body.tag) updatePayload.tag = req.body.tag;
     }
-
+    
     let updatedRecord;
-
+    
     // Use action broker if available
     if (actionBroker) {
       try {
@@ -331,19 +342,19 @@ const updateRecord = asyncHandler(async (req, res) => {
         });
       } catch (stateError) {
         logger.warn(`State action failed, falling back to direct provider: ${stateError.message}`);
-
+        
         // Create legacy update config for direct provider
         const updateConfig = {
           ...record,
           content: content || record.content || record.data || record.value,
           ttl: ttl || record.ttl
         };
-
+        
         // Only add proxied if explicitly provided
         if (proxied !== undefined) {
           updateConfig.proxied = proxied === true;
         }
-
+        
         // Add type-specific fields
         if (record.type === 'MX' && req.body.priority) {
           updateConfig.priority = parseInt(req.body.priority);
@@ -355,10 +366,10 @@ const updateRecord = asyncHandler(async (req, res) => {
           if (req.body.flags !== undefined) updateConfig.flags = parseInt(req.body.flags);
           if (req.body.tag) updateConfig.tag = req.body.tag;
         }
-
+        
         // Update directly
         updatedRecord = await DNSManager.dnsProvider.updateRecord(recordId, updateConfig);
-
+        
         // Track the record
         DNSManager.recordTracker.trackRecord(updatedRecord);
       }
@@ -369,12 +380,12 @@ const updateRecord = asyncHandler(async (req, res) => {
         content: content || record.content || record.data || record.value,
         ttl: ttl || record.ttl
       };
-
+      
       // Only add proxied if explicitly provided
       if (proxied !== undefined) {
         updateConfig.proxied = proxied === true;
       }
-
+      
       // Add type-specific fields
       if (record.type === 'MX' && req.body.priority) {
         updateConfig.priority = parseInt(req.body.priority);
@@ -386,14 +397,14 @@ const updateRecord = asyncHandler(async (req, res) => {
         if (req.body.flags !== undefined) updateConfig.flags = parseInt(req.body.flags);
         if (req.body.tag) updateConfig.tag = req.body.tag;
       }
-
+      
       // Update directly
       updatedRecord = await DNSManager.dnsProvider.updateRecord(recordId, updateConfig);
-
+      
       // Track the record
       DNSManager.recordTracker.trackRecord(updatedRecord);
     }
-
+    
     // Format the record for response
     const formattedRecord = {
       id: updatedRecord.id,
@@ -407,7 +418,7 @@ const updateRecord = asyncHandler(async (req, res) => {
       created: updatedRecord.created_on || updatedRecord.created_at || null,
       modified: updatedRecord.modified_on || updatedRecord.updated_at || new Date().toISOString()
     };
-
+    
     res.json({
       status: 'success',
       message: `Successfully updated ${updatedRecord.type} record for ${updatedRecord.name}`,
@@ -426,45 +437,45 @@ const updateRecord = asyncHandler(async (req, res) => {
  */
 const deleteRecord = asyncHandler(async (req, res) => {
   const recordId = req.params.id;
-
+  
   if (!recordId) {
     throw new ApiError('Record ID is required', 400, 'MISSING_RECORD_ID');
   }
-
+  
   // Get DNSManager from global services
   const { DNSManager } = global.services || {};
   const { actionBroker, stateStore } = global;
-
+  
   if (!DNSManager || !DNSManager.dnsProvider) {
     throw new ApiError('DNS provider not initialized', 500, 'DNS_PROVIDER_NOT_INITIALIZED');
   }
-
+  
   try {
     // Get the record to delete
     let record;
-
+    
     // Try to get from state store first if available
     if (stateStore) {
       const records = stateStore.getState('dns.records') || [];
       record = records.find(r => r.id === recordId);
     }
-
+    
     // Fall back to provider cache if not found in state store
     if (!record) {
       const records = await DNSManager.dnsProvider.getRecordsFromCache(false);
       record = records.find(r => r.id === recordId);
     }
-
+    
     if (!record) {
       throw new ApiError(`Record with ID ${recordId} not found`, 404, 'RECORD_NOT_FOUND');
     }
-
+    
     // Store record details for response
     const recordDetails = {
       type: record.type,
       name: record.name
     };
-
+    
     // Use action broker if available
     if (actionBroker) {
       try {
@@ -482,21 +493,21 @@ const deleteRecord = asyncHandler(async (req, res) => {
         });
       } catch (stateError) {
         logger.warn(`State action failed, falling back to direct provider: ${stateError.message}`);
-
+        
         // Delete directly
         await DNSManager.dnsProvider.deleteRecord(recordId);
-
+        
         // Untrack the record
         DNSManager.recordTracker.untrackRecord(record);
       }
     } else {
       // Delete directly
       await DNSManager.dnsProvider.deleteRecord(recordId);
-
+      
       // Untrack the record
       DNSManager.recordTracker.untrackRecord(record);
     }
-
+    
     res.json({
       status: 'success',
       message: `Successfully deleted ${recordDetails.type} record for ${recordDetails.name}`,
@@ -520,42 +531,42 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
   // Get DNSManager from global services
   const { DNSManager } = global.services || {};
   const { stateStore } = global;
-
+  
   if (!DNSManager || !DNSManager.dnsProvider) {
     throw new ApiError('DNS provider not initialized', 500, 'DNS_PROVIDER_NOT_INITIALIZED');
   }
-
+  
   try {
     // Get orphaned records from state store if available
     let orphanedRecords = [];
-
+    
     if (stateStore && stateStore.hasPath('dns.orphaned')) {
       orphanedRecords = stateStore.getState('dns.orphaned');
     } else {
       // Fallback to direct access
       const records = await DNSManager.dnsProvider.getRecordsFromCache(true);
-
+      
       // Filter to only orphaned records
-      orphanedRecords = records.filter(record =>
-        DNSManager.recordTracker.isTracked(record) &&
+      orphanedRecords = records.filter(record => 
+        DNSManager.recordTracker.isTracked(record) && 
         DNSManager.recordTracker.isRecordOrphaned(record)
       );
     }
-
+    
     // Format records
     const formattedRecords = orphanedRecords.map(record => {
       // Get when it was marked as orphaned
       const orphanedTime = record.orphanedSince || DNSManager.recordTracker.getRecordOrphanedTime(record);
-      const formattedTime = typeof orphanedTime === 'string' ? orphanedTime :
+      const formattedTime = typeof orphanedTime === 'string' ? orphanedTime : 
                            orphanedTime ? orphanedTime.toISOString() : null;
-
+      
       // Get grace period info
       const gracePeriod = DNSManager.config.cleanupGracePeriod || 15; // Default 15 minutes
       const now = new Date();
       const orphanedDate = typeof orphanedTime === 'string' ? new Date(orphanedTime) : orphanedTime;
       const elapsedMinutes = orphanedDate ? Math.floor((now - orphanedDate) / (1000 * 60)) : 0;
       const remainingMinutes = Math.max(0, gracePeriod - elapsedMinutes);
-
+      
       return {
         id: record.id,
         type: record.type,
@@ -569,7 +580,7 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
         dueForDeletion: elapsedMinutes >= gracePeriod
       };
     });
-
+    
     res.json({
       status: 'success',
       data: {
@@ -594,11 +605,11 @@ const runCleanup = asyncHandler(async (req, res) => {
   // Get DNSManager from global services
   const { DNSManager } = global.services || {};
   const { actionBroker } = global;
-
+  
   if (!DNSManager || !DNSManager.dnsProvider) {
     throw new ApiError('DNS provider not initialized', 500, 'DNS_PROVIDER_NOT_INITIALIZED');
   }
-
+  
   try {
     // Use action broker if available for state-managed cleanup
     if (actionBroker) {
@@ -615,21 +626,21 @@ const runCleanup = asyncHandler(async (req, res) => {
         });
       } catch (stateError) {
         logger.warn(`State action failed, falling back to direct method: ${stateError.message}`);
-
+        
         // Get active hostnames from all containers (simplified for API implementation)
         const activeHostnames = []; // This should be populated with actual active hostnames
-
+        
         // Force immediate cleanup
         await DNSManager.cleanupOrphanedRecords(activeHostnames);
       }
     } else {
       // Get active hostnames from all containers (simplified for API implementation)
       const activeHostnames = []; // This should be populated with actual active hostnames
-
+      
       // Force immediate cleanup
       await DNSManager.cleanupOrphanedRecords(activeHostnames);
     }
-
+    
     res.json({
       status: 'success',
       message: 'Orphaned records cleanup completed',
@@ -643,6 +654,111 @@ const runCleanup = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * @desc    Refresh DNS records from provider
+ * @route   POST /api/v1/dns/refresh
+ * @access  Private
+ */
+const refreshRecords = asyncHandler(async (req, res) => {
+  // Get DNSManager from global services
+  const { DNSManager } = global.services || {};
+  const { actionBroker } = global;
+  
+  if (!DNSManager || !DNSManager.dnsProvider) {
+    throw new ApiError('DNS provider not initialized', 500, 'DNS_PROVIDER_NOT_INITIALIZED');
+  }
+  
+  try {
+    // Use action broker if available
+    if (actionBroker) {
+      try {
+        // Dispatch action to refresh DNS
+        await actionBroker.dispatch({
+          type: 'DNS_REFRESH',
+          metadata: {
+            source: 'api',
+            requestId: req.id,
+            userId: req.user?.id || 'system'
+          }
+        });
+      } catch (stateError) {
+        logger.warn(`State action failed, falling back to direct provider: ${stateError.message}`);
+        // Fallback to direct refresh
+        await DNSManager.refreshRecords();
+      }
+    } else {
+      // Direct refresh
+      await DNSManager.refreshRecords();
+    }
+    
+    res.json({
+      status: 'success',
+      message: 'DNS records refreshed successfully'
+    });
+  } catch (error) {
+    logger.error(`Error refreshing DNS records: ${error.message}`);
+    throw new ApiError(`Failed to refresh DNS records: ${error.message}`, 500, 'DNS_REFRESH_ERROR');
+  }
+});
+
+/**
+ * @desc    Process hostnames and update DNS records
+ * @route   POST /api/v1/dns/process
+ * @access  Private
+ */
+const processRecords = asyncHandler(async (req, res) => {
+  // Get services from global
+  const { Monitor } = global.services || {};
+  
+  if (!Monitor) {
+    throw new ApiError('Monitor service not initialized', 500, 'MONITOR_NOT_INITIALIZED');
+  }
+  
+  try {
+    const forceUpdate = req.body.force === true;
+    
+    // Process results tracking
+    const results = {
+      created: 0,
+      updated: 0,
+      deleted: 0,
+      orphaned: 0,
+      total: 0
+    };
+    
+    // Force a poll of Traefik if it's a Traefik monitor
+    if (Monitor.pollTraefik && typeof Monitor.pollTraefik === 'function') {
+      await Monitor.pollTraefik(true);
+      logger.info('Traefik routes polled successfully');
+    }
+    
+    // Process hostnames if available
+    if (Monitor.processHostnames && typeof Monitor.processHostnames === 'function') {
+      const processingResult = await Monitor.processHostnames(forceUpdate);
+      logger.info('Hostnames processed successfully');
+      
+      // Merge results if available
+      if (processingResult && typeof processingResult === 'object') {
+        results.created = processingResult.created || 0;
+        results.updated = processingResult.updated || 0;
+        results.orphaned = processingResult.orphaned || 0;
+        results.total = processingResult.total || 0;
+      }
+    } else {
+      throw new ApiError('Hostname processing not available', 500, 'PROCESS_NOT_AVAILABLE');
+    }
+    
+    res.json({
+      status: 'success',
+      message: 'DNS records processed successfully',
+      data: results
+    });
+  } catch (error) {
+    logger.error(`Error processing DNS records: ${error.message}`);
+    throw new ApiError(`Failed to process DNS records: ${error.message}`, 500, 'DNS_PROCESS_ERROR');
+  }
+});
+
 module.exports = {
   getRecords,
   getRecord,
@@ -650,5 +766,7 @@ module.exports = {
   updateRecord,
   deleteRecord,
   getOrphanedRecords,
-  runCleanup
+  runCleanup,
+  refreshRecords,
+  processRecords
 };

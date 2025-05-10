@@ -1,0 +1,115 @@
+#!/usr/bin/env node
+
+/**
+ * TrafegoDNS CLI tool
+ * Provides command-line interface for interacting with TrafegoDNS
+ */
+const { program } = require('commander');
+const chalk = require('chalk');
+const pkg = require('../package.json');
+const dbCommands = require('../src/cli/commands/db');
+
+// Set up CLI context
+const context = {};
+
+// Check if we can access the application state and services
+try {
+  // Try to access global objects (works when run within the application)
+  if (global.actionBroker) {
+    context.actionBroker = global.actionBroker;
+    context.stateStore = global.stateStore;
+    context.apiClient = global.apiClient;
+  } else {
+    // We're running as a standalone CLI
+    // Initialize ApiClient if needed
+    const ApiClient = require('../src/cli/apiClient');
+    context.apiClient = new ApiClient({
+      apiUrl: process.env.API_URL || 'http://localhost:3000',
+      apiToken: process.env.CLI_TOKEN || 'trafegodns-cli'
+    });
+  }
+} catch (error) {
+  // Continue without context - commands will handle missing context
+  console.warn(chalk.yellow('Warning: Running in standalone mode, some features may be limited'));
+}
+
+// Set up CLI program
+program
+  .name('trafego')
+  .description('TrafegoDNS CLI tool')
+  .version(pkg.version);
+
+// Database commands
+program
+  .command('db')
+  .description('Database management commands')
+  .addCommand(
+    program.createCommand('status')
+      .description('Show database status')
+      .action(args => dbCommands.status(args, context))
+  )
+  .addCommand(
+    program.createCommand('records')
+      .description('List DNS records')
+      .option('-t, --type <type>', 'Filter by record type (A, CNAME, etc.)')
+      .option('-o, --orphaned', 'Show only orphaned records')
+      .option('-m, --managed', 'Show only managed records')
+      .option('-p, --preserve', 'Show only preserved records')
+      .option('-l, --limit <number>', 'Limit number of records', parseInt)
+      .action(args => dbCommands.listRecords(args, context))
+  )
+  .addCommand(
+    program.createCommand('cleanup')
+      .description('Clean up orphaned records immediately')
+      .action(args => dbCommands.cleanupOrphaned(args, context))
+  )
+  .addCommand(
+    program.createCommand('refresh')
+      .description('Refresh DNS records from provider')
+      .action(args => dbCommands.refreshRecords(args, context))
+  );
+
+// DNS commands
+const dnsCommands = require('../src/cli/commands/dns');
+program
+  .command('dns')
+  .description('DNS management commands')
+  .addCommand(
+    program.createCommand('refresh')
+      .description('Refresh DNS records from provider')
+      .action(args => dnsCommands.refreshRecords(args, context))
+  )
+  .addCommand(
+    program.createCommand('process')
+      .description('Process hostnames and update DNS records')
+      .option('-f, --force', 'Force update of all DNS records')
+      .action(args => dnsCommands.processRecords(args, context))
+  );
+
+// System commands
+program
+  .command('system')
+  .description('System management commands')
+  .addCommand(
+    program.createCommand('status')
+      .description('Show system status')
+      .action(() => {
+        console.log(chalk.cyan('=== System Status ==='));
+        console.log('Not yet implemented');
+      })
+  );
+
+// Handle unknown commands
+program.on('command:*', () => {
+  console.error(chalk.red(`Invalid command: ${program.args.join(' ')}`));
+  console.error('See --help for a list of available commands.');
+  process.exit(1);
+});
+
+// Parse command line arguments
+program.parse(process.argv);
+
+// Show help if no arguments provided
+if (!process.argv.slice(2).length) {
+  program.outputHelp();
+}

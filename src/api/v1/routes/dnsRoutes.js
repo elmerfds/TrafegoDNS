@@ -10,7 +10,9 @@ const {
   updateRecord,
   deleteRecord,
   getOrphanedRecords,
-  runCleanup
+  runCleanup,
+  refreshRecords,
+  processRecords
 } = require('../controllers/dnsController');
 const { authenticate, authorize } = require('../middleware/authMiddleware');
 const { writeLimiter } = require('../middleware/rateLimitMiddleware');
@@ -400,5 +402,89 @@ router.get('/orphaned', authenticate, getOrphanedRecords);
  *        description: Server error
  */
 router.post('/cleanup', authenticate, authorize(['admin', 'operator']), runCleanup);
+
+/**
+ * @swagger
+ * /dns/refresh:
+ *  post:
+ *    summary: Refresh DNS records from provider
+ *    tags: [DNS]
+ *    security:
+ *      - BearerAuth: []
+ *    responses:
+ *      200:
+ *        description: DNS records refreshed successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                message:
+ *                  type: string
+ *      401:
+ *        description: Not authenticated
+ *      403:
+ *        description: Insufficient permissions
+ *      500:
+ *        description: Server error
+ */
+router.post('/refresh', authenticate, authorize(['admin', 'operator']), refreshRecords);
+
+/**
+ * @swagger
+ * /dns/process:
+ *  post:
+ *    summary: Process hostnames and update DNS records
+ *    tags: [DNS]
+ *    security:
+ *      - BearerAuth: []
+ *    requestBody:
+ *      required: false
+ *      content:
+ *        application/json:
+ *          schema:
+ *            type: object
+ *            properties:
+ *              force:
+ *                type: boolean
+ *                description: Force update of all DNS records
+ *                default: false
+ *    responses:
+ *      200:
+ *        description: DNS records processed successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                message:
+ *                  type: string
+ *                data:
+ *                  type: object
+ *                  properties:
+ *                    created:
+ *                      type: number
+ *                    updated:
+ *                      type: number
+ *                    deleted:
+ *                      type: number
+ *                    orphaned:
+ *                      type: number
+ *                    total:
+ *                      type: number
+ *      401:
+ *        description: Not authenticated
+ *      403:
+ *        description: Insufficient permissions
+ *      500:
+ *        description: Server error
+ */
+router.post('/process', authenticate, authorize(['admin', 'operator']), processRecords);
 
 module.exports = router;

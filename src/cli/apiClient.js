@@ -118,6 +118,14 @@ class ApiClient {
   async refreshDns() {
     return this.client.post('/dns/refresh');
   }
+
+  /**
+   * Process DNS records
+   * @param {boolean} force - Force update of all records
+   */
+  async processDnsRecords(force = false) {
+    return this.client.post('/dns/process', { force });
+  }
   
   /**
    * Get configuration

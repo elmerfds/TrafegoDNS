@@ -61,6 +61,12 @@ RUN mkdir -p /etc/cont-init.d /etc/services.d/trafegodns
 # Copy your prepared scripts
 COPY docker-s6/root/ /
 
+# Set up CLI tool
+RUN mkdir -p /usr/local/bin && \
+    echo '#!/bin/sh' > /usr/local/bin/trafego && \
+    echo 'exec node /app/bin/trafego "$@"' >> /usr/local/bin/trafego && \
+    chmod +x /usr/local/bin/trafego
+
 # Update the scripts to use command/with-contenv and fix any issues
 RUN for script in /etc/cont-init.d/* /etc/services.d/trafegodns/*; do \
     if [ -f "$script" ]; then \

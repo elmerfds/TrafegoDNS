@@ -8,7 +8,11 @@
     "start:api": "NODE_ENV=production API_ONLY=true node src/app.js",
     "start:cli": "NODE_ENV=production DISABLE_API=true node src/app.js",
     "dev": "NODE_ENV=development node src/app.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "cli": "node bin/trafego"
+  },
+  "bin": {
+    "trafego": "./bin/trafego"
   },
   "author": "",
   "license": "MIT",
@@ -30,7 +34,11 @@
     "express-rate-limit": "^7.1.5",
     "socket.io": "^4.7.4",
     "uuid": "^9.0.1",
-    "ws": "^8.16.0"
+    "ws": "^8.16.0",
+    "commander": "^11.1.0",
+    "chalk": "^4.1.2",
+    "cli-table3": "^0.6.3",
+    "inquirer": "^8.2.6"
   },
   "optionalDependencies": {
     "better-sqlite3": "^9.2.2",
