@@ -91,6 +91,17 @@ async function start() {
     // Start main polling
     await monitor.startPolling();
 
+    // Make services available to API controllers via global
+    global.services = {
+      DNSManager: dnsManager,
+      DockerMonitor: dockerMonitor,
+      StatusReporter: statusReporter,
+      Monitor: monitor,
+      TraefikMonitor: config.operationMode.toLowerCase() !== 'direct' ? monitor : null,
+      DirectDNSManager: config.operationMode.toLowerCase() === 'direct' ? monitor : null,
+      ConfigManager: config
+    };
+
     logger.complete('TráfegoDNS running successfully');
 
     // Export API client for CLI usage

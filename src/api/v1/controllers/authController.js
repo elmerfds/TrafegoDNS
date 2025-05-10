@@ -2,7 +2,7 @@
  * Authentication controller
  */
 const asyncHandler = require('express-async-handler');
-const { ApiError } = require('../middleware/errorMiddleware');
+const { ApiError } = require('../../../utils/apiError');
 const logger = require('../../../utils/logger');
 const User = require('../models/User');
 const jwtService = require('../services/jwtService');

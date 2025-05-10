@@ -4,7 +4,7 @@
  */
 const asyncHandler = require('express-async-handler');
 const os = require('os');
-const { ApiError } = require('../middleware/errorMiddleware');
+const { ApiError } = require('../../../utils/apiError');
 const logger = require('../../../utils/logger');
 
 /**

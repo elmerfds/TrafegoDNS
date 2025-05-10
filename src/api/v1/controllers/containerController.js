@@ -3,7 +3,7 @@
  * Handles container-related API requests
  */
 const asyncHandler = require('express-async-handler');
-const { ApiError } = require('../utils/apiError');
+const { ApiError } = require('../../../utils/apiError');
 
 /**
  * @desc    Get all containers

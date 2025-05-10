@@ -3,7 +3,7 @@
  * Handles manual hostname management and preservation rules
  */
 const asyncHandler = require('express-async-handler');
-const { ApiError } = require('../utils/apiError');
+const { ApiError } = require('../../../utils/apiError');
 
 /**
  * @desc    Get all manually managed hostnames

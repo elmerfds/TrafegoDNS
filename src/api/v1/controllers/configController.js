@@ -3,7 +3,7 @@
  * Handles application configuration settings
  */
 const asyncHandler = require('express-async-handler');
-const { ApiError } = require('../utils/apiError');
+const { ApiError } = require('../../../utils/apiError');
 
 /**
  * @desc    Get application configuration
