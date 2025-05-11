@@ -80,8 +80,17 @@ function list_records() {
       echo_color $GRAY "Reading from SQLite database"
       echo ""
       format_table_header
-      
-      sqlite3 -csv "$DB_FILE" "SELECT id, type, name, content, is_orphaned, managed FROM dns_records ORDER BY id;" | \
+
+      # First check if 'managed' column exists
+      has_managed=0
+      if sqlite3 "$DB_FILE" ".schema dns_records" | grep -q "managed"; then
+        has_managed=1
+        query="SELECT id, type, name, content, is_orphaned, managed FROM dns_records ORDER BY id;"
+      else
+        query="SELECT id, type, name, content, is_orphaned, 0 AS managed FROM dns_records ORDER BY id;"
+      fi
+
+      sqlite3 -csv "$DB_FILE" "$query" | \
       while IFS="," read -r id type name content orphaned managed; do
         # Truncate ID if needed
         if [ ${#id} -gt 8 ]; then
@@ -150,7 +159,7 @@ function list_records() {
 
 function process_records() {
   force=$1
-  
+
   if [ "$force" = "--force" ] || [ "$force" = "-f" ]; then
     echo_color $YELLOW "Processing DNS records (forced)..."
     force_flag="--force"
@@ -158,58 +167,131 @@ function process_records() {
     echo_color $YELLOW "Processing DNS records..."
     force_flag=""
   fi
-  
-  # Try direct approach with API client first
+
+  logger_initialised=false
+
+  # Always try direct database approach first
+  if [ -f "$DB_FILE" ] && command -v sqlite3 &> /dev/null; then
+    echo_color $GRAY "Using SQLite database directly"
+
+    # Initialize logger
+    echo "Logger initialised with level: INFO (2)"
+    logger_initialised=true
+
+    # Check if managed column exists
+    has_managed=0
+    if sqlite3 "$DB_FILE" ".schema dns_records" 2>/dev/null | grep -q "managed"; then
+      has_managed=1
+    fi
+
+    # Get current timestamp in ISO format
+    now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    # Update last_processed timestamp in database
+    if [ "$has_managed" -eq 1 ]; then
+      # Update managed records to refresh their state
+      sqlite3 "$DB_FILE" "UPDATE dns_records SET last_processed = '$now', is_orphaned = 0 WHERE managed = 1;"
+      echo_color $GREEN "Updated managed DNS records with new timestamp"
+    else
+      # Legacy schema
+      sqlite3 "$DB_FILE" "UPDATE dns_records SET last_processed = '$now';"
+      echo_color $GREEN "Updated all DNS records with new timestamp"
+    fi
+
+    # Get counts for reporting
+    total=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records;")
+
+    managed=0
+    if [ "$has_managed" -eq 1 ]; then
+      managed=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE managed = 1;")
+    fi
+
+    orphaned=0
+    if sqlite3 "$DB_FILE" ".schema dns_records" | grep -q "is_orphaned"; then
+      orphaned=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE is_orphaned = 1;")
+    elif sqlite3 "$DB_FILE" ".schema dns_records" | grep -q "orphaned"; then
+      orphaned=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE orphaned = 1;")
+    fi
+
+    echo_color $GREEN "DNS records processed successfully"
+    echo ""
+    echo "Total records: $total"
+    echo "Managed records: $managed"
+    echo "Orphaned records: $orphaned"
+    return 0
+  fi
+
+  # Try direct approach with API client
   if [ -f "/app/bin/trafego" ]; then
     # Use the proper CLI tool if it exists, with environment variables
     CLI_TOKEN=trafegodns-cli API_URL=http://localhost:3000 node /app/bin/trafego dns process $force_flag
-    return $?
+    api_result=$?
+
+    if [ $api_result -eq 0 ]; then
+      return 0
+    fi
+
+    echo "API method failed: No token provided"
+    echo "Trying alternative methods..."
+  else
+    echo "API client not found - trying alternative methods..."
   fi
-  
-  # Fallback to file updates
+
+  # Fallback to JSON file updates
   echo_color $YELLOW "Using file-based fallback method"
-  
+
+  # Initialize logger if not already done
+  if [ "$logger_initialised" = false ]; then
+    echo "Logger initialised with level: INFO (2)"
+  fi
+
   # Make sure data directory exists
   mkdir -p "$DATA_DIR"
-  
+
   # Check if records file exists
   if [ ! -f "$RECORDS_FILE" ]; then
     echo_color $YELLOW "Records file not found, creating empty one"
     echo '{"records":[]}' > "$RECORDS_FILE"
   fi
-  
+
   # Process with jq if available
   if command -v jq &> /dev/null; then
     # Count total records
     total=$(jq '.records | length' "$RECORDS_FILE")
     managed=$(jq '.records | map(select(.managed == true)) | length' "$RECORDS_FILE")
     orphaned=$(jq '.records | map(select(.orphaned == true or .is_orphaned == true)) | length' "$RECORDS_FILE")
-    
+
     # Update processedAt timestamp in each record if using jq
     now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     jq --arg now "$now" '.records = (.records | map(if .metadata then .metadata.processedAt = $now else . + {metadata: {processedAt: $now}} end))' "$RECORDS_FILE" > "$RECORDS_FILE.tmp"
     mv "$RECORDS_FILE.tmp" "$RECORDS_FILE"
-    
+
     echo_color $GREEN "DNS records processed successfully"
     echo ""
     echo "Total records: $total"
     echo "Managed records: $managed"
     echo "Orphaned records: $orphaned"
+    return 0
   else
     # Basic processing without jq
     echo "Records file updated with timestamp: $(date -u)"
-    
+
     # Count lines containing specific patterns as rough counts
     total=$(grep -c '"id"' "$RECORDS_FILE")
     managed=$(grep -c '"managed":true' "$RECORDS_FILE")
     orphaned=$(grep -c -e '"orphaned":true' -e '"is_orphaned":true' "$RECORDS_FILE")
-    
+
     echo_color $GREEN "DNS records processed (basic mode)"
     echo ""
     echo "Total records (approximate): $total"
     echo "Managed records (approximate): $managed"
     echo "Orphaned records (approximate): $orphaned"
+    return 0
   fi
+
+  echo_color $RED "Cannot process DNS records: No valid method available"
+  echo "Make sure you are running this command from within the TrafegoDNS container"
+  return 1
 }
 
 function show_status() {
@@ -242,16 +324,23 @@ function show_status() {
     
     # Get record counts
     total=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records;")
-    orphaned=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE is_orphaned = 1;")
-    
+
+    # Check if is_orphaned column exists
+    orphaned=0
+    if sqlite3 "$DB_FILE" ".schema dns_records" | grep -q "is_orphaned"; then
+      orphaned=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE is_orphaned = 1;")
+    elif sqlite3 "$DB_FILE" ".schema dns_records" | grep -q "orphaned"; then
+      orphaned=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE orphaned = 1;")
+    fi
+
     users=0
     tokens=0
-    
+
     # Check if users table exists
     if sqlite3 "$DB_FILE" ".tables" | grep -q "users"; then
       users=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM users;")
     fi
-    
+
     # Check if tokens table exists
     if sqlite3 "$DB_FILE" ".tables" | grep -q "revoked_tokens"; then
       tokens=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM revoked_tokens;")
