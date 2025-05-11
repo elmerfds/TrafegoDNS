@@ -59,7 +59,20 @@ function format_table_header() {
 function list_records() {
   echo_color $CYAN "=== DNS Records ==="
   echo ""
-  
+
+  # Debug
+  echo_color $GRAY "Looking for database at: $DB_FILE"
+  if [ -f "$DB_FILE" ]; then
+    echo_color $GRAY "Database file exists"
+    if command -v sqlite3 &> /dev/null; then
+      echo_color $GRAY "sqlite3 command found"
+    else
+      echo_color $GRAY "sqlite3 command not found"
+    fi
+  else
+    echo_color $GRAY "Database file not found"
+  fi
+
   # Check if records file exists
   if [ -f "$RECORDS_FILE" ]; then
     # Try SQLite first if DB file exists
@@ -202,7 +215,26 @@ function process_records() {
 function show_status() {
   echo_color $CYAN "=== Database Status ==="
   echo ""
-  
+
+  # Debug database file info
+  if [ -f "$DB_FILE" ]; then
+    echo_color $GRAY "Database file: $(ls -l "$DB_FILE")"
+    db_size=$(du -h "$DB_FILE" | cut -f1)
+    echo_color $GRAY "Database size: $db_size"
+  fi
+
+  # Check for SQLite CLI
+  if command -v sqlite3 &> /dev/null; then
+    echo_color $GRAY "SQLite version: $(sqlite3 --version)"
+  else
+    echo_color $GRAY "SQLite command not available"
+
+    # Check for sqlite packages
+    if command -v apk &> /dev/null; then
+      echo_color $GRAY "Available SQLite packages: $(apk list | grep sqlite)"
+    fi
+  fi
+
   # Try SQLite first if DB file exists
   if [ -f "$DB_FILE" ] && command -v sqlite3 &> /dev/null; then
     echo_color $GREEN "Database Type:    SQLite"

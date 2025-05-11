@@ -30,7 +30,7 @@ ARG TARGETARCH
 USER root
 
 # Install required packages
-RUN apk add --no-cache shadow curl xz tar bash
+RUN apk add --no-cache shadow curl xz tar bash sqlite sqlite-dev
 
 # Set architecture for s6-overlay download
 RUN case "${TARGETARCH}" in \
