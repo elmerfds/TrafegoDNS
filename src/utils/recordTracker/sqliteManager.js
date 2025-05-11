@@ -287,7 +287,9 @@ class SQLiteRecordManager {
     }
 
     try {
-      return await this.repository.getRecordOrphanedTime(provider, recordId);
+      const result = await this.repository.getRecordOrphanedTime(provider, recordId);
+      // Make sure we have a string, not a Date object
+      return result ? (typeof result === 'string' ? result : new Date(result).toISOString()) : null;
     } catch (error) {
       logger.error(`Failed to get record orphaned time from SQLite: ${error.message}`);
       return null;

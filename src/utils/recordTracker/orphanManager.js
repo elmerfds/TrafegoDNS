@@ -84,25 +84,25 @@ function isRecordOrphaned(data, provider, record) {
  * @param {Object} data - Record tracking data
  * @param {string} provider - Current DNS provider
  * @param {Object} record - Record to check
- * @returns {Date|null} - Timestamp when the record was marked as orphaned
+ * @returns {string|null} - ISO timestamp string when the record was marked as orphaned
  */
 function getRecordOrphanedTime(data, provider, record) {
   const key = getRecordKey(record);
   if (!key) {
     return null;
   }
-  
+
   // Check if the record exists and has orphaned status
   const recordData = data.providers[provider].records[key];
   if (recordData && recordData.orphaned) {
-    // Return the time in ms if available, otherwise parse the timestamp
-    if (recordData.orphaned.timeMs) {
-      return new Date(recordData.orphaned.timeMs);
-    } else if (recordData.orphaned.timestamp) {
-      return new Date(recordData.orphaned.timestamp);
+    // Return the timestamp if available, otherwise convert the time in ms to a timestamp
+    if (recordData.orphaned.timestamp) {
+      return recordData.orphaned.timestamp;
+    } else if (recordData.orphaned.timeMs) {
+      return new Date(recordData.orphaned.timeMs).toISOString();
     }
   }
-  
+
   return null;
 }
 

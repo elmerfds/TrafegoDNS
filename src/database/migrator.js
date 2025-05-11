@@ -292,7 +292,6 @@ class DatabaseMigrator {
       throw error;
     }
   }
-}
 
   /**
    * Migrate DNS tracked records from JSON
@@ -309,6 +308,12 @@ class DatabaseMigrator {
     }
 
     try {
+      // Check if dnsTrackedRecord repository exists
+      if (!this.repositories.dnsTrackedRecord) {
+        logger.warn('DNS tracked record repository not available, skipping migration');
+        return 0;
+      }
+
       // Try to read from standard location first
       let fileContent;
       const sourceFile = fs.existsSync(trackerFile) ? trackerFile : legacyTrackerFile;
@@ -346,7 +351,7 @@ class DatabaseMigrator {
       return migratedCount;
     } catch (error) {
       logger.error(`Failed to migrate DNS tracked records: ${error.message}`);
-      throw error;
+      return 0; // Return 0 instead of re-throwing to avoid stopping other migrations
     }
   }
 }
