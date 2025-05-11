@@ -65,13 +65,22 @@ function show_usage() {
   echo ""
   echo "Usage: $(basename $0) COMMAND [OPTIONS]"
   echo ""
-  echo "Commands:"
+  echo "DNS Record Commands:"
   echo "  records                  List all DNS records"
   echo "  search <query>           Search for records by name, type, or content"
   echo "  process [--force]        Process DNS records (--force to force update)"
-  echo "  status                   Show database status"
   echo "  delete <id>              Delete a DNS record by ID"
   echo "  update <id> <field=val>  Update a DNS record field"
+  echo ""
+  echo "User Management Commands:"
+  echo "  users                    List all users"
+  echo "  user-add <user> <pass>   Add a new user"
+  echo "  user-delete <id>         Delete a user by ID"
+  echo "  user-password <id> <pw>  Update a user's password"
+  echo "  user-role <id> <role>    Update a user's role (admin/user)"
+  echo ""
+  echo "System Commands:"
+  echo "  status                   Show database status"
   echo "  help                     Show this help message"
   echo ""
   echo "Examples:"
@@ -79,8 +88,10 @@ function show_usage() {
   echo "  $(basename $0) search example.com"
   echo "  $(basename $0) search 'type=CNAME'"
   echo "  $(basename $0) process --force"
-  echo "  $(basename $0) delete 12"
   echo "  $(basename $0) update 15 content=192.168.1.10"
+  echo "  $(basename $0) users"
+  echo "  $(basename $0) user-add newuser password123"
+  echo "  $(basename $0) user-role 2 admin"
 }
 
 function show_divider() {
@@ -601,6 +612,324 @@ function update_record() {
   return 0
 }
 
+# User management functions
+function list_users() {
+  echo_color $CYAN "=== Users ==="
+  echo ""
+
+  # Verify database and SQLite command
+  if [ ! -f "$DB_FILE" ]; then
+    echo_color $RED "Error: Database file not found at $DB_FILE"
+    echo "Make sure you are running this command from within the TrafegoDNS container"
+    return 1
+  fi
+
+  if ! command -v sqlite3 &> /dev/null; then
+    echo_color $RED "Error: sqlite3 command is required but not found"
+    echo "Please install SQLite: apk add --no-cache sqlite"
+    return 1
+  fi
+
+  # Check if users table exists
+  if ! sqlite3 "$DB_FILE" ".tables" | grep -q "users"; then
+    echo_color $RED "Error: Users table not found in database"
+    return 1
+  fi
+
+  # Format user display
+  echo_color $CYAN "| ID   | Username        | Role      | Created                   | Last Login                |"
+  echo "+---------+----------------+-----------+---------------------------+--------------------------+"
+
+  # Query users
+  sqlite3 -csv "$DB_FILE" "SELECT id, username, role, created_at, last_login FROM users ORDER BY id;" | \
+  while IFS="," read -r id username role created_at last_login; do
+    # Handle null values
+    if [ "$last_login" = "" ]; then
+      last_login="Never"
+    fi
+
+    # Colorize role
+    if [ "$role" = "admin" ]; then
+      role_display=$(status_text "managed" "admin")
+    else
+      role_display=$(status_text "unmanaged" "user")
+    fi
+
+    printf "| %-7s | %-14s | %-9s | %-25s | %-24s |\n" "$id" "$username" "$role_display" "$created_at" "$last_login"
+  done
+
+  echo "+---------+----------------+-----------+---------------------------+--------------------------+"
+  total=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM users;")
+  echo "Total users: $total"
+}
+
+function add_user() {
+  username="$1"
+  password="$2"
+  role="$3"
+
+  if [ -z "$username" ] || [ -z "$password" ]; then
+    echo_color $RED "Error: Username and password are required"
+    echo "Usage: $(basename $0) user-add <username> <password> [role]"
+    return 1
+  fi
+
+  # Default role to 'user' if not specified
+  if [ -z "$role" ]; then
+    role="user"
+  fi
+
+  # Validate role
+  if [ "$role" != "user" ] && [ "$role" != "admin" ]; then
+    echo_color $RED "Error: Invalid role. Valid roles are 'user' or 'admin'"
+    return 1
+  fi
+
+  # Verify database and SQLite command
+  if [ ! -f "$DB_FILE" ]; then
+    echo_color $RED "Error: Database file not found at $DB_FILE"
+    echo "Make sure you are running this command from within the TrafegoDNS container"
+    return 1
+  fi
+
+  if ! command -v sqlite3 &> /dev/null; then
+    echo_color $RED "Error: sqlite3 command is required but not found"
+    echo "Please install SQLite: apk add --no-cache sqlite"
+    return 1
+  fi
+
+  # Check if user already exists
+  user_exists=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM users WHERE username = '$username';")
+  if [ "$user_exists" -gt "0" ]; then
+    echo_color $RED "Error: User '$username' already exists"
+    return 1
+  fi
+
+  # Generate password hash - we'll use a simple md5 hash for the CLI version
+  # NOTE: This is not secure for production use but works for a simple CLI demo
+  if command -v openssl &> /dev/null; then
+    # Generate a proper bcrypt hash if NodeJS is available
+    if command -v node &> /dev/null; then
+      password_hash=$(node -e "const bcrypt = require('bcryptjs'); console.log(bcrypt.hashSync('$password', 10));")
+      if [ $? -ne 0 ]; then
+        echo_color $YELLOW "Warning: Bcrypt not available, using simple hash"
+        password_hash=$(echo -n "$password" | openssl md5 | awk '{print $2}')
+      fi
+    else
+      password_hash=$(echo -n "$password" | openssl md5 | awk '{print $2}')
+    fi
+  else
+    # Generate a very basic hash if openssl is not available
+    password_hash=$(echo -n "$password" | md5sum | awk '{print $1}')
+  fi
+
+  # Insert user
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  sqlite3 "$DB_FILE" "INSERT INTO users (username, password_hash, role, created_at) VALUES ('$username', '$password_hash', '$role', '$now');"
+
+  # Check if insertion was successful
+  if [ $? -eq 0 ]; then
+    echo_color $GREEN "User '$username' created successfully with role '$role'"
+  else
+    echo_color $RED "Error creating user"
+    return 1
+  fi
+}
+
+function delete_user() {
+  user_id="$1"
+
+  if [ -z "$user_id" ]; then
+    echo_color $RED "Error: User ID is required"
+    echo "Usage: $(basename $0) user-delete <id>"
+    return 1
+  fi
+
+  # Verify database and SQLite command
+  if [ ! -f "$DB_FILE" ]; then
+    echo_color $RED "Error: Database file not found at $DB_FILE"
+    echo "Make sure you are running this command from within the TrafegoDNS container"
+    return 1
+  fi
+
+  if ! command -v sqlite3 &> /dev/null; then
+    echo_color $RED "Error: sqlite3 command is required but not found"
+    echo "Please install SQLite: apk add --no-cache sqlite"
+    return 1
+  fi
+
+  # Check if user exists
+  user_exists=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM users WHERE id = $user_id;")
+  if [ "$user_exists" -eq "0" ]; then
+    echo_color $RED "Error: User with ID $user_id does not exist"
+    return 1
+  fi
+
+  # Get user details before deletion
+  user_details=$(sqlite3 -csv "$DB_FILE" "SELECT username, role FROM users WHERE id = $user_id;")
+  IFS="," read -r username role <<< "$user_details"
+
+  # Prevent deletion of the last admin user
+  if [ "$role" = "admin" ]; then
+    admin_count=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM users WHERE role = 'admin';")
+    if [ "$admin_count" -le "1" ]; then
+      echo_color $RED "Error: Cannot delete the last admin user"
+      return 1
+    fi
+  fi
+
+  # Confirm deletion
+  echo_color $YELLOW "You are about to delete the following user:"
+  echo "ID: $user_id"
+  echo "Username: $username"
+  echo "Role: $role"
+  echo ""
+  echo_color $RED "This action cannot be undone."
+  echo -n "Are you sure? (y/N): "
+  read -r confirm
+
+  if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+    echo_color $YELLOW "Deletion cancelled."
+    return 0
+  fi
+
+  # Delete the user
+  sqlite3 "$DB_FILE" "DELETE FROM users WHERE id = $user_id;"
+
+  # Check if deletion was successful
+  if [ $? -eq 0 ]; then
+    echo_color $GREEN "User '$username' deleted successfully"
+  else
+    echo_color $RED "Error deleting user"
+    return 1
+  fi
+}
+
+function update_user_password() {
+  user_id="$1"
+  password="$2"
+
+  if [ -z "$user_id" ] || [ -z "$password" ]; then
+    echo_color $RED "Error: User ID and new password are required"
+    echo "Usage: $(basename $0) user-password <id> <new-password>"
+    return 1
+  fi
+
+  # Verify database and SQLite command
+  if [ ! -f "$DB_FILE" ]; then
+    echo_color $RED "Error: Database file not found at $DB_FILE"
+    echo "Make sure you are running this command from within the TrafegoDNS container"
+    return 1
+  fi
+
+  if ! command -v sqlite3 &> /dev/null; then
+    echo_color $RED "Error: sqlite3 command is required but not found"
+    echo "Please install SQLite: apk add --no-cache sqlite"
+    return 1
+  fi
+
+  # Check if user exists
+  user_exists=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM users WHERE id = $user_id;")
+  if [ "$user_exists" -eq "0" ]; then
+    echo_color $RED "Error: User with ID $user_id does not exist"
+    return 1
+  fi
+
+  # Get username
+  username=$(sqlite3 "$DB_FILE" "SELECT username FROM users WHERE id = $user_id;")
+
+  # Generate password hash
+  if command -v openssl &> /dev/null; then
+    # Generate a proper bcrypt hash if NodeJS is available
+    if command -v node &> /dev/null; then
+      password_hash=$(node -e "const bcrypt = require('bcryptjs'); console.log(bcrypt.hashSync('$password', 10));")
+      if [ $? -ne 0 ]; then
+        echo_color $YELLOW "Warning: Bcrypt not available, using simple hash"
+        password_hash=$(echo -n "$password" | openssl md5 | awk '{print $2}')
+      fi
+    else
+      password_hash=$(echo -n "$password" | openssl md5 | awk '{print $2}')
+    fi
+  else
+    # Generate a very basic hash if openssl is not available
+    password_hash=$(echo -n "$password" | md5sum | awk '{print $1}')
+  fi
+
+  # Update password
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  sqlite3 "$DB_FILE" "UPDATE users SET password_hash = '$password_hash', updated_at = '$now' WHERE id = $user_id;"
+
+  # Check if update was successful
+  if [ $? -eq 0 ]; then
+    echo_color $GREEN "Password for user '$username' updated successfully"
+  else
+    echo_color $RED "Error updating password"
+    return 1
+  fi
+}
+
+function update_user_role() {
+  user_id="$1"
+  role="$2"
+
+  if [ -z "$user_id" ] || [ -z "$role" ]; then
+    echo_color $RED "Error: User ID and new role are required"
+    echo "Usage: $(basename $0) user-role <id> <role>"
+    return 1
+  fi
+
+  # Validate role
+  if [ "$role" != "user" ] && [ "$role" != "admin" ]; then
+    echo_color $RED "Error: Invalid role. Valid roles are 'user' or 'admin'"
+    return 1
+  fi
+
+  # Verify database and SQLite command
+  if [ ! -f "$DB_FILE" ]; then
+    echo_color $RED "Error: Database file not found at $DB_FILE"
+    echo "Make sure you are running this command from within the TrafegoDNS container"
+    return 1
+  fi
+
+  if ! command -v sqlite3 &> /dev/null; then
+    echo_color $RED "Error: sqlite3 command is required but not found"
+    echo "Please install SQLite: apk add --no-cache sqlite"
+    return 1
+  fi
+
+  # Check if user exists
+  user_exists=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM users WHERE id = $user_id;")
+  if [ "$user_exists" -eq "0" ]; then
+    echo_color $RED "Error: User with ID $user_id does not exist"
+    return 1
+  fi
+
+  # Get user details
+  user_details=$(sqlite3 -csv "$DB_FILE" "SELECT username, role FROM users WHERE id = $user_id;")
+  IFS="," read -r username current_role <<< "$user_details"
+
+  # Prevent downgrading the last admin
+  if [ "$current_role" = "admin" ] && [ "$role" = "user" ]; then
+    admin_count=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM users WHERE role = 'admin';")
+    if [ "$admin_count" -le "1" ]; then
+      echo_color $RED "Error: Cannot downgrade the last admin user"
+      return 1
+    fi
+  fi
+
+  # Update role
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  sqlite3 "$DB_FILE" "UPDATE users SET role = '$role', updated_at = '$now' WHERE id = $user_id;"
+
+  # Check if update was successful
+  if [ $? -eq 0 ]; then
+    echo_color $GREEN "Role for user '$username' updated from '$current_role' to '$role'"
+  else
+    echo_color $RED "Error updating role"
+    return 1
+  fi
+}
+
 # Main command handler
 case "$1" in
   "records"|"list"|"ls")
@@ -620,6 +949,21 @@ case "$1" in
     ;;
   "update"|"edit")
     update_record "$2" "$3"
+    ;;
+  "users"|"user-list"|"list-users")
+    list_users
+    ;;
+  "user-add"|"add-user")
+    add_user "$2" "$3" "$4"
+    ;;
+  "user-delete"|"delete-user")
+    delete_user "$2"
+    ;;
+  "user-password"|"password")
+    update_user_password "$2" "$3"
+    ;;
+  "user-role"|"role")
+    update_user_role "$2" "$3"
     ;;
   "help"|"--help"|"-h")
     show_usage

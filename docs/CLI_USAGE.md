@@ -212,7 +212,28 @@ process-dns         # Same as 'trafegodns process'
 dns-status          # Same as 'trafegodns status'
 ```
 
-These commands use direct SQLite database access and work without requiring API authentication. They're particularly useful in automation scripts or when troubleshooting.
+### User Management Commands
+
+The CLI also provides user management capabilities:
+
+```bash
+# List all users in the system
+trafegodns users
+
+# Add a new user
+trafegodns user-add <username> <password> [role]   # role defaults to 'user'
+
+# Delete a user
+trafegodns user-delete <id>
+
+# Update a user's password
+trafegodns user-password <id> <new-password>
+
+# Change a user's role
+trafegodns user-role <id> <role>   # role can be 'user' or 'admin'
+```
+
+All these commands use direct SQLite database access and work without requiring API authentication. They're particularly useful in automation scripts or when troubleshooting.
 
 ## Environment Variables
 

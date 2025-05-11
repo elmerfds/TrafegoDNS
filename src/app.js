@@ -168,7 +168,7 @@ async function start() {
         monitor: true,
         docker: dockerMonitor && dockerMonitor.isConnected(),
         api: apiServer ? true : false,
-        database: useDatabase && require('./database').isInitialized()
+        database: require('./database').isInitialized()
       }
     });
   } catch (error) {

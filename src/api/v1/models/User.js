@@ -37,7 +37,7 @@ class UserModel {
    */
   init() {
     try {
-      // Use SQLite if available and initialized
+      // In SQLite-only mode, we only use the database - no JSON fallbacks
       if (database && database.isInitialized()) {
         logger.debug('Using SQLite database for user management');
         this.userRepository = database.repositories.user;
@@ -65,49 +65,19 @@ class UserModel {
 
         this.initialized = true;
         logger.info('User database initialized successfully (SQLite)');
+
+        // No JSON files will be created or used - return here
         return;
       }
 
-      // Fallback to JSON storage
-      logger.debug('Using JSON storage for user management');
+      // This code should never run in the updated version, but keeping it as a safety measure
+      // with a clear warning that it should not be used
+      logger.error('SQLite database is required but not available. JSON storage is no longer supported.');
+      logger.error('Please ensure SQLite is properly configured.');
 
-      // Create data directory if it doesn't exist
-      if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
-        logger.info(`Created data directory: ${DATA_DIR}`);
-      }
-
-      // Create users file if it doesn't exist
-      if (!fs.existsSync(USERS_FILE)) {
-        // Create default admin user for first-time setup
-        const defaultAdmin = {
-          id: '1',
-          username: 'admin',
-          // Default password: admin123
-          passwordHash: '$2a$10$mR3TyEQwA.bCpkTz8YGsIuRgIWPXxZH7KtNE9TCMxDxU52aw9hq.O',
-          role: 'admin',
-          createdAt: new Date().toISOString(),
-          lastLogin: null
-        };
-
-        fs.writeFileSync(USERS_FILE, JSON.stringify([defaultAdmin], null, 2));
-        logger.info('Created users database with default admin user');
-      }
-
-      // Create revoked tokens file if it doesn't exist
-      if (!fs.existsSync(TOKENS_FILE)) {
-        fs.writeFileSync(TOKENS_FILE, JSON.stringify([], null, 2));
-        logger.info('Created revoked tokens database');
-      }
-
-      // Load users from file
-      this.loadUsers();
-
-      // Load revoked tokens from file
-      this.loadRevokedTokens();
-
-      this.initialized = true;
-      logger.info('User database initialized successfully (JSON)');
+      // Mark as not initialized to prevent app from proceeding with broken authentication
+      this.initialized = false;
+      throw new Error('SQLite database required but not available');
     } catch (error) {
       logger.error(`Failed to initialize user database: ${error.message}`);
       throw error;
@@ -343,25 +313,15 @@ class UserModel {
    * @returns {Promise<boolean>} - Success status
    */
   async revokeToken(token, expiresAt) {
-    // Use SQLite if available
+    // In SQLite-only mode, we only use the repository for token operations
     if (this.tokenRepository) {
       await this.tokenRepository.revokeToken(token, expiresAt);
       return true;
     }
 
-    // Fallback to JSON storage
-    // Store just a hash of the token to save space
-    const crypto = require('crypto');
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-
-    this.revokedTokens.push({
-      token: tokenHash,
-      revokedAt: Date.now(),
-      expiresAt
-    });
-
-    this.saveRevokedTokens();
-    return true;
+    // If token repository is unavailable, this is an error in SQLite-only mode
+    logger.error('Token repository is unavailable. Cannot revoke token.');
+    throw new Error('Token repository unavailable');
   }
 
   /**
@@ -370,16 +330,14 @@ class UserModel {
    * @returns {Promise<boolean>} - Whether token is revoked
    */
   async isTokenRevoked(token) {
-    // Use SQLite if available
+    // In SQLite-only mode, we only use the repository for token operations
     if (this.tokenRepository) {
       return this.tokenRepository.isTokenRevoked(token);
     }
 
-    // Fallback to JSON storage
-    const crypto = require('crypto');
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-
-    return this.revokedTokens.some(t => t.token === tokenHash);
+    // If token repository is unavailable, this is an error in SQLite-only mode
+    logger.error('Token repository is unavailable. Cannot check if token is revoked.');
+    throw new Error('Token repository unavailable');
   }
 
   /**
