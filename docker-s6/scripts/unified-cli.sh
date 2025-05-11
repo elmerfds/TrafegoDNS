@@ -36,14 +36,21 @@ function show_usage() {
   echo "Usage: $(basename $0) COMMAND [OPTIONS]"
   echo ""
   echo "Commands:"
-  echo "  records            List DNS records"
-  echo "  process [--force]  Process DNS records (--force to force update)"
-  echo "  status             Show database status"
-  echo "  help               Show this help message"
+  echo "  records                  List all DNS records"
+  echo "  search <query>           Search for records by name, type, or content"
+  echo "  process [--force]        Process DNS records (--force to force update)"
+  echo "  status                   Show database status"
+  echo "  delete <id>              Delete a DNS record by ID"
+  echo "  update <id> <field=val>  Update a DNS record field"
+  echo "  help                     Show this help message"
   echo ""
   echo "Examples:"
   echo "  $(basename $0) records"
+  echo "  $(basename $0) search example.com"
+  echo "  $(basename $0) search 'type=CNAME'"
   echo "  $(basename $0) process --force"
+  echo "  $(basename $0) delete 12"
+  echo "  $(basename $0) update 15 content=192.168.1.10"
 }
 
 function show_divider() {
@@ -384,16 +391,396 @@ function show_status() {
   fi
 }
 
+function search_records() {
+  query="$1"
+
+  if [ -z "$query" ]; then
+    echo_color $RED "Error: Search query is required"
+    echo "Usage: $(basename $0) search <query>"
+    return 1
+  fi
+
+  echo_color $CYAN "=== DNS Records Search: '$query' ==="
+  echo ""
+
+  # Check if it's a field-specific search (contains =)
+  if [[ "$query" == *"="* ]]; then
+    # Extract field and value
+    field=$(echo "$query" | cut -d'=' -f1)
+    value=$(echo "$query" | cut -d'=' -f2)
+
+    case "$field" in
+      "type"|"name"|"content"|"id")
+        # Valid field
+        ;;
+      *)
+        echo_color $RED "Error: Invalid search field '$field'. Use type, name, content, or id."
+        return 1
+        ;;
+    esac
+  fi
+
+  # Try SQLite first if DB file exists
+  if [ -f "$DB_FILE" ] && command -v sqlite3 &> /dev/null; then
+    echo_color $GRAY "Searching SQLite database"
+    echo ""
+    format_table_header
+
+    # Prepare SQL query based on search type
+    if [[ "$query" == *"="* ]]; then
+      # Field-specific search
+      field=$(echo "$query" | cut -d'=' -f1)
+      value=$(echo "$query" | cut -d'=' -f2)
+
+      sql_query="SELECT id, type, name, content, is_orphaned FROM dns_records WHERE $field LIKE '%$value%' ORDER BY id;"
+    else
+      # Generic search across multiple fields
+      sql_query="SELECT id, type, name, content, is_orphaned FROM dns_records
+                WHERE name LIKE '%$query%' OR content LIKE '%$query%' OR type LIKE '%$query%'
+                ORDER BY id;"
+    fi
+
+    # Run the query
+    sqlite3 -csv "$DB_FILE" "$sql_query" | \
+    while IFS="," read -r id type name content orphaned; do
+      # Truncate ID if needed
+      if [ ${#id} -gt 8 ]; then
+        id="${id:0:7}..."
+      fi
+
+      # Determine status
+      if [ "$orphaned" = "1" ]; then
+        status="${RED}Orphaned${NC}"
+      else
+        status="${GREEN}Active${NC}"
+      fi
+
+      printf "| %-8s | %-6s | %-30s | %-30s | %-9s |\n" "$id" "$type" "$name" "$content" "$status"
+    done
+
+    echo "+---------+--------+--------------------------------+--------------------------------+-----------+"
+    count=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records
+             WHERE name LIKE '%$query%' OR content LIKE '%$query%' OR type LIKE '%$query%';")
+    echo "Found $count matching records"
+    return
+  fi
+
+  # Fallback to JSON if SQLite not available
+  if [ -f "$RECORDS_FILE" ] && command -v jq &> /dev/null; then
+    echo_color $GRAY "Searching JSON records file"
+    echo ""
+    format_table_header
+
+    # JQ filter based on search type
+    if [[ "$query" == *"="* ]]; then
+      # Field-specific search
+      field=$(echo "$query" | cut -d'=' -f1)
+      value=$(echo "$query" | cut -d'=' -f2)
+
+      jq_filter=".records[] | select(.$field | tostring | contains(\"$value\")) | \"\(.id) \(.type) \(.name) \(.content // .data // .value // \"\") \(.orphaned // .is_orphaned)\""
+    else
+      # Generic search across multiple fields
+      jq_filter=".records[] | select(.name | contains(\"$query\") or .type | contains(\"$query\") or (.content // .data // .value // \"\") | contains(\"$query\")) | \"\(.id) \(.type) \(.name) \(.content // .data // .value // \"\") \(.orphaned // .is_orphaned)\""
+    fi
+
+    # Run JQ search
+    jq -r "$jq_filter" "$RECORDS_FILE" | \
+    while read -r id type name content orphaned; do
+      # Truncate ID if needed
+      if [ ${#id} -gt 8 ]; then
+        id="${id:0:7}..."
+      fi
+
+      # Determine status
+      if [ "$orphaned" = "true" ]; then
+        status="${RED}Orphaned${NC}"
+      else
+        status="${GREEN}Active${NC}"
+      fi
+
+      printf "| %-8s | %-6s | %-30s | %-30s | %-9s |\n" "$id" "$type" "$name" "$content" "$status"
+    done
+
+    echo "+---------+--------+--------------------------------+--------------------------------+-----------+"
+    count=$(jq "[ .records[] | select(.name | contains(\"$query\") or .type | contains(\"$query\") or (.content // .data // .value // \"\") | contains(\"$query\")) ] | length" "$RECORDS_FILE")
+    echo "Found $count matching records"
+    return
+  fi
+
+  echo_color $RED "Cannot search records: Neither SQLite nor JSON with jq is available"
+  return 1
+}
+
+function delete_record() {
+  record_id="$1"
+
+  if [ -z "$record_id" ]; then
+    echo_color $RED "Error: Record ID is required"
+    echo "Usage: $(basename $0) delete <id>"
+    return 1
+  fi
+
+  echo_color $YELLOW "Deleting DNS record with ID: $record_id"
+
+  # Try SQLite first if DB file exists
+  if [ -f "$DB_FILE" ] && command -v sqlite3 &> /dev/null; then
+    # Check if record exists
+    record_exists=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE id = $record_id;")
+
+    if [ "$record_exists" -eq "0" ]; then
+      echo_color $RED "Error: Record with ID $record_id does not exist"
+      return 1
+    fi
+
+    # Get record details before deletion for confirmation
+    record_details=$(sqlite3 -csv "$DB_FILE" "SELECT type, name, content FROM dns_records WHERE id = $record_id;")
+    IFS="," read -r type name content <<< "$record_details"
+
+    # Double-check with the user
+    echo_color $YELLOW "You are about to delete the following record:"
+    echo "ID: $record_id"
+    echo "Type: $type"
+    echo "Name: $name"
+    echo "Content: $content"
+    echo ""
+    echo_color $RED "This action cannot be undone."
+    echo -n "Are you sure? (y/N): "
+    read -r confirm
+
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+      echo_color $YELLOW "Deletion cancelled."
+      return 0
+    fi
+
+    # Delete the record
+    sqlite3 "$DB_FILE" "DELETE FROM dns_records WHERE id = $record_id;"
+
+    # Check if deletion was successful
+    if [ $? -eq 0 ]; then
+      echo_color $GREEN "Record successfully deleted."
+    else
+      echo_color $RED "Error deleting record."
+      return 1
+    fi
+
+    return 0
+  fi
+
+  # Fallback to JSON file if SQLite not available
+  if [ -f "$RECORDS_FILE" ] && command -v jq &> /dev/null; then
+    # Check if record exists
+    record_exists=$(jq ".records[] | select(.id == \"$record_id\") | .id" "$RECORDS_FILE")
+
+    if [ -z "$record_exists" ]; then
+      echo_color $RED "Error: Record with ID $record_id does not exist"
+      return 1
+    fi
+
+    # Get record details before deletion for confirmation
+    record_type=$(jq -r ".records[] | select(.id == \"$record_id\") | .type" "$RECORDS_FILE")
+    record_name=$(jq -r ".records[] | select(.id == \"$record_id\") | .name" "$RECORDS_FILE")
+    record_content=$(jq -r ".records[] | select(.id == \"$record_id\") | (.content // .data // .value // \"\")" "$RECORDS_FILE")
+
+    # Double-check with the user
+    echo_color $YELLOW "You are about to delete the following record:"
+    echo "ID: $record_id"
+    echo "Type: $record_type"
+    echo "Name: $record_name"
+    echo "Content: $record_content"
+    echo ""
+    echo_color $RED "This action cannot be undone."
+    echo -n "Are you sure? (y/N): "
+    read -r confirm
+
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+      echo_color $YELLOW "Deletion cancelled."
+      return 0
+    fi
+
+    # Delete the record using jq
+    jq "del(.records[] | select(.id == \"$record_id\"))" "$RECORDS_FILE" > "$RECORDS_FILE.tmp"
+    mv "$RECORDS_FILE.tmp" "$RECORDS_FILE"
+
+    if [ $? -eq 0 ]; then
+      echo_color $GREEN "Record successfully deleted."
+    else
+      echo_color $RED "Error deleting record."
+      return 1
+    fi
+
+    return 0
+  fi
+
+  echo_color $RED "Cannot delete records: Neither SQLite nor JSON with jq is available"
+  return 1
+}
+
+function update_record() {
+  record_id="$1"
+  field_update="$2"
+
+  if [ -z "$record_id" ] || [ -z "$field_update" ]; then
+    echo_color $RED "Error: Record ID and field update are required"
+    echo "Usage: $(basename $0) update <id> <field=value>"
+    return 1
+  fi
+
+  # Extract field and value
+  field=$(echo "$field_update" | cut -d'=' -f1)
+  value=$(echo "$field_update" | cut -d'=' -f2)
+
+  # Validate field
+  case "$field" in
+    "type"|"name"|"content"|"ttl"|"proxied")
+      # Valid field
+      ;;
+    *)
+      echo_color $RED "Error: Invalid field '$field'. Valid fields: type, name, content, ttl, proxied"
+      return 1
+      ;;
+  esac
+
+  echo_color $YELLOW "Updating DNS record $record_id: setting $field = $value"
+
+  # Try SQLite first if DB file exists
+  if [ -f "$DB_FILE" ] && command -v sqlite3 &> /dev/null; then
+    # Check if record exists
+    record_exists=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE id = $record_id;")
+
+    if [ "$record_exists" -eq "0" ]; then
+      echo_color $RED "Error: Record with ID $record_id does not exist"
+      return 1
+    fi
+
+    # Update the record
+    if [ "$field" = "proxied" ]; then
+      # Convert boolean values to integers for proxied
+      if [[ "$value" == "true" || "$value" == "1" ]]; then
+        value="1"
+      else
+        value="0"
+      fi
+    fi
+
+    # Update the record
+    sqlite3 "$DB_FILE" "UPDATE dns_records SET $field = '$value', tracked_at = datetime('now') WHERE id = $record_id;"
+
+    # Check if update was successful
+    if [ $? -eq 0 ]; then
+      echo_color $GREEN "Record successfully updated."
+
+      # Show the updated record
+      echo_color $CYAN "Updated record:"
+      format_table_header
+
+      sqlite3 -csv "$DB_FILE" "SELECT id, type, name, content, is_orphaned FROM dns_records WHERE id = $record_id;" | \
+      while IFS="," read -r id type name content orphaned; do
+        # Determine status
+        if [ "$orphaned" = "1" ]; then
+          status="${RED}Orphaned${NC}"
+        else
+          status="${GREEN}Active${NC}"
+        fi
+
+        printf "| %-8s | %-6s | %-30s | %-30s | %-9s |\n" "$id" "$type" "$name" "$content" "$status"
+      done
+      echo "+---------+--------+--------------------------------+--------------------------------+-----------+"
+    else
+      echo_color $RED "Error updating record."
+      return 1
+    fi
+
+    return 0
+  fi
+
+  # Fallback to JSON file if SQLite not available
+  if [ -f "$RECORDS_FILE" ] && command -v jq &> /dev/null; then
+    # Check if record exists
+    record_exists=$(jq ".records[] | select(.id == \"$record_id\") | .id" "$RECORDS_FILE")
+
+    if [ -z "$record_exists" ]; then
+      echo_color $RED "Error: Record with ID $record_id does not exist"
+      return 1
+    fi
+
+    # Convert value for jq if needed
+    jq_value="\"$value\""
+    if [[ "$field" = "ttl" ]]; then
+      # ttl should be a number
+      jq_value="$value"
+    elif [[ "$field" = "proxied" ]]; then
+      # proxied should be a boolean
+      if [[ "$value" == "true" || "$value" == "1" ]]; then
+        jq_value="true"
+      else
+        jq_value="false"
+      fi
+    fi
+
+    # Update the record
+    jq --arg id "$record_id" --arg field "$field" --argjson value "$jq_value" \
+       '.records = (.records | map(if .id == $id then . + {($field): $value} else . end))' \
+       "$RECORDS_FILE" > "$RECORDS_FILE.tmp"
+
+    # Update metadata timestamp
+    now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    jq --arg id "$record_id" --arg now "$now" \
+       '.records = (.records | map(if .id == $id then if .metadata then .metadata.updatedAt = $now else . + {metadata: {updatedAt: $now}} end else . end))' \
+       "$RECORDS_FILE.tmp" > "$RECORDS_FILE.tmp2"
+
+    mv "$RECORDS_FILE.tmp2" "$RECORDS_FILE"
+    rm -f "$RECORDS_FILE.tmp"
+
+    if [ $? -eq 0 ]; then
+      echo_color $GREEN "Record successfully updated."
+
+      # Show the updated record
+      echo_color $CYAN "Updated record:"
+      format_table_header
+
+      jq -r ".records[] | select(.id == \"$record_id\") | \"\(.id) \(.type) \(.name) \(.content // .data // .value // \"\") \(.orphaned // .is_orphaned)\"" "$RECORDS_FILE" | \
+      while read -r id type name content orphaned; do
+        # Determine status
+        if [ "$orphaned" = "true" ]; then
+          status="${RED}Orphaned${NC}"
+        else
+          status="${GREEN}Active${NC}"
+        fi
+
+        printf "| %-8s | %-6s | %-30s | %-30s | %-9s |\n" "$id" "$type" "$name" "$content" "$status"
+      done
+      echo "+---------+--------+--------------------------------+--------------------------------+-----------+"
+    else
+      echo_color $RED "Error updating record."
+      return 1
+    fi
+
+    return 0
+  fi
+
+  echo_color $RED "Cannot update records: Neither SQLite nor JSON with jq is available"
+  return 1
+}
+
 # Main command handler
 case "$1" in
   "records"|"list"|"ls")
     list_records
+    ;;
+  "search"|"find")
+    search_records "$2"
     ;;
   "process")
     process_records "$2"
     ;;
   "status"|"stat")
     show_status
+    ;;
+  "delete"|"remove"|"rm")
+    delete_record "$2"
+    ;;
+  "update"|"edit")
+    update_record "$2" "$3"
     ;;
   "help"|"--help"|"-h")
     show_usage

@@ -26,6 +26,11 @@ The following commands are available:
 # List all DNS records
 trafegodns records
 
+# Search for DNS records
+trafegodns search <query>
+trafegodns search example.com
+trafegodns search 'type=CNAME'
+
 # Process DNS records (normal mode)
 trafegodns process
 
@@ -34,6 +39,14 @@ trafegodns process --force
 
 # Show database status and statistics
 trafegodns status
+
+# Delete a DNS record
+trafegodns delete <id>
+
+# Update a DNS record field
+trafegodns update <id> <field=value>
+trafegodns update 15 content=192.168.1.10
+trafegodns update 8 type=CNAME
 
 # Show help information
 trafegodns help
