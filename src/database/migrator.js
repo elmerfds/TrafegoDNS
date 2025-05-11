@@ -15,26 +15,39 @@ class DatabaseMigrator {
 
   /**
    * Run migration from JSON files to SQLite
-   * @returns {Promise<boolean>} - Success status
+   * @returns {Promise<number>} - Number of migrated records
    */
   async migrateFromJson() {
     logger.info('Starting migration from JSON files to SQLite database');
-    
+
     try {
+      let totalMigrated = 0;
+
       // Migrate DNS records first
-      await this.migrateDnsRecords();
-      
+      const dnsRecordsMigrated = await this.migrateDnsRecords();
+      totalMigrated += dnsRecordsMigrated;
+
       // Migrate users
-      await this.migrateUsers();
-      
+      const usersMigrated = await this.migrateUsers();
+      totalMigrated += usersMigrated;
+
       // Migrate tokens
-      await this.migrateRevokedTokens();
-      
-      logger.info('Migration from JSON to SQLite completed successfully');
-      return true;
+      const tokensMigrated = await this.migrateRevokedTokens();
+      totalMigrated += tokensMigrated;
+
+      // Create a marker file to indicate successful migration
+      if (totalMigrated > 0) {
+        const markerFile = path.join(this.dataDir, '.json_migration_complete');
+        fs.writeFileSync(markerFile, new Date().toISOString());
+        logger.info(`Migration from JSON to SQLite completed successfully (${totalMigrated} records)`);
+      } else {
+        logger.info('No records needed migration from JSON to SQLite');
+      }
+
+      return totalMigrated;
     } catch (error) {
       logger.error(`Migration failed: ${error.message}`);
-      return false;
+      return 0;
     }
   }
 
@@ -90,6 +103,10 @@ class DatabaseMigrator {
         const backupFile = `${sourceFile}.bak.${Date.now()}`;
         fs.copyFileSync(sourceFile, backupFile);
         logger.info(`Created backup of DNS records JSON at ${backupFile}`);
+
+        // Create a marker file to indicate migration
+        const markerFile = path.join(this.dataDir, '.dns_records_migrated');
+        fs.writeFileSync(markerFile, new Date().toISOString());
       }
       
       return migratedCount;
@@ -188,6 +205,10 @@ class DatabaseMigrator {
         const backupFile = `${usersFile}.bak.${Date.now()}`;
         fs.copyFileSync(usersFile, backupFile);
         logger.info(`Created backup of users JSON at ${backupFile}`);
+
+        // Create a marker file to indicate migration
+        const markerFile = path.join(this.dataDir, '.users_migrated');
+        fs.writeFileSync(markerFile, new Date().toISOString());
       }
       
       return migratedCount;
@@ -251,6 +272,10 @@ class DatabaseMigrator {
           const backupFile = `${tokensFile}.bak.${Date.now()}`;
           fs.copyFileSync(tokensFile, backupFile);
           logger.info(`Created backup of revoked tokens JSON at ${backupFile}`);
+
+          // Create a marker file to indicate migration
+          const markerFile = path.join(this.dataDir, '.tokens_migrated');
+          fs.writeFileSync(markerFile, new Date().toISOString());
         }
         
         return migratedCount;
