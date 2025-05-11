@@ -15,13 +15,42 @@ export API_URL=http://localhost:3000
 export CONTAINER=true
 export TRAFEGO_CLI=true
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-CYAN='\033[0;36m'
-GRAY='\033[0;90m'
-NC='\033[0m' # No Color
+# Check if terminal supports colors
+support_colors() {
+  if [ -t 1 ] && [ -n "$TERM" ] && [ "$TERM" != "dumb" ]; then
+    return 0 # True, colors are supported
+  else
+    return 1 # False, colors are not supported
+  fi
+}
+
+# Set up colors only if supported
+if support_colors; then
+  RED='\033[0;31m'
+  GREEN='\033[0;32m'
+  YELLOW='\033[0;33m'
+  CYAN='\033[0;36m'
+  GRAY='\033[0;90m'
+  NC='\033[0m' # No Color
+else
+  # Empty color codes for terminals that don't support color
+  RED=''
+  GREEN=''
+  YELLOW=''
+  CYAN=''
+  GRAY=''
+  NC=''
+fi
+
+# Allow colors to be explicitly disabled
+if [ "$NO_COLOR" = "true" ] || [ "$TERM" = "dumb" ]; then
+  RED=''
+  GREEN=''
+  YELLOW=''
+  CYAN=''
+  GRAY=''
+  NC=''
+fi
 
 # Helper functions
 function echo_color() {
@@ -61,6 +90,32 @@ function show_divider() {
 function format_table_header() {
   echo_color $CYAN "| ID       | TYPE   | NAME                           | CONTENT                        | STATUS    |"
   echo "+---------+--------+--------------------------------+--------------------------------+-----------+"
+}
+
+# Helper function to create a status string with correct formatting for text/color terminals
+function status_text() {
+  status_type=$1
+  text=$2
+
+  if support_colors; then
+    case "$status_type" in
+      "orphaned")
+        echo "${RED}$text${NC}"
+        ;;
+      "managed")
+        echo "${GREEN}$text${NC}"
+        ;;
+      "unmanaged")
+        echo "${GRAY}$text${NC}"
+        ;;
+      *)
+        echo "$text"
+        ;;
+    esac
+  else
+    # Plain text for terminals that don't support color
+    echo "$text"
+  fi
 }
 
 function list_records() {
@@ -106,11 +161,11 @@ function list_records() {
         
         # Determine status
         if [ "$orphaned" = "1" ]; then
-          status="${RED}Orphaned${NC}"
+          status=$(status_text "orphaned" "Orphaned")
         elif [ "$managed" = "1" ]; then
-          status="${GREEN}Managed${NC}"
+          status=$(status_text "managed" "Managed")
         else
-          status="${GRAY}Unmanaged${NC}"
+          status=$(status_text "unmanaged" "Unmanaged")
         fi
         
         printf "| %-8s | %-6s | %-30s | %-30s | %-9s |\n" "$id" "$type" "$name" "$content" "$status"
@@ -137,11 +192,11 @@ function list_records() {
         
         # Determine status
         if [ "$orphaned" = "true" ]; then
-          status="${RED}Orphaned${NC}"
+          status=$(status_text "orphaned" "Orphaned")
         elif [ "$managed" = "true" ]; then
-          status="${GREEN}Managed${NC}"
+          status=$(status_text "managed" "Managed")
         else
-          status="${GRAY}Unmanaged${NC}"
+          status=$(status_text "unmanaged" "Unmanaged")
         fi
         
         printf "| %-8s | %-6s | %-30s | %-30s | %-9s |\n" "$id" "$type" "$name" "$content" "$status"
@@ -450,9 +505,9 @@ function search_records() {
 
       # Determine status
       if [ "$orphaned" = "1" ]; then
-        status="${RED}Orphaned${NC}"
+        status=$(status_text "orphaned" "Orphaned")
       else
-        status="${GREEN}Active${NC}"
+        status=$(status_text "managed" "Active")
       fi
 
       printf "| %-8s | %-6s | %-30s | %-30s | %-9s |\n" "$id" "$type" "$name" "$content" "$status"
@@ -493,9 +548,9 @@ function search_records() {
 
       # Determine status
       if [ "$orphaned" = "true" ]; then
-        status="${RED}Orphaned${NC}"
+        status=$(status_text "orphaned" "Orphaned")
       else
-        status="${GREEN}Active${NC}"
+        status=$(status_text "managed" "Active")
       fi
 
       printf "| %-8s | %-6s | %-30s | %-30s | %-9s |\n" "$id" "$type" "$name" "$content" "$status"
@@ -677,9 +732,9 @@ function update_record() {
       while IFS="," read -r id type name content orphaned; do
         # Determine status
         if [ "$orphaned" = "1" ]; then
-          status="${RED}Orphaned${NC}"
+          status=$(status_text "orphaned" "Orphaned")
         else
-          status="${GREEN}Active${NC}"
+          status=$(status_text "managed" "Active")
         fi
 
         printf "| %-8s | %-6s | %-30s | %-30s | %-9s |\n" "$id" "$type" "$name" "$content" "$status"
@@ -742,9 +797,9 @@ function update_record() {
       while read -r id type name content orphaned; do
         # Determine status
         if [ "$orphaned" = "true" ]; then
-          status="${RED}Orphaned${NC}"
+          status=$(status_text "orphaned" "Orphaned")
         else
-          status="${GREEN}Active${NC}"
+          status=$(status_text "managed" "Active")
         fi
 
         printf "| %-8s | %-6s | %-30s | %-30s | %-9s |\n" "$id" "$type" "$name" "$content" "$status"
