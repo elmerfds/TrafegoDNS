@@ -18,13 +18,11 @@ try {
     logger.debug('Using sqlite3 implementation');
     db = require('./connection');
   } catch (error2) {
-    logger.warn('No SQLite implementation available, will use JSON storage');
-    // Create a dummy db object that will always return false for isInitialized
-    db = {
-      initialize: async () => false,
-      isInitialized: () => false,
-      close: async () => {}
-    };
+    logger.error('No SQLite implementation available. Application requires SQLite to function.');
+    logger.error('Please install one of the following packages:');
+    logger.error('  npm install better-sqlite3 --save');
+    logger.error('  or npm install sqlite3 --save');
+    throw new Error('SQLite implementation not found. Cannot continue without a database.');
   }
 }
 
@@ -61,18 +59,27 @@ async function initialize(migrateJson = true) {
     const dbInitSuccess = await db.initialize();
 
     if (!dbInitSuccess) {
-      logger.error('Failed to initialize SQLite database. Application requires SQLite to function.');
+      logger.error('Failed to initialize SQLite database');
+      logger.error('Application requires SQLite to function properly');
+      logger.error('Please check database permissions and ensure SQLite is properly configured');
+      initialized = false;
       return false;
     }
 
     // Perform one-time migration from JSON if needed and files exist
     if (migrateJson) {
-      // Perform data migration if needed
-      const migrationResult = await migrator.migrateFromJson();
+      try {
+        // Perform data migration if needed
+        const migrationResult = await migrator.migrateFromJson();
 
-      if (migrationResult > 0) {
-        logger.info(`Successfully migrated ${migrationResult} records from JSON to SQLite`);
-        logger.info('All data is now stored in SQLite database. JSON files are no longer used.');
+        if (migrationResult > 0) {
+          logger.info(`Successfully migrated ${migrationResult} records from JSON to SQLite`);
+          logger.info('All data is now stored in SQLite database. JSON files are no longer used.');
+        }
+      } catch (migrationError) {
+        // Log migration error but continue since the database itself is initialized
+        logger.warn(`Could not migrate from JSON: ${migrationError.message}`);
+        logger.warn('Will continue with SQLite database without migration');
       }
     }
 
@@ -82,7 +89,8 @@ async function initialize(migrateJson = true) {
     return true;
   } catch (error) {
     logger.error(`Failed to initialize database: ${error.message}`);
-    logger.error('Application requires SQLite to function. Please check your installation.');
+    logger.error('Application requires SQLite to function properly');
+    initialized = false;
     return false;
   }
 }
@@ -95,7 +103,7 @@ let initialized = false;
  * @returns {boolean} - Whether database is initialized
  */
 function isInitialized() {
-  return initialized && db.isConnected;
+  return initialized && (db.isConnected !== undefined ? db.isConnected : true);
 }
 
 module.exports = {

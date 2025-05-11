@@ -9,7 +9,7 @@ echo "-------------------------------------"
 
 # Make sure the config directory has correct permissions
 echo "Setting permissions on config directory"
-chown abc:abc /config
+chown -R abc:abc /config
 
 # If the config directory is mounted but empty, create a basic structure
 if [ -d /config ] && [ ! "$(ls -A /config)" ]; then
@@ -18,17 +18,43 @@ if [ -d /config ] && [ ! "$(ls -A /config)" ]; then
   chown -R abc:abc /config
 fi
 
-# Check if app data file exists and make sure it has correct permissions
-if [ -f /app/dns-records.json ]; then
-  echo "Setting permissions on app data file"
-  chown abc:abc /app/dns-records.json
+# Ensure database directory exists with correct permissions
+echo "Setting up database directory"
+mkdir -p /config/data
+chown -R abc:abc /config/data
+chmod 755 /config/data
+
+# If database exists, ensure it has correct permissions
+if [ -f /config/data/trafegodns.db ]; then
+  echo "Setting permissions on SQLite database file"
+  chown abc:abc /config/data/trafegodns.db
+  chmod 644 /config/data/trafegodns.db
+else
+  echo "No database file found. A new one will be created on first run."
 fi
 
 # Run database migration script if needed
-if [ -f "$CONFIG_DIR/data/trafegodns.db" ] && [ -f "/app/docker-s6/scripts/add-last-processed.sh" ]; then
+if [ -f "/app/docker-s6/scripts/add-last-processed.sh" ]; then
   echo "Checking and updating database schema if needed..."
   chmod +x /app/docker-s6/scripts/add-last-processed.sh
   s6-setuidgid abc /app/docker-s6/scripts/add-last-processed.sh
+fi
+
+# Clean up any JSON files that might be left over
+echo "Removing legacy JSON files if they exist"
+if [ -f /config/data/users.json ]; then
+  echo "Removing legacy users.json file"
+  rm /config/data/users.json
+fi
+
+if [ -f /config/data/revoked-tokens.json ]; then
+  echo "Removing legacy revoked-tokens.json file"
+  rm /config/data/revoked-tokens.json
+fi
+
+if [ -f /app/dns-records.json ]; then
+  echo "Removing legacy dns-records.json file"
+  rm /app/dns-records.json
 fi
 
 echo "Directory setup complete"

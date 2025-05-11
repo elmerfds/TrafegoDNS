@@ -99,7 +99,7 @@ class DatabaseConnection {
       
       // Compare with the latest migration version
       // This would be updated as new migrations are added
-      const latestVersion = 1;
+      const latestVersion = 2;
       
       return currentVersion < latestVersion;
     } catch (error) {
@@ -130,7 +130,7 @@ class DatabaseConnection {
       // Record the migration
       await this.db.run(
         'INSERT INTO schema_migrations (version, name) VALUES (?, ?)',
-        [1, 'initial_migration']
+        [2, 'add_last_processed_and_managed_columns']
       );
       
       logger.info('Database migrations completed successfully');
@@ -161,9 +161,11 @@ class DatabaseConnection {
           ttl INTEGER,
           proxied INTEGER DEFAULT 0,
           tracked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          last_processed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           is_orphaned INTEGER DEFAULT 0,
           orphaned_at TIMESTAMP,
           fingerprint TEXT,
+          managed INTEGER DEFAULT 0,
           UNIQUE(provider, record_id)
         )
       `);

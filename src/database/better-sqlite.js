@@ -103,7 +103,7 @@ class BetterSQLite {
       const currentVersion = versionResult ? versionResult.version : 0;
       
       // Compare with the latest migration version
-      const latestVersion = 1;
+      const latestVersion = 2;
       
       return currentVersion < latestVersion;
     } catch (error) {
@@ -133,7 +133,7 @@ class BetterSQLite {
       
       // Record the migration
       const stmt = this.db.prepare('INSERT INTO schema_migrations (version, name) VALUES (?, ?)');
-      stmt.run(1, 'initial_migration');
+      stmt.run(2, 'add_last_processed_and_managed_columns');
       
       logger.info('Database migrations completed successfully');
     } catch (error) {
