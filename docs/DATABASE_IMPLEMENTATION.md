@@ -40,7 +40,7 @@ The SQLite implementation will fit into the existing architecture as follows:
 We'll implement the following database tables:
 
 1. **dns_records** - Tracks DNS records
-   - id, record_id, provider, type, name, content, ttl, proxied, tracked_at, is_orphaned, orphaned_at, fingerprint
+   - id, record_id, provider, type, name, content, ttl, proxied, tracked_at, last_processed, is_orphaned, orphaned_at, fingerprint, managed
 
 2. **users** - User accounts
    - id, username, password_hash, role, created_at, updated_at, last_login

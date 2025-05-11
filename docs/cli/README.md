@@ -80,7 +80,7 @@ docker exec -it trafegodns process-dns --force
 The TrafegoDNS CLI is designed to:
 
 1. **Work without dependencies**: The commands will work even if Node.js modules are missing
-2. **Provide graceful fallbacks**: Uses SQLite if available, falls back to JSON files if needed
+2. **Provide graceful fallbacks**: Uses SQLite if available, falls back to JSON files if needed, and adapts to different database schemas
 3. **Support both bash and Node.js environments**: Works in any container environment
 4. **Avoid authentication issues**: Direct file access bypasses API authentication requirements
 5. **Keep it simple**: One command with multiple aliases for different operations
