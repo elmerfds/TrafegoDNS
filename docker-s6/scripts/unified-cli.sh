@@ -607,15 +607,35 @@ function delete_record() {
       return 0
     fi
 
-    # Delete the record
+    # Delete the record from SQLite
     sqlite3 "$DB_FILE" "DELETE FROM dns_records WHERE id = $record_id;"
 
-    # Check if deletion was successful
+    # Check if deletion was successful in SQLite
     if [ $? -eq 0 ]; then
-      echo_color $GREEN "Record successfully deleted."
+      echo_color $GREEN "Record successfully deleted from SQLite database."
     else
-      echo_color $RED "Error deleting record."
+      echo_color $RED "Error deleting record from SQLite database."
       return 1
+    fi
+
+    # Also delete from JSON file if it exists
+    if [ -f "$RECORDS_FILE" ] && command -v jq &> /dev/null; then
+      # Check if record exists in JSON
+      json_record_exists=$(jq ".records[] | select(.id == \"$record_id\") | .id" "$RECORDS_FILE")
+
+      if [ -n "$json_record_exists" ]; then
+        echo_color $YELLOW "Also deleting from JSON file to ensure consistency..."
+        jq "del(.records[] | select(.id == \"$record_id\"))" "$RECORDS_FILE" > "$RECORDS_FILE.tmp"
+
+        if [ $? -eq 0 ]; then
+          mv "$RECORDS_FILE.tmp" "$RECORDS_FILE"
+          echo_color $GREEN "Record also deleted from JSON file."
+        else
+          echo_color $RED "Warning: Could not delete record from JSON file."
+          rm -f "$RECORDS_FILE.tmp"  # Clean up temporary file if there was an error
+          echo_color $YELLOW "Record may reappear when application syncs data."
+        fi
+      fi
     fi
 
     return 0
