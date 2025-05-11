@@ -163,9 +163,11 @@ class BetterSQLite {
           ttl INTEGER,
           proxied INTEGER DEFAULT 0,
           tracked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          last_processed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           is_orphaned INTEGER DEFAULT 0,
           orphaned_at TIMESTAMP,
           fingerprint TEXT,
+          managed INTEGER DEFAULT 0,
           UNIQUE(provider, record_id)
         )
       `);

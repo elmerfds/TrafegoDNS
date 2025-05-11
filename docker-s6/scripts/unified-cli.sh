@@ -187,15 +187,24 @@ function process_records() {
     # Get current timestamp in ISO format
     now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-    # Update last_processed timestamp in database
-    if [ "$has_managed" -eq 1 ]; then
-      # Update managed records to refresh their state
+    # Check if last_processed column exists
+    has_last_processed=0
+    if sqlite3 "$DB_FILE" ".schema dns_records" 2>/dev/null | grep -q "last_processed"; then
+      has_last_processed=1
+    fi
+
+    # Update records based on schema
+    if [ "$has_managed" -eq 1 ] && [ "$has_last_processed" -eq 1 ]; then
+      # Full schema with managed and last_processed
       sqlite3 "$DB_FILE" "UPDATE dns_records SET last_processed = '$now', is_orphaned = 0 WHERE managed = 1;"
       echo_color $GREEN "Updated managed DNS records with new timestamp"
-    else
-      # Legacy schema
+    elif [ "$has_last_processed" -eq 1 ]; then
+      # Legacy schema with last_processed but no managed flag
       sqlite3 "$DB_FILE" "UPDATE dns_records SET last_processed = '$now';"
       echo_color $GREEN "Updated all DNS records with new timestamp"
+    else
+      # Basic schema without last_processed column - just mark as processed
+      echo_color $GREEN "Records marked as processed (no timestamp column available)"
     fi
 
     # Get counts for reporting

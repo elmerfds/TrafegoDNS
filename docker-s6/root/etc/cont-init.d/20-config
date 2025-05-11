@@ -24,5 +24,12 @@ if [ -f /app/dns-records.json ]; then
   chown abc:abc /app/dns-records.json
 fi
 
+# Run database migration script if needed
+if [ -f "$CONFIG_DIR/data/trafegodns.db" ] && [ -f "/app/docker-s6/scripts/add-last-processed.sh" ]; then
+  echo "Checking and updating database schema if needed..."
+  chmod +x /app/docker-s6/scripts/add-last-processed.sh
+  s6-setuidgid abc /app/docker-s6/scripts/add-last-processed.sh
+fi
+
 echo "Directory setup complete"
 echo "-------------------------------------"

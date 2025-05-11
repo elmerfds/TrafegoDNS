@@ -67,12 +67,8 @@ COPY docker-s6/root/ /
 RUN mkdir -p /app/docker-s6/scripts /usr/local/bin /usr/bin
 
 # Copy CLI setup scripts
-COPY docker-s6/scripts/setup-cli.sh /app/docker-s6/scripts/setup-cli.sh
-COPY docker-s6/scripts/cli-inside-container.sh /app/docker-s6/scripts/cli-inside-container.sh
-COPY docker-s6/scripts/setup-env.sh /app/docker-s6/scripts/setup-env.sh
-COPY docker-s6/scripts/unified-cli.sh /app/docker-s6/scripts/unified-cli.sh
-RUN chmod +x /app/docker-s6/scripts/setup-cli.sh /app/docker-s6/scripts/cli-inside-container.sh \
-    /app/docker-s6/scripts/setup-env.sh /app/docker-s6/scripts/unified-cli.sh
+COPY docker-s6/scripts/ /app/docker-s6/scripts/
+RUN chmod +x /app/docker-s6/scripts/*.sh
 
 # Set up CLI tool
 RUN mkdir -p /usr/local/bin && \
