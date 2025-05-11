@@ -117,24 +117,20 @@ Display information about the database, including record counts:
 
 ```bash
 trafego db status
+# or with the unified CLI
+trafegodns status
 ```
 
 Example output:
 ```
 === Database Status ===
-┌──────────────────┬────────────────────────────┐
-│ Database Type    │ SQLite                     │
-├──────────────────┼────────────────────────────┤
-│ Database Path    │ /config/data/trafegodns.db │
-├──────────────────┼────────────────────────────┤
-│ DNS Records      │ 83                         │
-├──────────────────┼────────────────────────────┤
-│ Orphaned Records │ 0                          │
-├──────────────────┼────────────────────────────┤
-│ Users            │ 1                          │
-├──────────────────┼────────────────────────────┤
-│ Revoked Tokens   │ 0                          │
-└──────────────────┴────────────────────────────┘
+Database Type:    SQLite
+Database Path:    /config/data/trafegodns.db
+DNS Records:      83
+Managed Records:  45
+Orphaned Records: 0
+Users:            1
+Revoked Tokens:   0
 ```
 
 ### List DNS Records
@@ -177,26 +173,46 @@ Remove any orphaned DNS records based on the configured cleanup rules:
 trafego db cleanup
 ```
 
-## Special Container Commands
+## Unified CLI Commands
 
-When running in a Docker container, TrafegoDNS provides these additional convenience commands:
+When running in a Docker container, TrafegoDNS provides a unified CLI with direct SQLite database access:
 
 ```bash
-# Display DNS records (most reliable direct access method)
-trafego-records
+# Main command with subcommands
+trafegodns [command]
 
-# Alternative shorthand commands
-db-records
-trafego-db-records
+# Display all DNS records
+trafegodns records
 
-# Direct DNS processing command
-process-dns
+# Search for DNS records
+trafegodns search example.com
+trafegodns search 'type=CNAME'
 
-# Force processing with the --force flag
-process-dns --force
+# Process DNS records
+trafegodns process
+trafegodns process --force
+
+# Show database status
+trafegodns status
+
+# Delete a DNS record
+trafegodns delete <id>
+
+# Update a DNS record field
+trafegodns update <id> content=192.168.1.10
+trafegodns update <id> managed=1
 ```
 
-These commands use direct database/service access and are guaranteed to work even if there are API authentication issues. They're particularly useful in automation scripts or when troubleshooting.
+Command aliases are also available for backward compatibility:
+```bash
+# Aliases for common operations
+trafego-records     # Same as 'trafegodns records'
+db-records          # Same as 'trafegodns records'
+process-dns         # Same as 'trafegodns process'
+dns-status          # Same as 'trafegodns status'
+```
+
+These commands use direct SQLite database access and work without requiring API authentication. They're particularly useful in automation scripts or when troubleshooting.
 
 ## Environment Variables
 

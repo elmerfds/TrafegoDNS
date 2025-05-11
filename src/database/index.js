@@ -52,30 +52,37 @@ const migrator = new DatabaseMigrator(db, repositories);
 
 /**
  * Initialize the database and repositories
- * @param {boolean} migrateJson - Whether to migrate from JSON files
+ * @param {boolean} migrateJson - Whether to migrate from JSON files if they exist
  * @returns {Promise<boolean>} - Success status
  */
 async function initialize(migrateJson = true) {
   try {
     // Initialize database connection
     const dbInitSuccess = await db.initialize();
-    
+
     if (!dbInitSuccess) {
-      logger.warn('Failed to initialize SQLite database, falling back to JSON storage');
+      logger.error('Failed to initialize SQLite database. Application requires SQLite to function.');
       return false;
     }
-    
-    // Migrate from JSON if needed
+
+    // Perform one-time migration from JSON if needed and files exist
     if (migrateJson) {
-      await migrator.migrateFromJson();
+      // Perform data migration if needed
+      const migrationResult = await migrator.migrateFromJson();
+
+      if (migrationResult > 0) {
+        logger.info(`Successfully migrated ${migrationResult} records from JSON to SQLite`);
+        logger.info('All data is now stored in SQLite database. JSON files are no longer used.');
+      }
     }
-    
+
     // Set initialized flag
     initialized = true;
     logger.info('Database and repositories initialized successfully');
     return true;
   } catch (error) {
     logger.error(`Failed to initialize database: ${error.message}`);
+    logger.error('Application requires SQLite to function. Please check your installation.');
     return false;
   }
 }

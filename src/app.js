@@ -29,27 +29,24 @@ async function start() {
       cliToken: process.env.CLI_TOKEN || 'trafegodns-cli'
     };
 
-    // Initialize database if enabled (default true)
-    const useDatabase = process.env.USE_DATABASE !== 'false';
+    // SQLite database is now required for operation
+    logger.info('🔍 Initializing SQLite database');
+    try {
+      const database = require('./database');
+      await database.initialize();
 
-    if (useDatabase) {
-      logger.info('🔍 Initializing SQLite database');
-      try {
-        const database = require('./database');
-        await database.initialize();
-
-        // Log success or failure
-        if (database.isInitialized()) {
-          logger.info('✅ SQLite database initialized successfully');
-        } else {
-          logger.warn('⚠️ SQLite database initialization failed, falling back to JSON storage');
-        }
-      } catch (dbError) {
-        logger.warn(`⚠️ SQLite database initialization error: ${dbError.message}`);
-        logger.info('⚠️ Continuing with JSON storage fallback');
+      // Check if database initialized successfully
+      if (database.isInitialized()) {
+        logger.info('✅ SQLite database initialized successfully');
+      } else {
+        logger.error('❌ SQLite database initialization failed');
+        logger.error('❌ Application cannot operate without SQLite database');
+        process.exit(1);
       }
-    } else {
-      logger.info('📝 SQLite database disabled, using JSON storage');
+    } catch (dbError) {
+      logger.error(`❌ SQLite database initialization error: ${dbError.message}`);
+      logger.error('❌ Application cannot operate without SQLite database');
+      process.exit(1);
     }
 
     // Initialize API mode (default true)
