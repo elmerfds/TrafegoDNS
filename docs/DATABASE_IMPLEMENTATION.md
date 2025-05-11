@@ -42,16 +42,19 @@ We'll implement the following database tables:
 1. **dns_records** - Tracks DNS records
    - id, record_id, provider, type, name, content, ttl, proxied, tracked_at, last_processed, is_orphaned, orphaned_at, fingerprint, managed
 
-2. **users** - User accounts
+2. **dns_tracked_records** - Tracks record creation/deletion status
+   - id, provider, record_id, type, name, content, ttl, proxied, is_orphaned, orphaned_at, tracked_at, updated_at, metadata
+
+3. **users** - User accounts
    - id, username, password_hash, role, created_at, updated_at, last_login
 
-3. **revoked_tokens** - JWT token blacklist
+4. **revoked_tokens** - JWT token blacklist
    - id, token_hash, revoked_at, expires_at
 
-4. **settings** - Application configuration
+5. **settings** - Application configuration
    - key, value, updated_at
 
-5. **audit_logs** - Track state changes
+6. **audit_logs** - Track state changes
    - id, action, path, old_value, new_value, user_id, source, timestamp
 
 ## Implementation Steps
@@ -62,6 +65,25 @@ We'll implement the following database tables:
 2. Create database connection manager
 3. Implement schema migrations
 4. Create repositories for each data type
+
+### DNS Record Tracking Implementation
+
+The DNS record tracking implementation uses the following components:
+
+1. **DatabaseRepository**: Handles database operations for DNS tracked records
+   - Creates and manages the `dns_tracked_records` table
+   - Provides CRUD operations for tracked records
+   - Handles migration from JSON to SQLite
+
+2. **SQLiteRecordManager**: Bridge between RecordTracker and database
+   - Provides a clean interface for record tracking operations
+   - Handles SQLite database interaction
+   - Implements fallback logic for when SQLite is unavailable
+
+3. **RecordTracker**: Main component for DNS record tracking
+   - First attempts to use SQLite for all operations
+   - Falls back to JSON file storage if SQLite not available
+   - Provides backward compatibility with existing code
 
 ### 2. Migration Strategy
 

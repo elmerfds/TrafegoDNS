@@ -4,13 +4,17 @@ This document provides information about the TrafegoDNS database schema and impo
 
 ## Schema Evolution
 
-The TrafegoDNS database schema has evolved over time with newer versions adding additional columns to support new features. The application is designed to be backward compatible with older schema versions.
+The TrafegoDNS database schema has evolved over time with newer versions adding additional columns and tables to support new features. The application is designed to be backward compatible with older schema versions.
 
-## DNS Records Table
+## DNS Records Tables
 
-The `dns_records` table is the primary table storing DNS record information. The schema includes:
+TrafegoDNS uses two primary tables to store DNS record information:
 
-### Core Fields (Present in All Versions)
+### 1. DNS Records Table (`dns_records`)
+
+The table storing DNS records managed by the application. The schema includes:
+
+#### Core Fields (Present in All Versions)
 - `id`: Integer primary key
 - `record_id`: External record identifier
 - `provider`: DNS provider name
@@ -21,11 +25,29 @@ The `dns_records` table is the primary table storing DNS record information. The
 - `is_orphaned`: Flag for orphaned records
 - `tracked_at`: When the record was first tracked
 
-### Additional Fields in Newer Versions
+#### Additional Fields in Newer Versions
 - `last_processed`: When the record was last processed (added to track record freshness)
 - `managed`: Flag indicating if the record is actively managed by TrafegoDNS
 - `fingerprint`: Hash to detect content changes
 - `orphaned_at`: When the record became orphaned
+
+### 2. DNS Tracked Records Table (`dns_tracked_records`)
+
+This new table, introduced in the latest version, stores tracking information for DNS records to replace the old JSON file storage. The schema includes:
+
+- `id`: Integer primary key
+- `provider`: DNS provider name
+- `record_id`: External record identifier
+- `type`: DNS record type (A, CNAME, etc.)
+- `name`: DNS record name/hostname
+- `content`: Record content/value
+- `ttl`: Time to live
+- `proxied`: Flag for Cloudflare proxied records
+- `is_orphaned`: Flag for orphaned records (0/1)
+- `orphaned_at`: Timestamp when record was marked orphaned
+- `tracked_at`: Timestamp when record was first tracked
+- `updated_at`: Timestamp when record was last updated
+- `metadata`: JSON field for additional record metadata
 
 ## Schema Migration
 

@@ -35,6 +35,10 @@ class DatabaseMigrator {
       const tokensMigrated = await this.migrateRevokedTokens();
       totalMigrated += tokensMigrated;
 
+      // Migrate DNS tracked records
+      const dnsTrackedRecordsMigrated = await this.migrateDnsTrackedRecords();
+      totalMigrated += dnsTrackedRecordsMigrated;
+
       // Create a marker file to indicate successful migration
       if (totalMigrated > 0) {
         const markerFile = path.join(this.dataDir, '.json_migration_complete');
@@ -285,6 +289,63 @@ class DatabaseMigrator {
       }
     } catch (error) {
       logger.error(`Failed to migrate revoked tokens: ${error.message}`);
+      throw error;
+    }
+  }
+}
+
+  /**
+   * Migrate DNS tracked records from JSON
+   * @returns {Promise<number>} - Number of migrated records
+   */
+  async migrateDnsTrackedRecords() {
+    const trackerFile = path.join(this.dataDir, 'dns-records.json');
+    const legacyTrackerFile = path.join(process.cwd(), 'dns-records.json');
+
+    // Check if file exists
+    if (!fs.existsSync(trackerFile) && !fs.existsSync(legacyTrackerFile)) {
+      logger.info('No DNS tracked records JSON file found, skipping migration');
+      return 0;
+    }
+
+    try {
+      // Try to read from standard location first
+      let fileContent;
+      const sourceFile = fs.existsSync(trackerFile) ? trackerFile : legacyTrackerFile;
+      fileContent = fs.readFileSync(sourceFile, 'utf8');
+
+      let jsonData;
+      try {
+        jsonData = JSON.parse(fileContent);
+      } catch (parseError) {
+        logger.error(`Failed to parse DNS tracked records JSON: ${parseError.message}`);
+        return 0;
+      }
+
+      // Check if we have a valid file format
+      if (!jsonData || !jsonData.providers) {
+        logger.warn('Invalid DNS tracked records JSON format, skipping migration');
+        return 0;
+      }
+
+      // Migrate tracked records using the repository
+      const migratedCount = await this.repositories.dnsTrackedRecord.migrateFromJson(jsonData);
+      logger.info(`Migrated ${migratedCount} DNS tracked records from JSON`);
+
+      // Keep JSON file as backup with timestamp
+      if (migratedCount > 0) {
+        const backupFile = `${sourceFile}.bak.${Date.now()}`;
+        fs.copyFileSync(sourceFile, backupFile);
+        logger.info(`Created backup of DNS tracked records JSON at ${backupFile}`);
+
+        // Create a marker file to indicate migration
+        const markerFile = path.join(this.dataDir, '.dns_tracked_records_migrated');
+        fs.writeFileSync(markerFile, new Date().toISOString());
+      }
+
+      return migratedCount;
+    } catch (error) {
+      logger.error(`Failed to migrate DNS tracked records: ${error.message}`);
       throw error;
     }
   }

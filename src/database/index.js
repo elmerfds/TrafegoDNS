@@ -59,6 +59,7 @@ try {
   const RevokedTokenRepository = require('./repository/revokedTokenRepository');
   const SettingRepository = require('./repository/settingRepository');
   const AuditLogRepository = require('./repository/auditLogRepository');
+  const DnsTrackedRecordRepository = require('./repository/dnsTrackedRecordRepository');
 
   // Repository instances
   repositories = {
@@ -66,7 +67,8 @@ try {
     user: new UserRepository(db),
     revokedToken: new RevokedTokenRepository(db),
     setting: new SettingRepository(db),
-    auditLog: new AuditLogRepository(db)
+    auditLog: new AuditLogRepository(db),
+    dnsTrackedRecord: new DnsTrackedRecordRepository(db)
   };
 
   // Import migrator

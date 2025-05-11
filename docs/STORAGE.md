@@ -55,6 +55,7 @@ All data is stored in the configuration directory, which is determined by:
 
 - Users: `$CONFIG_DIR/data/users.json`
 - Revoked Tokens: `$CONFIG_DIR/data/revoked-tokens.json`
+- DNS Tracking Records: `$CONFIG_DIR/data/dns-records.json`
 
 ## Migrating Between Storage Systems
 
@@ -64,6 +65,17 @@ TrafegoDNS automatically attempts to migrate data from JSON files to SQLite when
 2. The application starts with SQLite available and finds existing JSON data files
 
 The migration is one-way (JSON → SQLite) and happens automatically when the application starts.
+
+### DNS Record Tracking Migration
+
+Starting with the latest version, DNS record tracking data is also migrated from the `dns-records.json` file to the SQLite database. This provides several advantages:
+
+- Better performance for record lookups
+- Improved data integrity through transactions
+- Unified storage model with all other application data
+- Support for more complex queries and reporting
+
+The DNS tracker component will automatically attempt to use SQLite first and fall back to the JSON file only if necessary. Your existing data is automatically migrated on first startup with the new version.
 
 ## Best Practices
 
