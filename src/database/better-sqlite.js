@@ -7,6 +7,9 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
 
+// Static flag for global migration coordination across instances
+let _GLOBAL_MIGRATING_FLAG = false;
+
 class BetterSQLite {
   constructor() {
     this.db = null;
@@ -15,6 +18,7 @@ class BetterSQLite {
     this.inTransaction = false;
     this.skipMigrations = false;
     this._initializing = false;
+    this._migratingFlag = false;
     this.dataDir = path.join(process.env.CONFIG_DIR || '/config', 'data');
     this.dbPath = path.join(this.dataDir, 'trafegodns.db');
     
@@ -223,6 +227,7 @@ class BetterSQLite {
 
   /**
    * Run database migrations with enhanced transaction safety
+   * Each operation runs in its own transaction to prevent nesting issues
    * @param {number} retries - Number of retries remaining for locked database
    * @returns {Promise<void>}
    */
@@ -231,128 +236,168 @@ class BetterSQLite {
     if (!this.db) {
       throw new Error('Database connection not established');
     }
-
+    
     logger.info('Starting database migration process');
-
-    // Make sure we're not already in a migration process
-    // This is tracked independently from transaction state
-    if (this._migratingFlag) {
-      logger.warn('Migration already in progress, waiting for it to complete');
-      // Wait up to 5 seconds for migration to complete
-      for (let i = 0; i < 10; i++) {
+    
+    // Make sure we're not already in a migration process - use static class flag
+    // This prevents ANY instance from running migrations concurrently
+    if (_GLOBAL_MIGRATING_FLAG) {
+      logger.warn('Migration already in progress in another instance, waiting for it to complete');
+      // Wait up to 10 seconds for migration to complete
+      for (let i = 0; i < 20; i++) {
         await new Promise(resolve => setTimeout(resolve, 500));
-        if (!this._migratingFlag) break;
+        if (!_GLOBAL_MIGRATING_FLAG) break;
       }
-
-      if (this._migratingFlag) {
+      
+      if (_GLOBAL_MIGRATING_FLAG) {
         // If it's still migrating after waiting, throw an error
-        throw new Error('Migration still in progress after timeout');
+        throw new Error('Migration still in progress in another instance after timeout');
       } else {
         // Migration completed while we were waiting
         logger.info('Existing migration completed while waiting');
         return;
       }
     }
-
-    // Set migration flag
-    this._migratingFlag = true;
-
+    
+    // First, check if there's a transaction already in progress at the SQLite level
+    // This is a more reliable check than our flag
     try {
-      // Make sure we have a consistent transaction state
-      // First clear any existing transactions to start fresh
+      // Try to use PRAGMA transaction_status (SQLite 3.8.0+)
       try {
-        // If transaction flag doesn't match the actual state, fix it
-        if (this.inTransaction) {
+        const inProgressCheck = this.db.prepare("PRAGMA transaction_status").get();
+        if (inProgressCheck && inProgressCheck.transaction_status > 0) {
+          logger.warn('Transaction already active at SQLite level, attempting to force reset');
+          
+          // Try to rollback any existing transaction
           try {
-            // Check if a transaction is actually active in SQLite
-            try {
-              const inProgressCheck = this.db.prepare("PRAGMA transaction_status").get();
-              if (!inProgressCheck || inProgressCheck.transaction_status === 0) {
-                logger.warn('Transaction flag incorrectly set but no actual transaction active. Resetting flag.');
-                this.inTransaction = false;
-              }
-            } catch (pragmaError) {
-              // If we can't check (older SQLite versions), try to rollback anyway
-              logger.debug('Could not check transaction status via pragma during migration setup');
-            }
-          } catch (checkError) {
-            logger.warn('Error checking transaction state: ' + checkError.message);
-          }
-
-          // If we still think we're in a transaction, try to roll it back
-          if (this.inTransaction) {
-            try {
-              logger.debug('Rolling back any existing transaction before migration');
-              // Use a direct rollback to avoid our async method
-              this.db.exec('ROLLBACK');
+            this.db.exec('ROLLBACK');
+            logger.debug('Forced rollback succeeded');
+            this.inTransaction = false;
+          } catch (forceError) {
+            if (forceError.message.includes('no transaction is active')) {
+              // State inconsistency - reset our flag
               this.inTransaction = false;
-              logger.debug('Successfully rolled back existing transaction');
-            } catch (rollbackError) {
-              if (rollbackError.message.includes('no transaction is active')) {
-                // This is fine - just reset the flag
+              logger.debug('No actual transaction was active, reset flag only');
+            } else {
+              logger.error('Could not force transaction rollback: ' + forceError.message);
+              throw new Error('Cannot run migrations: database has a stuck transaction');
+            }
+          }
+        }
+      } catch (pragmaError) {
+        // If PRAGMA is not available, try a different approach
+        logger.debug('Could not check transaction_status via PRAGMA, using alternate method');
+        
+        // Try to start a transaction as a test
+        try {
+          this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+          // If we get here, there was no active transaction
+          this.db.exec('ROLLBACK');
+          // Reset our flag in case it was wrong
+          this.inTransaction = false;
+        } catch (testError) {
+          if (testError.message.includes('cannot start a transaction within a transaction')) {
+            logger.warn('Transaction already active, need to force reset before migration');
+            // Try a forced rollback to clear any stuck transaction
+            try {
+              this.db.exec('ROLLBACK');
+              logger.debug('Forced rollback succeeded');
+              this.inTransaction = false;
+            } catch (forceError) {
+              if (forceError.message.includes('no transaction is active')) {
+                // State inconsistency - reset our flag
                 this.inTransaction = false;
                 logger.debug('No actual transaction was active, reset flag only');
               } else {
-                logger.warn('Failed direct rollback: ' + rollbackError.message);
-                // Continue anyway after resetting the flag
-                this.inTransaction = false;
+                logger.error('Could not force transaction rollback: ' + forceError.message);
+                throw new Error('Cannot run migrations: database has a stuck transaction');
               }
             }
-          }
-        }
-
-        // Now we're definitely not in a transaction, start a fresh one
-        logger.debug('Starting migration transaction');
-        try {
-          this.db.exec('BEGIN TRANSACTION');
-          this.inTransaction = true;
-          logger.debug('Successfully started migration transaction');
-        } catch (beginError) {
-          if (beginError.message.includes('cannot start a transaction within a transaction')) {
-            // SQLite thinks we're in a transaction even though our flag says we're not
-            logger.warn('SQLite reports already in transaction despite flag reset');
-            this.inTransaction = true;
           } else {
-            throw beginError;
+            // Some other error occurred
+            logger.error('Error testing transaction state: ' + testError.message);
+            throw testError;
           }
         }
-      } catch (setupError) {
-        logger.error('Failed to setup migration transaction: ' + setupError.message);
-        throw setupError;
       }
-
-      // At this point we should have a clean transaction state
-      // Now run the actual migration with enhanced error handling
+    } catch (transactionCheckError) {
+      logger.error('Error checking transaction state: ' + transactionCheckError.message);
+      // If we can't determine transaction state, it's safer to bail out
+      throw transactionCheckError;
+    }
+    
+    // Set global migration flag to prevent any other instance from migrating
+    _GLOBAL_MIGRATING_FLAG = true;
+    
+    // Also set instance flag
+    this._migratingFlag = true;
+    
+    try {
+      // Now we're definitely not in a transaction, enforce that our flag matches
+      this.inTransaction = false;
+      
+      // CRITICAL: We'll run each part of the migration in its own transaction
+      // Rather than one big transaction, to avoid issues with nested transactions
+      
+      // 1. Create migrations table
       try {
-        // Create migrations table if it doesn't exist - using direct exec to avoid nested handling
-        logger.debug('Creating schema_migrations table');
-        try {
-          this.db.exec(`
-            CREATE TABLE IF NOT EXISTS schema_migrations (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              version INTEGER NOT NULL,
-              name TEXT NOT NULL,
-              applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-          `);
-        } catch (tableError) {
-          if (tableError.message.includes('database is locked') && retries > 0) {
-            // If database is locked, try again after a delay
-            logger.warn(`Database locked during migration, retrying in 500ms (${retries} retries left)`);
-            await new Promise(resolve => setTimeout(resolve, 500));
-            this._migratingFlag = false;
-            return this.runMigrations(retries - 1);
+        logger.debug('Creating schema_migrations table (separate transaction)');
+        this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+        this.inTransaction = true;
+        
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS schema_migrations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            version INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        
+        this.db.exec('COMMIT');
+        this.inTransaction = false;
+        logger.debug('Migrations table created successfully');
+      } catch (tableError) {
+        // Clean up transaction on error
+        if (this.inTransaction) {
+          try {
+            this.db.exec('ROLLBACK');
+          } catch (rollbackError) {
+            logger.error('Error rolling back migrations table creation: ' + rollbackError.message);
           }
-          throw tableError;
+          this.inTransaction = false;
         }
-
-        // Run migrations in order - with clear transaction state passed
-        logger.debug('Creating application tables');
-        await this.createTables(5, this.inTransaction);
-
-        // Record the migration - using tryCatch to handle potential errors
+        
+        if (tableError.message.includes('database is locked') && retries > 0) {
+          // If database is locked, try again after a delay
+          logger.warn(`Database locked creating migrations table, retrying in 500ms (${retries} retries left)`);
+          await new Promise(resolve => setTimeout(resolve, 500));
+          this._migratingFlag = false;
+          _GLOBAL_MIGRATING_FLAG = false;
+          return this.runMigrations(retries - 1);
+        }
+        
+        logger.error('Error creating migrations table: ' + tableError.message);
+        throw tableError;
+      }
+      
+      // 2. Create application tables - using a completely separate process
+      try {
+        logger.debug('Creating application tables (separate process)');
+        // createTables will handle its own transactions
+        await this.createTables(5, false);
+      } catch (tablesError) {
+        logger.error('Error creating application tables: ' + tablesError.message);
+        throw tablesError;
+      }
+      
+      // 3. Record the migration version
+      try {
+        logger.debug('Recording migration version (separate transaction)');
+        this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+        this.inTransaction = true;
+        
         try {
-          logger.debug('Recording migration version');
           const stmt = this.db.prepare('INSERT INTO schema_migrations (version, name) VALUES (?, ?)');
           stmt.run(2, 'add_last_processed_and_managed_columns');
         } catch (recordError) {
@@ -362,51 +407,47 @@ class BetterSQLite {
             throw recordError;
           }
         }
-
-        // Commit the transaction if it's still active
+        
+        this.db.exec('COMMIT');
+        this.inTransaction = false;
+        logger.debug('Migration version recorded successfully');
+      } catch (versionError) {
+        // Clean up transaction on error
         if (this.inTransaction) {
           try {
-            logger.debug('Committing migration transaction');
-            this.db.exec('COMMIT');
-            this.inTransaction = false;
-            logger.debug('Migration transaction committed successfully');
-          } catch (commitError) {
-            logger.error('Error committing migration: ' + commitError.message);
-            // Try to rollback
-            try {
-              logger.debug('Attempting to rollback after commit failure');
-              this.db.exec('ROLLBACK');
-              this.inTransaction = false;
-            } catch (rollbackError) {
-              logger.error('Error rolling back after commit failure: ' + rollbackError.message);
-              this.inTransaction = false;
-            }
-            throw commitError;
-          }
-        }
-
-        logger.info('Database migrations completed successfully');
-      } catch (migrationError) {
-        // Ensure transaction is rolled back on error
-        if (this.inTransaction) {
-          try {
-            logger.debug('Rolling back migration after error');
             this.db.exec('ROLLBACK');
-            this.inTransaction = false;
           } catch (rollbackError) {
-            logger.error('Error rolling back after migration error: ' + rollbackError.message);
-            this.inTransaction = false;
+            logger.error('Error rolling back version recording: ' + rollbackError.message);
           }
+          this.inTransaction = false;
         }
-
-        // Log and rethrow the original error
-        logger.error(`Error running migrations: ${migrationError.message}`);
-        throw migrationError;
+        
+        logger.error('Error recording migration version: ' + versionError.message);
+        throw versionError;
       }
+      
+      logger.info('Database migrations completed successfully');
+    } catch (migrationError) {
+      // Ensure any transaction is rolled back on error
+      if (this.inTransaction) {
+        try {
+          logger.debug('Rolling back any active transaction after migration error');
+          this.db.exec('ROLLBACK');
+          this.inTransaction = false;
+        } catch (rollbackError) {
+          logger.error('Error rolling back after migration error: ' + rollbackError.message);
+          this.inTransaction = false;
+        }
+      }
+      
+      // Log and rethrow the original error
+      logger.error(`Error running migrations: ${migrationError.message}`);
+      throw migrationError;
     } finally {
-      // Always clear the migration flag
+      // Always clear the migration flags
       this._migratingFlag = false;
-
+      _GLOBAL_MIGRATING_FLAG = false;
+      
       // Make absolutely sure we're not left in a transaction state
       if (this.inTransaction) {
         try {
@@ -441,7 +482,8 @@ class BetterSQLite {
         // Begin transaction if needed
         try {
           logger.debug('Starting new transaction for createTables');
-          await this.beginTransaction();
+          this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+          this.inTransaction = true;
         } catch (txError) {
           // If we can't begin transaction, log and rethrow
           logger.error(`Failed to begin transaction for createTables: ${txError.message}`);
@@ -571,35 +613,42 @@ class BetterSQLite {
       `, 'dns_tracked_records indexes');
 
       // Only commit if we started the transaction
-      if (!this.inTransaction) {
-        logger.error('Transaction flag inconsistency in createTables');
-      } else {
-        // Commit transaction safely
-        try {
-          await this.commit();
-          logger.info('Database tables created successfully');
-        } catch (commitError) {
-          // If commit fails due to a lock, retry it
-          if (commitError.message.includes('database is locked') && retries > 0) {
-            logger.debug(`Database locked while committing table creation, retrying in 200ms (${retries} retries left)...`);
-            await new Promise(resolve => setTimeout(resolve, 200));
-            // Just retry the commit, as tables are already created
-            return this.commit(retries - 1);
+      if (!alreadyInTransaction) {
+        if (!this.inTransaction) {
+          logger.error('Transaction flag inconsistency in createTables');
+        } else {
+          // Commit transaction safely
+          try {
+            this.db.exec('COMMIT');
+            this.inTransaction = false;
+            logger.info('Database tables created successfully');
+          } catch (commitError) {
+            // If commit fails due to a lock, retry it
+            if (commitError.message.includes('database is locked') && retries > 0) {
+              logger.debug(`Database locked while committing table creation, retrying in 200ms (${retries} retries left)...`);
+              await new Promise(resolve => setTimeout(resolve, 200));
+              // Just retry the commit, as tables are already created
+              this.db.exec('COMMIT');
+              this.inTransaction = false;
+              return;
+            }
+            // If commit fails for other reasons, log and rethrow
+            logger.error(`Failed to commit table creation: ${commitError.message}`);
+            throw commitError;
           }
-          // If commit fails for other reasons, log and rethrow
-          logger.error(`Failed to commit table creation: ${commitError.message}`);
-          throw commitError;
         }
       }
     } catch (error) {
-      // Only rollback if we started the transaction
-      if (this.inTransaction) {
+      // Only rollback if we started the transaction and not alreadyInTransaction
+      if (this.inTransaction && !alreadyInTransaction) {
         // Rollback transaction safely
         try {
-          await this.rollback();
+          this.db.exec('ROLLBACK');
+          this.inTransaction = false;
         } catch (rollbackError) {
           // If rollback fails, just log - we've done what we can
           logger.error(`Failed to rollback after table creation error: ${rollbackError.message}`);
+          this.inTransaction = false;
         }
       }
 
@@ -607,7 +656,7 @@ class BetterSQLite {
       if (error.message.includes('database is locked') && retries > 0) {
         logger.debug(`Database locked during table creation, retrying entire operation in 500ms (${retries} retries left)...`);
         await new Promise(resolve => setTimeout(resolve, 500));
-        return this.createTables(retries - 1);
+        return this.createTables(retries - 1, alreadyInTransaction);
       }
 
       logger.error(`Error creating database tables: ${error.message}`);
@@ -631,7 +680,7 @@ class BetterSQLite {
         throw initError;
       }
     }
-
+    
     // Check our transaction flag first
     if (this.inTransaction) {
       logger.debug('Transaction flag already set, skipping beginTransaction');
@@ -655,7 +704,7 @@ class BetterSQLite {
 
       // Start the transaction
       logger.debug('Starting SQLite transaction');
-      this.db.exec('BEGIN TRANSACTION');
+      this.db.exec('BEGIN IMMEDIATE TRANSACTION');
       this.inTransaction = true;
     } catch (error) {
       // Handle database locked errors with retries
@@ -737,14 +786,14 @@ class BetterSQLite {
       // For commit errors, try to rollback to keep database consistent
       logger.error(`Error committing transaction: ${error.message}`);
       logger.debug('Attempting to rollback after commit failure');
-
+      
       try {
         await this.rollback();
         logger.debug('Successfully rolled back transaction after commit failure');
       } catch (rollbackError) {
         logger.error(`Failed to rollback after commit error: ${rollbackError.message}`);
       }
-
+      
       // Always reset transaction state to avoid inconsistency
       this.inTransaction = false;
     }
@@ -771,7 +820,7 @@ class BetterSQLite {
     }
 
     try {
-      // Check if a transaction is actually active in SQLite
+      // Check if a transaction is actually active in SQLite 
       // This handles cases where our flag is out of sync with SQLite
       try {
         const inProgressCheck = this.db.prepare("PRAGMA transaction_status").get();

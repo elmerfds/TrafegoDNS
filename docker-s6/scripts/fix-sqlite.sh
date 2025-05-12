@@ -86,14 +86,22 @@ if [ -f "$APP_DIR/src/database/better-sqlite.js" ]; then
   cp "$APP_DIR/src/database/better-sqlite.js" "$APP_DIR/src/database/better-sqlite.js.bak"
   echo "✅ better-sqlite.js backed up"
 
-  echo "- Checking for transaction tracking improvements..."
-  grep -q "inTransaction" "$APP_DIR/src/database/better-sqlite.js"
-  if [ $? -ne 0 ]; then
-    echo "⚠️ Transaction tracking not found in better-sqlite.js"
-    echo "Please manually update better-sqlite.js with transaction fixes."
-    echo "See SQLITE_FIX.md for details on the necessary changes."
+  # Check if we have the fixed version available
+  if [ -f "$APP_DIR/src/database/better-sqlite.js.fix" ]; then
+    echo "- Found better-sqlite.js.fix with improved transaction handling"
+    echo "- Applying enhanced transaction fixes..."
+    cp "$APP_DIR/src/database/better-sqlite.js.fix" "$APP_DIR/src/database/better-sqlite.js"
+    echo "✅ Applied enhanced transaction fixes to better-sqlite.js"
   else
-    echo "✅ Transaction tracking found in better-sqlite.js"
+    echo "- Checking for transaction tracking improvements..."
+    grep -q "inTransaction" "$APP_DIR/src/database/better-sqlite.js"
+    if [ $? -ne 0 ]; then
+      echo "⚠️ Transaction tracking not found in better-sqlite.js"
+      echo "Please manually update better-sqlite.js with transaction fixes."
+      echo "See SQLITE_FIX.md for details on the necessary changes."
+    else
+      echo "✅ Transaction tracking found in better-sqlite.js"
+    fi
   fi
 fi
 
@@ -324,7 +332,29 @@ else
   echo "✅ Lock manager file already exists"
 fi
 
-# 6. Check for WAL mode in database file
+# 6. Check if DB is in a broken state
+if [ -f "$DB_FILE" ]; then
+  # Try to query the database to see if it's functional
+  echo "Checking database functionality..."
+  sqlite3 "$DB_FILE" "SELECT count(*) FROM sqlite_master;" > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "⚠️ Database appears to be in a broken state."
+    echo "Consider running the reset script to create a clean database:"
+    echo "   /app/docker-s6/scripts/reset-sqlite.sh"
+  else
+    echo "✅ Database appears functional"
+  fi
+
+  # Check for stuck transaction
+  sqlite3 "$DB_FILE" "PRAGMA quick_check;" > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "⚠️ Database integrity check failed. Database may be corrupted."
+    echo "Consider running the reset script to create a clean database:"
+    echo "   /app/docker-s6/scripts/reset-sqlite.sh"
+  fi
+fi
+
+# 7. Check for WAL mode in database file
 if [ -f "$DB_FILE" ]; then
   echo "Checking if database is in WAL mode..."
   # Create a temp file to run the pragma command
@@ -352,4 +382,8 @@ fi
 
 echo "====================================="
 echo "Fix completed. Restart TrafegoDNS to apply changes."
+echo ""
+echo "If you continue to experience database issues after restart:"
+echo "  1. Run the database reset script: /app/docker-s6/scripts/reset-sqlite.sh"
+echo "  2. This will completely reset your database and start fresh"
 echo "====================================="
