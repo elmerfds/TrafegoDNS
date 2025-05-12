@@ -61,14 +61,14 @@ async function cleanupOrphanedRecords(
       }
       
       // Check if this record is tracked by our tool
-      if (!recordTracker.isTracked(record)) {
+      if (!(await recordTracker.isTracked(record))) {
         // Support legacy records with comment for backward compatibility
-        if (config.dnsProvider === 'cloudflare' && 
-            (record.comment === 'Managed by Traefik DNS Manager' || 
+        if (config.dnsProvider === 'cloudflare' &&
+            (record.comment === 'Managed by Traefik DNS Manager' ||
              record.comment === 'Managed by TráfegoDNS')) {
           // This is a legacy record created before we implemented tracking
           logger.debug(`Found legacy managed record with comment: ${record.name} (${record.type})`);
-          recordTracker.trackRecord(record);
+          await recordTracker.trackRecord(record);
         } else {
           // Not tracked and not a legacy record - skip it
           logger.debug(`Skipping non-managed record: ${record.name} (${record.type})`);
@@ -141,11 +141,34 @@ async function cleanupOrphanedRecords(
       // Check if this record is still active
       if (!normalizedActiveHostnames.has(recordFqdn)) {
         // Check if the record was already marked as orphaned
-        if (recordTracker.isRecordOrphaned(record)) {
+        if (await recordTracker.isRecordOrphaned(record)) {
           // Check if grace period has elapsed
-          const orphanedTime = recordTracker.getRecordOrphanedTime(record);
+          const orphanedTime = await recordTracker.getRecordOrphanedTime(record);
+
+          // Handle potential formats of orphaned time
+          let parsedOrphanedTime;
+          if (!orphanedTime) {
+            // If no orphaned time, use current time as fallback
+            parsedOrphanedTime = new Date();
+            logger.warn(`No orphaned time found for record ${recordFqdn}, using current time`);
+          } else if (typeof orphanedTime === 'string') {
+            // Parse ISO string to Date
+            parsedOrphanedTime = new Date(orphanedTime);
+          } else if (orphanedTime instanceof Date) {
+            // Already a Date object
+            parsedOrphanedTime = orphanedTime;
+          } else {
+            // Try to convert to a Date
+            try {
+              parsedOrphanedTime = new Date(orphanedTime);
+            } catch (e) {
+              logger.warn(`Failed to parse orphaned time for record ${recordFqdn}: ${e.message}`);
+              parsedOrphanedTime = new Date(); // Fallback to current time
+            }
+          }
+
           const now = new Date();
-          const elapsedMinutes = (now - orphanedTime) / (1000 * 60);
+          const elapsedMinutes = (now - parsedOrphanedTime) / (1000 * 60);
           
           if (elapsedMinutes >= config.cleanupGracePeriod) {
             // Grace period elapsed, we can delete the record
@@ -162,7 +185,7 @@ async function cleanupOrphanedRecords(
               await dnsProvider.deleteRecord(record.id);
               
               // Remove record from tracker
-              recordTracker.untrackRecord(record);
+              await recordTracker.untrackRecord(record);
               
               // Publish delete event
               eventBus.publish(EventTypes.DNS_RECORD_DELETED, {
@@ -181,14 +204,14 @@ async function cleanupOrphanedRecords(
         } else {
           // Record is newly orphaned, mark it
           logger.info(`🕒 Marking DNS record as orphaned (will be deleted after ${config.cleanupGracePeriod} minutes): ${recordFqdn} (${record.type})`);
-          recordTracker.markRecordOrphaned(record);
+          await recordTracker.markRecordOrphaned(record);
           newlyOrphanedCount++;
         }
       } else {
         // Record is active again (found in active hostnames), unmark as orphaned if needed
-        if (recordTracker.isRecordOrphaned(record)) {
+        if (await recordTracker.isRecordOrphaned(record)) {
           logger.info(`✅ DNS record is active again, removing orphaned mark: ${recordFqdn} (${record.type})`);
-          recordTracker.unmarkRecordOrphaned(record);
+          await recordTracker.unmarkRecordOrphaned(record);
           reactivatedCount++;
         }
       }

@@ -557,8 +557,22 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
     const formattedRecords = orphanedRecords.map(record => {
       // Get when it was marked as orphaned
       const orphanedTime = record.orphanedSince || DNSManager.recordTracker.getRecordOrphanedTime(record);
-      const formattedTime = typeof orphanedTime === 'string' ? orphanedTime : 
-                           orphanedTime ? orphanedTime.toISOString() : null;
+      let formattedTime = null;
+
+      // Handle various formats of orphanedTime
+      if (orphanedTime) {
+        if (typeof orphanedTime === 'string') {
+          formattedTime = orphanedTime; // Already a string
+        } else if (orphanedTime instanceof Date) {
+          formattedTime = orphanedTime.toISOString(); // Date object
+        } else {
+          try {
+            formattedTime = new Date(orphanedTime).toISOString(); // Try to convert to Date
+          } catch (e) {
+            logger.warn(`Invalid orphanedTime format: ${typeof orphanedTime}`);
+          }
+        }
+      }
       
       // Get grace period info
       const gracePeriod = DNSManager.config.cleanupGracePeriod || 15; // Default 15 minutes

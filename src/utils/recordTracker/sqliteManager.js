@@ -315,8 +315,23 @@ class SQLiteRecordManager {
 
     try {
       const result = await this.repository.getRecordOrphanedTime(provider, recordId);
-      // Make sure we have a string, not a Date object
-      return result ? (typeof result === 'string' ? result : new Date(result).toISOString()) : null;
+
+      // Handle all possible formats of result to ensure we return a proper ISO string or null
+      if (!result) {
+        return null;
+      } else if (typeof result === 'string') {
+        return result; // Already a string, assume it's in ISO format
+      } else if (result instanceof Date) {
+        return result.toISOString(); // It's a Date object, convert to ISO string
+      } else {
+        try {
+          // Try to convert to a Date and then to ISO string
+          return new Date(result).toISOString();
+        } catch (e) {
+          logger.warn(`Failed to convert orphaned time to ISO string: ${e.message}`);
+          return null;
+        }
+      }
     } catch (error) {
       logger.error(`Failed to get record orphaned time from SQLite: ${error.message}`);
       return null;

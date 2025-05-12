@@ -28,14 +28,32 @@ function registerOrphanedActions(broker, services) {
       );
       
       // Enhance with orphaned time data
-      const enhancedOrphanedRecords = orphanedRecords.map(record => {
-        const orphanedTime = DNSManager.recordTracker.getRecordOrphanedTime(record);
-        
+      const enhancedOrphanedRecords = await Promise.all(orphanedRecords.map(async record => {
+        const orphanedTime = await DNSManager.recordTracker.getRecordOrphanedTime(record);
+
+        // Handle all possible formats of orphanedTime to ensure we always have a proper ISO string or null
+        let orphanedSince = null;
+
+        if (orphanedTime) {
+          if (typeof orphanedTime === 'string') {
+            orphanedSince = orphanedTime; // Already a string, assume it's ISO format
+          } else if (orphanedTime instanceof Date) {
+            orphanedSince = orphanedTime.toISOString(); // Convert Date to ISO string
+          } else {
+            try {
+              // Try to convert to a Date object if it's something else
+              orphanedSince = new Date(orphanedTime).toISOString();
+            } catch (e) {
+              logger.warn(`Could not format orphaned time for record ${record.id}: ${e.message}`);
+            }
+          }
+        }
+
         return {
           ...record,
-          orphanedSince: orphanedTime ? orphanedTime.toISOString() : null
+          orphanedSince
         };
-      });
+      }));
       
       // Update state
       broker.updateState('dns.orphaned', enhancedOrphanedRecords, action, 'dns:orphaned:updated');
