@@ -140,9 +140,13 @@ If SQLite continues to be problematic, the fixed code includes a fallback strate
 
 This ensures the application can still operate even if SQLite installation issues persist.
 
-## Transaction Issues Explained
+## Database Issues Fixed
 
-One of the key issues fixed in this update is related to nested transactions in SQLite. The error `SQLITE_ERROR: cannot start a transaction within a transaction` occurs when the code attempts to start a new transaction while already inside a transaction.
+Two key SQLite issues were fixed in this update:
+
+### 1. Nested Transaction Errors
+
+The error `SQLITE_ERROR: cannot start a transaction within a transaction` occurs when the code attempts to start a new transaction while already inside a transaction. Multiple parts of the application were trying to initialize the database simultaneously, causing these nested transaction attempts.
 
 The fix involves:
 
@@ -150,5 +154,38 @@ The fix involves:
 2. Skipping `beginTransaction` calls when already in a transaction
 3. Passing transaction state to nested function calls
 4. Adding proper error handling for transaction operations
+5. Implementing a file-based locking mechanism to prevent concurrent migrations
+6. Adding special handling for transaction-related errors
+7. Ensuring `createTables` methods respect existing transaction state
 
-This prevents the database initialization errors and makes the migration process more robust.
+Implementation details:
+- Added `inTransaction` flag to track transaction state
+- Modified `beginTransaction`, `commit`, and `rollback` methods to check and update transaction state
+- Added transaction state awareness to `createTables` and `runMigrations` methods
+- Implemented proper error handling for transaction errors
+- Added file-based locking to coordinate database migrations between processes
+
+### 2. Database Lock Contention
+
+The error `SQLITE_BUSY: database is locked` occurs when multiple parts of the application try to access the database simultaneously, and one operation has locked the database while another tries to access it.
+
+The fix involves:
+
+1. Adding automatic retries for database operations when locks are encountered
+2. Implementing backoff strategies with delays between retries
+3. Gracefully handling "database is locked" errors
+4. Improving transaction management with proper retry logic
+5. Adding specific logging for lock-related retries
+6. Breaking up large transactions into smaller parts with individual retry capabilities
+7. Using WAL journal mode for better concurrency
+
+Implementation details:
+- Added retry logic to all database operation methods (`run`, `get`, `all`)
+- Added exponential backoff with configurable retry counts
+- Enhanced `createTables` method with retry capabilities for each table creation
+- Added specific error handling for "database is locked" errors
+- Created helper function `execWithRetry` to handle retries for SQL operations
+- Added specific database lock detection in error messages
+- Set WAL journal mode for better concurrency between readers and writers
+
+These fixes make the database operations more robust and resilient to concurrency issues, which is especially important during initialization when multiple components may be trying to access the database at the same time. The application now gracefully handles transaction and lock errors with appropriate retries, making it more reliable in multi-process environments.
