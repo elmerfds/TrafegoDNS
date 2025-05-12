@@ -177,8 +177,10 @@ class RecordTracker {
   
   /**
    * Track a new DNS record
+   * @param {Object} record - The record to track
+   * @param {boolean} [isAppManaged=true] - Whether this record was created by the application
    */
-  async trackRecord(record) {
+  async trackRecord(record, isAppManaged = true) {
     // Check if we have a valid record
     if (!record || !record.id || !record.name || !record.type) {
       logger.warn(`Cannot track invalid record: ${JSON.stringify(record)}`);
@@ -191,6 +193,13 @@ class RecordTracker {
       recordToTrack.provider = this.provider;
     }
 
+    // Add metadata to indicate if the record is managed by the app
+    if (!recordToTrack.metadata) {
+      recordToTrack.metadata = {};
+    }
+    recordToTrack.metadata.appManaged = isAppManaged;
+    recordToTrack.metadata.trackedAt = new Date().toISOString();
+
     // Try to use SQLite first if available
     if (this.usingSQLite && this.sqliteManager) {
       try {
@@ -198,7 +207,7 @@ class RecordTracker {
         if (success) {
           // Also update in-memory data
           trackRecordOperation(this.data, this.trackerFile, this.provider, recordToTrack);
-          logger.debug(`Successfully tracked ${recordToTrack.type} record for ${recordToTrack.name} in SQLite`);
+          logger.debug(`Successfully tracked ${recordToTrack.type} record for ${recordToTrack.name} in SQLite (appManaged: ${isAppManaged})`);
           return true;
         } else {
           logger.warn(`Failed to track record in SQLite: ${recordToTrack.name} (${recordToTrack.type})`);
@@ -212,7 +221,7 @@ class RecordTracker {
     // Fall back to JSON storage
     const result = trackRecordOperation(this.data, this.trackerFile, this.provider, recordToTrack);
     if (result) {
-      logger.debug(`Successfully tracked ${recordToTrack.type} record for ${recordToTrack.name} in JSON`);
+      logger.debug(`Successfully tracked ${recordToTrack.type} record for ${recordToTrack.name} in JSON (appManaged: ${isAppManaged})`);
     }
     return result;
   }

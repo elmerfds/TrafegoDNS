@@ -151,6 +151,15 @@ class SQLiteRecordManager {
       const recordKey = `${record.type}:${record.name}`;
       logger.debug(`Tracking record in SQLite: ${recordKey} (ID: ${record.id})`);
 
+      // Prepare metadata if available
+      const metadata = record.metadata ? JSON.stringify(record.metadata) : null;
+
+      // Extract app-managed flag for logging
+      const isAppManaged = record.metadata && record.metadata.appManaged;
+      if (isAppManaged !== undefined) {
+        logger.debug(`Record ${recordKey} appManaged status: ${isAppManaged}`);
+      }
+
       await this.repository.trackRecord({
         provider,
         record_id: record.id,
@@ -159,7 +168,8 @@ class SQLiteRecordManager {
         content: record.content || record.value || '',
         ttl: record.ttl || 1,
         proxied: !!record.proxied,
-        tracked_at: record.tracked_at || new Date().toISOString()
+        tracked_at: record.tracked_at || new Date().toISOString(),
+        metadata
       });
 
       return true;
@@ -175,6 +185,16 @@ class SQLiteRecordManager {
             // Try to update the existing record
             logger.debug(`Found existing record with same type and name, updating ID: ${record.name} (${record.type})`);
             await this.repository.updateRecordByTypeAndName(provider, record.type, record.name, record.id);
+
+            // Also update metadata if provided
+            if (record.metadata) {
+              if (this.repository.updateRecordMetadata) {
+                await this.repository.updateRecordMetadata(provider, record.id, JSON.stringify(record.metadata));
+              } else {
+                logger.debug('Repository does not support updateRecordMetadata method');
+              }
+            }
+
             return true;
           }
         } catch (updateError) {

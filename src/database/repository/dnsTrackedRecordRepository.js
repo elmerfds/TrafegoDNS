@@ -561,23 +561,30 @@ class DNSTrackedRecordRepository {
         logger.warn('No valid JSON data provided for migration');
         return 0;
       }
-      
+
       let migratedCount = 0;
-      
+
       // Begin transaction for performance
       await this.db.beginTransaction();
-      
+
       try {
         for (const provider in jsonData.providers) {
           const providerData = jsonData.providers[provider];
-          
+
           if (!providerData || !providerData.records) continue;
-          
+
           for (const recordId in providerData.records) {
             const record = providerData.records[recordId];
-            
+
             if (!record || !record.type || !record.name) continue;
-            
+
+            // Add metadata to track that this record was created by the app
+            const metadata = {
+              ...(record.metadata || {}),
+              appManaged: true,
+              migratedAt: new Date().toISOString()
+            };
+
             await this.trackRecord({
               provider,
               record_id: recordId,
@@ -589,17 +596,17 @@ class DNSTrackedRecordRepository {
               is_orphaned: record.is_orphaned ? 1 : 0,
               orphaned_at: record.orphaned_at || null,
               tracked_at: record.tracked_at || record.createdAt || new Date().toISOString(),
-              metadata: record.metadata || null
+              metadata: JSON.stringify(metadata)
             });
-            
+
             migratedCount++;
           }
         }
-        
+
         // Commit the transaction
         await this.db.commit();
         logger.info(`Successfully migrated ${migratedCount} DNS tracked records to SQLite`);
-        
+
         return migratedCount;
       } catch (transactionError) {
         // Rollback on error
@@ -609,6 +616,75 @@ class DNSTrackedRecordRepository {
     } catch (error) {
       logger.error(`Failed to migrate DNS tracked records: ${error.message}`);
       return 0;
+    }
+  }
+
+  /**
+   * Update record metadata
+   * @param {string} provider - DNS provider name
+   * @param {string} recordId - Record ID
+   * @param {string} metadata - JSON string of metadata
+   * @returns {Promise<boolean>} - Success status
+   */
+  async updateRecordMetadata(provider, recordId, metadata) {
+    try {
+      const now = new Date().toISOString();
+
+      const result = await this.db.run(`
+        UPDATE ${this.tableName}
+        SET metadata = ?, updated_at = ?
+        WHERE provider = ? AND record_id = ?
+      `, [metadata, now, provider, recordId]);
+
+      return result.changes > 0;
+    } catch (error) {
+      logger.error(`Failed to update record metadata: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get record metadata
+   * @param {string} provider - DNS provider name
+   * @param {string} recordId - Record ID
+   * @returns {Promise<Object|null>} - Record metadata or null
+   */
+  async getRecordMetadata(provider, recordId) {
+    try {
+      const record = await this.db.get(`
+        SELECT metadata FROM ${this.tableName}
+        WHERE provider = ? AND record_id = ?
+      `, [provider, recordId]);
+
+      if (!record || !record.metadata) {
+        return null;
+      }
+
+      try {
+        return JSON.parse(record.metadata);
+      } catch (parseError) {
+        logger.error(`Failed to parse record metadata: ${parseError.message}`);
+        return null;
+      }
+    } catch (error) {
+      logger.error(`Failed to get record metadata: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Check if a record is app managed
+   * @param {string} provider - DNS provider name
+   * @param {string} recordId - Record ID
+   * @returns {Promise<boolean>} - Whether the record is app managed
+   */
+  async isAppManaged(provider, recordId) {
+    try {
+      const metadata = await this.getRecordMetadata(provider, recordId);
+      return metadata && metadata.appManaged === true;
+    } catch (error) {
+      logger.error(`Failed to check if record is app managed: ${error.message}`);
+      return false;
     }
   }
 }

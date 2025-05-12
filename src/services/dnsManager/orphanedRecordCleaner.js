@@ -68,11 +68,13 @@ async function cleanupOrphanedRecords(
              record.comment === 'Managed by TráfegoDNS')) {
           // This is a legacy record created before we implemented tracking
           logger.debug(`Found legacy managed record with comment: ${record.name} (${record.type})`);
-          await recordTracker.trackRecord(record);
+          // Track it as app-managed (true)
+          await recordTracker.trackRecord(record, true);
         } else {
-          // Not tracked and not a legacy record - skip it
-          logger.debug(`Skipping non-managed record: ${record.name} (${record.type})`);
-          continue;
+          // Non-legacy records should be tracked but marked as NOT app-managed
+          logger.debug(`Tracking non-app-managed record: ${record.name} (${record.type})`);
+          // Track it as NOT app-managed (false)
+          await recordTracker.trackRecord(record, false);
         }
       }
       
@@ -182,16 +184,46 @@ async function cleanupOrphanedRecords(
             logger.info(`🗑️ Grace period elapsed (${Math.floor(elapsedMinutes)} minutes), removing orphaned DNS record: ${displayName} (${record.type})`);
             
             try {
-              await dnsProvider.deleteRecord(record.id);
-              
-              // Remove record from tracker
-              await recordTracker.untrackRecord(record);
-              
-              // Publish delete event
-              eventBus.publish(EventTypes.DNS_RECORD_DELETED, {
-                name: displayName,
-                type: record.type
-              });
+              // IMPORTANT: Only delete records that were created by the app
+              // First check if this record is app-managed through metadata
+              let isAppManaged = false;
+
+              if (recordTracker.sqliteManager &&
+                  recordTracker.sqliteManager.repository &&
+                  recordTracker.sqliteManager.repository.isAppManaged) {
+                try {
+                  isAppManaged = await recordTracker.sqliteManager.repository.isAppManaged(
+                    config.dnsProvider, record.id
+                  );
+                } catch (metadataError) {
+                  logger.error(`Failed to check if record is app-managed: ${metadataError.message}`);
+                }
+              }
+
+              // Also check if the record has a Managed by comment (Cloudflare only)
+              const isLegacyManaged =
+                config.dnsProvider === 'cloudflare' &&
+                (record.comment === 'Managed by Traefik DNS Manager' ||
+                record.comment === 'Managed by TráfegoDNS');
+
+              // Only delete if we're sure this is a record created by the app
+              if (isAppManaged || isLegacyManaged) {
+                logger.info(`🗑️ Deleting DNS record: ${displayName} (${record.type})`);
+                await dnsProvider.deleteRecord(record.id);
+
+                // Remove record from tracker
+                await recordTracker.untrackRecord(record);
+
+                // Publish delete event
+                eventBus.publish(EventTypes.DNS_RECORD_DELETED, {
+                  name: displayName,
+                  type: record.type
+                });
+              } else {
+                logger.info(`⚠️ Skipping deletion of non-app-managed record: ${displayName} (${record.type})`);
+                // Just unmark it as orphaned but keep tracking it
+                await recordTracker.unmarkRecordOrphaned(record);
+              }
             } catch (error) {
               logger.error(`Error deleting orphaned record ${displayName}: ${error.message}`);
             }
