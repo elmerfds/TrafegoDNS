@@ -243,8 +243,12 @@ class BetterSQLite {
    */
   async beginTransaction() {
     if (!this.isConnected) await this.initialize();
-    if (this.inTransaction) return;
-    
+    if (this.inTransaction) {
+      logger.debug('Transaction already in progress, skipping beginTransaction');
+      return;
+    }
+
+    logger.debug('Starting SQLite transaction');
     this.db.exec('BEGIN TRANSACTION');
     this.inTransaction = true;
   }
@@ -255,8 +259,12 @@ class BetterSQLite {
    */
   async commit() {
     if (!this.isConnected) throw new Error('Not connected to database');
-    if (!this.inTransaction) return;
-    
+    if (!this.inTransaction) {
+      logger.debug('No transaction in progress, skipping commit');
+      return;
+    }
+
+    logger.debug('Committing SQLite transaction');
     this.db.exec('COMMIT');
     this.inTransaction = false;
   }
@@ -267,8 +275,12 @@ class BetterSQLite {
    */
   async rollback() {
     if (!this.isConnected) throw new Error('Not connected to database');
-    if (!this.inTransaction) return;
-    
+    if (!this.inTransaction) {
+      logger.debug('No transaction in progress, skipping rollback');
+      return;
+    }
+
+    logger.debug('Rolling back SQLite transaction');
     this.db.exec('ROLLBACK');
     this.inTransaction = false;
   }
