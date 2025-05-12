@@ -189,15 +189,65 @@ class DNSTrackedRecordRepository {
    */
   async updateRecordByTypeAndName(provider, type, name, newRecordId) {
     try {
-      const now = new Date().toISOString();
+      // First check if the new record ID already exists in the database
+      const existingByNewId = await this.db.get(`
+        SELECT id FROM ${this.tableName}
+        WHERE provider = ? AND record_id = ?
+      `, [provider, newRecordId]);
 
-      const result = await this.db.run(`
-        UPDATE ${this.tableName}
-        SET record_id = ?, updated_at = ?
+      // Get the existing record with the given type and name
+      const existingByType = await this.db.get(`
+        SELECT id, record_id, is_orphaned, orphaned_at
+        FROM ${this.tableName}
         WHERE provider = ? AND type = ? AND name = ?
-      `, [newRecordId, now, provider, type, name]);
+      `, [provider, type, name]);
 
-      return result.changes > 0;
+      // If the new record ID already exists AND there's a different record with this type/name
+      if (existingByNewId && existingByType && existingByNewId.id !== existingByType.id) {
+        // We need to merge the records - keep the one with the new ID
+        // and transfer any orphaned status from the old one
+
+        if (existingByType.is_orphaned === 1) {
+          // If the type/name record was orphaned, update the orphaned status of the new record
+          await this.db.run(`
+            UPDATE ${this.tableName}
+            SET is_orphaned = 1, orphaned_at = ?, updated_at = ?
+            WHERE id = ?
+          `, [existingByType.orphaned_at, new Date().toISOString(), existingByNewId.id]);
+        }
+
+        // Delete the old record since we've transferred its state
+        await this.db.run(`
+          DELETE FROM ${this.tableName}
+          WHERE id = ?
+        `, [existingByType.id]);
+
+        logger.debug(`Merged record ${type}:${name} into existing record ID ${newRecordId}`);
+        return true;
+      }
+
+      // If the new record ID exists but there's no record with this type/name, nothing to do
+      if (existingByNewId && !existingByType) {
+        logger.debug(`Record ID ${newRecordId} already exists, but no record with type=${type}, name=${name} found`);
+        return false;
+      }
+
+      // If there's no record with the new ID but there is a record with this type/name, update normally
+      if (!existingByNewId && existingByType) {
+        const now = new Date().toISOString();
+
+        const result = await this.db.run(`
+          UPDATE ${this.tableName}
+          SET record_id = ?, updated_at = ?
+          WHERE id = ?
+        `, [newRecordId, now, existingByType.id]);
+
+        return result.changes > 0;
+      }
+
+      // No records found by ID or type/name - nothing to update
+      logger.debug(`No records found to update for provider=${provider}, type=${type}, name=${name}`);
+      return false;
     } catch (error) {
       logger.error(`Failed to update record by type and name: ${error.message}`);
       throw error;
@@ -213,14 +263,55 @@ class DNSTrackedRecordRepository {
    */
   async updateRecordId(provider, oldRecordId, newRecordId) {
     try {
+      // First check if the new record ID already exists in the database
+      const existingRecord = await this.db.get(`
+        SELECT id FROM ${this.tableName}
+        WHERE provider = ? AND record_id = ?
+      `, [provider, newRecordId]);
+
+      // If the new record ID already exists, we need to merge the records
+      if (existingRecord) {
+        // Get the type and name of both records
+        const oldRecord = await this.db.get(`
+          SELECT id, type, name, content, ttl, proxied, is_orphaned, orphaned_at, tracked_at
+          FROM ${this.tableName}
+          WHERE provider = ? AND record_id = ?
+        `, [provider, oldRecordId]);
+
+        if (!oldRecord) {
+          logger.warn(`Cannot update record ID: Old record ${oldRecordId} not found`);
+          return false;
+        }
+
+        // Handle the case where we need to merge orphaned status
+        if (oldRecord.is_orphaned === 1) {
+          // If the old record was orphaned, update the orphaned status of the new record
+          await this.db.run(`
+            UPDATE ${this.tableName}
+            SET is_orphaned = 1, orphaned_at = ?
+            WHERE id = ?
+          `, [oldRecord.orphaned_at, existingRecord.id]);
+        }
+
+        // Delete the old record since we've transferred its state
+        await this.db.run(`
+          DELETE FROM ${this.tableName}
+          WHERE id = ?
+        `, [oldRecord.id]);
+
+        logger.debug(`Merged record ID ${oldRecordId} into existing record ID ${newRecordId}`);
+        return true;
+      }
+
+      // If the new record ID doesn't exist, perform a normal update
       const now = new Date().toISOString();
-      
+
       const result = await this.db.run(`
         UPDATE ${this.tableName}
         SET record_id = ?, updated_at = ?
         WHERE provider = ? AND record_id = ?
       `, [newRecordId, now, provider, oldRecordId]);
-      
+
       return result.changes > 0;
     } catch (error) {
       logger.error(`Failed to update record ID: ${error.message}`);
