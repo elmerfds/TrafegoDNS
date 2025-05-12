@@ -234,10 +234,35 @@ async function cleanupOrphanedRecords(
             logger.debug(`Orphaned DNS record ${recordFqdn} (${record.type}) will be deleted in ${remainingMinutes} minutes`);
           }
         } else {
-          // Record is newly orphaned, mark it
-          logger.info(`🕒 Marking DNS record as orphaned (will be deleted after ${config.cleanupGracePeriod} minutes): ${recordFqdn} (${record.type})`);
-          await recordTracker.markRecordOrphaned(record);
-          newlyOrphanedCount++;
+          // Check if this record is app-managed before marking it as orphaned
+          let isAppManaged = false;
+
+          if (recordTracker.sqliteManager &&
+              recordTracker.sqliteManager.repository &&
+              recordTracker.sqliteManager.repository.isAppManaged) {
+            try {
+              isAppManaged = await recordTracker.sqliteManager.repository.isAppManaged(
+                config.dnsProvider, record.id
+              );
+            } catch (metadataError) {
+              logger.error(`Failed to check if record is app-managed: ${metadataError.message}`);
+            }
+          }
+
+          // Also check if the record has a Managed by comment (Cloudflare only)
+          const isLegacyManaged =
+            config.dnsProvider === 'cloudflare' &&
+            (record.comment === 'Managed by Traefik DNS Manager' ||
+             record.comment === 'Managed by TráfegoDNS');
+
+          // Only mark as orphaned if it's a record created by the app
+          if (isAppManaged || isLegacyManaged) {
+            logger.info(`🕒 Marking DNS record as orphaned (will be deleted after ${config.cleanupGracePeriod} minutes): ${recordFqdn} (${record.type})`);
+            await recordTracker.markRecordOrphaned(record);
+            newlyOrphanedCount++;
+          } else {
+            logger.debug(`Skipping orphan marking for non-app-managed record: ${recordFqdn} (${record.type})`);
+          }
         }
       } else {
         // Record is active again (found in active hostnames), unmark as orphaned if needed

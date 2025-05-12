@@ -20,24 +20,40 @@ class DatabaseMigrator {
   async migrateFromJson() {
     logger.info('Starting migration from JSON files to SQLite database');
 
-    try {
-      let totalMigrated = 0;
+    let totalMigrated = 0;
 
-      // Migrate DNS records first
-      const dnsRecordsMigrated = await this.migrateDnsRecords();
-      totalMigrated += dnsRecordsMigrated;
+    try {
+      // Migrate DNS records first, but don't let errors stop the whole process
+      try {
+        const dnsRecordsMigrated = await this.migrateDnsRecords();
+        totalMigrated += dnsRecordsMigrated;
+      } catch (dnsError) {
+        logger.error(`DNS records migration failed but continuing with other migrations: ${dnsError.message}`);
+      }
 
       // Migrate users
-      const usersMigrated = await this.migrateUsers();
-      totalMigrated += usersMigrated;
+      try {
+        const usersMigrated = await this.migrateUsers();
+        totalMigrated += usersMigrated;
+      } catch (usersError) {
+        logger.error(`Users migration failed but continuing with other migrations: ${usersError.message}`);
+      }
 
       // Migrate tokens
-      const tokensMigrated = await this.migrateRevokedTokens();
-      totalMigrated += tokensMigrated;
+      try {
+        const tokensMigrated = await this.migrateRevokedTokens();
+        totalMigrated += tokensMigrated;
+      } catch (tokensError) {
+        logger.error(`Tokens migration failed but continuing with other migrations: ${tokensError.message}`);
+      }
 
       // Migrate DNS tracked records
-      const dnsTrackedRecordsMigrated = await this.migrateDnsTrackedRecords();
-      totalMigrated += dnsTrackedRecordsMigrated;
+      try {
+        const dnsTrackedRecordsMigrated = await this.migrateDnsTrackedRecords();
+        totalMigrated += dnsTrackedRecordsMigrated;
+      } catch (dnsTrackedError) {
+        logger.error(`DNS tracked records migration failed but continuing: ${dnsTrackedError.message}`);
+      }
 
       // Create a marker file to indicate successful migration
       if (totalMigrated > 0) {

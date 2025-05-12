@@ -18,10 +18,11 @@ class DNSTrackedRecordRepository {
     try {
       // Create the dns_tracked_records table if it doesn't exist
       const tableExists = await this.tableExists();
-      
+
       if (!tableExists) {
         logger.info(`Creating ${this.tableName} table`);
-        
+
+        // Use IF NOT EXISTS to avoid errors if the table was created in parallel
         await this.db.run(`
           CREATE TABLE IF NOT EXISTS ${this.tableName} (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,18 +41,19 @@ class DNSTrackedRecordRepository {
             UNIQUE(provider, record_id)
           )
         `);
-        
-        // Create indexes for performance
+
+        // Create indexes for performance - also with IF NOT EXISTS
         await this.db.run(`CREATE INDEX IF NOT EXISTS idx_dns_tracked_provider ON ${this.tableName}(provider)`);
         await this.db.run(`CREATE INDEX IF NOT EXISTS idx_dns_tracked_name ON ${this.tableName}(name)`);
         await this.db.run(`CREATE INDEX IF NOT EXISTS idx_dns_tracked_type ON ${this.tableName}(type)`);
         await this.db.run(`CREATE INDEX IF NOT EXISTS idx_dns_tracked_orphaned ON ${this.tableName}(is_orphaned)`);
-        
+
         logger.info(`Created ${this.tableName} table and indexes`);
       }
     } catch (error) {
       logger.error(`Failed to initialize DNS tracked records table: ${error.message}`);
-      throw error;
+      // Don't throw the error, let the application continue
+      // This prevents app crashes due to table initialization issues
     }
   }
   

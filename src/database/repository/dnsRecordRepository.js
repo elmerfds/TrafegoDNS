@@ -9,6 +9,68 @@ class DnsRecordRepository extends BaseRepository {
   constructor(db) {
     super(db);
     this.tableName = 'dns_records';
+    this.initialize();
+  }
+
+  /**
+   * Initialize the repository, creating tables if needed
+   */
+  async initialize() {
+    try {
+      // Check if table exists
+      const tableExists = await this.tableExists();
+
+      if (!tableExists) {
+        logger.info(`Creating ${this.tableName} table`);
+
+        await this.db.run(`
+          CREATE TABLE IF NOT EXISTS ${this.tableName} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider TEXT NOT NULL,
+            record_id TEXT NOT NULL,
+            type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            content TEXT,
+            ttl INTEGER,
+            proxied INTEGER DEFAULT 0,
+            is_orphaned INTEGER DEFAULT 0,
+            orphaned_at TEXT,
+            tracked_at TEXT NOT NULL,
+            updated_at TEXT,
+            fingerprint TEXT,
+            UNIQUE(provider, record_id)
+          )
+        `);
+
+        // Create indexes for performance
+        await this.db.run(`CREATE INDEX IF NOT EXISTS idx_dns_provider ON ${this.tableName}(provider)`);
+        await this.db.run(`CREATE INDEX IF NOT EXISTS idx_dns_name ON ${this.tableName}(name)`);
+        await this.db.run(`CREATE INDEX IF NOT EXISTS idx_dns_type ON ${this.tableName}(type)`);
+        await this.db.run(`CREATE INDEX IF NOT EXISTS idx_dns_orphaned ON ${this.tableName}(is_orphaned)`);
+
+        logger.info(`Created ${this.tableName} table and indexes`);
+      }
+    } catch (error) {
+      logger.error(`Failed to initialize ${this.tableName} table: ${error.message}`);
+    }
+  }
+
+  /**
+   * Check if the table exists
+   * @returns {Promise<boolean>} Whether the table exists
+   */
+  async tableExists() {
+    try {
+      const result = await this.db.get(`
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name=?
+      `, [this.tableName]);
+
+      return !!result;
+    } catch (error) {
+      logger.error(`Failed to check if table exists: ${error.message}`);
+      return false;
+    }
   }
 
   /**
