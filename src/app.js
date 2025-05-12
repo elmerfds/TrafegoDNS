@@ -40,44 +40,122 @@ async function start() {
       const MIGRATION_LOCK_FILE = path.join(DATA_DIR, '.migration.lock');
       const DB_FILE = path.join(DATA_DIR, 'trafegodns.db');
 
-      let skipInit = false;
-
-      // Check if database file exists but we might be in a concurrent initialization
-      if (fs.existsSync(DB_FILE) && fs.existsSync(MIGRATION_LOCK_FILE)) {
-        logger.warn('⚠️ Migration lock file detected, skipping database initialization to prevent transaction errors');
-        skipInit = true;
+      // Create the data directory if it doesn't exist
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+        logger.info(`Created data directory: ${DATA_DIR}`);
       }
+
+      // Remove any existing lock file to avoid deadlock on startup
+      if (fs.existsSync(MIGRATION_LOCK_FILE)) {
+        const stats = fs.statSync(MIGRATION_LOCK_FILE);
+        const lockAge = Date.now() - stats.mtimeMs;
+
+        if (lockAge > 60 * 1000) {
+          logger.warn('⚠️ Removing stale migration lock file from previous run');
+          fs.unlinkSync(MIGRATION_LOCK_FILE);
+        } else {
+          logger.warn('⚠️ Recent migration lock file detected, waiting for it to be released...');
+          // Wait for up to 10 seconds for the lock to be released
+          for (let i = 0; i < 20; i++) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            if (!fs.existsSync(MIGRATION_LOCK_FILE)) {
+              logger.info('✅ Migration lock file has been released');
+              break;
+            }
+            // If we've waited the full time, remove it
+            if (i === 19) {
+              logger.warn('⚠️ Forcibly removing migration lock file after timeout');
+              try {
+                fs.unlinkSync(MIGRATION_LOCK_FILE);
+              } catch (unlinkError) {
+                logger.error(`Error removing lock file: ${unlinkError.message}`);
+              }
+            }
+          }
+        }
+      }
+
+      // Now that we've cleared any stale locks, create our own lock file
+      // This ensures only one instance runs initialization
+      const timestamp = new Date().toISOString();
+      fs.writeFileSync(MIGRATION_LOCK_FILE, timestamp);
+      logger.info('✅ Created migration lock file to coordinate initialization');
 
       // Load database module
       const database = require('./database');
 
-      let initSuccess = false;
+      try {
+        // Force sequential initialization with retries and longer timeout
+        let initSuccess = false;
+        let attempts = 0;
+        const maxAttempts = 3;
 
-      if (skipInit) {
-        // Skip normal initialization to avoid transaction errors
-        // We'll just verify the database exists and assume it's valid
-        logger.info('🔍 Using existing database without full initialization');
-        // Set initialized flag to true
-        database.forceInitialized = true;
-        initSuccess = true;
-      } else {
-        // Normal initialization path
-        initSuccess = await database.initialize();
+        while (!initSuccess && attempts < maxAttempts) {
+          attempts++;
+
+          try {
+            logger.info(`🔍 Attempting database initialization (attempt ${attempts}/${maxAttempts})`);
+            initSuccess = await database.initialize();
+
+            if (initSuccess) {
+              logger.info('✅ SQLite database initialized successfully');
+              break;
+            } else {
+              logger.warn(`⚠️ Database initialization failed on attempt ${attempts}/${maxAttempts}`);
+              // Wait before retrying
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          } catch (initError) {
+            logger.error(`❌ Database initialization error: ${initError.message}`);
+            // Wait before retrying
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+
+        // If we couldn't initialize after all attempts
+        if (!initSuccess) {
+          logger.error('❌ SQLite database initialization failed after multiple attempts');
+          logger.error('❌ Application requires SQLite database to operate');
+          logger.error('❌ Please install SQLite or check database permissions');
+          logger.error('❌ For emergency recovery, run: /app/docker-s6/scripts/fix-sqlite.sh');
+
+          // Try to remove the lock file before exiting
+          try {
+            if (fs.existsSync(MIGRATION_LOCK_FILE)) {
+              fs.unlinkSync(MIGRATION_LOCK_FILE);
+            }
+          } catch (unlinkError) {
+            logger.error(`Failed to release lock file: ${unlinkError.message}`);
+          }
+
+          process.exit(1);
+        }
+
+        // Remove the lock file now that initialization is complete
+        try {
+          if (fs.existsSync(MIGRATION_LOCK_FILE)) {
+            fs.unlinkSync(MIGRATION_LOCK_FILE);
+            logger.info('✅ Removed migration lock file after successful initialization');
+          }
+        } catch (unlinkError) {
+          logger.warn(`⚠️ Failed to remove migration lock file: ${unlinkError.message}`);
+        }
+      } catch (error) {
+        // Try to remove the lock file on error
+        try {
+          if (fs.existsSync(MIGRATION_LOCK_FILE)) {
+            fs.unlinkSync(MIGRATION_LOCK_FILE);
+          }
+        } catch (unlinkError) {
+          logger.error(`Failed to release lock file: ${unlinkError.message}`);
+        }
+        throw error;
       }
-
-      if (!initSuccess) {
-        logger.error('❌ SQLite database initialization failed');
-        logger.error('❌ Application requires SQLite database to operate');
-        logger.error('❌ Please install SQLite or check database permissions');
-        logger.error('❌ For emergency recovery, run: /app/docker-s6/scripts/fix-sqlite-transaction.sh');
-        process.exit(1);
-      }
-
-      logger.info('✅ SQLite database initialized successfully');
     } catch (dbError) {
       logger.error(`❌ SQLite database initialization error: ${dbError.message}`);
       logger.error('❌ Application cannot operate without SQLite database');
-      logger.error('❌ For emergency recovery, run: /app/docker-s6/scripts/fix-sqlite-transaction.sh');
+      logger.error('❌ For emergency recovery, run: /app/docker-s6/scripts/fix-sqlite.sh');
       process.exit(1);
     }
 
