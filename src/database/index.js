@@ -9,10 +9,60 @@ const path = require('path');
 // Global state
 let initialized = false;
 let dbInitializing = false;
+let migrationInProgress = false;
 
 // Configuration
 const DATA_DIR = path.join(process.env.CONFIG_DIR || '/config', 'data');
 const DB_FILE = path.join(DATA_DIR, 'trafegodns.db');
+const MIGRATION_LOCK_FILE = path.join(DATA_DIR, '.migration.lock');
+
+// Helper function to check if migration is in progress
+function checkMigrationLock() {
+  try {
+    if (fs.existsSync(MIGRATION_LOCK_FILE)) {
+      // Check if lock is stale (older than 5 minutes)
+      const stats = fs.statSync(MIGRATION_LOCK_FILE);
+      const lockAge = Date.now() - stats.mtimeMs;
+      if (lockAge > 5 * 60 * 1000) {
+        // Lock is stale, remove it
+        logger.warn('Removing stale migration lock file');
+        fs.unlinkSync(MIGRATION_LOCK_FILE);
+        return false;
+      }
+      return true;
+    }
+    return false;
+  } catch (error) {
+    logger.error(`Error checking migration lock: ${error.message}`);
+    return false;
+  }
+}
+
+// Helper function to create migration lock
+function createMigrationLock() {
+  try {
+    fs.writeFileSync(MIGRATION_LOCK_FILE, new Date().toISOString());
+    migrationInProgress = true;
+    return true;
+  } catch (error) {
+    logger.error(`Error creating migration lock: ${error.message}`);
+    return false;
+  }
+}
+
+// Helper function to release migration lock
+function releaseMigrationLock() {
+  try {
+    if (fs.existsSync(MIGRATION_LOCK_FILE)) {
+      fs.unlinkSync(MIGRATION_LOCK_FILE);
+    }
+    migrationInProgress = false;
+    return true;
+  } catch (error) {
+    logger.error(`Error releasing migration lock: ${error.message}`);
+    return false;
+  }
+}
 
 // Try to determine which SQLite implementation to use
 let db;
@@ -140,33 +190,77 @@ async function initialize(migrateJson = true) {
       }
     }
 
-    // Initialize database connection
-    logger.debug('Calling db.initialize()...');
-    const dbInitSuccess = await db.initialize();
+    // Check if another instance is running migration
+    if (checkMigrationLock()) {
+      logger.info('Migration already in progress by another process, skipping...');
+      // We'll let the database connect without running migrations
+      // Modified to connect to database without migrations
+      try {
+        // Initialize the db object directly, but tell it to skip migrations
+        logger.debug('Connecting to database without running migrations...');
+        if (typeof db.connectWithoutMigrations === 'function') {
+          // If the db implementation has the connectWithoutMigrations function
+          await db.connectWithoutMigrations();
+        } else {
+          // For compatibility with other implementations
+          db.skipMigrations = true;
+          await db.initialize();
+          db.skipMigrations = false;
+        }
 
-    if (!dbInitSuccess) {
-      logger.error('Failed to initialize SQLite database');
-      logger.warn('Some features may not work without SQLite');
-      dbInitializing = false;
-      return false;
+        // Safe to continue without migration
+        initialized = true;
+        dbInitializing = false;
+        logger.info('Connected to database successfully (migrations skipped)');
+        return true;
+      } catch (connectError) {
+        logger.error(`Failed to connect to database without migrations: ${connectError.message}`);
+        initialized = false;
+        dbInitializing = false;
+        return false;
+      }
     }
 
-    // Perform one-time migration from JSON if needed and files exist
-    if (migrateJson) {
-      try {
-        // Perform data migration if needed
-        logger.debug('Checking for JSON data to migrate...');
-        const migrationResult = await migrator.migrateFromJson();
+    // Acquire migration lock
+    createMigrationLock();
 
-        if (migrationResult > 0) {
-          logger.info(`Successfully migrated ${migrationResult} records from JSON to SQLite`);
-          logger.info('All data is now stored in SQLite database. JSON files are kept as backup.');
-        }
-      } catch (migrationError) {
-        // Log migration error but continue since the database itself is initialized
-        logger.warn(`Could not migrate from JSON: ${migrationError.message}`);
-        logger.warn('Will continue with SQLite database without migration');
+    try {
+      // Initialize database connection with full migration support
+      logger.debug('Calling db.initialize() with migrations...');
+      const dbInitSuccess = await db.initialize();
+
+      if (!dbInitSuccess) {
+        logger.error('Failed to initialize SQLite database');
+        logger.warn('Some features may not work without SQLite');
+        releaseMigrationLock();
+        dbInitializing = false;
+        return false;
       }
+
+      // Perform one-time migration from JSON if needed and files exist
+      if (migrateJson) {
+        try {
+          // Perform data migration if needed
+          logger.debug('Checking for JSON data to migrate...');
+          const migrationResult = await migrator.migrateFromJson();
+
+          if (migrationResult > 0) {
+            logger.info(`Successfully migrated ${migrationResult} records from JSON to SQLite`);
+            logger.info('All data is now stored in SQLite database. JSON files are kept as backup.');
+          }
+        } catch (migrationError) {
+          // Log migration error but continue since the database itself is initialized
+          logger.warn(`Could not migrate from JSON: ${migrationError.message}`);
+          logger.warn('Will continue with SQLite database without migration');
+        }
+      }
+
+      // Release migration lock after all migrations are complete
+      releaseMigrationLock();
+    } catch (error) {
+      // Make sure to release the lock on error
+      releaseMigrationLock();
+      throw error;
     }
 
     // Set initialized flag

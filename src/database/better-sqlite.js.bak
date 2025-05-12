@@ -13,8 +13,6 @@ class BetterSQLite {
     this.isConnected = false;
     this.isInitialized = false;
     this.inTransaction = false;
-    this.skipMigrations = false;
-    this._initializing = false;
     this.dataDir = path.join(process.env.CONFIG_DIR || '/config', 'data');
     this.dbPath = path.join(this.dataDir, 'trafegodns.db');
     
@@ -26,62 +24,6 @@ class BetterSQLite {
       } catch (error) {
         logger.error(`Failed to create database directory: ${error.message}`);
       }
-    }
-  }
-
-  /**
-   * Connect to the database without running migrations
-   * Used when another process is already running migrations
-   * @returns {Promise<boolean>} Success status
-   */
-  async connectWithoutMigrations() {
-    if (this.isInitialized) return true;
-    
-    this._initializing = true;
-    
-    try {
-      // Try to dynamically import better-sqlite3
-      if (!this.SQLite) {
-        try {
-          const { default: SQLite } = await import('better-sqlite3');
-          this.SQLite = SQLite;
-        } catch (importError) {
-          logger.warn(`Could not import better-sqlite3: ${importError.message}`);
-          logger.warn('Falling back to JSON storage');
-          this._initializing = false;
-          return false;
-        }
-      }
-      
-      // Open database connection
-      this.db = new this.SQLite(this.dbPath, { 
-        verbose: process.env.DEBUG_MODE === 'true' ? logger.debug : null
-      });
-      
-      // Enable foreign keys
-      this.db.pragma('foreign_keys = ON');
-      
-      // Set WAL journal mode for better concurrency
-      this.db.pragma('journal_mode = WAL');
-      
-      // Reasonable cache size
-      this.db.pragma('cache_size = -4000');
-      
-      // Skip migrations completely
-      logger.info('Skipping database migrations (another process is handling them)');
-      
-      this.isConnected = true;
-      this.isInitialized = true;
-      this._initializing = false;
-      logger.info(`Successfully connected to SQLite database at ${this.dbPath} (no migrations)`);
-      
-      return true;
-    } catch (error) {
-      logger.error(`Failed to connect to database: ${error.message}`);
-      this.isConnected = false;
-      this.isInitialized = false;
-      this._initializing = false;
-      return false;
     }
   }
 
@@ -107,12 +49,6 @@ class BetterSQLite {
     this._initializing = true;
 
     try {
-      // Check if we should skip migrations (set by parent module)
-      if (this.skipMigrations) {
-        logger.info('skipMigrations flag set, connecting without migrations');
-        return await this.connectWithoutMigrations();
-      }
-      
       // Try to dynamically import better-sqlite3
       // If it fails, we'll return false and the app will use JSON storage
       try {
@@ -124,33 +60,33 @@ class BetterSQLite {
         this._initializing = false;
         return false;
       }
-      
+
       // Open database connection
-      this.db = new this.SQLite(this.dbPath, { 
+      this.db = new this.SQLite(this.dbPath, {
         verbose: process.env.DEBUG_MODE === 'true' ? logger.debug : null
       });
-      
+
       // Enable foreign keys
       this.db.pragma('foreign_keys = ON');
-      
+
       // Set WAL journal mode for better concurrency
       this.db.pragma('journal_mode = WAL');
-      
+
       // Reasonable cache size
       this.db.pragma('cache_size = -4000');
-      
+
       // Check if migration is necessary
       const needsMigration = await this.checkMigration();
-      
+
       if (needsMigration) {
         logger.info('Database needs migration, running migrations...');
-        
+
         // Make sure we're not in a transaction when starting migrations
         if (this.inTransaction) {
           logger.warn('Transaction already in progress before migrations, committing first');
           await this.commit();
         }
-        
+
         // Run migrations with enhanced error handling
         try {
           await this.runMigrations();
@@ -164,12 +100,12 @@ class BetterSQLite {
           throw migrationError;
         }
       }
-      
+
       this.isConnected = true;
       this.isInitialized = true;
       this._initializing = false;
       logger.info(`Successfully connected to SQLite database at ${this.dbPath}`);
-      
+
       return true;
     } catch (error) {
       logger.error(`Failed to initialize database: ${error.message}`);
@@ -177,7 +113,7 @@ class BetterSQLite {
       this.isConnected = false;
       this.isInitialized = false;
       this._initializing = false;
-      
+
       // Make sure we're not left in a transaction state
       if (this.inTransaction) {
         try {
@@ -187,7 +123,7 @@ class BetterSQLite {
           logger.error(`Failed to rollback transaction: ${rollbackError.message}`);
         }
       }
-      
+
       return false;
     }
   }
@@ -228,12 +164,12 @@ class BetterSQLite {
   async runMigrations() {
     // Check if a transaction is already in progress
     const wasInTransaction = this.inTransaction;
-    
+
     if (!wasInTransaction) {
       // Start a transaction if one isn't already in progress
       await this.beginTransaction();
     }
-    
+
     try {
       // Create migrations table if it doesn't exist
       this.db.exec(`
@@ -244,26 +180,26 @@ class BetterSQLite {
           applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
-      
+
       // Run migrations in order - createTables will handle its own transaction state
       await this.createTables();
-      
+
       // Record the migration
       const stmt = this.db.prepare('INSERT INTO schema_migrations (version, name) VALUES (?, ?)');
       stmt.run(2, 'add_last_processed_and_managed_columns');
-      
+
       // Commit the transaction if we started it
       if (!wasInTransaction && this.inTransaction) {
         await this.commit();
       }
-      
+
       logger.info('Database migrations completed successfully');
     } catch (error) {
       // Rollback the transaction if we started it and it hasn't been rolled back
       if (!wasInTransaction && this.inTransaction) {
         await this.rollback();
       }
-      
+
       logger.error(`Error running migrations: ${error.message}`);
       throw error;
     }
@@ -283,7 +219,7 @@ class BetterSQLite {
       this.inTransaction = true;
       logger.debug('Started transaction for database table creation');
     }
-    
+
     try {
       // DNS Records table
       this.db.exec(`
@@ -305,14 +241,14 @@ class BetterSQLite {
           UNIQUE(provider, record_id)
         )
       `);
-      
+
       // Create indexes for dns_records
       this.db.exec(`
         CREATE INDEX IF NOT EXISTS idx_dns_records_provider ON dns_records(provider);
         CREATE INDEX IF NOT EXISTS idx_dns_records_name ON dns_records(name);
         CREATE INDEX IF NOT EXISTS idx_dns_records_is_orphaned ON dns_records(is_orphaned);
       `);
-      
+
       // Users table
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS users (
@@ -325,7 +261,7 @@ class BetterSQLite {
           last_login TIMESTAMP
         )
       `);
-      
+
       // Revoked tokens table
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS revoked_tokens (
@@ -335,7 +271,7 @@ class BetterSQLite {
           expires_at TIMESTAMP NOT NULL
         )
       `);
-      
+
       // Settings table
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS settings (
@@ -345,7 +281,7 @@ class BetterSQLite {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
-      
+
       // Audit logs table
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS audit_logs (
@@ -359,7 +295,7 @@ class BetterSQLite {
           timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
-      
+
       // DNS tracked records table
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS dns_tracked_records (
@@ -379,7 +315,7 @@ class BetterSQLite {
           UNIQUE(provider, record_id)
         )
       `);
-      
+
       // Create indexes for dns_tracked_records
       this.db.exec(`
         CREATE INDEX IF NOT EXISTS idx_dns_tracked_provider ON dns_tracked_records(provider);
@@ -387,7 +323,7 @@ class BetterSQLite {
         CREATE INDEX IF NOT EXISTS idx_dns_tracked_type ON dns_tracked_records(type);
         CREATE INDEX IF NOT EXISTS idx_dns_tracked_orphaned ON dns_tracked_records(is_orphaned);
       `);
-      
+
       // Only commit if we started the transaction
       if (!this.inTransaction) {
         logger.error('Transaction flag inconsistency in createTables');
