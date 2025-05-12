@@ -150,11 +150,57 @@ class DNSTrackedRecordRepository {
         SELECT id FROM ${this.tableName}
         WHERE provider = ? AND record_id = ?
       `, [provider, recordId]);
-      
+
       return !!record;
     } catch (error) {
       logger.error(`Failed to check if record is tracked: ${error.message}`);
       return false;
+    }
+  }
+
+  /**
+   * Check if a record is tracked by type and name
+   * @param {string} provider - DNS provider name
+   * @param {string} type - Record type
+   * @param {string} name - Record name
+   * @returns {Promise<boolean>} - Whether the record is tracked
+   */
+  async isTrackedByTypeAndName(provider, type, name) {
+    try {
+      const record = await this.db.get(`
+        SELECT id FROM ${this.tableName}
+        WHERE provider = ? AND type = ? AND name = ?
+      `, [provider, type, name]);
+
+      return !!record;
+    } catch (error) {
+      logger.error(`Failed to check if record is tracked by type and name: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Update record ID by type and name
+   * @param {string} provider - DNS provider name
+   * @param {string} type - Record type
+   * @param {string} name - Record name
+   * @param {string} newRecordId - New record ID
+   * @returns {Promise<boolean>} - Success status
+   */
+  async updateRecordByTypeAndName(provider, type, name, newRecordId) {
+    try {
+      const now = new Date().toISOString();
+
+      const result = await this.db.run(`
+        UPDATE ${this.tableName}
+        SET record_id = ?, updated_at = ?
+        WHERE provider = ? AND type = ? AND name = ?
+      `, [newRecordId, now, provider, type, name]);
+
+      return result.changes > 0;
+    } catch (error) {
+      logger.error(`Failed to update record by type and name: ${error.message}`);
+      throw error;
     }
   }
   

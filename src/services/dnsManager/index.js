@@ -47,10 +47,13 @@ class DNSManager {
     try {
       logger.debug('Initializing DNS Manager...');
       await this.dnsProvider.init();
-      
+
+      // Synchronize tracker with active records
+      await this.synchronizeRecordTracker();
+
       // Process managed hostnames during initialization
       await this.processManagedHostnames();
-      
+
       logger.success('DNS Manager initialized successfully');
       return true;
     } catch (error) {
@@ -178,6 +181,46 @@ class DNSManager {
    */
   async processManagedHostnames() {
     return await processManagedHostnames(this.dnsProvider, this.recordTracker);
+  }
+
+  /**
+   * Synchronize the record tracker with all active records from the provider
+   * This ensures all existing records are tracked properly
+   */
+  async synchronizeRecordTracker() {
+    try {
+      // Get all active records from the provider
+      logger.info('Synchronizing DNS record tracker with active records');
+      const activeRecords = await this.dnsProvider.getRecordsFromCache(true);
+
+      if (!activeRecords || activeRecords.length === 0) {
+        logger.warn('No active records found from provider, skipping tracker synchronization');
+        return 0;
+      }
+
+      // Track all active records
+      const newlyTrackedCount = await this.recordTracker.trackAllActiveRecords(activeRecords);
+
+      // Log the results
+      if (newlyTrackedCount > 0) {
+        logger.info(`Added ${newlyTrackedCount} previously untracked DNS records to tracker`);
+        this.eventBus.publish(EventTypes.INFO_EVENT, {
+          source: 'DNSManager.synchronizeRecordTracker',
+          message: `Added ${newlyTrackedCount} previously untracked DNS records to tracker`
+        });
+      } else {
+        logger.debug('All active DNS records are already being tracked');
+      }
+
+      return newlyTrackedCount;
+    } catch (error) {
+      logger.error(`Failed to synchronize record tracker: ${error.message}`);
+      this.eventBus.publish(EventTypes.ERROR_OCCURRED, {
+        source: 'DNSManager.synchronizeRecordTracker',
+        error: error.message
+      });
+      return 0;
+    }
   }
 }
 

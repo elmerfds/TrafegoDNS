@@ -141,7 +141,16 @@ class SQLiteRecordManager {
       return false;
     }
 
+    if (!record || !record.id) {
+      logger.warn(`Cannot track record without ID in SQLite: ${JSON.stringify(record)}`);
+      return false;
+    }
+
     try {
+      // Get record key for better identification
+      const recordKey = `${record.type}:${record.name}`;
+      logger.debug(`Tracking record in SQLite: ${recordKey} (ID: ${record.id})`);
+
       await this.repository.trackRecord({
         provider,
         record_id: record.id,
@@ -152,9 +161,27 @@ class SQLiteRecordManager {
         proxied: !!record.proxied,
         tracked_at: record.tracked_at || new Date().toISOString()
       });
-      
+
       return true;
     } catch (error) {
+      // If it's a constraint error (duplicate), try to update instead
+      if (error.message && error.message.includes('UNIQUE constraint failed')) {
+        try {
+          logger.debug(`Record already exists, attempting to update: ${record.name} (${record.type})`);
+
+          // Check if record exists with a different ID
+          const exists = await this.repository.isTrackedByTypeAndName(provider, record.type, record.name);
+          if (exists) {
+            // Try to update the existing record
+            logger.debug(`Found existing record with same type and name, updating ID: ${record.name} (${record.type})`);
+            await this.repository.updateRecordByTypeAndName(provider, record.type, record.name, record.id);
+            return true;
+          }
+        } catch (updateError) {
+          logger.error(`Failed to update existing record in SQLite: ${updateError.message}`);
+        }
+      }
+
       logger.error(`Failed to track record in SQLite: ${error.message}`);
       return false;
     }

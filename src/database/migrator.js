@@ -300,11 +300,23 @@ class DatabaseMigrator {
   async migrateDnsTrackedRecords() {
     const trackerFile = path.join(this.dataDir, 'dns-records.json');
     const legacyTrackerFile = path.join(process.cwd(), 'dns-records.json');
+    let totalMigrated = 0;
 
     // Check if file exists
     if (!fs.existsSync(trackerFile) && !fs.existsSync(legacyTrackerFile)) {
-      logger.info('No DNS tracked records JSON file found, skipping migration');
-      return 0;
+      logger.info('No DNS tracked records JSON file found, attempting to migrate from active DNS records');
+
+      // Even without a JSON file, we'll try to migrate from active DNS records
+      try {
+        totalMigrated = await this.migrateActiveRecords();
+        if (totalMigrated > 0) {
+          logger.info(`Migrated ${totalMigrated} active DNS records to tracker`);
+        }
+        return totalMigrated;
+      } catch (activeError) {
+        logger.error(`Failed to migrate active DNS records: ${activeError.message}`);
+        return 0;
+      }
     }
 
     try {
@@ -337,6 +349,8 @@ class DatabaseMigrator {
       const migratedCount = await this.repositories.dnsTrackedRecord.migrateFromJson(jsonData);
       logger.info(`Migrated ${migratedCount} DNS tracked records from JSON`);
 
+      totalMigrated += migratedCount;
+
       // Keep JSON file as backup with timestamp
       if (migratedCount > 0) {
         const backupFile = `${sourceFile}.bak.${Date.now()}`;
@@ -348,10 +362,101 @@ class DatabaseMigrator {
         fs.writeFileSync(markerFile, new Date().toISOString());
       }
 
-      return migratedCount;
+      // As a final step, try to also migrate any active DNS records that weren't in the JSON file
+      try {
+        const additionalMigrated = await this.migrateActiveRecords();
+        if (additionalMigrated > 0) {
+          logger.info(`Migrated ${additionalMigrated} additional active DNS records to tracker`);
+          totalMigrated += additionalMigrated;
+        }
+      } catch (activeError) {
+        logger.warn(`Failed to migrate additional active records: ${activeError.message}`);
+      }
+
+      return totalMigrated;
     } catch (error) {
       logger.error(`Failed to migrate DNS tracked records: ${error.message}`);
+
+      // Even if JSON migration fails, try active records
+      try {
+        logger.info('Attempting to migrate from active DNS records instead');
+        const activeMigrated = await this.migrateActiveRecords();
+        if (activeMigrated > 0) {
+          logger.info(`Migrated ${activeMigrated} active DNS records to tracker`);
+          return activeMigrated;
+        }
+      } catch (activeError) {
+        logger.error(`Failed to migrate active DNS records: ${activeError.message}`);
+      }
+
       return 0; // Return 0 instead of re-throwing to avoid stopping other migrations
+    }
+  }
+
+  /**
+   * Migrate active DNS records from the DNS repository to the tracking system
+   * @returns {Promise<number>} - Number of migrated records
+   */
+  async migrateActiveRecords() {
+    try {
+      // Check if both repositories exist
+      if (!this.repositories.dnsRecord || !this.repositories.dnsTrackedRecord) {
+        logger.warn('Required repositories not available for active record migration');
+        return 0;
+      }
+
+      logger.info('Migrating active DNS records to tracking system');
+
+      // Get all active DNS records
+      const dnsRecords = await this.repositories.dnsRecord.findAll();
+
+      if (!dnsRecords || dnsRecords.length === 0) {
+        logger.info('No active DNS records found to migrate to tracker');
+        return 0;
+      }
+
+      logger.info(`Found ${dnsRecords.length} active DNS records for migration to tracker`);
+
+      // Track each active record in the tracking system
+      let migratedCount = 0;
+
+      await this.db.beginTransaction();
+
+      try {
+        for (const record of dnsRecords) {
+          // Check if this record is already being tracked
+          const isTracked = await this.repositories.dnsTrackedRecord.isTracked(
+            record.provider,
+            record.record_id
+          );
+
+          if (!isTracked) {
+            await this.repositories.dnsTrackedRecord.trackRecord({
+              provider: record.provider,
+              record_id: record.record_id,
+              type: record.type,
+              name: record.name,
+              content: record.content,
+              ttl: record.ttl,
+              proxied: record.proxied,
+              tracked_at: record.created_at || new Date().toISOString()
+            });
+
+            migratedCount++;
+          }
+        }
+
+        await this.db.commit();
+        logger.info(`Successfully migrated ${migratedCount} active DNS records to tracking system`);
+
+        return migratedCount;
+      } catch (transactionError) {
+        await this.db.rollback();
+        throw transactionError;
+      }
+    } catch (error) {
+      logger.error(`Failed to migrate active DNS records: ${error.message}`);
+      return 0;
     }
   }
 }

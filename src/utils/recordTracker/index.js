@@ -179,14 +179,29 @@ class RecordTracker {
    * Track a new DNS record
    */
   async trackRecord(record) {
+    // Check if we have a valid record
+    if (!record || !record.id || !record.name || !record.type) {
+      logger.warn(`Cannot track invalid record: ${JSON.stringify(record)}`);
+      return false;
+    }
+
+    // Add provider if not present (using the current provider)
+    const recordToTrack = { ...record };
+    if (!recordToTrack.provider) {
+      recordToTrack.provider = this.provider;
+    }
+
     // Try to use SQLite first if available
     if (this.usingSQLite && this.sqliteManager) {
       try {
-        const success = await this.sqliteManager.trackRecord(this.provider, record);
+        const success = await this.sqliteManager.trackRecord(this.provider, recordToTrack);
         if (success) {
           // Also update in-memory data
-          trackRecordOperation(this.data, this.trackerFile, this.provider, record);
+          trackRecordOperation(this.data, this.trackerFile, this.provider, recordToTrack);
+          logger.debug(`Successfully tracked ${recordToTrack.type} record for ${recordToTrack.name} in SQLite`);
           return true;
+        } else {
+          logger.warn(`Failed to track record in SQLite: ${recordToTrack.name} (${recordToTrack.type})`);
         }
       } catch (error) {
         logger.error(`Failed to track record in SQLite: ${error.message}`);
@@ -195,7 +210,11 @@ class RecordTracker {
     }
 
     // Fall back to JSON storage
-    return trackRecordOperation(this.data, this.trackerFile, this.provider, record);
+    const result = trackRecordOperation(this.data, this.trackerFile, this.provider, recordToTrack);
+    if (result) {
+      logger.debug(`Successfully tracked ${recordToTrack.type} record for ${recordToTrack.name} in JSON`);
+    }
+    return result;
   }
 
   /**
@@ -375,6 +394,46 @@ class RecordTracker {
    */
   getCurrentProviderRecords() {
     return getCurrentProviderRecords(this.data, this.provider);
+  }
+
+  /**
+   * Track all active records from the provider
+   * This is useful for bootstrapping the tracker with existing records
+   * @param {Array<Object>} records - Array of records from the provider
+   * @returns {Promise<number>} - Number of newly tracked records
+   */
+  async trackAllActiveRecords(records) {
+    if (!records || !Array.isArray(records) || records.length === 0) {
+      logger.debug('No active records to track');
+      return 0;
+    }
+
+    logger.info(`Tracking ${records.length} active DNS records`);
+    let newlyTrackedCount = 0;
+
+    for (const record of records) {
+      if (!record || !record.id || !record.type || !record.name) {
+        continue;
+      }
+
+      try {
+        // Check if this record is already tracked
+        const isAlreadyTracked = await this.isTracked(record);
+
+        if (!isAlreadyTracked) {
+          // Track the record
+          const success = await this.trackRecord(record);
+          if (success) {
+            newlyTrackedCount++;
+          }
+        }
+      } catch (error) {
+        logger.error(`Failed to track active record ${record.name} (${record.type}): ${error.message}`);
+      }
+    }
+
+    logger.info(`Tracked ${newlyTrackedCount} new active DNS records`);
+    return newlyTrackedCount;
   }
 }
 
