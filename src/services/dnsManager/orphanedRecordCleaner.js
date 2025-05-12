@@ -4,6 +4,12 @@
  */
 const logger = require('../../utils/logger');
 const EventTypes = require('../../events/EventTypes');
+const {
+  normalizeHostname,
+  createHostnameMap,
+  findMatchingHostname,
+  isAppManagedRecord
+} = require('../../utils/recordTracker/recordMatcher');
 
 /**
  * Clean up orphaned DNS records
@@ -28,8 +34,11 @@ async function cleanupOrphanedRecords(
     // Get all DNS records for our zone (from cache when possible)
     const allRecords = await dnsProvider.getRecordsFromCache(true); // Force refresh
 
-    // Normalize active hostnames for comparison
-    const normalizedActiveHostnames = new Set(activeHostnames.map(host => host.toLowerCase()));
+    // Create a map of active hostnames with variations for better matching
+    const hostnameMap = createHostnameMap(activeHostnames, config.getProviderDomain());
+
+    // Normalize active hostnames for backward compatibility with existing code
+    const normalizedActiveHostnames = new Set(activeHostnames.map(host => normalizeHostname(host)));
 
     // Log all active hostnames in trace mode
     logger.trace(`Active hostnames: ${Array.from(normalizedActiveHostnames).join(', ')}`);
@@ -140,9 +149,14 @@ async function cleanupOrphanedRecords(
         continue;
       }
       
-      // Check if this record is still active
-      if (!normalizedActiveHostnames.has(recordFqdn)) {
-        // Check if the record was already marked as orphaned
+      // Check if this record is still active using improved matching
+      const matchingHostname = findMatchingHostname(record, hostnameMap, config.getProviderDomain());
+
+      // If no match found with improved algorithm, use the legacy check as fallback
+      const isActive = matchingHostname !== null || normalizedActiveHostnames.has(recordFqdn);
+
+      if (!isActive) {
+        // Record is not active - check if it was already marked as orphaned
         if (await recordTracker.isRecordOrphaned(record)) {
           // Check if grace period has elapsed
           const orphanedTime = await recordTracker.getRecordOrphanedTime(record);
@@ -185,29 +199,11 @@ async function cleanupOrphanedRecords(
             
             try {
               // IMPORTANT: Only delete records that were created by the app
-              // First check if this record is app-managed through metadata
-              let isAppManaged = false;
-
-              if (recordTracker.sqliteManager &&
-                  recordTracker.sqliteManager.repository &&
-                  recordTracker.sqliteManager.repository.isAppManaged) {
-                try {
-                  isAppManaged = await recordTracker.sqliteManager.repository.isAppManaged(
-                    config.dnsProvider, record.id
-                  );
-                } catch (metadataError) {
-                  logger.error(`Failed to check if record is app-managed: ${metadataError.message}`);
-                }
-              }
-
-              // Also check if the record has a Managed by comment (Cloudflare only)
-              const isLegacyManaged =
-                config.dnsProvider === 'cloudflare' &&
-                (record.comment === 'Managed by Traefik DNS Manager' ||
-                record.comment === 'Managed by TráfegoDNS');
+              // Check if this record is app-managed
+              const isAppManaged = await isAppManagedRecord(record, recordTracker, config.dnsProvider);
 
               // Only delete if we're sure this is a record created by the app
-              if (isAppManaged || isLegacyManaged) {
+              if (isAppManaged) {
                 logger.info(`🗑️ Deleting DNS record: ${displayName} (${record.type})`);
                 await dnsProvider.deleteRecord(record.id);
 
@@ -235,28 +231,10 @@ async function cleanupOrphanedRecords(
           }
         } else {
           // Check if this record is app-managed before marking it as orphaned
-          let isAppManaged = false;
-
-          if (recordTracker.sqliteManager &&
-              recordTracker.sqliteManager.repository &&
-              recordTracker.sqliteManager.repository.isAppManaged) {
-            try {
-              isAppManaged = await recordTracker.sqliteManager.repository.isAppManaged(
-                config.dnsProvider, record.id
-              );
-            } catch (metadataError) {
-              logger.error(`Failed to check if record is app-managed: ${metadataError.message}`);
-            }
-          }
-
-          // Also check if the record has a Managed by comment (Cloudflare only)
-          const isLegacyManaged =
-            config.dnsProvider === 'cloudflare' &&
-            (record.comment === 'Managed by Traefik DNS Manager' ||
-             record.comment === 'Managed by TráfegoDNS');
+          const isAppManaged = await isAppManagedRecord(record, recordTracker, config.dnsProvider);
 
           // Only mark as orphaned if it's a record created by the app
-          if (isAppManaged || isLegacyManaged) {
+          if (isAppManaged) {
             logger.info(`🕒 Marking DNS record as orphaned (will be deleted after ${config.cleanupGracePeriod} minutes): ${recordFqdn} (${record.type})`);
             await recordTracker.markRecordOrphaned(record);
             newlyOrphanedCount++;

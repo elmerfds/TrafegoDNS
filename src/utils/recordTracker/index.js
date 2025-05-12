@@ -69,17 +69,51 @@ class RecordTracker {
     try {
       const database = require('../../database');
 
-      if (database && database.isInitialized()) {
-        this.sqliteManager = new SQLiteRecordManager(database);
-        this.usingSQLite = this.sqliteManager.initialize();
+      // First check - wait up to 5 seconds for database to initialize if needed
+      if (database) {
+        if (!database.isInitialized()) {
+          logger.info('Waiting for SQLite database to initialize...');
 
-        if (this.usingSQLite) {
-          logger.info('DNS record tracker using SQLite for storage');
+          // Try up to 10 times with 500ms delay (5 seconds total)
+          for (let i = 0; i < 10; i++) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            if (database.isInitialized()) {
+              logger.info('SQLite database initialized successfully after waiting');
+              break;
+            }
+          }
+        }
+
+        // Try to initialize the SQLite manager
+        if (database.isInitialized()) {
+          this.sqliteManager = new SQLiteRecordManager(database);
+
+          // Wait for repository to be available if needed
+          if (!database.repositories.dnsTrackedRecord) {
+            logger.info('Waiting for SQLite repositories to initialize...');
+
+            // Try up to 5 times with 500ms delay
+            for (let i = 0; i < 5; i++) {
+              await new Promise(resolve => setTimeout(resolve, 500));
+              if (database.repositories.dnsTrackedRecord) {
+                this.sqliteManager = new SQLiteRecordManager(database);
+                break;
+              }
+            }
+          }
+
+          this.usingSQLite = this.sqliteManager.initialize();
+
+          if (this.usingSQLite) {
+            logger.info('DNS record tracker using SQLite for storage');
+          } else {
+            logger.warn('SQLite available but initialization failed, using JSON fallback');
+          }
         } else {
-          logger.warn('SQLite available but initialization failed, using JSON fallback');
+          logger.warn('SQLite database not initialized after waiting, using JSON storage for DNS records');
         }
       } else {
-        logger.debug('SQLite database not available, using JSON storage for DNS records');
+        logger.debug('SQLite database module not available, using JSON storage for DNS records');
       }
     } catch (error) {
       logger.debug(`Could not initialize SQLite for DNS records: ${error.message}`);
