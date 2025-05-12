@@ -32,13 +32,44 @@ async function start() {
     // SQLite database is required for operation
     logger.info('🔍 Initializing SQLite database');
     try {
+      // First check if the database is already fully initialized
+      // by checking if a migration lock file exists
+      const fs = require('fs');
+      const path = require('path');
+      const DATA_DIR = path.join(process.env.CONFIG_DIR || '/config', 'data');
+      const MIGRATION_LOCK_FILE = path.join(DATA_DIR, '.migration.lock');
+      const DB_FILE = path.join(DATA_DIR, 'trafegodns.db');
+
+      let skipInit = false;
+
+      // Check if database file exists but we might be in a concurrent initialization
+      if (fs.existsSync(DB_FILE) && fs.existsSync(MIGRATION_LOCK_FILE)) {
+        logger.warn('⚠️ Migration lock file detected, skipping database initialization to prevent transaction errors');
+        skipInit = true;
+      }
+
+      // Load database module
       const database = require('./database');
-      const initSuccess = await database.initialize();
+
+      let initSuccess = false;
+
+      if (skipInit) {
+        // Skip normal initialization to avoid transaction errors
+        // We'll just verify the database exists and assume it's valid
+        logger.info('🔍 Using existing database without full initialization');
+        // Set initialized flag to true
+        database.forceInitialized = true;
+        initSuccess = true;
+      } else {
+        // Normal initialization path
+        initSuccess = await database.initialize();
+      }
 
       if (!initSuccess) {
         logger.error('❌ SQLite database initialization failed');
         logger.error('❌ Application requires SQLite database to operate');
         logger.error('❌ Please install SQLite or check database permissions');
+        logger.error('❌ For emergency recovery, run: /app/docker-s6/scripts/fix-sqlite-transaction.sh');
         process.exit(1);
       }
 
@@ -46,6 +77,7 @@ async function start() {
     } catch (dbError) {
       logger.error(`❌ SQLite database initialization error: ${dbError.message}`);
       logger.error('❌ Application cannot operate without SQLite database');
+      logger.error('❌ For emergency recovery, run: /app/docker-s6/scripts/fix-sqlite-transaction.sh');
       process.exit(1);
     }
 

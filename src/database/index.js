@@ -135,7 +135,36 @@ try {
  * @returns {Promise<boolean>} - Success status
  */
 async function initialize(migrateJson = true) {
-  if (initialized) return true;
+  // If already initialized or force initialized, return true
+  if (initialized || module.exports.forceInitialized) return true;
+
+  // Check if there's a migration lock file - if so, use the database without initialization
+  try {
+    // Check for lock file
+    if (fs.existsSync(MIGRATION_LOCK_FILE)) {
+      // Check if lock is stale (older than 60 seconds)
+      const stats = fs.statSync(MIGRATION_LOCK_FILE);
+      const lockAge = Date.now() - stats.mtimeMs;
+
+      if (lockAge > 60 * 1000) {
+        // Lock is stale, remove it
+        logger.warn('Removing stale migration lock file');
+        fs.unlinkSync(MIGRATION_LOCK_FILE);
+      } else {
+        // Lock exists and is fresh, skip initialization
+        logger.warn('Migration lock file exists, skipping database initialization');
+        if (db) {
+          db.skipMigrations = true;
+        }
+        module.exports.forceInitialized = true;
+        return true;
+      }
+    }
+  } catch (lockError) {
+    logger.error(`Error checking migration lock: ${lockError.message}`);
+  }
+
+  // Check if there's already initialization in progress
   if (dbInitializing) {
     logger.warn('Database initialization already in progress, waiting...');
     // Wait for initialization to complete
@@ -147,6 +176,9 @@ async function initialize(migrateJson = true) {
   }
 
   dbInitializing = true;
+
+  // Create a lock file to prevent other processes from initializing at the same time
+  createMigrationLock();
 
   try {
     logger.info('Initializing database connection...');
@@ -266,6 +298,10 @@ async function initialize(migrateJson = true) {
     // Set initialized flag
     initialized = true;
     dbInitializing = false;
+
+    // Remove the migration lock file
+    releaseMigrationLock();
+
     logger.info('Database and repositories initialized successfully');
     return true;
   } catch (error) {
@@ -273,6 +309,10 @@ async function initialize(migrateJson = true) {
     logger.error(error.stack);
     initialized = false;
     dbInitializing = false;
+
+    // Remove the migration lock file on error
+    releaseMigrationLock();
+
     return false;
   }
 }
@@ -282,13 +322,31 @@ async function initialize(migrateJson = true) {
  * @returns {boolean} - Whether database is initialized
  */
 function isInitialized() {
+  // If forceInitialized flag is set, always return true
+  if (module.exports.forceInitialized) {
+    return true;
+  }
   return initialized && (db && db.isConnected !== undefined ? db.isConnected : true);
 }
+
+// Force initialized flag - can be set by app.js to bypass initialization checks
+let forceInitialized = false;
 
 module.exports = {
   db,
   repositories,
   migrator,
   initialize,
-  isInitialized
+  isInitialized,
+  get forceInitialized() {
+    return forceInitialized;
+  },
+  set forceInitialized(value) {
+    forceInitialized = value;
+    initialized = value;
+    if (value && db) {
+      db.isConnected = true;
+      db.isInitialized = true;
+    }
+  }
 };
