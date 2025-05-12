@@ -154,16 +154,18 @@ The fix involves:
 2. Skipping `beginTransaction` calls when already in a transaction
 3. Passing transaction state to nested function calls
 4. Adding proper error handling for transaction operations
-5. Implementing a file-based locking mechanism to prevent concurrent migrations
+5. Implementing an OS-level file locking mechanism to prevent concurrent migrations
 6. Adding special handling for transaction-related errors
 7. Ensuring `createTables` methods respect existing transaction state
+8. Using process IDs (PIDs) to track lock ownership across processes
 
 Implementation details:
 - Added `inTransaction` flag to track transaction state
 - Modified `beginTransaction`, `commit`, and `rollback` methods to check and update transaction state
 - Added transaction state awareness to `createTables` and `runMigrations` methods
 - Implemented proper error handling for transaction errors
-- Added file-based locking to coordinate database migrations between processes
+- Created a dedicated LockManager module with PID-based locking for cross-process coordination
+- Added robust locking with timeouts and lock ownership verification
 
 ### 2. Database Lock Contention
 
@@ -187,5 +189,8 @@ Implementation details:
 - Created helper function `execWithRetry` to handle retries for SQL operations
 - Added specific database lock detection in error messages
 - Set WAL journal mode for better concurrency between readers and writers
+- Created robust LockManager with PID-based coordination between processes
+- Added app-level coordination to avoid concurrent database initialization
+- Implemented "read-only mode" when lock acquisition fails to allow application to continue
 
 These fixes make the database operations more robust and resilient to concurrency issues, which is especially important during initialization when multiple components may be trying to access the database at the same time. The application now gracefully handles transaction and lock errors with appropriate retries, making it more reliable in multi-process environments.

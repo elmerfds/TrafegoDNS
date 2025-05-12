@@ -32,12 +32,11 @@ async function start() {
     // SQLite database is required for operation
     logger.info('🔍 Initializing SQLite database');
     try {
-      // First check if the database is already fully initialized
-      // by checking if a migration lock file exists
+      // Use the lock manager for database initialization coordination
+      const lockManager = require('./database/lockManager');
       const fs = require('fs');
       const path = require('path');
       const DATA_DIR = path.join(process.env.CONFIG_DIR || '/config', 'data');
-      const MIGRATION_LOCK_FILE = path.join(DATA_DIR, '.migration.lock');
       const DB_FILE = path.join(DATA_DIR, 'trafegodns.db');
 
       // Create the data directory if it doesn't exist
@@ -45,112 +44,76 @@ async function start() {
         fs.mkdirSync(DATA_DIR, { recursive: true });
         logger.info(`Created data directory: ${DATA_DIR}`);
       }
-
-      // Remove any existing lock file to avoid deadlock on startup
-      if (fs.existsSync(MIGRATION_LOCK_FILE)) {
-        const stats = fs.statSync(MIGRATION_LOCK_FILE);
-        const lockAge = Date.now() - stats.mtimeMs;
-
-        if (lockAge > 60 * 1000) {
-          logger.warn('⚠️ Removing stale migration lock file from previous run');
-          fs.unlinkSync(MIGRATION_LOCK_FILE);
-        } else {
-          logger.warn('⚠️ Recent migration lock file detected, waiting for it to be released...');
-          // Wait for up to 10 seconds for the lock to be released
-          for (let i = 0; i < 20; i++) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-            if (!fs.existsSync(MIGRATION_LOCK_FILE)) {
-              logger.info('✅ Migration lock file has been released');
-              break;
-            }
-            // If we've waited the full time, remove it
-            if (i === 19) {
-              logger.warn('⚠️ Forcibly removing migration lock file after timeout');
-              try {
-                fs.unlinkSync(MIGRATION_LOCK_FILE);
-              } catch (unlinkError) {
-                logger.error(`Error removing lock file: ${unlinkError.message}`);
-              }
-            }
-          }
-        }
+      
+      // Attempt to acquire the lock with a 30 second timeout
+      logger.info('🔒 Acquiring exclusive lock for database initialization...');
+      const lockAcquired = await lockManager.acquireLock(30000);
+      
+      if (!lockAcquired) {
+        logger.warn('⚠️ Failed to acquire exclusive lock, proceeding in read-only mode');
+        // Even without the lock, we'll try to use the database
+      } else {
+        logger.info('✅ Acquired exclusive lock for database initialization');
       }
-
-      // Now that we've cleared any stale locks, create our own lock file
-      // This ensures only one instance runs initialization
-      const timestamp = new Date().toISOString();
-      fs.writeFileSync(MIGRATION_LOCK_FILE, timestamp);
-      logger.info('✅ Created migration lock file to coordinate initialization');
 
       // Load database module
       const database = require('./database');
-
+      
       try {
-        // Force sequential initialization with retries and longer timeout
-        let initSuccess = false;
-        let attempts = 0;
-        const maxAttempts = 3;
-
-        while (!initSuccess && attempts < maxAttempts) {
-          attempts++;
-
-          try {
-            logger.info(`🔍 Attempting database initialization (attempt ${attempts}/${maxAttempts})`);
-            initSuccess = await database.initialize();
-
-            if (initSuccess) {
-              logger.info('✅ SQLite database initialized successfully');
-              break;
-            } else {
-              logger.warn(`⚠️ Database initialization failed on attempt ${attempts}/${maxAttempts}`);
+        // Only attempt full initialization if we have the lock
+        if (lockAcquired) {
+          // Force sequential initialization with retries and longer timeout
+          let initSuccess = false;
+          let attempts = 0;
+          const maxAttempts = 3;
+          
+          while (!initSuccess && attempts < maxAttempts) {
+            attempts++;
+            
+            try {
+              logger.info(`🔍 Attempting database initialization (attempt ${attempts}/${maxAttempts})`);
+              initSuccess = await database.initialize(true); // Pass true to perform JSON migration
+              
+              if (initSuccess) {
+                logger.info('✅ SQLite database initialized successfully');
+                break;
+              } else {
+                logger.warn(`⚠️ Database initialization failed on attempt ${attempts}/${maxAttempts}`);
+                // Wait before retrying
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+            } catch (initError) {
+              logger.error(`❌ Database initialization error: ${initError.message}`);
               // Wait before retrying
               await new Promise(resolve => setTimeout(resolve, 1000));
             }
-          } catch (initError) {
-            logger.error(`❌ Database initialization error: ${initError.message}`);
-            // Wait before retrying
-            await new Promise(resolve => setTimeout(resolve, 1000));
           }
-        }
-
-        // If we couldn't initialize after all attempts
-        if (!initSuccess) {
-          logger.error('❌ SQLite database initialization failed after multiple attempts');
-          logger.error('❌ Application requires SQLite database to operate');
-          logger.error('❌ Please install SQLite or check database permissions');
-          logger.error('❌ For emergency recovery, run: /app/docker-s6/scripts/fix-sqlite.sh');
-
-          // Try to remove the lock file before exiting
-          try {
-            if (fs.existsSync(MIGRATION_LOCK_FILE)) {
-              fs.unlinkSync(MIGRATION_LOCK_FILE);
-            }
-          } catch (unlinkError) {
-            logger.error(`Failed to release lock file: ${unlinkError.message}`);
+          
+          // If we couldn't initialize after all attempts
+          if (!initSuccess) {
+            logger.error('❌ SQLite database initialization failed after multiple attempts');
+            logger.error('❌ Application requires SQLite database to operate');
+            logger.error('❌ Please install SQLite or check database permissions');
+            logger.error('❌ For emergency recovery, run: /app/docker-s6/scripts/fix-sqlite.sh');
+            
+            // Release the lock before exiting
+            lockManager.releaseLock();
+            process.exit(1);
           }
-
-          process.exit(1);
+        } else {
+          // If we couldn't acquire the lock, try to connect without initialization
+          logger.info('🔍 Connecting to database without initialization (another process has the lock)');
+          
+          // Set the database to initialized mode directly
+          database.forceInitialized = true;
+          logger.info('✅ Database connection established in read-only mode');
         }
-
-        // Remove the lock file now that initialization is complete
-        try {
-          if (fs.existsSync(MIGRATION_LOCK_FILE)) {
-            fs.unlinkSync(MIGRATION_LOCK_FILE);
-            logger.info('✅ Removed migration lock file after successful initialization');
-          }
-        } catch (unlinkError) {
-          logger.warn(`⚠️ Failed to remove migration lock file: ${unlinkError.message}`);
+      } finally {
+        // Always release the lock if we acquired it
+        if (lockAcquired) {
+          logger.info('🔓 Releasing database initialization lock');
+          lockManager.releaseLock();
         }
-      } catch (error) {
-        // Try to remove the lock file on error
-        try {
-          if (fs.existsSync(MIGRATION_LOCK_FILE)) {
-            fs.unlinkSync(MIGRATION_LOCK_FILE);
-          }
-        } catch (unlinkError) {
-          logger.error(`Failed to release lock file: ${unlinkError.message}`);
-        }
-        throw error;
       }
     } catch (dbError) {
       logger.error(`❌ SQLite database initialization error: ${dbError.message}`);

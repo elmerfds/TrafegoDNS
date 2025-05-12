@@ -9,60 +9,10 @@ const path = require('path');
 // Global state
 let initialized = false;
 let dbInitializing = false;
-let migrationInProgress = false;
 
 // Configuration
 const DATA_DIR = path.join(process.env.CONFIG_DIR || '/config', 'data');
 const DB_FILE = path.join(DATA_DIR, 'trafegodns.db');
-const MIGRATION_LOCK_FILE = path.join(DATA_DIR, '.migration.lock');
-
-// Helper function to check if migration is in progress
-function checkMigrationLock() {
-  try {
-    if (fs.existsSync(MIGRATION_LOCK_FILE)) {
-      // Check if lock is stale (older than 5 minutes)
-      const stats = fs.statSync(MIGRATION_LOCK_FILE);
-      const lockAge = Date.now() - stats.mtimeMs;
-      if (lockAge > 5 * 60 * 1000) {
-        // Lock is stale, remove it
-        logger.warn('Removing stale migration lock file');
-        fs.unlinkSync(MIGRATION_LOCK_FILE);
-        return false;
-      }
-      return true;
-    }
-    return false;
-  } catch (error) {
-    logger.error(`Error checking migration lock: ${error.message}`);
-    return false;
-  }
-}
-
-// Helper function to create migration lock
-function createMigrationLock() {
-  try {
-    fs.writeFileSync(MIGRATION_LOCK_FILE, new Date().toISOString());
-    migrationInProgress = true;
-    return true;
-  } catch (error) {
-    logger.error(`Error creating migration lock: ${error.message}`);
-    return false;
-  }
-}
-
-// Helper function to release migration lock
-function releaseMigrationLock() {
-  try {
-    if (fs.existsSync(MIGRATION_LOCK_FILE)) {
-      fs.unlinkSync(MIGRATION_LOCK_FILE);
-    }
-    migrationInProgress = false;
-    return true;
-  } catch (error) {
-    logger.error(`Error releasing migration lock: ${error.message}`);
-    return false;
-  }
-}
 
 // Try to determine which SQLite implementation to use
 let db;
@@ -138,47 +88,23 @@ async function initialize(migrateJson = true) {
   // If already initialized or force initialized, return true
   if (initialized || module.exports.forceInitialized) return true;
 
-  // Check if there's a migration lock file - if so, use the database without initialization
-  try {
-    // Check for lock file
-    if (fs.existsSync(MIGRATION_LOCK_FILE)) {
-      // Check if lock is stale (older than 60 seconds)
-      const stats = fs.statSync(MIGRATION_LOCK_FILE);
-      const lockAge = Date.now() - stats.mtimeMs;
-
-      if (lockAge > 60 * 1000) {
-        // Lock is stale, remove it
-        logger.warn('Removing stale migration lock file');
-        fs.unlinkSync(MIGRATION_LOCK_FILE);
-      } else {
-        // Lock exists and is fresh, skip initialization
-        logger.warn('Migration lock file exists, skipping database initialization');
-        if (db) {
-          db.skipMigrations = true;
-        }
-        module.exports.forceInitialized = true;
-        return true;
-      }
-    }
-  } catch (lockError) {
-    logger.error(`Error checking migration lock: ${lockError.message}`);
-  }
+  // Get lock manager for coordination (use require here to avoid circular dependency)
+  const lockManager = require('./lockManager');
 
   // Check if there's already initialization in progress
   if (dbInitializing) {
     logger.warn('Database initialization already in progress, waiting...');
-    // Wait for initialization to complete
-    for (let i = 0; i < 10; i++) {
+    // Wait for initialization to complete with timeout
+    for (let i = 0; i < 20; i++) {
       await new Promise(resolve => setTimeout(resolve, 500));
       if (initialized) return true;
     }
+    logger.error('Timed out waiting for existing database initialization');
     return false;
   }
 
+  // Set the initialization flag
   dbInitializing = true;
-
-  // Create a lock file to prevent other processes from initializing at the same time
-  createMigrationLock();
 
   try {
     logger.info('Initializing database connection...');
@@ -222,11 +148,12 @@ async function initialize(migrateJson = true) {
       }
     }
 
-    // Check if another instance is running migration
-    if (checkMigrationLock()) {
-      logger.info('Migration already in progress by another process, skipping...');
-      // We'll let the database connect without running migrations
-      // Modified to connect to database without migrations
+    // Check if we're the lock owner - the app.js should have acquired it
+    const isLockOwner = lockManager.isLockOwner();
+
+    if (!isLockOwner) {
+      logger.info('Not the lock owner, connecting to database without migrations');
+      // Skip migrations since we're not the lock owner
       try {
         // Initialize the db object directly, but tell it to skip migrations
         logger.debug('Connecting to database without running migrations...');
@@ -253,18 +180,14 @@ async function initialize(migrateJson = true) {
       }
     }
 
-    // Acquire migration lock
-    createMigrationLock();
-
     try {
       // Initialize database connection with full migration support
-      logger.debug('Calling db.initialize() with migrations...');
+      logger.debug('Calling db.initialize() with migrations as lock owner...');
       const dbInitSuccess = await db.initialize();
 
       if (!dbInitSuccess) {
         logger.error('Failed to initialize SQLite database');
         logger.warn('Some features may not work without SQLite');
-        releaseMigrationLock();
         dbInitializing = false;
         return false;
       }
@@ -286,21 +209,13 @@ async function initialize(migrateJson = true) {
           logger.warn('Will continue with SQLite database without migration');
         }
       }
-
-      // Release migration lock after all migrations are complete
-      releaseMigrationLock();
     } catch (error) {
-      // Make sure to release the lock on error
-      releaseMigrationLock();
       throw error;
     }
 
     // Set initialized flag
     initialized = true;
     dbInitializing = false;
-
-    // Remove the migration lock file
-    releaseMigrationLock();
 
     logger.info('Database and repositories initialized successfully');
     return true;
@@ -309,10 +224,6 @@ async function initialize(migrateJson = true) {
     logger.error(error.stack);
     initialized = false;
     dbInitializing = false;
-
-    // Remove the migration lock file on error
-    releaseMigrationLock();
-
     return false;
   }
 }
