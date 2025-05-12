@@ -9,6 +9,56 @@ class SettingRepository extends BaseRepository {
   constructor(db) {
     super(db);
     this.tableName = 'settings';
+    this.initialize();
+  }
+
+  /**
+   * Initialize the repository, creating tables if needed
+   */
+  async initialize() {
+    try {
+      // Check if table exists
+      const tableExists = await this.tableExists();
+
+      if (!tableExists) {
+        logger.info(`Creating ${this.tableName} table`);
+
+        await this.db.run(`
+          CREATE TABLE IF NOT EXISTS ${this.tableName} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT NOT NULL UNIQUE,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          )
+        `);
+
+        // Create index for performance
+        await this.db.run(`CREATE INDEX IF NOT EXISTS idx_settings_key ON ${this.tableName}(key)`);
+
+        logger.info(`Created ${this.tableName} table and indexes`);
+      }
+    } catch (error) {
+      logger.error(`Failed to initialize ${this.tableName} table: ${error.message}`);
+      // Don't throw the error, just log it - allow application to continue
+    }
+  }
+
+  /**
+   * Check if the table exists
+   * @returns {Promise<boolean>} Whether the table exists
+   */
+  async tableExists() {
+    try {
+      const result = await this.db.get(`
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name=?
+      `, [this.tableName]);
+
+      return !!result;
+    } catch (error) {
+      logger.error(`Failed to check if table exists: ${error.message}`);
+      return false;
+    }
   }
 
   /**

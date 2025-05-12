@@ -10,6 +10,57 @@ class RevokedTokenRepository extends BaseRepository {
   constructor(db) {
     super(db);
     this.tableName = 'revoked_tokens';
+    this.initialize();
+  }
+
+  /**
+   * Initialize the repository, creating tables if needed
+   */
+  async initialize() {
+    try {
+      // Check if table exists
+      const tableExists = await this.tableExists();
+
+      if (!tableExists) {
+        logger.info(`Creating ${this.tableName} table`);
+
+        await this.db.run(`
+          CREATE TABLE IF NOT EXISTS ${this.tableName} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            token_hash TEXT NOT NULL UNIQUE,
+            revoked_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL
+          )
+        `);
+
+        // Create indexes for performance
+        await this.db.run(`CREATE INDEX IF NOT EXISTS idx_tokens_hash ON ${this.tableName}(token_hash)`);
+        await this.db.run(`CREATE INDEX IF NOT EXISTS idx_tokens_expires ON ${this.tableName}(expires_at)`);
+
+        logger.info(`Created ${this.tableName} table and indexes`);
+      }
+    } catch (error) {
+      logger.error(`Failed to initialize ${this.tableName} table: ${error.message}`);
+      // Don't throw the error, just log it - allow application to continue
+    }
+  }
+
+  /**
+   * Check if the table exists
+   * @returns {Promise<boolean>} Whether the table exists
+   */
+  async tableExists() {
+    try {
+      const result = await this.db.get(`
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name=?
+      `, [this.tableName]);
+
+      return !!result;
+    } catch (error) {
+      logger.error(`Failed to check if table exists: ${error.message}`);
+      return false;
+    }
   }
 
   /**

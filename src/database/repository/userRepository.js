@@ -10,6 +10,60 @@ class UserRepository extends BaseRepository {
   constructor(db) {
     super(db);
     this.tableName = 'users';
+    this.initialize();
+  }
+
+  /**
+   * Initialize the repository, creating tables if needed
+   */
+  async initialize() {
+    try {
+      // Check if table exists
+      const tableExists = await this.tableExists();
+
+      if (!tableExists) {
+        logger.info(`Creating ${this.tableName} table`);
+
+        await this.db.run(`
+          CREATE TABLE IF NOT EXISTS ${this.tableName} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'operator',
+            created_at TEXT NOT NULL,
+            updated_at TEXT,
+            last_login TEXT
+          )
+        `);
+
+        // Create indexes for performance
+        await this.db.run(`CREATE INDEX IF NOT EXISTS idx_users_username ON ${this.tableName}(username)`);
+        await this.db.run(`CREATE INDEX IF NOT EXISTS idx_users_role ON ${this.tableName}(role)`);
+
+        logger.info(`Created ${this.tableName} table and indexes`);
+      }
+    } catch (error) {
+      logger.error(`Failed to initialize ${this.tableName} table: ${error.message}`);
+      // Don't throw the error, just log it - allow application to continue
+    }
+  }
+
+  /**
+   * Check if the table exists
+   * @returns {Promise<boolean>} Whether the table exists
+   */
+  async tableExists() {
+    try {
+      const result = await this.db.get(`
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name=?
+      `, [this.tableName]);
+
+      return !!result;
+    } catch (error) {
+      logger.error(`Failed to check if table exists: ${error.message}`);
+      return false;
+    }
   }
 
   /**
