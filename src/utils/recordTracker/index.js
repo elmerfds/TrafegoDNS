@@ -264,11 +264,43 @@ class RecordTracker {
    * Update a record's ID in the tracker
    */
   async updateRecordId(oldRecord, newRecord) {
+    // Check if record is already tracked, if not, track it automatically
+    const isTracked = await this.isTracked(oldRecord);
+
+    if (!isTracked) {
+      logger.debug(`Auto-tracking record before ID update: ${oldRecord.name || oldRecord} (${oldRecord.type || 'unknown'})`);
+      await this.trackRecord(oldRecord);
+
+      // If the oldRecord had no ID but the newRecord does, we can just return since we've tracked with the new ID
+      if ((!oldRecord.id || oldRecord.id === oldRecord) && newRecord.id) {
+        return true;
+      }
+    }
+
     // Try to use SQLite first if available
     if (this.usingSQLite && this.sqliteManager) {
       try {
         const oldRecordId = oldRecord.id || oldRecord;
         const newRecordId = newRecord.id || newRecord;
+
+        // If we can identify by type and name, try that first
+        if (oldRecord.type && oldRecord.name && this.sqliteManager.repository.updateRecordByTypeAndName) {
+          const success = await this.sqliteManager.repository.updateRecordByTypeAndName(
+            this.provider,
+            oldRecord.type,
+            oldRecord.name,
+            newRecordId
+          );
+
+          if (success) {
+            // Also update in-memory data (use dummy key if needed)
+            const dummyOldRecord = oldRecord.id ? oldRecord : { ...newRecord, id: 'temp-id' };
+            updateRecordIdOperation(this.data, this.trackerFile, this.provider, dummyOldRecord, newRecord);
+            return true;
+          }
+        }
+
+        // Otherwise try normal ID update
         const success = await this.sqliteManager.updateRecordId(this.provider, oldRecordId, newRecordId);
         if (success) {
           // Also update in-memory data
@@ -282,6 +314,11 @@ class RecordTracker {
     }
 
     // Fall back to JSON storage
+    // If the record isn't tracked in JSON either, try to track it first
+    if (!isTracked) {
+      trackRecordOperation(this.data, this.trackerFile, this.provider, oldRecord);
+    }
+
     return updateRecordIdOperation(this.data, this.trackerFile, this.provider, oldRecord, newRecord);
   }
   
@@ -296,6 +333,14 @@ class RecordTracker {
    * Mark a record as orphaned
    */
   async markRecordOrphaned(record) {
+    // Check if record is already tracked, if not, track it automatically
+    const isTracked = await this.isTracked(record);
+
+    if (!isTracked) {
+      logger.debug(`Auto-tracking record before marking as orphaned: ${record.name || record} (${record.type || 'unknown'})`);
+      await this.trackRecord(record);
+    }
+
     // Try to use SQLite first if available
     if (this.usingSQLite && this.sqliteManager) {
       try {
@@ -322,6 +367,16 @@ class RecordTracker {
    * Unmark a record as orphaned (reactivate it)
    */
   async unmarkRecordOrphaned(record) {
+    // Check if record is already tracked, if not, track it automatically
+    const isTracked = await this.isTracked(record);
+
+    if (!isTracked) {
+      logger.debug(`Auto-tracking record before unmarking as orphaned: ${record.name || record} (${record.type || 'unknown'})`);
+      await this.trackRecord(record);
+      // No need to unmark as the newly tracked record won't be orphaned
+      return true;
+    }
+
     // Try to use SQLite first if available
     if (this.usingSQLite && this.sqliteManager) {
       try {

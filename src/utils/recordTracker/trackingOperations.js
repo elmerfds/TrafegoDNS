@@ -90,8 +90,12 @@ function updateRecordId(data, trackerFile, provider, oldRecord, newRecord) {
   
   // Verify we're tracking this record
   if (!data.providers[provider].records[key]) {
-    logger.warn(`Cannot update ID for untracked record: ${key}`);
-    return;
+    // Auto-track the record if it's not already tracked
+    logger.debug(`Auto-tracking record during ID update: ${key}`);
+    data.providers[provider].records[key] = {
+      id: oldRecord.id || 'pending-id',
+      tracked: new Date().toISOString()
+    };
   }
   
   // Update the ID

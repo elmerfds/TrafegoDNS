@@ -18,10 +18,16 @@ function markRecordOrphaned(data, provider, record) {
     return;
   }
   
-  // Ensure the key exists in our tracking
+  // Ensure the key exists in our tracking - if not, auto-track it first
   if (!data.providers[provider].records[key]) {
-    logger.warn(`Cannot mark untracked record as orphaned: ${key}`);
-    return;
+    // Auto-track the record
+    logger.debug(`Auto-tracking record before marking as orphaned: ${key}`);
+
+    // Create a basic tracking entry
+    data.providers[provider].records[key] = {
+      id: record.id || 'pending-id',
+      tracked: new Date().toISOString()
+    };
   }
   
   // Set orphaned status with timestamp
@@ -46,9 +52,18 @@ function unmarkRecordOrphaned(data, provider, record) {
     return;
   }
   
-  // Ensure the key exists in our tracking
+  // Ensure the key exists in our tracking - if not, auto-track it first
   if (!data.providers[provider].records[key]) {
-    logger.warn(`Cannot unmark untracked record as orphaned: ${key}`);
+    // Auto-track the record
+    logger.debug(`Auto-tracking record before unmarking as orphaned: ${key}`);
+
+    // Create a basic tracking entry without orphaned status
+    data.providers[provider].records[key] = {
+      id: record.id || 'pending-id',
+      tracked: new Date().toISOString()
+    };
+
+    // No need to continue since we just created a record without orphaned status
     return;
   }
   
