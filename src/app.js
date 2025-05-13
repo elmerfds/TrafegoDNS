@@ -82,7 +82,14 @@ async function start() {
                 logger.info('✅ SQLite database initialized successfully');
                 
                 // Check if this is the first run by looking for a flag in settings
-                const firstRunCompleted = await database.repositories.setting.get('first_run_completed', false);
+                let firstRunCompleted = false;
+                if (database.repositories && database.repositories.setting) {
+                  try {
+                    firstRunCompleted = await database.repositories.setting.get('first_run_completed', false);
+                  } catch (settingError) {
+                    logger.warn(`⚠️ Error checking first run status: ${settingError.message}`);
+                  }
+                }
                 
                 if (!firstRunCompleted) {
                   logger.info('🔧 First run detected, application will be conservative with existing DNS records');
@@ -267,8 +274,12 @@ async function start() {
       try {
         logger.info('🔹 First run completed successfully, updating database flag');
         const db = require('./database');
-        await db.repositories.setting.set('first_run_completed', true);
-        global.isFirstRun = false;
+        if (db.repositories && db.repositories.setting) {
+          await db.repositories.setting.set('first_run_completed', true);
+          global.isFirstRun = false;
+        } else {
+          logger.warn('⚠️ Could not update first_run_completed flag: settings repository not available');
+        }
       } catch (error) {
         logger.warn(`⚠️ Failed to update first_run_completed flag: ${error.message}`);
       }

@@ -31,31 +31,44 @@ async function initialize(migrate = true) {
 
   try {
     logger.info('Initializing database connection...');
-    db = await connection.connect();
+    
+    // Initialize connection
+    const success = await connection.initialize();
+    if (!success) {
+      throw new Error('Failed to initialize database connection');
+    }
+    
+    // Set db reference to the connection
+    db = connection;
 
     // Create repositories
-    repositories = {
-      user: new UserRepository(db),
-      revokedToken: new RevokedTokenRepository(db),
-      setting: new SettingRepository(db),
-      auditLog: new AuditLogRepository(db),
-      dnsManager: new DNSRepositoryManager(db)
-    };
-    
-    // Initialize repositories
-    for (const [name, repository] of Object.entries(repositories)) {
-      if (repository.initialize && typeof repository.initialize === 'function') {
-        await repository.initialize();
-        logger.debug(`Initialized ${name} repository`);
+    try {
+      repositories = {
+        user: new UserRepository(db),
+        revokedToken: new RevokedTokenRepository(db),
+        setting: new SettingRepository(db),
+        auditLog: new AuditLogRepository(db),
+        dnsManager: new DNSRepositoryManager(db)
+      };
+      
+      // Initialize repositories
+      for (const [name, repository] of Object.entries(repositories)) {
+        if (repository.initialize && typeof repository.initialize === 'function') {
+          try {
+            await repository.initialize();
+            logger.debug(`Initialized ${name} repository`);
+          } catch (repoInitError) {
+            logger.warn(`⚠️ Error initializing ${name} repository: ${repoInitError.message}`);
+            // Continue with other repositories
+          }
+        }
       }
+    } catch (repoError) {
+      logger.error(`Failed to create repositories: ${repoError.message}`);
+      logger.debug(repoError.stack);
+      // Continue with initialization, treat repositories as partial
     }
     
-    // Run migrations
-    if (migrate) {
-      logger.info('Database needs migration, running migrations...');
-      await runMigrations();
-    }
-
     // Special DNS tables synchronization
     if (repositories.dnsManager) {
       try {
@@ -76,35 +89,19 @@ async function initialize(migrate = true) {
 }
 
 /**
- * Run database migrations
- * @returns {Promise<boolean>}
+ * Check if database is initialized
+ * @returns {boolean}
  */
-async function runMigrations() {
-  try {
-    // Run migrations here (schema changes, etc.)
-    await createTables();
-    
-    return true;
-  } catch (error) {
-    logger.error(`Error running migrations: ${error.message}`);
-    throw error;
-  }
+function isInitialized() {
+  return initialized || forceInitialized || (db && db.isInitialized === true);
 }
 
 /**
- * Create database tables if they don't exist
- * This is a simple migration function
- * @returns {Promise<boolean>}
+ * Force initialized flag (used for testing and recovery)
+ * @param {boolean} value - Value to set
  */
-async function createTables() {
-  try {
-    // Try to use repositories to create tables
-    // This is typically already done in the repository initialization
-    return true;
-  } catch (error) {
-    logger.error(`Error creating database tables: ${error.message}`);
-    throw error;
-  }
+function setForceInitialized(value) {
+  forceInitialized = value;
 }
 
 /**
@@ -117,7 +114,7 @@ async function close() {
   }
 
   try {
-    await connection.close(db);
+    await connection.close();
     db = null;
     initialized = false;
     return true;
@@ -127,31 +124,18 @@ async function close() {
   }
 }
 
-/**
- * Check if database is initialized
- * @returns {boolean}
- */
-function isInitialized() {
-  return initialized || forceInitialized;
-}
-
-/**
- * Force initialized flag (used for testing and recovery)
- * @param {boolean} value - Value to set
- */
-function setForceInitialized(value) {
-  forceInitialized = value;
-}
-
-// Export the database module
+// Export the database module with proper getters for db and repositories
 module.exports = {
   initialize,
   isInitialized,
   setForceInitialized,
   close,
-  runMigrations,
-  db,
-  repositories,
+  get db() {
+    return db;
+  },
+  get repositories() {
+    return repositories;
+  },
   get forceInitialized() {
     return forceInitialized;
   },
