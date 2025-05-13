@@ -630,6 +630,29 @@ class BetterSQLite {
           UNIQUE(provider, record_id)
         )
       `, 'dns_records table');
+      
+      // Check if this is a new table creation or if it already existed
+      const recordsTableExists = await this.get(`
+        SELECT name FROM sqlite_master 
+        WHERE type='table' AND name='dns_records' AND sql LIKE '%updated_at%'
+      `);
+      
+      // If we just created the table with updated_at column, record the migration
+      if (recordsTableExists) {
+        try {
+          logger.debug('Recording all migrations for dns_records since table was created with latest schema');
+          const migrationStmt = this.db.prepare(
+            'INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (?, ?)'
+          );
+          // Record all migrations up to current version (3)
+          migrationStmt.run(1, 'initial_schema');
+          migrationStmt.run(2, 'add_last_processed_and_managed_columns');
+          migrationStmt.run(3, 'add_updated_at_column_to_dns_records');
+          logger.debug('All migrations recorded for newly created tables');
+        } catch (migrationRecordError) {
+          logger.debug(`Non-critical error recording migrations: ${migrationRecordError.message}`);
+        }
+      }
 
       // Create indexes for dns_records
       await execWithRetry(`
