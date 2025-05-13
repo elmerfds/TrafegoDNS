@@ -198,16 +198,32 @@ class DNSManager {
         return 0;
       }
 
-      // Track all active records
-      const newlyTrackedCount = await this.recordTracker.trackAllActiveRecords(activeRecords);
+      // Check if this is the first run of the application
+      // If so, be more conservative with existing records
+      const isFirstRun = global.isFirstRun === true;
+      
+      if (isFirstRun) {
+        logger.info('🔒 First run detected: marking pre-existing DNS records as NOT app-managed for safety');
+      }
+
+      // Track all active records with special handling for first run
+      const newlyTrackedCount = await this.recordTracker.trackAllActiveRecords(activeRecords, !isFirstRun);
 
       // Log the results
       if (newlyTrackedCount > 0) {
-        logger.info(`Added ${newlyTrackedCount} previously untracked DNS records to tracker`);
-        this.eventBus.publish(EventTypes.INFO_EVENT, {
-          source: 'DNSManager.synchronizeRecordTracker',
-          message: `Added ${newlyTrackedCount} previously untracked DNS records to tracker`
-        });
+        if (isFirstRun) {
+          logger.info(`Added ${newlyTrackedCount} pre-existing DNS records to tracker (marked as not app-managed)`);
+          this.eventBus.publish(EventTypes.INFO_EVENT, {
+            source: 'DNSManager.synchronizeRecordTracker',
+            message: `Added ${newlyTrackedCount} pre-existing DNS records to tracker (preserved for safety)`
+          });
+        } else {
+          logger.info(`Added ${newlyTrackedCount} previously untracked DNS records to tracker`);
+          this.eventBus.publish(EventTypes.INFO_EVENT, {
+            source: 'DNSManager.synchronizeRecordTracker',
+            message: `Added ${newlyTrackedCount} previously untracked DNS records to tracker`
+          });
+        }
       } else {
         logger.debug('All active DNS records are already being tracked');
       }

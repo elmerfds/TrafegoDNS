@@ -202,9 +202,31 @@ async function cleanupOrphanedRecords(
               // Check if this record is app-managed
               const isAppManaged = await isAppManagedRecord(record, recordTracker, config.dnsProvider);
 
+              // Get the first_seen timestamp if available (for enhanced logging)
+              let firstSeenInfo = '';
+              if (recordTracker.sqliteManager && recordTracker.sqliteManager.repository) {
+                try {
+                  const firstSeen = await recordTracker.sqliteManager.repository.getRecordFirstSeen(
+                    config.dnsProvider, record.id
+                  );
+                  if (firstSeen) {
+                    const firstSeenDate = new Date(firstSeen);
+                    const now = new Date();
+                    const daysSinceFirstSeen = Math.floor((now - firstSeenDate) / (1000 * 60 * 60 * 24));
+                    firstSeenInfo = ` (first seen ${daysSinceFirstSeen} days ago)`;
+                  }
+                } catch (error) {
+                  logger.debug(`Could not get first_seen info: ${error.message}`);
+                }
+              }
+
               // Only delete if we're sure this is a record created by the app
               if (isAppManaged) {
-                logger.info(`🗑️ Deleting DNS record: ${displayName} (${record.type})`);
+                logger.info(`🗑️ Deleting DNS record: ${displayName} (${record.type})${firstSeenInfo}
+                - Reason: Orphaned for ${Math.floor(elapsedMinutes)} minutes (grace period elapsed)
+                - App-managed: Yes (created by TrafegoDNS)
+                - Orphaned since: ${new Date(parsedOrphanedTime).toISOString()}`);
+                
                 await dnsProvider.deleteRecord(record.id);
 
                 // Remove record from tracker
@@ -216,7 +238,11 @@ async function cleanupOrphanedRecords(
                   type: record.type
                 });
               } else {
-                logger.info(`⚠️ Skipping deletion of non-app-managed record: ${displayName} (${record.type})`);
+                logger.info(`⚠️ Skipping deletion of non-app-managed record: ${displayName} (${record.type})
+                - Reason: Record was not created by TrafegoDNS
+                - App-managed: No (likely pre-existing or created externally)
+                - Action: Preserving record and removing orphaned mark`);
+                
                 // Just unmark it as orphaned but keep tracking it
                 await recordTracker.unmarkRecordOrphaned(record);
               }
@@ -235,17 +261,51 @@ async function cleanupOrphanedRecords(
 
           // Only mark as orphaned if it's a record created by the app
           if (isAppManaged) {
-            logger.info(`🕒 Marking DNS record as orphaned (will be deleted after ${config.cleanupGracePeriod} minutes): ${recordFqdn} (${record.type})`);
+            // Get the first_seen timestamp if available (for enhanced logging)
+            let firstSeenInfo = '';
+            if (recordTracker.sqliteManager && recordTracker.sqliteManager.repository) {
+              try {
+                const firstSeen = await recordTracker.sqliteManager.repository.getRecordFirstSeen(
+                  config.dnsProvider, record.id
+                );
+                if (firstSeen) {
+                  const firstSeenDate = new Date(firstSeen);
+                  const now = new Date();
+                  const daysSinceFirstSeen = Math.floor((now - firstSeenDate) / (1000 * 60 * 60 * 24));
+                  firstSeenInfo = ` (first seen ${daysSinceFirstSeen} days ago)`;
+                }
+              } catch (error) {
+                logger.debug(`Could not get first_seen info: ${error.message}`);
+              }
+            }
+            
+            // Enhanced logging with reasoning for why we're marking this as orphaned
+            logger.info(`🕒 Marking DNS record as orphaned: ${recordFqdn} (${record.type})${firstSeenInfo}
+            - Reason: No matching active hostname in current containers/Traefik routes
+            - App-managed: Yes (created by TrafegoDNS)
+            - Grace period: Will be deleted after ${config.cleanupGracePeriod} minutes
+            - Matching active hostname: None found among ${normalizedActiveHostnames.size} active hostnames`);
+            
             await recordTracker.markRecordOrphaned(record);
             newlyOrphanedCount++;
           } else {
-            logger.debug(`Skipping orphan marking for non-app-managed record: ${recordFqdn} (${record.type})`);
+            logger.debug(`Skipping orphan marking for non-app-managed record: ${recordFqdn} (${record.type})
+            - Reason: Record was not created by TrafegoDNS
+            - App-managed: No (likely pre-existing or created externally)
+            - Action: Preserving record`);
           }
         }
       } else {
         // Record is active again (found in active hostnames), unmark as orphaned if needed
         if (await recordTracker.isRecordOrphaned(record)) {
-          logger.info(`✅ DNS record is active again, removing orphaned mark: ${recordFqdn} (${record.type})`);
+          // Find the matching active hostname for better logging
+          const matchingHostname = findMatchingHostname(record, hostnameMap, config.getProviderDomain());
+          
+          logger.info(`✅ DNS record is active again, removing orphaned mark: ${recordFqdn} (${record.type})
+          - Reason: Now matches an active hostname
+          - Matching hostname: ${matchingHostname || '[Using legacy hostname match]'}
+          - Action: Unmarking as orphaned to prevent deletion`);
+          
           await recordTracker.unmarkRecordOrphaned(record);
           reactivatedCount++;
         }

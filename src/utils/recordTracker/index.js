@@ -497,15 +497,16 @@ class RecordTracker {
    * Track all active records from the provider
    * This is useful for bootstrapping the tracker with existing records
    * @param {Array<Object>} records - Array of records from the provider
+   * @param {boolean} [markAsAppManaged=true] - Whether to mark newly tracked records as app-managed
    * @returns {Promise<number>} - Number of newly tracked records
    */
-  async trackAllActiveRecords(records) {
+  async trackAllActiveRecords(records, markAsAppManaged = true) {
     if (!records || !Array.isArray(records) || records.length === 0) {
       logger.debug('No active records to track');
       return 0;
     }
 
-    logger.info(`Tracking ${records.length} active DNS records`);
+    logger.info(`Tracking ${records.length} active DNS records (markAsAppManaged: ${markAsAppManaged})`);
     let newlyTrackedCount = 0;
 
     for (const record of records) {
@@ -518,9 +519,24 @@ class RecordTracker {
         const isAlreadyTracked = await this.isTracked(record);
 
         if (!isAlreadyTracked) {
-          // Track the record
-          const success = await this.trackRecord(record);
+          // Track the record with the appropriate app-managed setting
+          // During first run, we mark existing records as NOT app-managed for safety
+          const success = await this.trackRecord(record, markAsAppManaged);
+          
           if (success) {
+            // Add a timestamp for when the record was first seen
+            if (this.usingSQLite && this.sqliteManager) {
+              try {
+                await this.sqliteManager.repository.setRecordFirstSeen(
+                  this.provider, 
+                  record.id, 
+                  new Date().toISOString()
+                );
+              } catch (error) {
+                logger.debug(`Could not set first_seen timestamp: ${error.message}`);
+              }
+            }
+            
             newlyTrackedCount++;
           }
         }
@@ -529,7 +545,7 @@ class RecordTracker {
       }
     }
 
-    logger.info(`Tracked ${newlyTrackedCount} new active DNS records`);
+    logger.info(`Tracked ${newlyTrackedCount} new active DNS records (appManaged: ${markAsAppManaged})`);
     return newlyTrackedCount;
   }
 }

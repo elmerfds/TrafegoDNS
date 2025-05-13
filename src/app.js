@@ -76,6 +76,19 @@ async function start() {
               
               if (initSuccess) {
                 logger.info('✅ SQLite database initialized successfully');
+                
+                // Check if this is the first run by looking for a flag in settings
+                const firstRunCompleted = await database.repositories.setting.get('first_run_completed', false);
+                
+                if (!firstRunCompleted) {
+                  logger.info('🔧 First run detected, application will be conservative with existing DNS records');
+                  // Store as global property so other components can access it
+                  global.isFirstRun = true;
+                } else {
+                  logger.debug('🔄 Subsequent run detected');
+                  global.isFirstRun = false;
+                }
+                
                 break;
               } else {
                 logger.warn(`⚠️ Database initialization failed on attempt ${attempts}/${maxAttempts}`);
@@ -244,6 +257,18 @@ async function start() {
         database: require('./database').isInitialized()
       }
     });
+    
+    // If this was the first run, mark it as completed now that we've started successfully
+    if (global.isFirstRun) {
+      try {
+        logger.info('🔹 First run completed successfully, updating database flag');
+        const db = require('./database');
+        await db.repositories.setting.set('first_run_completed', true);
+        global.isFirstRun = false;
+      } catch (error) {
+        logger.warn(`⚠️ Failed to update first_run_completed flag: ${error.message}`);
+      }
+    }
   } catch (error) {
     logger.error(`Failed to start TráfegoDNS: ${error.message}`);
     process.exit(1);

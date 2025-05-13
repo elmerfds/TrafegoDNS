@@ -37,6 +37,7 @@ class DNSTrackedRecordRepository {
             orphaned_at TEXT,
             tracked_at TEXT NOT NULL,
             updated_at TEXT,
+            first_seen TEXT,
             metadata TEXT,
             UNIQUE(provider, record_id)
           )
@@ -754,6 +755,54 @@ class DNSTrackedRecordRepository {
     } catch (error) {
       logger.error(`Failed to check if record is app managed: ${error.message}`);
       return false;
+    }
+  }
+  
+  /**
+   * Set the first_seen timestamp for a record
+   * @param {string} provider - DNS provider name
+   * @param {string} recordId - Record ID
+   * @param {string} timestamp - ISO timestamp
+   * @returns {Promise<boolean>} - Success status
+   */
+  async setRecordFirstSeen(provider, recordId, timestamp) {
+    try {
+      const now = new Date().toISOString();
+      const firstSeen = timestamp || now;
+
+      // Use an UPDATE statement with a WHERE clause that checks if first_seen is NULL
+      // This ensures we only set first_seen once (on first detection)
+      const result = await this.db.run(`
+        UPDATE ${this.tableName}
+        SET first_seen = CASE WHEN first_seen IS NULL THEN ? ELSE first_seen END,
+            updated_at = ?
+        WHERE provider = ? AND record_id = ?
+      `, [firstSeen, now, provider, recordId]);
+
+      return result.changes > 0;
+    } catch (error) {
+      logger.error(`Failed to set record first_seen timestamp: ${error.message}`);
+      return false;
+    }
+  }
+  
+  /**
+   * Get the first_seen timestamp for a record
+   * @param {string} provider - DNS provider name
+   * @param {string} recordId - Record ID
+   * @returns {Promise<string|null>} - First seen timestamp or null
+   */
+  async getRecordFirstSeen(provider, recordId) {
+    try {
+      const record = await this.db.get(`
+        SELECT first_seen FROM ${this.tableName}
+        WHERE provider = ? AND record_id = ?
+      `, [provider, recordId]);
+      
+      return record ? record.first_seen : null;
+    } catch (error) {
+      logger.error(`Failed to get record first_seen timestamp: ${error.message}`);
+      return null;
     }
   }
 }
