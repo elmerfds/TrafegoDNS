@@ -188,7 +188,7 @@ class RecordTracker {
         const success = await this.sqliteManager.saveTrackedRecordsToDatabase(this.data);
 
         if (success) {
-          logger.debug('Saved tracked records to SQLite database');
+          logger.debug('Saved tracked records to SQLite database only (not writing JSON file)');
           return true;
         } else {
           logger.warn('Failed to save to SQLite, falling back to JSON file');
@@ -200,8 +200,11 @@ class RecordTracker {
       }
     }
 
-    // Fall back to JSON storage
-    saveTrackedRecordsToFile(this.trackerFile, this.data);
+    // Only if SQLite failed or is not available, fall back to JSON storage
+    if (!this.usingSQLite) {
+      logger.warn('Using JSON file storage (SQLite not available)');
+      saveTrackedRecordsToFile(this.trackerFile, this.data);
+    }
     return true;
   }
   

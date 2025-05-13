@@ -105,11 +105,18 @@ function loadTrackedRecordsFromFile(trackerFile, legacyTrackerFile, provider) {
  */
 function saveTrackedRecordsToFile(trackerFile, data) {
   try {
+    // Check for environment variable to disable JSON file storage
+    const disableJsonStorage = process.env.DISABLE_JSON_STORAGE === 'true';
+    if (disableJsonStorage) {
+      logger.debug('JSON file storage is disabled by configuration');
+      return;
+    }
+    
     const jsonData = JSON.stringify(data, null, 2);
     fs.writeFileSync(trackerFile, jsonData, 'utf8');
-    logger.debug('Saved tracked records to file');
+    logger.debug('Saved tracked records to JSON file (fallback storage)');
   } catch (error) {
-    logger.error(`Failed to save tracked records: ${error.message}`);
+    logger.error(`Failed to save tracked records to JSON: ${error.message}`);
   }
 }
 

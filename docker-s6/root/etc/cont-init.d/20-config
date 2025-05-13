@@ -1,6 +1,8 @@
 #!/command/with-contenv bash
 
 LOG_LEVEL=${LOG_LEVEL:-INFO}
+# Enable SQLite-only mode by default (no JSON files)
+export DISABLE_JSON_STORAGE=${DISABLE_JSON_STORAGE:-true}
 
 echo
 echo "-------------------------------------"
@@ -31,6 +33,25 @@ if [ -f /config/data/trafegodns.db ]; then
   chmod 644 /config/data/trafegodns.db
 else
   echo "No database file found. A new one will be created on first run."
+fi
+
+# Set default to disable JSON file storage
+if [ "$DISABLE_JSON_STORAGE" = "true" ]; then
+  echo "JSON file storage is disabled - SQLite will be used exclusively"
+  
+  # Remove any existing DNS records JSON file since we're using SQLite exclusively
+  if [ -f /config/data/dns-records.json ]; then
+    echo "Found existing DNS records JSON file - backing up and removing"
+    mv /config/data/dns-records.json /config/data/dns-records.json.bak.$(date +%s)
+  fi
+  
+  # Also check the legacy location
+  if [ -f /app/dns-records.json ]; then
+    echo "Found legacy DNS records JSON file - backing up and removing"
+    mv /app/dns-records.json /config/data/dns-records.json.legacy.bak.$(date +%s)
+  fi
+else
+  echo "JSON file storage is enabled as a fallback mechanism"
 fi
 
 # Run database migration script if needed
