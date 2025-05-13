@@ -565,55 +565,122 @@ class DNSTrackedRecordRepository {
       }
 
       let migratedCount = 0;
-
-      // Begin transaction for performance
-      await this.db.beginTransaction();
-
+      
+      // CRITICAL FIX: Check if we're already in a transaction first
+      const isInTransaction = this.db.inTransaction;
+      
       try {
+        // Only start a transaction if we're not already in one
+        if (!isInTransaction) {
+          try {
+            // First ensure no active transaction by attempting a rollback
+            try {
+              logger.debug('Attempting preliminary rollback to clear any active transactions');
+              await this.db.rollback();
+            } catch (rollbackError) {
+              // Ignore "no transaction is active" errors
+              if (!rollbackError.message.includes('no transaction is active')) {
+                logger.warn(`Unexpected rollback error: ${rollbackError.message}`);
+              }
+            }
+            
+            // Now start a fresh transaction
+            logger.debug('Starting new transaction for DNS tracked records migration');
+            await this.db.beginTransaction();
+          } catch (txError) {
+            // If we can't start a transaction (like "already in transaction"), proceed anyway
+            logger.warn(`Could not start DNS tracked records migration transaction: ${txError.message}. Proceeding without transaction.`);
+          }
+        } else {
+          logger.debug('Using existing transaction for DNS tracked records migration');
+        }
+
+        // Process each provider's records
         for (const provider in jsonData.providers) {
           const providerData = jsonData.providers[provider];
 
           if (!providerData || !providerData.records) continue;
 
           for (const recordId in providerData.records) {
-            const record = providerData.records[recordId];
+            try {
+              const record = providerData.records[recordId];
 
-            if (!record || !record.type || !record.name) continue;
+              if (!record || !record.type || !record.name) continue;
 
-            // Add metadata to track that this record was created by the app
-            const metadata = {
-              ...(record.metadata || {}),
-              appManaged: true,
-              migratedAt: new Date().toISOString()
-            };
+              // Add metadata to track that this record was created by the app
+              const metadata = {
+                ...(record.metadata || {}),
+                appManaged: true,
+                migratedAt: new Date().toISOString()
+              };
 
-            await this.trackRecord({
-              provider,
-              record_id: recordId,
-              type: record.type,
-              name: record.name,
-              content: record.content || record.value || record.domain || '',
-              ttl: record.ttl || 1,
-              proxied: !!record.proxied,
-              is_orphaned: record.is_orphaned ? 1 : 0,
-              orphaned_at: record.orphaned_at || null,
-              tracked_at: record.tracked_at || record.createdAt || new Date().toISOString(),
-              metadata: JSON.stringify(metadata)
-            });
+              // Use direct SQL to avoid nested operations that could cause transaction issues
+              const now = new Date().toISOString();
+              const metadataStr = JSON.stringify(metadata);
+              const content = record.content || record.value || record.domain || '';
+              const ttl = record.ttl || 1;
+              const proxied = !!record.proxied ? 1 : 0;
+              const isOrphaned = record.is_orphaned ? 1 : 0;
+              const orphanedAt = record.orphaned_at || null;
+              const trackedAt = record.tracked_at || record.createdAt || now;
+              
+              // Use INSERT OR REPLACE to handle conflicts
+              await this.db.run(`
+                INSERT OR REPLACE INTO ${this.tableName}
+                (provider, record_id, type, name, content, ttl, proxied, is_orphaned, orphaned_at, tracked_at, updated_at, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              `, [
+                provider, 
+                recordId, 
+                record.type,
+                record.name,
+                content,
+                ttl,
+                proxied,
+                isOrphaned,
+                orphanedAt,
+                trackedAt,
+                now,
+                metadataStr
+              ]);
 
-            migratedCount++;
+              migratedCount++;
+            } catch (recordError) {
+              // Log but continue with other records
+              logger.warn(`Error migrating DNS tracked record ${recordId}: ${recordError.message}`);
+            }
           }
         }
 
-        // Commit the transaction
-        await this.db.commit();
+        // Only commit if we started the transaction
+        if (!isInTransaction && this.db.inTransaction) {
+          try {
+            await this.db.commit();
+            logger.debug('Committed transaction for DNS tracked records migration');
+          } catch (commitError) {
+            logger.error(`Failed to commit DNS tracked records migration: ${commitError.message}`);
+            // Attempt rollback
+            try {
+              await this.db.rollback();
+            } catch (rollbackError) {
+              logger.error(`Additionally failed to rollback: ${rollbackError.message}`);
+            }
+          }
+        }
+        
         logger.info(`Successfully migrated ${migratedCount} DNS tracked records to SQLite`);
-
         return migratedCount;
-      } catch (transactionError) {
-        // Rollback on error
-        await this.db.rollback();
-        throw transactionError;
+      } catch (error) {
+        // Rollback only if we started the transaction
+        if (!isInTransaction && this.db.inTransaction) {
+          try {
+            await this.db.rollback();
+            logger.debug('Rolled back transaction due to DNS tracked records migration error');
+          } catch (rollbackError) {
+            logger.error(`Failed to rollback: ${rollbackError.message}`);
+          }
+        }
+        throw error;
       }
     } catch (error) {
       logger.error(`Failed to migrate DNS tracked records: ${error.message}`);

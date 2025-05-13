@@ -87,29 +87,83 @@ class RevokedTokenRepository extends BaseRepository {
    * @returns {Promise<Object>} - Revoked token record
    */
   async revokeToken(token, expiresAt) {
-    const tokenHash = this._hashToken(token);
-    const now = new Date().toISOString();
-    const expiresAtIso = new Date(expiresAt).toISOString();
+    // Check if we're in a transaction already
+    const isInTransaction = this.db.inTransaction;
     
-    // Clean expired tokens first
-    await this._cleanExpiredTokens();
-    
-    // Check if already revoked
-    const existing = await this.db.get(
-      `SELECT * FROM ${this.tableName} WHERE token_hash = ?`,
-      [tokenHash]
-    );
-    
-    if (existing) {
-      return existing;
+    try {
+      // Start a transaction only if not in one already
+      if (!isInTransaction) {
+        try {
+          // Try to clear any potential pre-existing transaction
+          try {
+            logger.debug('Attempting to clear any pre-existing transactions');
+            await this.db.rollback();
+          } catch (rollbackError) {
+            // Ignore "no transaction" errors
+            if (!rollbackError.message.includes('no transaction is active')) {
+              logger.debug(`Non-critical rollback error: ${rollbackError.message}`);
+            }
+          }
+          
+          logger.debug('Starting transaction for token revocation');
+          await this.db.beginTransaction();
+        } catch (txError) {
+          logger.warn(`Could not start transaction for token revocation: ${txError.message}`);
+          // Continue without transaction
+        }
+      }
+      
+      // Proceed with token revocation
+      const tokenHash = this._hashToken(token);
+      const now = new Date().toISOString();
+      const expiresAtIso = new Date(expiresAt).toISOString();
+      
+      // Clean expired tokens first
+      await this._cleanExpiredTokens();
+      
+      // Check if already revoked
+      const existing = await this.db.get(
+        `SELECT * FROM ${this.tableName} WHERE token_hash = ?`,
+        [tokenHash]
+      );
+      
+      if (existing) {
+        // If we started a transaction, commit it
+        if (!isInTransaction && this.db.inTransaction) {
+          await this.db.commit();
+        }
+        return existing;
+      }
+      
+      // Revoke token using direct SQL to avoid issues with nested operations
+      const result = await this.db.run(`
+        INSERT INTO ${this.tableName} (token_hash, revoked_at, expires_at)
+        VALUES (?, ?, ?)
+      `, [tokenHash, now, expiresAtIso]);
+      
+      // Commit if we started a transaction
+      if (!isInTransaction && this.db.inTransaction) {
+        await this.db.commit();
+      }
+      
+      return {
+        id: result.lastID,
+        token_hash: tokenHash,
+        revoked_at: now,
+        expires_at: expiresAtIso
+      };
+    } catch (error) {
+      // Rollback if we started a transaction
+      if (!isInTransaction && this.db.inTransaction) {
+        try {
+          await this.db.rollback();
+        } catch (rollbackError) {
+          logger.error(`Failed to rollback: ${rollbackError.message}`);
+        }
+      }
+      logger.error(`Failed to revoke token: ${error.message}`);
+      throw error;
     }
-    
-    // Revoke token
-    return this.create({
-      token_hash: tokenHash,
-      revoked_at: now,
-      expires_at: expiresAtIso
-    });
   }
 
   /**

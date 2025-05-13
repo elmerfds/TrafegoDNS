@@ -704,60 +704,97 @@ class BetterSQLite {
    * @returns {Promise<void>}
    */
   async beginTransaction(retries = 5) {
+    const txId = Math.floor(Math.random() * 10000); // Generate a transaction ID for logging
+    logger.debug(`[TX-${txId}] Begin transaction requested. Current state: inTransaction=${this.inTransaction}`);
+    
     // Make sure we're connected first
     if (!this.isConnected) {
       try {
+        logger.debug(`[TX-${txId}] Database not connected, initializing first`);
         await this.initialize();
       } catch (initError) {
-        logger.error(`Failed to initialize database before transaction: ${initError.message}`);
+        logger.error(`[TX-${txId}] Failed to initialize database before transaction: ${initError.message}`);
         throw initError;
       }
     }
     
     // Check our transaction flag first
     if (this.inTransaction) {
-      logger.debug('Transaction flag already set, skipping beginTransaction');
+      logger.debug(`[TX-${txId}] Transaction flag already set, skipping beginTransaction`);
       return;
     }
 
     // Check if a transaction is already active in SQLite itself
     // This handles cases where the flag doesn't match the actual DB state
     try {
+      let transactionActive = false;
+      
+      // First try using PRAGMA to check transaction status
       try {
         const inProgressCheck = this.db.prepare("PRAGMA transaction_status").get();
         if (inProgressCheck && inProgressCheck.transaction_status > 0) {
-          logger.warn('Transaction active in SQLite but flag not set. Setting inTransaction flag.');
+          transactionActive = true;
+          logger.warn(`[TX-${txId}] Transaction active in SQLite but flag not set. Setting inTransaction flag.`);
           this.inTransaction = true;
+          
+          // Log details about the existing transaction
+          try {
+            const journalMode = this.db.prepare("PRAGMA journal_mode").get();
+            logger.debug(`[TX-${txId}] Current journal mode: ${JSON.stringify(journalMode)}`);
+          } catch (err) {
+            // Non-critical, just for debugging
+          }
+          
           return;
+        } else {
+          logger.debug(`[TX-${txId}] PRAGMA check shows no active transaction`);
         }
       } catch (pragmaError) {
-        // If pragma check fails (older SQLite versions), try the regular way
-        logger.debug('Could not check transaction status via pragma, continuing with normal begin');
+        // If pragma check fails (older SQLite versions), try an alternative test
+        logger.debug(`[TX-${txId}] Could not check via PRAGMA (${pragmaError.message}), trying alternative method`);
+        
+        try {
+          // Try a dummy BEGIN/ROLLBACK to test if a transaction exists
+          this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+          this.db.exec('ROLLBACK');
+          logger.debug(`[TX-${txId}] Alternative test confirms no active transaction`);
+          transactionActive = false;
+        } catch (testError) {
+          if (testError.message.includes('cannot start a transaction within a transaction')) {
+            logger.warn(`[TX-${txId}] Alternative test found existing transaction`);
+            transactionActive = true;
+            this.inTransaction = true;
+            return;
+          }
+        }
       }
-
-      // Start the transaction
-      logger.debug('Starting SQLite transaction');
-      this.db.exec('BEGIN IMMEDIATE TRANSACTION');
-      this.inTransaction = true;
+      
+      if (!transactionActive) {
+        // Start the transaction
+        logger.debug(`[TX-${txId}] Starting new SQLite transaction (no active transaction detected)`);
+        this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+        this.inTransaction = true;
+        logger.debug(`[TX-${txId}] Transaction successfully started`);
+      }
     } catch (error) {
       // Handle database locked errors with retries
       if (error.message.includes('database is locked') && retries > 0) {
-        logger.debug(`Database locked, retrying beginTransaction in 200ms (${retries} retries left)...`);
+        logger.debug(`[TX-${txId}] Database locked, retrying beginTransaction in 200ms (${retries} retries left)...`);
         await new Promise(resolve => setTimeout(resolve, 200));
         return this.beginTransaction(retries - 1);
       }
 
       // Handle nested transaction errors - CRITICAL CASE
       if (error.message.includes('cannot start a transaction within a transaction')) {
-        logger.warn('Nested transaction detected but flag not set. Setting inTransaction flag to maintain consistency.');
+        logger.warn(`[TX-${txId}] Nested transaction detected but flag not set. Setting inTransaction flag.`);
         this.inTransaction = true;
         return;
       }
 
       // Log any other errors but don't throw them to prevent fatal errors
       // This makes beginTransaction more resilient
-      logger.error(`Error starting transaction: ${error.message}`);
-      logger.debug('Continuing execution despite transaction start failure');
+      logger.error(`[TX-${txId}] Error starting transaction: ${error.message}`);
+      logger.debug(`[TX-${txId}] Continuing execution despite transaction start failure`);
       return;
     }
   }
@@ -769,62 +806,95 @@ class BetterSQLite {
    * @returns {Promise<void>}
    */
   async commit(retries = 5) {
+    const txId = Math.floor(Math.random() * 10000); // Generate a transaction ID for logging
+    logger.debug(`[TX-${txId}] Commit requested. Current state: inTransaction=${this.inTransaction}`);
+    
     // Defend against commit when not connected
     if (!this.db) {
-      logger.debug('No database connection, cannot commit');
+      logger.debug(`[TX-${txId}] No database connection, cannot commit`);
       this.inTransaction = false; // Reset transaction flag
       return;
     }
 
     // Skip if not in transaction (according to our flag)
     if (!this.inTransaction) {
-      logger.debug('No transaction in progress (according to flag), skipping commit');
+      logger.debug(`[TX-${txId}] No transaction in progress (according to flag), skipping commit`);
       return;
     }
 
     try {
       // Check if a transaction is actually active in SQLite
       // This handles cases where our flag is out of sync with SQLite
+      let transactionActive = true; // Default to assuming active
+      
       try {
         const inProgressCheck = this.db.prepare("PRAGMA transaction_status").get();
+        logger.debug(`[TX-${txId}] PRAGMA transaction_status: ${JSON.stringify(inProgressCheck)}`);
+        
         if (!inProgressCheck || inProgressCheck.transaction_status === 0) {
-          logger.warn('Transaction flag set but no actual transaction active in SQLite. Resetting flag.');
+          transactionActive = false;
+          logger.warn(`[TX-${txId}] Transaction flag set but no actual transaction active in SQLite. Resetting flag.`);
           this.inTransaction = false;
           return;
+        } else {
+          logger.debug(`[TX-${txId}] Verified active transaction via PRAGMA`);
         }
       } catch (pragmaError) {
-        // If we can't check (older SQLite versions), continue with commit attempt
-        logger.debug('Could not check transaction status via pragma, attempting commit anyway');
+        // If PRAGMA fails, try alternative verification
+        logger.debug(`[TX-${txId}] Could not check via PRAGMA (${pragmaError.message}), using alternative verification`);
+        
+        // Try to detect transaction status indirectly
+        try {
+          // If we can start a transaction, there isn't one active
+          this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+          this.db.exec('ROLLBACK'); 
+          transactionActive = false;
+          logger.warn(`[TX-${txId}] Successfully started test transaction - no real transaction was active despite flag. Resetting flag.`);
+          this.inTransaction = false;
+          return;
+        } catch (testError) {
+          if (testError.message.includes('cannot start a transaction within a transaction')) {
+            // This confirms a transaction is active
+            transactionActive = true;
+            logger.debug(`[TX-${txId}] Confirmed active transaction via alternative test`);
+          } else {
+            // Some other error, assume we can proceed
+            logger.debug(`[TX-${txId}] Alternative test had error: ${testError.message}, proceeding with commit`);
+          }
+        }
       }
 
-      // Perform the actual commit
-      logger.debug('Committing SQLite transaction');
-      this.db.exec('COMMIT');
-      this.inTransaction = false;
+      if (transactionActive) {
+        // Perform the actual commit
+        logger.debug(`[TX-${txId}] Committing SQLite transaction`);
+        this.db.exec('COMMIT');
+        this.inTransaction = false;
+        logger.debug(`[TX-${txId}] Successfully committed transaction`);
+      }
     } catch (error) {
       // Handle database locked errors with retries
       if (error.message.includes('database is locked') && retries > 0) {
-        logger.debug(`Database locked, retrying commit in 200ms (${retries} retries left)...`);
+        logger.debug(`[TX-${txId}] Database locked, retrying commit in 200ms (${retries} retries left)...`);
         await new Promise(resolve => setTimeout(resolve, 200));
         return this.commit(retries - 1);
       }
 
       // Handle no transaction errors - important case
       if (error.message.includes('no transaction is active')) {
-        logger.warn('Attempted to commit with no transaction active. Clearing inTransaction flag.');
+        logger.warn(`[TX-${txId}] Attempted to commit with no transaction active. Clearing inTransaction flag.`);
         this.inTransaction = false;
         return;
       }
 
       // For commit errors, try to rollback to keep database consistent
-      logger.error(`Error committing transaction: ${error.message}`);
-      logger.debug('Attempting to rollback after commit failure');
+      logger.error(`[TX-${txId}] Error committing transaction: ${error.message}`);
+      logger.debug(`[TX-${txId}] Attempting to rollback after commit failure`);
       
       try {
         await this.rollback();
-        logger.debug('Successfully rolled back transaction after commit failure');
+        logger.debug(`[TX-${txId}] Successfully rolled back transaction after commit failure`);
       } catch (rollbackError) {
-        logger.error(`Failed to rollback after commit error: ${rollbackError.message}`);
+        logger.error(`[TX-${txId}] Failed to rollback after commit error: ${rollbackError.message}`);
       }
       
       // Always reset transaction state to avoid inconsistency
@@ -839,56 +909,89 @@ class BetterSQLite {
    * @returns {Promise<void>}
    */
   async rollback(retries = 5) {
+    const txId = Math.floor(Math.random() * 10000); // Generate a transaction ID for logging
+    logger.debug(`[TX-${txId}] Rollback requested. Current state: inTransaction=${this.inTransaction}`);
+    
     // Defend against rollback when not connected
     if (!this.db) {
-      logger.debug('No database connection, cannot rollback');
+      logger.debug(`[TX-${txId}] No database connection, cannot rollback`);
       this.inTransaction = false; // Reset transaction flag
       return;
     }
 
     // Skip if not in transaction (according to our flag)
     if (!this.inTransaction) {
-      logger.debug('No transaction in progress (according to flag), skipping rollback');
+      logger.debug(`[TX-${txId}] No transaction in progress (according to flag), skipping rollback`);
       return;
     }
 
     try {
       // Check if a transaction is actually active in SQLite 
       // This handles cases where our flag is out of sync with SQLite
+      let transactionActive = true; // Default to assuming active
+      
       try {
         const inProgressCheck = this.db.prepare("PRAGMA transaction_status").get();
+        logger.debug(`[TX-${txId}] PRAGMA transaction_status: ${JSON.stringify(inProgressCheck)}`);
+        
         if (!inProgressCheck || inProgressCheck.transaction_status === 0) {
-          logger.warn('Transaction flag set but no actual transaction active in SQLite. Resetting flag.');
+          transactionActive = false;
+          logger.warn(`[TX-${txId}] Transaction flag set but no actual transaction active in SQLite. Resetting flag.`);
           this.inTransaction = false;
           return;
+        } else {
+          logger.debug(`[TX-${txId}] Verified active transaction via PRAGMA`);
         }
       } catch (pragmaError) {
-        // If we can't check (older SQLite versions), continue with rollback attempt
-        logger.debug('Could not check transaction status via pragma, attempting rollback anyway');
+        // If PRAGMA fails, try alternative verification
+        logger.debug(`[TX-${txId}] Could not check via PRAGMA (${pragmaError.message}), using alternative verification`);
+        
+        // Try to detect transaction status indirectly
+        try {
+          // If we can start a transaction, there isn't one active
+          this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+          this.db.exec('ROLLBACK'); 
+          transactionActive = false;
+          logger.warn(`[TX-${txId}] Successfully started test transaction - no real transaction was active despite flag. Resetting flag.`);
+          this.inTransaction = false;
+          return;
+        } catch (testError) {
+          if (testError.message.includes('cannot start a transaction within a transaction')) {
+            // This confirms a transaction is active
+            transactionActive = true;
+            logger.debug(`[TX-${txId}] Confirmed active transaction via alternative test`);
+          } else {
+            // Some other error, assume we can proceed
+            logger.debug(`[TX-${txId}] Alternative test had error: ${testError.message}, proceeding with rollback`);
+          }
+        }
       }
 
-      // Perform the actual rollback
-      logger.debug('Rolling back SQLite transaction');
-      this.db.exec('ROLLBACK');
-      this.inTransaction = false;
+      if (transactionActive) {
+        // Perform the actual rollback
+        logger.debug(`[TX-${txId}] Rolling back SQLite transaction`);
+        this.db.exec('ROLLBACK');
+        this.inTransaction = false;
+        logger.debug(`[TX-${txId}] Successfully rolled back transaction`);
+      }
     } catch (error) {
       // Handle database locked errors with retries
       if (error.message.includes('database is locked') && retries > 0) {
-        logger.debug(`Database locked, retrying rollback in 200ms (${retries} retries left)...`);
+        logger.debug(`[TX-${txId}] Database locked, retrying rollback in 200ms (${retries} retries left)...`);
         await new Promise(resolve => setTimeout(resolve, 200));
         return this.rollback(retries - 1);
       }
 
       // Handle no transaction errors - most important case to handle
       if (error.message.includes('no transaction is active')) {
-        logger.warn('Attempted to rollback with no transaction active. Clearing inTransaction flag.');
+        logger.warn(`[TX-${txId}] Attempted to rollback with no transaction active. Clearing inTransaction flag.`);
         this.inTransaction = false;
         return;
       }
 
       // For any other error, log it but ensure our flag is reset
       // This prevents the flag staying inconsistent with actual DB state
-      logger.error(`Error rolling back transaction: ${error.message}`);
+      logger.error(`[TX-${txId}] Error rolling back transaction: ${error.message}`);
       this.inTransaction = false; // Reset the flag regardless of error
     }
   }

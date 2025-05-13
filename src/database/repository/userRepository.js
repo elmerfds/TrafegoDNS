@@ -227,37 +227,99 @@ class UserRepository extends BaseRepository {
     
     let migratedCount = 0;
     
-    // Start a transaction
-    await this.db.beginTransaction();
+    // CRITICAL FIX: Check if we're already in a transaction first
+    const isInTransaction = this.db.inTransaction;
     
     try {
-      for (const jsonUser of jsonUsers) {
-        // Skip if already exists
-        const existingUser = await this.findByUsername(jsonUser.username);
-        if (existingUser) continue;
-        
-        // Create user
-        const user = {
-          username: jsonUser.username,
-          password_hash: jsonUser.passwordHash, // Already hashed in JSON
-          role: jsonUser.role || 'operator',
-          created_at: jsonUser.createdAt || new Date().toISOString(),
-          updated_at: jsonUser.updatedAt || null,
-          last_login: jsonUser.lastLogin || null
-        };
-        
-        await this.create(user);
-        migratedCount++;
+      // Only start a transaction if we're not already in one
+      if (!isInTransaction) {
+        try {
+          // First ensure no active transaction by attempting a rollback
+          try {
+            logger.debug('Attempting preliminary rollback to clear any active transactions');
+            await this.db.rollback();
+          } catch (rollbackError) {
+            // Ignore "no transaction is active" errors
+            if (!rollbackError.message.includes('no transaction is active')) {
+              logger.warn(`Unexpected rollback error: ${rollbackError.message}`);
+            }
+          }
+          
+          // Now start a fresh transaction
+          logger.debug('Starting new transaction for user migration');
+          await this.db.beginTransaction();
+        } catch (txError) {
+          // If we can't start a transaction (like "already in transaction"), proceed anyway
+          logger.warn(`Could not start user migration transaction: ${txError.message}. Proceeding without transaction.`);
+        }
+      } else {
+        logger.debug('Using existing transaction for user migration');
       }
       
-      // Commit the transaction
-      await this.db.commit();
-      logger.info(`Migrated ${migratedCount} users from JSON`);
+      // Process each user individually
+      for (const jsonUser of jsonUsers) {
+        try {
+          // Skip if already exists
+          const existingUser = await this.findByUsername(jsonUser.username);
+          if (existingUser) continue;
+          
+          // Create user
+          const user = {
+            username: jsonUser.username,
+            password_hash: jsonUser.passwordHash, // Already hashed in JSON
+            role: jsonUser.role || 'operator',
+            created_at: jsonUser.createdAt || new Date().toISOString(),
+            updated_at: jsonUser.updatedAt || null,
+            last_login: jsonUser.lastLogin || null
+          };
+          
+          // Execute with direct SQL to avoid nested transactions
+          const fields = Object.keys(user);
+          const placeholders = fields.map(() => '?').join(', ');
+          const values = fields.map(field => user[field]);
+          
+          const sql = `
+            INSERT INTO ${this.tableName} (${fields.join(', ')})
+            VALUES (${placeholders})
+          `;
+          
+          await this.db.run(sql, values);
+          migratedCount++;
+        } catch (userError) {
+          // Log but continue with other users
+          logger.warn(`Error migrating user ${jsonUser.username}: ${userError.message}`);
+        }
+      }
       
+      // Only commit if we started the transaction
+      if (!isInTransaction && this.db.inTransaction) {
+        try {
+          await this.db.commit();
+          logger.debug('Committed transaction for user migration');
+        } catch (commitError) {
+          logger.error(`Failed to commit user migration: ${commitError.message}`);
+          // Attempt rollback
+          try {
+            await this.db.rollback();
+          } catch (rollbackError) {
+            logger.error(`Additionally failed to rollback: ${rollbackError.message}`);
+          }
+        }
+      }
+      
+      logger.info(`Migrated ${migratedCount} users from JSON`);
       return migratedCount;
     } catch (error) {
-      // Rollback on error
-      await this.db.rollback();
+      // Rollback only if we started the transaction
+      if (!isInTransaction && this.db.inTransaction) {
+        try {
+          await this.db.rollback();
+          logger.debug('Rolled back transaction due to user migration error');
+        } catch (rollbackError) {
+          logger.error(`Failed to rollback: ${rollbackError.message}`);
+        }
+      }
+      
       logger.error(`Failed to migrate users: ${error.message}`);
       throw error;
     }
