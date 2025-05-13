@@ -224,22 +224,43 @@ class TraefikMonitor {
     const hostnames = [];
     const containerLabels = {};
     
+    // Handle null or undefined routers object
+    if (!routers || typeof routers !== 'object') {
+      logger.warn('No valid routers data returned from Traefik API');
+      return { hostnames, containerLabels };
+    }
+    
     for (const [_, router] of Object.entries(routers)) {
+      // Skip undefined or invalid routers
+      if (!router || !router.name) {
+        continue;
+      }
+      
       const routerName = router.name;
       if (router.rule && router.rule.includes('Host')) {
         // Extract all hostnames from the rule
         const routerHostnames = extractHostnamesFromRule(router.rule);
         
+        if (!routerHostnames || !Array.isArray(routerHostnames)) {
+          logger.debug(`No valid hostnames extracted from rule for router "${routerName}"`);
+          continue;
+        }
+        
         for (const hostname of routerHostnames) {
+          // Skip invalid or empty hostnames
+          if (!hostname) {
+            continue;
+          }
+          
           hostnames.push(hostname);
           
           // Store router service information with hostname for later lookup
           containerLabels[hostname] = {
-            [`${this.config.traefikLabelPrefix}http.routers.${routerName}.service`]: router.service,
+            [`${this.config.traefikLabelPrefix}http.routers.${routerName}.service`]: router.service || '',
             routerName: routerName
           };
           
-          logger.trace(`Processed router "${routerName}" for hostname "${hostname}" with service "${router.service}"`);
+          logger.trace(`Processed router "${routerName}" for hostname "${hostname}" with service "${router.service || 'unknown'}"`);
         }
       }
     }
