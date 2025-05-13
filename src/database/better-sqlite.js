@@ -210,7 +210,17 @@ class BetterSQLite {
         return true;
       }
       
-      // Check the current version
+      // Check the migration version specifically for updated_at column 
+      // This is more precise than just checking the latest version
+      const migrationStmt = this.db.prepare('SELECT id FROM schema_migrations WHERE name = ?');
+      const updateAtMigrationResult = migrationStmt.get('add_updated_at_column_to_dns_records');
+      
+      if (updateAtMigrationResult) {
+        logger.debug('add_updated_at_column_to_dns_records migration already recorded, no migration needed');
+        return false;
+      }
+      
+      // Also check the current max version
       const versionStmt = this.db.prepare('SELECT version FROM schema_migrations ORDER BY id DESC LIMIT 1');
       const versionResult = versionStmt.get();
       const currentVersion = versionResult ? versionResult.version : 0;
@@ -218,6 +228,25 @@ class BetterSQLite {
       // Compare with the latest migration version
       const latestVersion = 3; // Updated to include the updated_at column migration
       
+      // If we have the latest version but don't have the specific migration, handle it specially
+      if (currentVersion >= latestVersion && !updateAtMigrationResult) {
+        logger.info('Database version is current but specific migration record is missing');
+        
+        // Check if the column actually exists in the dns_records table
+        try {
+          const tableInfo = this.db.prepare('PRAGMA table_info(dns_records)').all();
+          const hasUpdatedAt = tableInfo.some(col => col.name === 'updated_at');
+          
+          if (hasUpdatedAt) {
+            logger.info('Column exists but migration record missing - will record migration');
+            return true; // Run the migration to record it, but it will detect column exists
+          }
+        } catch (pragmaError) {
+          logger.debug(`Could not check table info: ${pragmaError.message}`);
+        }
+      }
+      
+      // Otherwise default to standard version check
       return currentVersion < latestVersion;
     } catch (error) {
       logger.error(`Error checking migration status: ${error.message}`);
@@ -415,46 +444,77 @@ class BetterSQLite {
       
       // 3. Run the updated_at column migration
       try {
-        logger.debug('Running updated_at column migration (separate transaction)');
-        if (this.inTransaction) {
-          try {
-            logger.warn('Unexpected transaction active before updated_at migration, rolling back');
-            this.db.exec('ROLLBACK');
-          } catch (unexpectedRollbackError) {
-            logger.debug(`Unexpected rollback result: ${unexpectedRollbackError.message}`);
-          }
-          this.inTransaction = false;
-        }
+        // Check if migration is already recorded
+        const migrationRecorded = await this.get(
+          'SELECT id FROM schema_migrations WHERE name = ?',
+          ['add_updated_at_column_to_dns_records']
+        );
         
-        // Get current max version
-        const versionStmt = this.db.prepare('SELECT MAX(version) as version FROM schema_migrations');
-        const versionResult = versionStmt.get();
-        const currentVersion = versionResult && versionResult.version ? versionResult.version : 0;
-        
-        if (currentVersion < 3) {
-          // Run the migration to add updated_at column
-          try {
-            // Dynamically import the migration file
-            const { addUpdatedAtColumn } = require('./migrations/addUpdatedAtColumn');
-            
-            // Create a simple db adapter for the migration
-            const dbAdapter = {
-              get: (...args) => this.get(...args),
-              all: (...args) => this.all(...args),
-              run: (...args) => this.run(...args),
-              beginTransaction: () => this.beginTransaction(),
-              commit: () => this.commit(),
-              rollback: () => this.rollback()
-            };
-            
-            // Run the migration
-            await addUpdatedAtColumn(dbAdapter);
-          } catch (migrationError) {
-            logger.error(`Failed to run updated_at column migration: ${migrationError.message}`);
-            throw migrationError;
-          }
+        if (migrationRecorded) {
+          logger.debug('add_updated_at_column_to_dns_records migration already recorded, skipping');
         } else {
-          logger.debug('Updated_at column migration already applied');
+          logger.debug('Running updated_at column migration (separate transaction)');
+          
+          // Make sure there's no active transaction
+          if (this.inTransaction) {
+            try {
+              logger.warn('Unexpected transaction active before updated_at migration, rolling back');
+              this.db.exec('ROLLBACK');
+            } catch (unexpectedRollbackError) {
+              logger.debug(`Unexpected rollback result: ${unexpectedRollbackError.message}`);
+            }
+            this.inTransaction = false;
+          }
+          
+          // Check if the column already exists
+          const tableInfo = await this.all('PRAGMA table_info(dns_records)');
+          const columnExists = tableInfo.some(col => col.name === 'updated_at');
+          
+          if (columnExists) {
+            logger.info('updated_at column already exists in dns_records table, recording migration without changes');
+            
+            // Just record the migration since the column exists
+            try {
+              await this.beginTransaction();
+              
+              const currentVersion = await this.get('SELECT MAX(version) as version FROM schema_migrations');
+              const newVersion = (currentVersion && currentVersion.version) ? 
+                currentVersion.version + 1 : 3;
+              
+              await this.run(
+                'INSERT INTO schema_migrations (version, name) VALUES (?, ?)',
+                [newVersion, 'add_updated_at_column_to_dns_records']
+              );
+              
+              await this.commit();
+              logger.info('Successfully recorded migration for existing updated_at column');
+            } catch (recordError) {
+              await this.rollback();
+              throw recordError;
+            }
+          } else {
+            // Run the full migration to add the column
+            try {
+              // Dynamically import the migration file
+              const { addUpdatedAtColumn } = require('./migrations/addUpdatedAtColumn');
+              
+              // Create a simple db adapter for the migration
+              const dbAdapter = {
+                get: (...args) => this.get(...args),
+                all: (...args) => this.all(...args),
+                run: (...args) => this.run(...args),
+                beginTransaction: () => this.beginTransaction(),
+                commit: () => this.commit(),
+                rollback: () => this.rollback()
+              };
+              
+              // Run the migration
+              await addUpdatedAtColumn(dbAdapter);
+            } catch (migrationError) {
+              logger.error(`Failed to run updated_at column migration: ${migrationError.message}`);
+              throw migrationError;
+            }
+          }
         }
       } catch (versionError) {
         // Clean up transaction on error
@@ -631,27 +691,64 @@ class BetterSQLite {
         )
       `, 'dns_records table');
       
-      // Check if this is a new table creation or if it already existed
-      const recordsTableExists = await this.get(`
-        SELECT name FROM sqlite_master 
-        WHERE type='table' AND name='dns_records' AND sql LIKE '%updated_at%'
-      `);
-      
-      // If we just created the table with updated_at column, record the migration
-      if (recordsTableExists) {
-        try {
-          logger.debug('Recording all migrations for dns_records since table was created with latest schema');
-          const migrationStmt = this.db.prepare(
-            'INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (?, ?)'
-          );
-          // Record all migrations up to current version (3)
-          migrationStmt.run(1, 'initial_schema');
-          migrationStmt.run(2, 'add_last_processed_and_managed_columns');
-          migrationStmt.run(3, 'add_updated_at_column_to_dns_records');
-          logger.debug('All migrations recorded for newly created tables');
-        } catch (migrationRecordError) {
-          logger.debug(`Non-critical error recording migrations: ${migrationRecordError.message}`);
+      // Check if this is a new table creation with the latest schema (including updated_at column)
+      try {
+        // First check if dns_records table exists and has updated_at column
+        const recordsTableExists = await this.get(`
+          SELECT name FROM sqlite_master 
+          WHERE type='table' AND name='dns_records' AND sql LIKE '%updated_at%'
+        `);
+        
+        // Only proceed if we have schema_migrations table and dns_records with updated_at
+        if (recordsTableExists) {
+          // Check if schema_migrations table exists
+          const migrationTableExists = await this.get(`
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='schema_migrations'
+          `);
+          
+          if (migrationTableExists) {
+            // Check if migrations are already recorded
+            const migrationsRecorded = await this.get(`
+              SELECT COUNT(*) as count FROM schema_migrations 
+              WHERE name = 'add_updated_at_column_to_dns_records'
+            `);
+            
+            // Only record migrations if they haven't been recorded yet
+            if (!migrationsRecorded || migrationsRecorded.count === 0) {
+              logger.info('Recording all migrations for dns_records since table was created with latest schema');
+              
+              try {
+                // Use a transaction for this to ensure atomicity
+                this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+                
+                const migrationStmt = this.db.prepare(
+                  'INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (?, ?)'
+                );
+                
+                // Record all migrations up to current version (3)
+                migrationStmt.run(1, 'initial_schema');
+                migrationStmt.run(2, 'add_last_processed_and_managed_columns');
+                migrationStmt.run(3, 'add_updated_at_column_to_dns_records');
+                
+                this.db.exec('COMMIT');
+                logger.info('All migrations recorded for newly created tables - migration system will be skipped');
+              } catch (migrationRecordError) {
+                try {
+                  this.db.exec('ROLLBACK');
+                } catch (rollbackError) {
+                  logger.debug(`Rollback error: ${rollbackError.message}`);
+                }
+                
+                logger.debug(`Error recording migrations: ${migrationRecordError.message}`);
+              }
+            } else {
+              logger.debug('Migrations already recorded in schema_migrations table');
+            }
+          }
         }
+      } catch (checkError) {
+        logger.debug(`Error checking table state: ${checkError.message}`);
       }
 
       // Create indexes for dns_records
