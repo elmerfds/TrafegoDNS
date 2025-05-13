@@ -99,7 +99,7 @@ class DatabaseConnection {
       
       // Compare with the latest migration version
       // This would be updated as new migrations are added
-      const latestVersion = 2;
+      const latestVersion = 3; // Updated to include the updated_at column migration
       
       return currentVersion < latestVersion;
     } catch (error) {
@@ -127,11 +127,24 @@ class DatabaseConnection {
       // Run migrations in order
       await this.createTables();
       
-      // Record the migration
-      await this.db.run(
-        'INSERT INTO schema_migrations (version, name) VALUES (?, ?)',
-        [2, 'add_last_processed_and_managed_columns']
-      );
+      // Get current version
+      const versionResult = await this.db.get('SELECT MAX(version) as version FROM schema_migrations');
+      const currentVersion = versionResult ? versionResult.version : 0;
+      
+      // Run version-specific migrations
+      if (currentVersion < 2) {
+        // Record the managed columns migration
+        await this.db.run(
+          'INSERT INTO schema_migrations (version, name) VALUES (?, ?)',
+          [2, 'add_last_processed_and_managed_columns']
+        );
+      }
+      
+      // Import and run the updated_at column migration if needed
+      if (currentVersion < 3) {
+        const { addUpdatedAtColumn } = require('./migrations/addUpdatedAtColumn');
+        await addUpdatedAtColumn(this);
+      }
       
       logger.info('Database migrations completed successfully');
     } catch (error) {
@@ -166,6 +179,7 @@ class DatabaseConnection {
           orphaned_at TIMESTAMP,
           fingerprint TEXT,
           managed INTEGER DEFAULT 0,
+          updated_at TIMESTAMP,
           UNIQUE(provider, record_id)
         )
       `);

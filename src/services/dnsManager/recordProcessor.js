@@ -14,6 +14,12 @@ const { extractDnsConfigFromLabels } = require('../../utils/dns');
  * @returns {Array} Array of processed DNS record configurations
  */
 async function processHostnames(hostnames, containerLabels, config, stats) {
+  // Handle null or undefined hostnames
+  if (!hostnames || !Array.isArray(hostnames)) {
+    logger.warn('No hostnames provided for processing or invalid format');
+    return { processedHostnames: [], dnsRecordConfigs: [] };
+  }
+  
   logger.debug(`Processing ${hostnames.length} hostnames`);
   
   // Track processed hostnames for cleanup

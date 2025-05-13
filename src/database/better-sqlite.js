@@ -216,7 +216,7 @@ class BetterSQLite {
       const currentVersion = versionResult ? versionResult.version : 0;
       
       // Compare with the latest migration version
-      const latestVersion = 2;
+      const latestVersion = 3; // Updated to include the updated_at column migration
       
       return currentVersion < latestVersion;
     } catch (error) {
@@ -413,7 +413,65 @@ class BetterSQLite {
         throw tablesError;
       }
       
-      // 3. Record the migration version
+      // 3. Run the updated_at column migration
+      try {
+        logger.debug('Running updated_at column migration (separate transaction)');
+        if (this.inTransaction) {
+          try {
+            logger.warn('Unexpected transaction active before updated_at migration, rolling back');
+            this.db.exec('ROLLBACK');
+          } catch (unexpectedRollbackError) {
+            logger.debug(`Unexpected rollback result: ${unexpectedRollbackError.message}`);
+          }
+          this.inTransaction = false;
+        }
+        
+        // Get current max version
+        const versionStmt = this.db.prepare('SELECT MAX(version) as version FROM schema_migrations');
+        const versionResult = versionStmt.get();
+        const currentVersion = versionResult && versionResult.version ? versionResult.version : 0;
+        
+        if (currentVersion < 3) {
+          // Run the migration to add updated_at column
+          try {
+            // Dynamically import the migration file
+            const { addUpdatedAtColumn } = require('./migrations/addUpdatedAtColumn');
+            
+            // Create a simple db adapter for the migration
+            const dbAdapter = {
+              get: (...args) => this.get(...args),
+              all: (...args) => this.all(...args),
+              run: (...args) => this.run(...args),
+              beginTransaction: () => this.beginTransaction(),
+              commit: () => this.commit(),
+              rollback: () => this.rollback()
+            };
+            
+            // Run the migration
+            await addUpdatedAtColumn(dbAdapter);
+          } catch (migrationError) {
+            logger.error(`Failed to run updated_at column migration: ${migrationError.message}`);
+            throw migrationError;
+          }
+        } else {
+          logger.debug('Updated_at column migration already applied');
+        }
+      } catch (versionError) {
+        // Clean up transaction on error
+        if (this.inTransaction) {
+          try {
+            this.db.exec('ROLLBACK');
+          } catch (rollbackError) {
+            logger.error('Error rolling back after migration error: ' + rollbackError.message);
+          }
+          this.inTransaction = false;
+        }
+        
+        logger.error('Error during migrations: ' + versionError.message);
+        throw versionError;
+      }
+      
+      // 4. Record the migration version if needed
       try {
         logger.debug('Recording migration version (separate transaction)');
         // CRITICAL FIX: Verify transaction state before starting a new one
@@ -430,20 +488,29 @@ class BetterSQLite {
         this.db.exec('BEGIN IMMEDIATE TRANSACTION');
         this.inTransaction = true;
         
-        try {
-          const stmt = this.db.prepare('INSERT INTO schema_migrations (version, name) VALUES (?, ?)');
-          stmt.run(2, 'add_last_processed_and_managed_columns');
-        } catch (recordError) {
-          if (recordError.message.includes('UNIQUE constraint failed')) {
-            logger.info('Migration already recorded, skipping version insert');
-          } else {
-            throw recordError;
+        // Get current max version
+        const versionStmt = this.db.prepare('SELECT MAX(version) as version FROM schema_migrations');
+        const versionResult = versionStmt.get();
+        const currentVersion = versionResult && versionResult.version ? versionResult.version : 0;
+        
+        // Insert version 2 if needed
+        if (currentVersion < 2) {
+          try {
+            const stmt = this.db.prepare('INSERT INTO schema_migrations (version, name) VALUES (?, ?)');
+            stmt.run(2, 'add_last_processed_and_managed_columns');
+            logger.debug('Recorded migration version 2');
+          } catch (recordError) {
+            if (recordError.message.includes('UNIQUE constraint failed')) {
+              logger.info('Migration version 2 already recorded, skipping');
+            } else {
+              throw recordError;
+            }
           }
         }
         
         this.db.exec('COMMIT');
         this.inTransaction = false;
-        logger.debug('Migration version recorded successfully');
+        logger.debug('Migration version recording completed successfully');
       } catch (versionError) {
         // Clean up transaction on error
         if (this.inTransaction) {
@@ -559,6 +626,7 @@ class BetterSQLite {
           orphaned_at TIMESTAMP,
           fingerprint TEXT,
           managed INTEGER DEFAULT 0,
+          updated_at TIMESTAMP,
           UNIQUE(provider, record_id)
         )
       `, 'dns_records table');

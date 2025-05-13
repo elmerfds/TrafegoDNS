@@ -163,8 +163,33 @@ class RecordTracker {
         return this.data;
       }
     } else {
-      // SQLite is required - initialize empty data rather than falling back to JSON
-      logger.error('SQLite is required but not available');
+      // Check if initialization is in progress
+      const database = require('../../database');
+      
+      // If the database is initializing but not fully initialized yet, use a temporary structure
+      if (database && database.forceInitialized) {
+        logger.info('SQLite database is initializing, using temporary data structure');
+        this.data = { providers: { [this.provider]: { records: {} } } };
+        return this.data;
+      }
+      
+      // Try to initialize SQLite again (for cases where database was initialized after this instance was created)
+      try {
+        if (database && database.isInitialized()) {
+          this.sqliteManager = new SQLiteRecordManager(database);
+          this.usingSQLite = this.sqliteManager.initialize();
+          
+          if (this.usingSQLite) {
+            logger.info('Successfully initialized SQLite for DNS record tracking on retry');
+            return await this.sqliteManager.loadTrackedRecordsFromDatabase(this.provider);
+          }
+        }
+      } catch (retryError) {
+        logger.debug(`Retry SQLite initialization failed: ${retryError.message}`);
+      }
+      
+      // If all attempts failed, initialize empty data structure
+      logger.warn('SQLite is required but not fully available yet - using temporary storage');
       this.data = { providers: { [this.provider]: { records: {} } } };
       return this.data;
     }
@@ -192,7 +217,25 @@ class RecordTracker {
         return false;
       }
     } else {
-      logger.error('SQLite is required but not available');
+      // Check if initialization is in progress
+      const database = require('../../database');
+      
+      // Try to initialize SQLite again
+      try {
+        if (database && database.isInitialized()) {
+          this.sqliteManager = new SQLiteRecordManager(database);
+          this.usingSQLite = this.sqliteManager.initialize();
+          
+          if (this.usingSQLite) {
+            logger.info('Successfully initialized SQLite for DNS record tracking on retry');
+            return await this.sqliteManager.saveTrackedRecordsToDatabase(this.data);
+          }
+        }
+      } catch (retryError) {
+        logger.debug(`Retry SQLite initialization failed: ${retryError.message}`);
+      }
+      
+      logger.warn('SQLite is required but not fully available yet - using temporary storage');
       return false;
     }
   }
@@ -240,7 +283,25 @@ class RecordTracker {
         return false;
       }
     } else {
-      logger.error('SQLite is required but not available');
+      // Check if initialization is in progress
+      const database = require('../../database');
+      
+      // Try to initialize SQLite again
+      try {
+        if (database && database.isInitialized()) {
+          this.sqliteManager = new SQLiteRecordManager(database);
+          this.usingSQLite = this.sqliteManager.initialize();
+          
+          if (this.usingSQLite) {
+            logger.info('Successfully initialized SQLite for DNS record tracking on retry');
+            return await this.sqliteManager.trackRecord(this.provider, recordToTrack);
+          }
+        }
+      } catch (retryError) {
+        logger.debug(`Retry SQLite initialization failed: ${retryError.message}`);
+      }
+      
+      logger.warn('SQLite is required but not fully available yet - using temporary storage');
       return false;
     }
   }
