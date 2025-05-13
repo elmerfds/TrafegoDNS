@@ -15,14 +15,20 @@ const { cleanupOrphanedRecords } = require('./orphanedRecordCleaner');
 const { processManagedHostnames } = require('./managedHostnameProcessor');
 const { createStats, createPreviousStats, logStats } = require('./statistics');
 
+// Database module for repository access
+const database = require('../../database');
+
 class DNSManager {
   constructor(config, eventBus) {
     this.config = config;
     this.eventBus = eventBus;
     this.dnsProvider = DNSProviderFactory.createProvider(config);
     
-    // Initialize record tracker
+    // Initialize record tracker (legacy system - kept for backward compatibility)
     this.recordTracker = new RecordTracker(config);
+    
+    // Repository manager will be initialized during init()
+    this.repositoryManager = null;
     
     // Track which preserved records we've already logged to avoid spam
     this.loggedPreservedRecords = new Set();
@@ -36,6 +42,9 @@ class DNSManager {
     // Track previous poll statistics to reduce logging noise
     this.previousStats = createPreviousStats();
     
+    // Track cache TTL
+    this.cacheTtl = parseInt(process.env.CACHE_TTL_MINUTES || 60, 10) * 60; // Convert to seconds
+    
     // Subscribe to relevant events
     setupEventSubscriptions(this.eventBus, this.processHostnames.bind(this));
   }
@@ -47,6 +56,14 @@ class DNSManager {
     try {
       logger.debug('Initializing DNS Manager...');
       await this.dnsProvider.init();
+
+      // Initialize repository manager if database is ready
+      if (database.isInitialized() && database.repositories && database.repositories.dnsManager) {
+        this.repositoryManager = database.repositories.dnsManager;
+        logger.debug('DNS Repository Manager is ready');
+      } else {
+        logger.warn('DNS Repository Manager not available - using legacy record tracker only');
+      }
 
       // Synchronize tracker with active records
       await this.synchronizeRecordTracker();
@@ -98,144 +115,484 @@ class DNSManager {
       const { processedHostnames, dnsRecordConfigs } = await processHostnames(
         hostnames, 
         containerLabels, 
-        this.config,
-        this.stats
+        this.config, 
+        this.dnsProvider
       );
       
-      // Batch process all DNS records
-      if (dnsRecordConfigs.length > 0) {
-        logger.debug(`Batch processing ${dnsRecordConfigs.length} DNS record configurations`);
-        const processedRecords = await this.dnsProvider.batchEnsureRecords(dnsRecordConfigs);
-        
-        // Track all created/updated records
-        if (processedRecords && processedRecords.length > 0) {
-          for (const record of processedRecords) {
-            // Only track records that have an ID (successfully created/updated)
-            if (record && record.id) {
-              // Check if this is a new record or just an update
-              const isTracked = this.recordTracker.isTracked(record);
-              
-              if (isTracked) {
-                // Update the tracked record with the latest ID
-                this.recordTracker.updateRecordId(record, record);
-              } else {
-                // Track new record
-                this.recordTracker.trackRecord(record);
-              }
-            }
+      // Skip processing if no records to process
+      if (!dnsRecordConfigs || dnsRecordConfigs.length === 0) {
+        this.stats.processedHostnames = processedHostnames.length;
+        this.stats.timestamp = new Date().toISOString();
+        return this.stats;
+      }
+      
+      // Update stats
+      this.stats.processedHostnames = processedHostnames.length;
+      
+      // Generate batch operations for the provider
+      const batchResult = await this.dnsProvider.batchEnsureRecords(dnsRecordConfigs);
+      
+      // Update stats
+      this.stats.created = batchResult.created.length;
+      this.stats.updated = batchResult.updated.length;
+      this.stats.unchanged = batchResult.unchanged.length;
+      this.stats.failed = batchResult.failed.length;
+      this.stats.total = dnsRecordConfigs.length;
+      this.stats.timestamp = new Date().toISOString();
+      
+      // Track newly created or updated records
+      for (const record of [...batchResult.created, ...batchResult.updated]) {
+        try {
+          // Check if record is already tracked
+          const isTracked = await this.isRecordTracked(record);
+          
+          if (isTracked) {
+            // Update record ID if needed (e.g., if ID changed after creation)
+            await this.updateRecordId(record);
+          } else {
+            // Add new record to tracker
+            await this.trackRecord(record);
           }
+        } catch (trackError) {
+          logger.error(`Failed to track record ${record.name}: ${trackError.message}`);
         }
       }
       
-      // Log summary stats if we have records
-      logStats(this.stats, this.previousStats, this.eventBus);
-      
-      // Cleanup orphaned records if configured
-      if (this.config.cleanupOrphaned && processedHostnames.length > 0) {
-        await this.cleanupOrphanedRecords(processedHostnames);
+      // Log statistics if anything changed or at debug level
+      if (this.stats.created > 0 || this.stats.updated > 0 || this.stats.failed > 0) {
+        logStats(this.stats);
+      } else {
+        // Log at debug level if nothing changed
+        logStats(this.stats, 'debug');
       }
       
-      // Publish event with results
-      this.eventBus.publish(EventTypes.DNS_RECORDS_UPDATED, {
-        stats: this.stats,
-        processedHostnames
-      });
+      // Emit statistics event
+      this.eventBus.emit(EventTypes.DNS_RECORDS_PROCESSED, this.stats);
       
-      return {
-        stats: this.stats,
-        processedHostnames
-      };
+      return this.stats;
     } catch (error) {
       logger.error(`Error processing hostnames: ${error.message}`);
-      this.eventBus.publish(EventTypes.ERROR_OCCURRED, {
-        source: 'DNSManager.processHostnames',
-        error: error.message
-      });
-      throw error;
+      this.stats.error = error.message;
+      this.eventBus.emit(EventTypes.DNS_RECORDS_PROCESSED, this.stats);
+      return this.stats;
     }
   }
   
   /**
-   * Reset logged preserved records tracking
-   */
-  resetLoggedPreservedRecords() {
-    this.loggedPreservedRecords = new Set();
-  }
-  
-  /**
-   * Clean up orphaned DNS records
-   */
-  async cleanupOrphanedRecords(activeHostnames) {
-    return await cleanupOrphanedRecords(
-      activeHostnames, 
-      this.dnsProvider, 
-      this.recordTracker, 
-      this.config, 
-      this.eventBus,
-      this.loggedPreservedRecords
-    );
-  }
-  
-  /**
-   * Process managed hostnames and ensure they exist
+   * Process managed hostnames from configuration
    */
   async processManagedHostnames() {
-    return await processManagedHostnames(this.dnsProvider, this.recordTracker);
+    try {
+      const result = await processManagedHostnames(this.config, this.dnsProvider, this.trackRecord.bind(this));
+      return result;
+    } catch (error) {
+      logger.error(`Failed to process managed hostnames: ${error.message}`);
+      return { success: false, error: error.message };
+    }
   }
-
+  
   /**
-   * Synchronize the record tracker with all active records from the provider
-   * This ensures all existing records are tracked properly
+   * Cleanup orphaned DNS records
+   * @param {boolean} forceImmediate - Whether to force immediate cleanup
+   */
+  async cleanupOrphanedRecords(forceImmediate = false) {
+    try {
+      const result = await cleanupOrphanedRecords(
+        this.config, 
+        this.dnsProvider, 
+        this.recordTracker,
+        forceImmediate,
+        this.repositoryManager
+      );
+      
+      return result;
+    } catch (error) {
+      logger.error(`Failed to cleanup orphaned records: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  /**
+   * Synchronize record tracker with active DNS records
+   * This ensures all existing records are properly tracked
    */
   async synchronizeRecordTracker() {
     try {
-      // Get all active records from the provider
       logger.info('Synchronizing DNS record tracker with active records');
-      const activeRecords = await this.dnsProvider.getRecordsFromCache(true);
-
-      if (!activeRecords || activeRecords.length === 0) {
-        logger.warn('No active records found from provider, skipping tracker synchronization');
-        return 0;
+      
+      // Get all records from provider (force fresh data)
+      const records = await this.dnsProvider.getRecordsFromCache(true);
+      
+      if (!records || !Array.isArray(records)) {
+        logger.warn('No records returned from provider or invalid data format');
+        return { success: false, error: 'Invalid records data from provider' };
       }
-
-      // Check if this is the first run of the application
-      // If so, be more conservative with existing records
+      
+      // First run detection - this influences how we handle existing records
       const isFirstRun = global.isFirstRun === true;
       
+      // During first run, we mark pre-existing records as NOT app-managed for safety
+      // This prevents accidental deletion of records that existed before TrafegoDNS
       if (isFirstRun) {
         logger.info('🔒 First run detected: marking pre-existing DNS records as NOT app-managed for safety');
       }
-
-      // Track all active records with special handling for first run
-      const newlyTrackedCount = await this.recordTracker.trackAllActiveRecords(activeRecords, !isFirstRun);
-
-      // Log the results
-      if (newlyTrackedCount > 0) {
-        if (isFirstRun) {
-          logger.info(`Added ${newlyTrackedCount} pre-existing DNS records to tracker (marked as not app-managed)`);
-          this.eventBus.publish(EventTypes.INFO_EVENT, {
-            source: 'DNSManager.synchronizeRecordTracker',
-            message: `Added ${newlyTrackedCount} pre-existing DNS records to tracker (preserved for safety)`
-          });
-        } else {
-          logger.info(`Added ${newlyTrackedCount} previously untracked DNS records to tracker`);
-          this.eventBus.publish(EventTypes.INFO_EVENT, {
-            source: 'DNSManager.synchronizeRecordTracker',
-            message: `Added ${newlyTrackedCount} previously untracked DNS records to tracker`
-          });
+      
+      // Determine whether to mark records as app-managed based on first run
+      const markAsAppManaged = !isFirstRun;
+      
+      // ------------------------
+      // Update repository if available
+      // ------------------------
+      if (this.repositoryManager) {
+        try {
+          // Refresh the provider cache
+          await this.repositoryManager.refreshProviderCache(records, this.dnsProvider.name);
+          
+          // For each record, check if it's already in managed records
+          let newlyTrackedCount = 0;
+          
+          for (const record of records) {
+            if (!record || !record.id || !record.type || !record.name) {
+              continue;
+            }
+            
+            const isTracked = await this.repositoryManager.isTracked(record.id, this.dnsProvider.name);
+            
+            if (!isTracked) {
+              const success = await this.repositoryManager.trackRecord(record, this.dnsProvider.name, markAsAppManaged);
+              if (success) {
+                newlyTrackedCount++;
+              }
+            }
+          }
+          
+          if (newlyTrackedCount > 0) {
+            logger.info(`Added ${newlyTrackedCount} pre-existing DNS records to repository (app-managed: ${markAsAppManaged})`);
+          }
+          
+          // Ensure orphaned records are properly marked
+          await this.repositoryManager.syncManagedRecordsWithProvider(this.dnsProvider.name);
+        } catch (repoError) {
+          logger.error(`Failed to synchronize with repository: ${repoError.message}`);
+          // Continue with legacy tracker as fallback
         }
-      } else {
-        logger.debug('All active DNS records are already being tracked');
       }
-
-      return newlyTrackedCount;
+      
+      // ------------------------
+      // Legacy tracker update (for backward compatibility)
+      // ------------------------
+      let trackedCount = 0;
+      try {
+        trackedCount = await this.recordTracker.trackAllActiveRecords(records, markAsAppManaged);
+      } catch (trackerError) {
+        logger.error(`Failed to synchronize legacy record tracker: ${trackerError.message}`);
+      }
+      
+      if (trackedCount > 0) {
+        logger.info(`Added ${trackedCount} pre-existing DNS records to tracker (marked as not app-managed)`);
+      }
+      
+      return { 
+        success: true, 
+        trackedCount: Math.max(trackedCount, 0),
+        totalRecords: records.length 
+      };
     } catch (error) {
       logger.error(`Failed to synchronize record tracker: ${error.message}`);
-      this.eventBus.publish(EventTypes.ERROR_OCCURRED, {
-        source: 'DNSManager.synchronizeRecordTracker',
-        error: error.message
-      });
-      return 0;
+      return { success: false, error: error.message };
+    }
+  }
+  
+  /**
+   * Refresh DNS records from provider
+   * @param {boolean} force - Whether to force refresh (bypass cache)
+   */
+  async refreshRecords(force = true) {
+    try {
+      logger.info('Refreshing DNS records from provider');
+      
+      // Get records from provider
+      const records = await this.dnsProvider.getRecordsFromCache(force);
+      
+      if (!records || !Array.isArray(records)) {
+        return { 
+          success: false, 
+          error: 'Invalid records data from provider' 
+        };
+      }
+      
+      // Update repositories if available
+      if (this.repositoryManager) {
+        try {
+          await this.repositoryManager.refreshProviderCache(records, this.dnsProvider.name);
+        } catch (repoError) {
+          logger.error(`Failed to refresh provider cache in repository: ${repoError.message}`);
+        }
+      }
+      
+      return { 
+        success: true, 
+        recordCount: records.length 
+      };
+    } catch (error) {
+      logger.error(`Failed to refresh DNS records: ${error.message}`);
+      return { 
+        success: false, 
+        error: error.message 
+      };
+    }
+  }
+  
+  /**
+   * Get DNS records
+   * @param {Object} options - Filter options
+   */
+  async getRecords(options = {}) {
+    try {
+      const records = [];
+      
+      // Try to get records from repository first
+      if (this.repositoryManager) {
+        try {
+          // If we need managed records
+          if (options.managed) {
+            const managedRecords = await this.repositoryManager.getManagedRecords(
+              this.dnsProvider.name, 
+              { 
+                isAppManaged: true,
+                ...options 
+              }
+            );
+            return managedRecords;
+          }
+          
+          // If we need orphaned records
+          if (options.orphaned) {
+            const orphanedRecords = await this.repositoryManager.getManagedRecords(
+              this.dnsProvider.name,
+              {
+                isOrphaned: true,
+                ...options
+              }
+            );
+            return orphanedRecords;
+          }
+          
+          // If we're looking for all records, prefer the provider cache
+          const providerRecords = await this.repositoryManager.getProviderRecords(
+            this.dnsProvider.name,
+            options
+          );
+          
+          // If provider cache has records, use those
+          if (providerRecords && providerRecords.length > 0) {
+            return providerRecords;
+          }
+          
+          // If provider cache is empty, fall back to managed records
+          const managedRecords = await this.repositoryManager.getManagedRecords(
+            this.dnsProvider.name,
+            options
+          );
+          
+          if (managedRecords && managedRecords.length > 0) {
+            return managedRecords;
+          }
+        } catch (repoError) {
+          logger.error(`Failed to get records from repository: ${repoError.message}`);
+          // Fall back to provider
+        }
+      }
+      
+      // Fall back to direct provider if repository failed or is empty
+      return await this.dnsProvider.getRecordsFromCache(options.force);
+    } catch (error) {
+      logger.error(`Failed to get DNS records: ${error.message}`);
+      return [];
+    }
+  }
+  
+  /**
+   * Check if a record is being tracked
+   * @param {Object} record - Record to check
+   */
+  async isRecordTracked(record) {
+    try {
+      // Try repository first if available
+      if (this.repositoryManager) {
+        try {
+          return await this.repositoryManager.isTracked(record.id, this.dnsProvider.name);
+        } catch (repoError) {
+          logger.debug(`Repository check failed, falling back to legacy tracker: ${repoError.message}`);
+        }
+      }
+      
+      // Fall back to legacy tracker
+      return await this.recordTracker.isTracked(record);
+    } catch (error) {
+      logger.error(`Failed to check if record is tracked: ${error.message}`);
+      return false;
+    }
+  }
+  
+  /**
+   * Track a DNS record (add to managed records)
+   * @param {Object} record - Record to track
+   * @param {boolean} isAppManaged - Whether this record is managed by the app
+   */
+  async trackRecord(record, isAppManaged = true) {
+    try {
+      if (!record || !record.id || !record.name || !record.type) {
+        logger.warn(`Cannot track invalid record: ${JSON.stringify(record)}`);
+        return false;
+      }
+      
+      let trackingSuccessful = false;
+      
+      // Try repository first if available
+      if (this.repositoryManager) {
+        try {
+          trackingSuccessful = await this.repositoryManager.trackRecord(
+            record, 
+            this.dnsProvider.name, 
+            isAppManaged
+          );
+          
+          if (trackingSuccessful) {
+            logger.debug(`Tracked record ${record.name} (${record.type}) in repository`);
+          }
+        } catch (repoError) {
+          logger.debug(`Repository tracking failed, falling back to legacy tracker: ${repoError.message}`);
+        }
+      }
+      
+      // Fall back to legacy tracker (and for backward compatibility)
+      const legacySuccess = await this.recordTracker.trackRecord(record, isAppManaged);
+      
+      // Return success if either method worked
+      return trackingSuccessful || legacySuccess;
+    } catch (error) {
+      logger.error(`Failed to track record: ${error.message}`);
+      return false;
+    }
+  }
+  
+  /**
+   * Update a record's ID in the tracker
+   * @param {Object} record - Record with new ID
+   * @param {Object} oldRecord - Old record (optional if already tracked)
+   */
+  async updateRecordId(record, oldRecord = null) {
+    try {
+      let oldRecordId = oldRecord ? oldRecord.id : null;
+      let updateSuccessful = false;
+      
+      if (!oldRecordId) {
+        // If no old record provided, try to find by type and name
+        if (this.repositoryManager) {
+          // First check if a record with this type and name already exists
+          const matchingRecords = await this.repositoryManager.findManagedRecords(
+            this.dnsProvider.name,
+            {
+              type: record.type,
+              name: record.name
+            }
+          );
+          
+          if (matchingRecords && matchingRecords.length > 0) {
+            oldRecordId = matchingRecords[0].providerId;
+          }
+        }
+      }
+      
+      // If we found an old record ID, update it
+      if (oldRecordId) {
+        // Try repository first if available
+        if (this.repositoryManager) {
+          try {
+            updateSuccessful = await this.repositoryManager.managedRecords.updateRecordId(
+              this.dnsProvider.name,
+              oldRecordId,
+              record.id
+            );
+            
+            if (updateSuccessful) {
+              logger.debug(`Updated record ID ${oldRecordId} to ${record.id} in repository`);
+            }
+          } catch (repoError) {
+            logger.debug(`Repository update failed, falling back to legacy tracker: ${repoError.message}`);
+          }
+        }
+      } else {
+        // If no old record ID, try to update by type and name
+        if (this.repositoryManager) {
+          try {
+            updateSuccessful = await this.repositoryManager.managedRecords.updateRecordByTypeAndName(
+              this.dnsProvider.name,
+              record.type,
+              record.name,
+              record.id
+            );
+            
+            if (updateSuccessful) {
+              logger.debug(`Updated record ${record.type}:${record.name} to ID ${record.id} in repository`);
+            }
+          } catch (repoError) {
+            logger.debug(`Repository update by type/name failed: ${repoError.message}`);
+          }
+        }
+      }
+      
+      // Fall back to legacy tracker (and for backward compatibility)
+      let legacySuccess = false;
+      
+      if (oldRecordId) {
+        legacySuccess = await this.recordTracker.updateRecordId(
+          { id: oldRecordId }, 
+          record
+        );
+      } else {
+        // Create a dummy record with type and name for the tracker to update
+        legacySuccess = await this.recordTracker.updateRecordId(
+          { 
+            type: record.type, 
+            name: record.name 
+          }, 
+          record
+        );
+      }
+      
+      // Return success if either method worked
+      return updateSuccessful || legacySuccess;
+    } catch (error) {
+      logger.error(`Failed to update record ID: ${error.message}`);
+      return false;
+    }
+  }
+  
+  /**
+   * Check if provider cache needs refresh
+   */
+  async needsCacheRefresh() {
+    try {
+      // Check repository first if available
+      if (this.repositoryManager) {
+        try {
+          return await this.repositoryManager.needsCacheRefresh(
+            this.dnsProvider.name, 
+            this.cacheTtl
+          );
+        } catch (repoError) {
+          logger.debug(`Repository cache check failed: ${repoError.message}`);
+        }
+      }
+      
+      // Fall back to provider's own cache check
+      return await this.dnsProvider.needsCacheRefresh();
+    } catch (error) {
+      logger.error(`Failed to check if cache needs refresh: ${error.message}`);
+      // On error, assume refresh is needed
+      return true;
     }
   }
 }

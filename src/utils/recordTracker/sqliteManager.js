@@ -1,15 +1,20 @@
 /**
  * SQLite Manager for DNS Record Tracker
  * Handles database operations for record tracking using SQLite
+ * Updated to work with the dual-table architecture
  */
 const logger = require('../logger');
 
 class SQLiteRecordManager {
   constructor(database) {
     this.database = database;
-    this.repository = null;
+    this.dnsRepositoryManager = null;
+    this.managedRecordsRepository = null;
+    this.providerCacheRepository = null;
+    this.legacyRepository = null;
     this.initialized = false;
     this.isReady = false;
+    this.useNewArchitecture = false;
   }
 
   /**
@@ -24,17 +29,32 @@ class SQLiteRecordManager {
         return false;
       }
 
-      // Get repository
-      if (!this.database.repositories || !this.database.repositories.dnsTrackedRecord) {
-        logger.debug('DNS tracked record repository not available, record tracker will use JSON storage');
+      // First try to initialize with new architecture
+      if (this.database.repositories && 
+          this.database.repositories.dnsRepositoryManager && 
+          this.database.repositories.managedRecords && 
+          this.database.repositories.providerCache) {
+        
+        this.dnsRepositoryManager = this.database.repositories.dnsRepositoryManager;
+        this.managedRecordsRepository = this.database.repositories.managedRecords;
+        this.providerCacheRepository = this.database.repositories.providerCache;
+        this.useNewArchitecture = true;
+        
+        logger.info('DNS record tracker initialized with new dual-table architecture');
+      } 
+      // Fall back to legacy repository if new architecture is not available
+      else if (this.database.repositories && this.database.repositories.dnsTrackedRecord) {
+        this.legacyRepository = this.database.repositories.dnsTrackedRecord;
+        this.useNewArchitecture = false;
+        
+        logger.info('DNS record tracker initialized with legacy SQLite storage');
+      } else {
+        logger.debug('DNS repositories not available, record tracker will use JSON storage');
         return false;
       }
-
-      this.repository = this.database.repositories.dnsTrackedRecord;
+      
       this.initialized = true;
       this.isReady = true;
-      
-      logger.info('DNS record tracker initialized with SQLite storage');
       return true;
     } catch (error) {
       logger.error(`Failed to initialize SQLite record manager: ${error.message}`);
@@ -48,7 +68,33 @@ class SQLiteRecordManager {
    * @returns {boolean} - Whether SQLite is ready
    */
   isInitialized() {
-    return this.initialized && this.isReady && this.repository !== null;
+    return this.initialized && this.isReady && 
+      (this.useNewArchitecture ? 
+        (this.dnsRepositoryManager !== null && 
+         this.managedRecordsRepository !== null && 
+         this.providerCacheRepository !== null) : 
+        (this.legacyRepository !== null));
+  }
+
+  /**
+   * Get the appropriate repository for the operation
+   * @param {string} operation - The operation type ('managed', 'provider', or 'both')
+   * @returns {Object} - The repository to use
+   */
+  getRepository(operation = 'managed') {
+    if (!this.useNewArchitecture) {
+      return this.legacyRepository;
+    }
+    
+    switch (operation) {
+      case 'provider':
+        return this.providerCacheRepository;
+      case 'both':
+        return this.dnsRepositoryManager;
+      case 'managed':
+      default:
+        return this.managedRecordsRepository;
+    }
   }
 
   /**
@@ -62,9 +108,12 @@ class SQLiteRecordManager {
     }
 
     try {
+      // Get the appropriate repository
+      const repository = this.getRepository('managed');
+      
       // Get records for this provider
       if (provider) {
-        const providerRecords = await this.repository.getProviderRecords(provider);
+        const providerRecords = await repository.getProviderRecords(provider);
         return { 
           providers: { 
             [provider]: providerRecords 
@@ -73,7 +122,7 @@ class SQLiteRecordManager {
       } 
       
       // Or get all records if no provider specified
-      return await this.repository.getAllTrackedRecords();
+      return await repository.getAllTrackedRecords();
     } catch (error) {
       logger.error(`Failed to load tracked records from SQLite: ${error.message}`);
       return { providers: {} };
@@ -91,6 +140,7 @@ class SQLiteRecordManager {
     }
 
     try {
+      const repository = this.getRepository('managed');
       let recordCount = 0;
 
       // Process all providers and their records
@@ -104,19 +154,39 @@ class SQLiteRecordManager {
           
           if (!record) continue;
           
+          // Prepare metadata if available
+          const metadata = {
+            appManaged: true,
+            source: 'record-tracker'
+          };
+          
           // Track the record in the database
-          await this.repository.trackRecord({
-            provider,
-            record_id: recordId,
-            type: record.type,
-            name: record.name,
-            content: record.content || record.value || '',
-            ttl: record.ttl || 1,
-            proxied: !!record.proxied,
-            is_orphaned: record.is_orphaned ? 1 : 0,
-            orphaned_at: record.orphaned_at || null,
-            tracked_at: record.tracked_at || new Date().toISOString()
-          });
+          if (this.useNewArchitecture) {
+            await repository.trackRecord(provider, {
+              id: recordId,
+              type: record.type,
+              name: record.name,
+              content: record.content || record.value || '',
+              ttl: record.ttl || 1,
+              proxied: !!record.proxied,
+              metadata
+            }, true);
+          } else {
+            // Use legacy repository format
+            await repository.trackRecord({
+              provider,
+              record_id: recordId,
+              type: record.type,
+              name: record.name,
+              content: record.content || record.value || '',
+              ttl: record.ttl || 1,
+              proxied: !!record.proxied,
+              is_orphaned: record.is_orphaned ? 1 : 0,
+              orphaned_at: record.orphaned_at || null,
+              tracked_at: record.tracked_at || new Date().toISOString(),
+              metadata: JSON.stringify(metadata)
+            });
+          }
           
           recordCount++;
         }
@@ -151,26 +221,26 @@ class SQLiteRecordManager {
       const recordKey = `${record.type}:${record.name}`;
       logger.debug(`Tracking record in SQLite: ${recordKey} (ID: ${record.id})`);
 
-      // Prepare metadata if available
-      const metadata = record.metadata ? JSON.stringify(record.metadata) : null;
-
-      // Extract app-managed flag for logging
-      const isAppManaged = record.metadata && record.metadata.appManaged;
-      if (isAppManaged !== undefined) {
-        logger.debug(`Record ${recordKey} appManaged status: ${isAppManaged}`);
+      // Prepare metadata
+      const metadata = record.metadata || { appManaged: true };
+      
+      if (this.useNewArchitecture) {
+        const repository = this.getRepository('managed');
+        return await repository.trackRecord(provider, record, true);
+      } else {
+        // Use legacy repository format
+        await this.legacyRepository.trackRecord({
+          provider,
+          record_id: record.id,
+          type: record.type,
+          name: record.name,
+          content: record.content || record.value || '',
+          ttl: record.ttl || 1,
+          proxied: !!record.proxied,
+          tracked_at: record.tracked_at || new Date().toISOString(),
+          metadata: JSON.stringify(metadata)
+        });
       }
-
-      await this.repository.trackRecord({
-        provider,
-        record_id: record.id,
-        type: record.type,
-        name: record.name,
-        content: record.content || record.value || '',
-        ttl: record.ttl || 1,
-        proxied: !!record.proxied,
-        tracked_at: record.tracked_at || new Date().toISOString(),
-        metadata
-      });
 
       return true;
     } catch (error) {
@@ -178,24 +248,30 @@ class SQLiteRecordManager {
       if (error.message && error.message.includes('UNIQUE constraint failed')) {
         try {
           logger.debug(`Record already exists, attempting to update: ${record.name} (${record.type})`);
+          const repository = this.getRepository('managed');
 
-          // Check if record exists with a different ID
-          const exists = await this.repository.isTrackedByTypeAndName(provider, record.type, record.name);
-          if (exists) {
-            // Try to update the existing record
-            logger.debug(`Found existing record with same type and name, updating ID: ${record.name} (${record.type})`);
-            await this.repository.updateRecordByTypeAndName(provider, record.type, record.name, record.id);
+          if (this.useNewArchitecture) {
+            // Use the repository manager to update the record
+            return await repository.updateExistingRecord(provider, record.type, record.name, record);
+          } else {
+            // Check if record exists with a different ID using legacy repository
+            const exists = await this.legacyRepository.isTrackedByTypeAndName(provider, record.type, record.name);
+            if (exists) {
+              // Try to update the existing record
+              logger.debug(`Found existing record with same type and name, updating ID: ${record.name} (${record.type})`);
+              await this.legacyRepository.updateRecordByTypeAndName(provider, record.type, record.name, record.id);
 
-            // Also update metadata if provided
-            if (record.metadata) {
-              if (this.repository.updateRecordMetadata) {
-                await this.repository.updateRecordMetadata(provider, record.id, JSON.stringify(record.metadata));
-              } else {
-                logger.debug('Repository does not support updateRecordMetadata method');
+              // Also update metadata if provided
+              if (record.metadata) {
+                if (this.legacyRepository.updateRecordMetadata) {
+                  await this.legacyRepository.updateRecordMetadata(provider, record.id, JSON.stringify(record.metadata));
+                } else {
+                  logger.debug('Repository does not support updateRecordMetadata method');
+                }
               }
-            }
 
-            return true;
+              return true;
+            }
           }
         } catch (updateError) {
           logger.error(`Failed to update existing record in SQLite: ${updateError.message}`);
@@ -219,7 +295,8 @@ class SQLiteRecordManager {
     }
 
     try {
-      return await this.repository.untrackRecord(provider, recordId);
+      const repository = this.getRepository('managed');
+      return await repository.untrackRecord(provider, recordId);
     } catch (error) {
       logger.error(`Failed to untrack record in SQLite: ${error.message}`);
       return false;
@@ -238,7 +315,8 @@ class SQLiteRecordManager {
     }
 
     try {
-      return await this.repository.isTracked(provider, recordId);
+      const repository = this.getRepository('managed');
+      return await repository.isTracked(provider, recordId);
     } catch (error) {
       logger.error(`Failed to check if record is tracked in SQLite: ${error.message}`);
       return false;
@@ -258,7 +336,8 @@ class SQLiteRecordManager {
     }
 
     try {
-      return await this.repository.updateRecordId(provider, oldRecordId, newRecordId);
+      const repository = this.getRepository('managed');
+      return await repository.updateRecordId(provider, oldRecordId, newRecordId);
     } catch (error) {
       logger.error(`Failed to update record ID in SQLite: ${error.message}`);
       return false;
@@ -277,7 +356,8 @@ class SQLiteRecordManager {
     }
 
     try {
-      return await this.repository.markRecordOrphaned(provider, recordId);
+      const repository = this.getRepository('managed');
+      return await repository.markRecordOrphaned(provider, recordId);
     } catch (error) {
       logger.error(`Failed to mark record as orphaned in SQLite: ${error.message}`);
       return false;
@@ -296,7 +376,8 @@ class SQLiteRecordManager {
     }
 
     try {
-      return await this.repository.unmarkRecordOrphaned(provider, recordId);
+      const repository = this.getRepository('managed');
+      return await repository.unmarkRecordOrphaned(provider, recordId);
     } catch (error) {
       logger.error(`Failed to unmark record as orphaned in SQLite: ${error.message}`);
       return false;
@@ -315,7 +396,8 @@ class SQLiteRecordManager {
     }
 
     try {
-      return await this.repository.isRecordOrphaned(provider, recordId);
+      const repository = this.getRepository('managed');
+      return await repository.isRecordOrphaned(provider, recordId);
     } catch (error) {
       logger.error(`Failed to check if record is orphaned in SQLite: ${error.message}`);
       return false;
@@ -334,7 +416,8 @@ class SQLiteRecordManager {
     }
 
     try {
-      const result = await this.repository.getRecordOrphanedTime(provider, recordId);
+      const repository = this.getRepository('managed');
+      const result = await repository.getRecordOrphanedTime(provider, recordId);
 
       // Handle all possible formats of result to ensure we return a proper ISO string or null
       if (!result) {
@@ -368,7 +451,8 @@ class SQLiteRecordManager {
     }
 
     try {
-      return await this.repository.getAllTrackedRecords();
+      const repository = this.getRepository('managed');
+      return await repository.getAllTrackedRecords();
     } catch (error) {
       logger.error(`Failed to get all tracked records from SQLite: ${error.message}`);
       return { providers: {} };
@@ -386,10 +470,76 @@ class SQLiteRecordManager {
     }
 
     try {
-      return await this.repository.getProviderRecords(provider);
+      const repository = this.getRepository('managed');
+      return await repository.getProviderRecords(provider);
     } catch (error) {
       logger.error(`Failed to get provider records from SQLite: ${error.message}`);
       return { records: {} };
+    }
+  }
+
+  /**
+   * Synchronize provider records with tracked records
+   * @param {string} provider - DNS provider name
+   * @returns {Promise<Object>} - Synchronization results
+   */
+  async synchronizeWithProviderCache(provider) {
+    if (!this.isInitialized() || !this.useNewArchitecture) {
+      logger.debug('Cannot synchronize with provider cache: new architecture not available');
+      return { success: false, message: 'New architecture not available' };
+    }
+
+    try {
+      const result = await this.dnsRepositoryManager.synchronizeRecords(provider);
+      logger.info(`Successfully synchronized ${provider} records between managed and provider cache`);
+      return result;
+    } catch (error) {
+      logger.error(`Failed to synchronize with provider cache: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Find orphaned records in provider cache
+   * @param {string} provider - DNS provider name
+   * @param {Object} options - Options for finding orphaned records
+   * @returns {Promise<Array>} - Array of orphaned records
+   */
+  async findOrphanedRecords(provider, options = {}) {
+    if (!this.isInitialized()) {
+      return [];
+    }
+
+    try {
+      if (this.useNewArchitecture) {
+        // Use the repository manager to find orphaned records
+        return await this.dnsRepositoryManager.findOrphanedRecords(provider, options);
+      } else {
+        // Use legacy repository
+        const records = await this.legacyRepository.getOrphanedRecords(provider);
+        return Object.values(records || {});
+      }
+    } catch (error) {
+      logger.error(`Failed to find orphaned records: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get records that exist in provider but not in managed records
+   * @param {string} provider - DNS provider name
+   * @returns {Promise<Array>} - Untracked records
+   */
+  async getUntrackedProviderRecords(provider) {
+    if (!this.isInitialized() || !this.useNewArchitecture) {
+      return [];
+    }
+
+    try {
+      return await this.dnsRepositoryManager.getUntrackedProviderRecords(provider);
+    } catch (error) {
+      logger.error(`Failed to get untracked provider records: ${error.message}`);
+      return [];
     }
   }
 }
