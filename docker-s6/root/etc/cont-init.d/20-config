@@ -1,8 +1,8 @@
 #!/command/with-contenv bash
 
 LOG_LEVEL=${LOG_LEVEL:-INFO}
-# Enable SQLite-only mode by default (no JSON files)
-export DISABLE_JSON_STORAGE=${DISABLE_JSON_STORAGE:-true}
+# Force SQLite-only mode (permanently disable JSON files)
+export DISABLE_JSON_STORAGE=true
 
 echo
 echo "-------------------------------------"
@@ -35,23 +35,38 @@ else
   echo "No database file found. A new one will be created on first run."
 fi
 
-# Set default to disable JSON file storage
-if [ "$DISABLE_JSON_STORAGE" = "true" ]; then
-  echo "JSON file storage is disabled - SQLite will be used exclusively"
-  
-  # Remove any existing DNS records JSON file since we're using SQLite exclusively
-  if [ -f /config/data/dns-records.json ]; then
-    echo "Found existing DNS records JSON file - backing up and removing"
-    mv /config/data/dns-records.json /config/data/dns-records.json.bak.$(date +%s)
-  fi
-  
-  # Also check the legacy location
-  if [ -f /app/dns-records.json ]; then
-    echo "Found legacy DNS records JSON file - backing up and removing"
-    mv /app/dns-records.json /config/data/dns-records.json.legacy.bak.$(date +%s)
-  fi
+# SQLite is now exclusively used - JSON storage is permanently disabled
+echo "🔒 SQLite-only mode is enforced - JSON storage is permanently disabled"
+
+# Always remove any existing DNS records JSON files
+JSON_FILES_REMOVED=false
+
+# Check config directory for JSON files
+if [ -f /config/data/dns-records.json ]; then
+  echo "Found existing DNS records JSON file - backing up and removing"
+  mv /config/data/dns-records.json /config/data/dns-records.json.bak.$(date +%s)
+  JSON_FILES_REMOVED=true
+fi
+
+# Check app directory for legacy JSON files
+if [ -f /app/dns-records.json ]; then
+  echo "Found legacy DNS records JSON file - backing up and removing"
+  mv /app/dns-records.json /config/data/dns-records.json.legacy.bak.$(date +%s)
+  JSON_FILES_REMOVED=true
+fi
+
+# Check current working directory
+if [ -f ./dns-records.json ]; then
+  echo "Found DNS records JSON file in current directory - backing up and removing"
+  mv ./dns-records.json /config/data/dns-records.json.cwd.bak.$(date +%s)
+  JSON_FILES_REMOVED=true
+fi
+
+# Confirm no JSON files remain
+if [ "$JSON_FILES_REMOVED" = "true" ]; then
+  echo "✅ All DNS records JSON files have been backed up and removed"
 else
-  echo "JSON file storage is enabled as a fallback mechanism"
+  echo "✅ No DNS records JSON files found - SQLite will be used exclusively"
 fi
 
 # Run database migration script if needed

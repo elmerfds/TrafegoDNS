@@ -22,6 +22,10 @@ async function start() {
     // Initialize configuration
     const config = new ConfigManager();
 
+    // Enforce SQLite-only mode
+    logger.info('🔒 Enforcing SQLite-only mode (JSON storage permanently disabled)');
+    process.env.DISABLE_JSON_STORAGE = 'true';
+
     // Setup local auth bypass options
     config.localAuthBypass = {
       enabled: process.env.LOCAL_AUTH_BYPASS !== 'false', // Enabled by default

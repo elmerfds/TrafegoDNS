@@ -141,10 +141,10 @@ class RecordTracker {
   }
   
   /**
-   * Load tracked records from storage (SQLite or file)
+   * Load tracked records from storage (SQLite only)
    */
   async loadTrackedRecords() {
-    // Try to load from SQLite first if available
+    // We only use SQLite now - JSON storage is permanently disabled
     if (this.usingSQLite && this.sqliteManager) {
       try {
         // Load from SQLite database
@@ -158,54 +158,43 @@ class RecordTracker {
         return this.data;
       } catch (error) {
         logger.error(`Failed to load tracked records from SQLite: ${error.message}`);
-        logger.warn('Falling back to JSON file storage for DNS records');
-        this.usingSQLite = false;
+        // Initialize empty data structure instead of falling back to JSON
+        this.data = { providers: { [this.provider]: { records: {} } } };
+        return this.data;
       }
+    } else {
+      // SQLite is required - initialize empty data rather than falling back to JSON
+      logger.error('SQLite is required but not available');
+      this.data = { providers: { [this.provider]: { records: {} } } };
+      return this.data;
     }
-
-    // Fall back to JSON storage
-    this.data = loadTrackedRecordsFromFile(
-      this.trackerFile,
-      this.legacyTrackerFile,
-      this.provider
-    );
-
-    // Log the number of tracked records
-    const recordCount = Object.keys(this.data.providers[this.provider].records || {}).length;
-    logger.debug(`Loaded ${recordCount} tracked records for provider: ${this.provider} from JSON file`);
-
-    return this.data;
   }
 
   /**
-   * Save tracked records to storage (SQLite or file)
+   * Save tracked records to storage (SQLite only)
    */
   async saveTrackedRecords() {
-    // Try to save to SQLite first if available
+    // We only use SQLite now - JSON storage is permanently disabled
     if (this.usingSQLite && this.sqliteManager) {
       try {
         // Save to SQLite database
         const success = await this.sqliteManager.saveTrackedRecordsToDatabase(this.data);
 
         if (success) {
-          logger.debug('Saved tracked records to SQLite database only (not writing JSON file)');
+          logger.debug('Saved tracked records to SQLite database');
           return true;
         } else {
-          logger.warn('Failed to save to SQLite, falling back to JSON file');
+          logger.error('Failed to save to SQLite database');
+          return false;
         }
       } catch (error) {
         logger.error(`Failed to save tracked records to SQLite: ${error.message}`);
-        logger.warn('Falling back to JSON file storage for DNS records');
-        this.usingSQLite = false;
+        return false;
       }
+    } else {
+      logger.error('SQLite is required but not available');
+      return false;
     }
-
-    // Only if SQLite failed or is not available, fall back to JSON storage
-    if (!this.usingSQLite) {
-      logger.warn('Using JSON file storage (SQLite not available)');
-      saveTrackedRecordsToFile(this.trackerFile, this.data);
-    }
-    return true;
   }
   
   /**
@@ -233,30 +222,27 @@ class RecordTracker {
     recordToTrack.metadata.appManaged = isAppManaged;
     recordToTrack.metadata.trackedAt = new Date().toISOString();
 
-    // Try to use SQLite first if available
+    // We only use SQLite now - JSON storage is permanently disabled
     if (this.usingSQLite && this.sqliteManager) {
       try {
         const success = await this.sqliteManager.trackRecord(this.provider, recordToTrack);
         if (success) {
-          // Also update in-memory data
-          trackRecordOperation(this.data, this.trackerFile, this.provider, recordToTrack);
+          // Also update in-memory data (no JSON file write)
+          this.data = await this.sqliteManager.loadTrackedRecordsFromDatabase(this.provider);
           logger.debug(`Successfully tracked ${recordToTrack.type} record for ${recordToTrack.name} in SQLite (appManaged: ${isAppManaged})`);
           return true;
         } else {
-          logger.warn(`Failed to track record in SQLite: ${recordToTrack.name} (${recordToTrack.type})`);
+          logger.error(`Failed to track record in SQLite: ${recordToTrack.name} (${recordToTrack.type})`);
+          return false;
         }
       } catch (error) {
         logger.error(`Failed to track record in SQLite: ${error.message}`);
-        this.usingSQLite = false;
+        return false;
       }
+    } else {
+      logger.error('SQLite is required but not available');
+      return false;
     }
-
-    // Fall back to JSON storage
-    const result = trackRecordOperation(this.data, this.trackerFile, this.provider, recordToTrack);
-    if (result) {
-      logger.debug(`Successfully tracked ${recordToTrack.type} record for ${recordToTrack.name} in JSON (appManaged: ${isAppManaged})`);
-    }
-    return result;
   }
 
   /**

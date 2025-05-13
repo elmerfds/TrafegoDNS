@@ -39,85 +39,38 @@ function initializePaths() {
 }
 
 /**
- * Load tracked records from file
+ * Load tracked records from file - DEPRECATED
  * @param {string} trackerFile - Path to the tracker file
  * @param {string} legacyTrackerFile - Path to the legacy tracker file
  * @param {string} provider - Current DNS provider name
- * @returns {Object} - Loaded records data
+ * @returns {Object} - Empty data structure (JSON storage is disabled)
  */
 function loadTrackedRecordsFromFile(trackerFile, legacyTrackerFile, provider) {
-  let data = { providers: {} };
+  // Return an empty data structure - JSON storage is permanently disabled
+  logger.debug('JSON file storage is permanently disabled, using empty data structure');
   
-  // Check for the new location first
-  if (fs.existsSync(trackerFile)) {
-    try {
-      const fileContent = fs.readFileSync(trackerFile, 'utf8');
-      data = JSON.parse(fileContent);
-      logger.debug(`Loaded ${Object.keys(data.providers || {}).length} providers from tracking file`);
-    } catch (error) {
-      logger.error(`Failed to load tracked records: ${error.message}`);
-    }
-  } 
-  // Check for legacy location if new one doesn't exist
-  else if (fs.existsSync(legacyTrackerFile)) {
-    try {
-      const fileContent = fs.readFileSync(legacyTrackerFile, 'utf8');
-      data = JSON.parse(fileContent);
-      
-      // Move the file to the new location
-      try {
-        fs.writeFileSync(trackerFile, fileContent, 'utf8');
-        logger.info(`Migrated record tracking file to ${trackerFile}`);
-        
-        // Try to remove the old file
-        fs.unlinkSync(legacyTrackerFile);
-        logger.debug('Removed legacy tracking file after migration');
-      } catch (moveError) {
-        logger.warn(`Failed to migrate tracking file: ${moveError.message}`);
+  // Initialize empty data structure
+  const data = { 
+    providers: {
+      [provider]: { 
+        records: {} 
       }
-    } catch (error) {
-      logger.error(`Failed to load tracked records from legacy location: ${error.message}`);
-    }
-  }
-  
-  // Ensure data structure exists
-  if (!data.providers) {
-    data.providers = {};
-  }
-  
-  // Ensure the current provider exists
-  if (!data.providers[provider]) {
-    data.providers[provider] = { records: {} };
-  }
-  
-  // Ensure records structure exists
-  if (!data.providers[provider].records) {
-    data.providers[provider].records = {};
-  }
+    } 
+  };
   
   return data;
 }
 
 /**
- * Save tracked records to file
+ * Save tracked records to file - DEPRECATED
  * @param {string} trackerFile - Path to the tracker file
  * @param {Object} data - Data to save
+ * @returns {boolean} - Always returns false (JSON storage is disabled)
  */
 function saveTrackedRecordsToFile(trackerFile, data) {
-  try {
-    // Check for environment variable to disable JSON file storage
-    const disableJsonStorage = process.env.DISABLE_JSON_STORAGE === 'true';
-    if (disableJsonStorage) {
-      logger.debug('JSON file storage is disabled by configuration');
-      return;
-    }
-    
-    const jsonData = JSON.stringify(data, null, 2);
-    fs.writeFileSync(trackerFile, jsonData, 'utf8');
-    logger.debug('Saved tracked records to JSON file (fallback storage)');
-  } catch (error) {
-    logger.error(`Failed to save tracked records to JSON: ${error.message}`);
-  }
+  // JSON file storage is permanently disabled
+  logger.debug('JSON file storage is permanently disabled, skipping file save');
+  return false;
 }
 
 module.exports = {

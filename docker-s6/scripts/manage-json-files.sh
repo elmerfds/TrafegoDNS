@@ -1,5 +1,6 @@
 #!/bin/bash
 # Script to manage JSON files after migration to SQLite
+# This script now forcibly removes all JSON files since we're using SQLite exclusively
 
 # Configuration
 CONFIG_DIR=${CONFIG_DIR:-"/config"}
@@ -7,141 +8,150 @@ DATA_DIR="$CONFIG_DIR/data"
 DB_FILE="$DATA_DIR/trafegodns.db"
 
 echo "====================================="
-echo "TrafegoDNS JSON File Manager"
+echo "TrafegoDNS SQLite Enforcer"
 echo "====================================="
+echo "🔒 JSON storage is permanently disabled - SQLite is the only storage method"
 
 # Check if migration has been completed
 if [ -f "$DATA_DIR/.json_migration_complete" ]; then
   MIGRATION_DATE=$(cat "$DATA_DIR/.json_migration_complete")
   echo "✅ JSON migration completed on: $MIGRATION_DATE"
   
-  # Check what to do with JSON files now
-  if [ "$1" = "cleanup" ]; then
-    echo "Removing original JSON files that have been migrated..."
+  # Force removal of all JSON files
+  echo "🔍 Checking for and removing all JSON files..."
+  JSON_FILES_REMOVED=false
     
-    # Check users.json
-    if [ -f "$DATA_DIR/.users_migrated" ] && [ -f "$DATA_DIR/users.json" ]; then
-      echo "Moving users.json to users.json.migrated"
-      mv "$DATA_DIR/users.json" "$DATA_DIR/users.json.migrated"
-    fi
-    
-    # Check revoked-tokens.json
-    if [ -f "$DATA_DIR/.tokens_migrated" ] && [ -f "$DATA_DIR/revoked-tokens.json" ]; then
-      echo "Moving revoked-tokens.json to revoked-tokens.json.migrated"
-      mv "$DATA_DIR/revoked-tokens.json" "$DATA_DIR/revoked-tokens.json.migrated"
-    fi
-    
-    # Check dns-records.json
-    if [ -f "$DATA_DIR/.dns_records_migrated" ]; then
-      if [ -f "$DATA_DIR/dns-records.json" ]; then
-        echo "Moving dns-records.json to dns-records.json.migrated"
-        mv "$DATA_DIR/dns-records.json" "$DATA_DIR/dns-records.json.migrated"
-      elif [ -f "/app/dns-records.json" ]; then
-        echo "Moving app/dns-records.json to data/dns-records.json.migrated"
-        mv "/app/dns-records.json" "$DATA_DIR/dns-records.json.migrated"
-      fi
-    fi
-    
-    echo "✅ JSON files have been moved to .migrated files"
-    echo "They are still available for reference but will no longer be used"
-  elif [ "$1" = "restore" ]; then
-    echo "Restoring JSON files from backups..."
-    
-    # Find newest backup for each file
-    USERS_BACKUP=$(ls -t "$DATA_DIR"/users.json.bak.* 2>/dev/null | head -1)
-    TOKENS_BACKUP=$(ls -t "$DATA_DIR"/revoked-tokens.json.bak.* 2>/dev/null | head -1)
-    DNS_BACKUP=$(ls -t "$DATA_DIR"/dns-records.json.bak.* 2>/dev/null | head -1)
-    
-    if [ -n "$USERS_BACKUP" ]; then
-      echo "Restoring users.json from $USERS_BACKUP"
-      cp "$USERS_BACKUP" "$DATA_DIR/users.json"
-    fi
-    
-    if [ -n "$TOKENS_BACKUP" ]; then
-      echo "Restoring revoked-tokens.json from $TOKENS_BACKUP"
-      cp "$TOKENS_BACKUP" "$DATA_DIR/revoked-tokens.json"
-    fi
-    
-    if [ -n "$DNS_BACKUP" ]; then
-      echo "Restoring dns-records.json from $DNS_BACKUP"
-      cp "$DNS_BACKUP" "$DATA_DIR/dns-records.json"
-    fi
-    
-    echo "✅ JSON files have been restored from backups"
-    echo "Note: This doesn't affect SQLite data, which is still the primary source"
+  # Check and forcibly remove all JSON data files
+  
+  # Check users.json
+  if [ -f "$DATA_DIR/users.json" ]; then
+    echo "Backing up and removing users.json"
+    mv "$DATA_DIR/users.json" "$DATA_DIR/users.json.bak.$(date +%s)"
+    JSON_FILES_REMOVED=true
+  fi
+  
+  # Check revoked-tokens.json
+  if [ -f "$DATA_DIR/revoked-tokens.json" ]; then
+    echo "Backing up and removing revoked-tokens.json"
+    mv "$DATA_DIR/revoked-tokens.json" "$DATA_DIR/revoked-tokens.json.bak.$(date +%s)"
+    JSON_FILES_REMOVED=true
+  fi
+  
+  # Check dns-records.json in all possible locations
+  if [ -f "$DATA_DIR/dns-records.json" ]; then
+    echo "Backing up and removing dns-records.json from data directory"
+    mv "$DATA_DIR/dns-records.json" "$DATA_DIR/dns-records.json.bak.$(date +%s)"
+    JSON_FILES_REMOVED=true
+  fi
+  
+  if [ -f "/app/dns-records.json" ]; then
+    echo "Backing up and removing dns-records.json from app directory"
+    mv "/app/dns-records.json" "$DATA_DIR/dns-records.json.app.bak.$(date +%s)"
+    JSON_FILES_REMOVED=true
+  fi
+  
+  if [ -f "./dns-records.json" ]; then
+    echo "Backing up and removing dns-records.json from current directory"
+    mv "./dns-records.json" "$DATA_DIR/dns-records.json.cwd.bak.$(date +%s)"
+    JSON_FILES_REMOVED=true
+  fi
+  
+  # Check for migrated files that should be removed too
+  if [ -f "$DATA_DIR/users.json.migrated" ]; then
+    echo "Backing up and removing users.json.migrated"
+    mv "$DATA_DIR/users.json.migrated" "$DATA_DIR/users.json.migrated.bak.$(date +%s)"
+    JSON_FILES_REMOVED=true
+  fi
+  
+  if [ -f "$DATA_DIR/revoked-tokens.json.migrated" ]; then
+    echo "Backing up and removing revoked-tokens.json.migrated"
+    mv "$DATA_DIR/revoked-tokens.json.migrated" "$DATA_DIR/revoked-tokens.json.migrated.bak.$(date +%s)"
+    JSON_FILES_REMOVED=true
+  fi
+  
+  if [ -f "$DATA_DIR/dns-records.json.migrated" ]; then
+    echo "Backing up and removing dns-records.json.migrated"
+    mv "$DATA_DIR/dns-records.json.migrated" "$DATA_DIR/dns-records.json.migrated.bak.$(date +%s)"
+    JSON_FILES_REMOVED=true
+  fi
+  
+  if [ "$JSON_FILES_REMOVED" = "true" ]; then
+    echo "✅ All JSON files have been backed up and removed - SQLite is the only storage"
   else
-    echo "⚠️ JSON files have been migrated to SQLite but are still present"
-    echo "Run this script with 'cleanup' to safely move them to .migrated files"
-    echo "Run this script with 'restore' to restore backups if needed"
+    echo "✅ No JSON files found - SQLite is the only storage method"
   fi
 else
-  echo "⚠️ JSON migration has not been completed yet"
+  echo "⚠️ JSON migration has not been completed yet - forcing migration now"
   
-  # Check if SQLite database exists and has data
-  if [ -f "$DB_FILE" ]; then
-    if command -v sqlite3 &> /dev/null; then
-      TABLES=$(sqlite3 "$DB_FILE" "SELECT count(*) FROM sqlite_master WHERE type='table';")
-      if [ "$TABLES" -gt 0 ]; then
-        echo "💡 SQLite database exists with $TABLES tables"
-        
-        # Check for JSON files that need migration
-        JSON_FILES_FOUND=0
-        
-        if [ -f "$DATA_DIR/users.json" ]; then
-          echo "- users.json found (needs migration)"
-          JSON_FILES_FOUND=$((JSON_FILES_FOUND + 1))
-        fi
-        
-        if [ -f "$DATA_DIR/revoked-tokens.json" ]; then
-          echo "- revoked-tokens.json found (needs migration)"
-          JSON_FILES_FOUND=$((JSON_FILES_FOUND + 1))
-        fi
-        
-        if [ -f "$DATA_DIR/dns-records.json" ] || [ -f "/app/dns-records.json" ]; then
-          echo "- dns-records.json found (needs migration)"
-          JSON_FILES_FOUND=$((JSON_FILES_FOUND + 1))
-        fi
-        
-        if [ "$JSON_FILES_FOUND" -gt 0 ]; then
-          echo "⚠️ Found $JSON_FILES_FOUND JSON files that need migration"
-          echo "Migration will happen automatically when TrafegoDNS starts"
-        else
-          echo "✅ No JSON files found for migration"
-        fi
-      else
-        echo "⚠️ SQLite database exists but has no tables"
-        echo "It may be corrupted or newly created"
-      fi
-    else
-      echo "❌ SQLite3 command not available, cannot check database"
-    fi
+  # Force removal of all JSON files regardless of migration status
+  echo "🔍 Checking for and removing all JSON files..."
+  JSON_FILES_REMOVED=false
+  
+  # Check and forcibly remove all JSON data files
+  
+  # Check users.json
+  if [ -f "$DATA_DIR/users.json" ]; then
+    echo "Backing up and removing users.json"
+    mv "$DATA_DIR/users.json" "$DATA_DIR/users.json.bak.$(date +%s)"
+    JSON_FILES_REMOVED=true
+  fi
+  
+  # Check revoked-tokens.json
+  if [ -f "$DATA_DIR/revoked-tokens.json" ]; then
+    echo "Backing up and removing revoked-tokens.json"
+    mv "$DATA_DIR/revoked-tokens.json" "$DATA_DIR/revoked-tokens.json.bak.$(date +%s)"
+    JSON_FILES_REMOVED=true
+  fi
+  
+  # Check dns-records.json in all possible locations
+  if [ -f "$DATA_DIR/dns-records.json" ]; then
+    echo "Backing up and removing dns-records.json from data directory"
+    mv "$DATA_DIR/dns-records.json" "$DATA_DIR/dns-records.json.bak.$(date +%s)"
+    JSON_FILES_REMOVED=true
+  fi
+  
+  if [ -f "/app/dns-records.json" ]; then
+    echo "Backing up and removing dns-records.json from app directory"
+    mv "/app/dns-records.json" "$DATA_DIR/dns-records.json.app.bak.$(date +%s)"
+    JSON_FILES_REMOVED=true
+  fi
+  
+  if [ -f "./dns-records.json" ]; then
+    echo "Backing up and removing dns-records.json from current directory"
+    mv "./dns-records.json" "$DATA_DIR/dns-records.json.cwd.bak.$(date +%s)"
+    JSON_FILES_REMOVED=true
+  fi
+  
+  if [ "$JSON_FILES_REMOVED" = "true" ]; then
+    echo "✅ All JSON files have been backed up and removed - SQLite will be used exclusively"
+    
+    # Force mark migration as complete so we never try to use JSON again
+    CURRENT_DATE=$(date)
+    echo "$CURRENT_DATE" > "$DATA_DIR/.json_migration_complete"
+    echo "true" > "$DATA_DIR/.users_migrated"
+    echo "true" > "$DATA_DIR/.tokens_migrated"
+    echo "true" > "$DATA_DIR/.dns_records_migrated"
+    
+    echo "✅ Marked migration as complete on: $CURRENT_DATE"
   else
-    echo "⚠️ SQLite database does not exist yet"
-    echo "It will be created when TrafegoDNS starts"
+    echo "✅ No JSON files found - SQLite will be used exclusively"
     
-    # Check for JSON files that will be migrated
-    JSON_FILES_FOUND=0
+    # Still mark migration as complete to prevent any attempts to use JSON
+    CURRENT_DATE=$(date)
+    echo "$CURRENT_DATE" > "$DATA_DIR/.json_migration_complete"
+    echo "true" > "$DATA_DIR/.users_migrated"
+    echo "true" > "$DATA_DIR/.tokens_migrated"
+    echo "true" > "$DATA_DIR/.dns_records_migrated"
     
-    if [ -f "$DATA_DIR/users.json" ]; then
-      echo "- users.json found (will be migrated)"
-      JSON_FILES_FOUND=$((JSON_FILES_FOUND + 1))
-    fi
-    
-    if [ -f "$DATA_DIR/revoked-tokens.json" ]; then
-      echo "- revoked-tokens.json found (will be migrated)"
-      JSON_FILES_FOUND=$((JSON_FILES_FOUND + 1))
-    fi
-    
-    if [ -f "$DATA_DIR/dns-records.json" ] || [ -f "/app/dns-records.json" ]; then
-      echo "- dns-records.json found (will be migrated)"
-      JSON_FILES_FOUND=$((JSON_FILES_FOUND + 1))
-    fi
-    
-    if [ "$JSON_FILES_FOUND" -gt 0 ]; then
-      echo "⚠️ Found $JSON_FILES_FOUND JSON files that will be migrated on first run"
-    else
-      echo "✅ No JSON files found, clean SQLite setup"
-    fi
+    echo "✅ Marked migration as complete on: $CURRENT_DATE"
+  fi
+  
+  # Check if SQLite database exists
+  if [ -f "$DB_FILE" ]; then
+    echo "✅ SQLite database exists and will be used"
+  else
+    echo "⚠️ SQLite database does not exist yet - it will be created when TrafegoDNS starts"
+    echo "⚠️ Any data from JSON files has been backed up but will need manual migration"
   fi
 fi
 
