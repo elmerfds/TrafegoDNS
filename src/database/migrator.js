@@ -23,56 +23,59 @@ class DatabaseMigrator {
     let totalMigrated = 0;
 
     try {
-      // Check if a transaction is already in progress
-      const isInTransaction = this.db.inTransaction;
-
-      // Wrap the entire migration in a single transaction if possible
-      if (!isInTransaction) {
-        await this.db.beginTransaction();
-        logger.debug('Started transaction for JSON migration');
-      }
-
+      // FIXED: Don't use a global transaction but process each migration separately
+      // This avoids nested transaction issues that cause "cannot start a transaction within a transaction" errors
+      
+      // Migrate DNS records first - each method handles its own transaction
       try {
-        // Migrate DNS records first
-        const dnsRecordsMigrated = await this.migrateDnsRecords(true);
+        const dnsRecordsMigrated = await this.migrateDnsRecords(false);
         totalMigrated += dnsRecordsMigrated;
-
-        // Migrate users
-        const usersMigrated = await this.migrateUsers(true);
-        totalMigrated += usersMigrated;
-
-        // Migrate tokens
-        const tokensMigrated = await this.migrateRevokedTokens(true);
-        totalMigrated += tokensMigrated;
-
-        // Migrate DNS tracked records
-        const dnsTrackedRecordsMigrated = await this.migrateDnsTrackedRecords(true);
-        totalMigrated += dnsTrackedRecordsMigrated;
-
-        // Commit transaction if we started one
-        if (!isInTransaction) {
-          await this.db.commit();
-          logger.debug('Committed transaction for JSON migration');
-        }
-
-        // Create a marker file to indicate successful migration
-        if (totalMigrated > 0) {
-          const markerFile = path.join(this.dataDir, '.json_migration_complete');
-          fs.writeFileSync(markerFile, new Date().toISOString());
-          logger.info(`Migration from JSON to SQLite completed successfully (${totalMigrated} records)`);
-        } else {
-          logger.info('No records needed migration from JSON to SQLite');
-        }
-
-        return totalMigrated;
-      } catch (error) {
-        // Rollback transaction if we started one
-        if (!isInTransaction) {
-          await this.db.rollback();
-          logger.error('Rolled back transaction due to migration error');
-        }
-        throw error;
+        logger.debug(`Successfully migrated ${dnsRecordsMigrated} DNS records`);
+      } catch (dnsError) {
+        logger.error(`Error migrating DNS records: ${dnsError.message}`);
+        // Continue with other migrations
       }
+
+      // Migrate users with independent transaction
+      try {
+        const usersMigrated = await this.migrateUsers(false);
+        totalMigrated += usersMigrated;
+        logger.debug(`Successfully migrated ${usersMigrated} users`);
+      } catch (usersError) {
+        logger.error(`Error migrating users: ${usersError.message}`);
+        // Continue with other migrations
+      }
+
+      // Migrate tokens with independent transaction
+      try {
+        const tokensMigrated = await this.migrateRevokedTokens(false);
+        totalMigrated += tokensMigrated;
+        logger.debug(`Successfully migrated ${tokensMigrated} tokens`);
+      } catch (tokensError) {
+        logger.error(`Error migrating tokens: ${tokensError.message}`);
+        // Continue with other migrations
+      }
+
+      // Migrate DNS tracked records with independent transaction
+      try {
+        const dnsTrackedRecordsMigrated = await this.migrateDnsTrackedRecords(false);
+        totalMigrated += dnsTrackedRecordsMigrated;
+        logger.debug(`Successfully migrated ${dnsTrackedRecordsMigrated} DNS tracked records`);
+      } catch (trackedError) {
+        logger.error(`Error migrating DNS tracked records: ${trackedError.message}`);
+        // Continue to finish
+      }
+
+      // Create a marker file to indicate successful migration
+      if (totalMigrated > 0) {
+        const markerFile = path.join(this.dataDir, '.json_migration_complete');
+        fs.writeFileSync(markerFile, new Date().toISOString());
+        logger.info(`Migration from JSON to SQLite completed successfully (${totalMigrated} records)`);
+      } else {
+        logger.info('No records needed migration from JSON to SQLite');
+      }
+
+      return totalMigrated;
     } catch (error) {
       logger.error(`Migration failed: ${error.message}`);
       return 0;

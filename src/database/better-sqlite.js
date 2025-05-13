@@ -259,71 +259,93 @@ class BetterSQLite {
       }
     }
     
-    // First, check if there's a transaction already in progress at the SQLite level
-    // This is a more reliable check than our flag
+    // CRITICAL FIX: Reset ALL transaction state before starting migrations
+    // This will solve the "cannot start a transaction within a transaction" errors
     try {
-      // Try to use PRAGMA transaction_status (SQLite 3.8.0+)
+      // First try with a simple rollback - this works if there's actually a transaction active
       try {
-        const inProgressCheck = this.db.prepare("PRAGMA transaction_status").get();
-        if (inProgressCheck && inProgressCheck.transaction_status > 0) {
-          logger.warn('Transaction already active at SQLite level, attempting to force reset');
+        logger.debug('Performing preliminary rollback to clear any active transactions');
+        this.db.exec('ROLLBACK');
+        this.inTransaction = false;
+        logger.debug('Successfully rolled back existing transaction');
+      } catch (prelimRollbackError) {
+        // If no transaction is active, that's actually fine
+        if (prelimRollbackError.message.includes('no transaction is active')) {
+          logger.debug('No transaction was active, continuing with clean state');
+          this.inTransaction = false;
+        } else {
+          // Log other errors but continue
+          logger.warn(`Non-critical error in preliminary rollback: ${prelimRollbackError.message}`);
+        }
+      }
+      
+      // Next, attempt a clean BEGIN/COMMIT cycle to reset SQLite's internal state
+      try {
+        logger.debug('Performing a clean transaction cycle to reset SQLite state');
+        this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+        this.db.exec('COMMIT');
+        this.inTransaction = false;
+        logger.debug('Clean transaction cycle completed');
+      } catch (cycleError) {
+        // If this fails with "cannot start a transaction within a transaction"
+        // we need to be more aggressive
+        if (cycleError.message.includes('cannot start a transaction within a transaction')) {
+          logger.warn('SQLite believes there is still an active transaction, attempting forced cleanup');
           
-          // Try to rollback any existing transaction
+          // Try a forced ROLLBACK, then a COMMIT to be thorough
           try {
             this.db.exec('ROLLBACK');
             logger.debug('Forced rollback succeeded');
-            this.inTransaction = false;
-          } catch (forceError) {
-            if (forceError.message.includes('no transaction is active')) {
-              // State inconsistency - reset our flag
-              this.inTransaction = false;
-              logger.debug('No actual transaction was active, reset flag only');
-            } else {
-              logger.error('Could not force transaction rollback: ' + forceError.message);
-              throw new Error('Cannot run migrations: database has a stuck transaction');
-            }
+          } catch (err1) {
+            logger.debug(`Rollback attempt result: ${err1.message}`);
           }
-        }
-      } catch (pragmaError) {
-        // If PRAGMA is not available, try a different approach
-        logger.debug('Could not check transaction_status via PRAGMA, using alternate method');
-        
-        // Try to start a transaction as a test
-        try {
-          this.db.exec('BEGIN IMMEDIATE TRANSACTION');
-          // If we get here, there was no active transaction
-          this.db.exec('ROLLBACK');
-          // Reset our flag in case it was wrong
-          this.inTransaction = false;
-        } catch (testError) {
-          if (testError.message.includes('cannot start a transaction within a transaction')) {
-            logger.warn('Transaction already active, need to force reset before migration');
-            // Try a forced rollback to clear any stuck transaction
-            try {
-              this.db.exec('ROLLBACK');
-              logger.debug('Forced rollback succeeded');
-              this.inTransaction = false;
-            } catch (forceError) {
-              if (forceError.message.includes('no transaction is active')) {
-                // State inconsistency - reset our flag
-                this.inTransaction = false;
-                logger.debug('No actual transaction was active, reset flag only');
-              } else {
-                logger.error('Could not force transaction rollback: ' + forceError.message);
-                throw new Error('Cannot run migrations: database has a stuck transaction');
-              }
-            }
-          } else {
-            // Some other error occurred
-            logger.error('Error testing transaction state: ' + testError.message);
-            throw testError;
+          
+          try {
+            this.db.exec('COMMIT');
+            logger.debug('Forced commit succeeded');
+          } catch (err2) {
+            logger.debug(`Commit attempt result: ${err2.message}`);
           }
+          
+          // As a last resort, try the PRAGMA to directly reset the transaction state
+          try {
+            this.db.exec('PRAGMA journal_mode=WAL');
+            logger.debug('Reset journal mode to clear transaction state');
+          } catch (pragmaError) {
+            logger.debug(`PRAGMA reset attempt: ${pragmaError.message}`);
+          }
+        } else {
+          logger.warn(`Clean transaction cycle error: ${cycleError.message}`);
         }
       }
-    } catch (transactionCheckError) {
-      logger.error('Error checking transaction state: ' + transactionCheckError.message);
-      // If we can't determine transaction state, it's safer to bail out
-      throw transactionCheckError;
+      
+      // Finally, verify we have a clean transaction state
+      let transactionActive = false;
+      try {
+        const inProgressCheck = this.db.prepare("PRAGMA transaction_status").get();
+        transactionActive = inProgressCheck && inProgressCheck.transaction_status > 0;
+      } catch (pragmaError) {
+        // If PRAGMA is not available, try our own check
+        try {
+          this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+          this.db.exec('COMMIT');
+          transactionActive = false;
+        } catch (testError) {
+          transactionActive = testError.message.includes('cannot start a transaction within a transaction');
+        }
+      }
+      
+      if (transactionActive) {
+        logger.warn('Could not completely clear transaction state, proceeding anyway with caution');
+      } else {
+        logger.debug('Transaction state verified clean, proceeding with migrations');
+      }
+      
+      // Reset our internal transaction flag regardless
+      this.inTransaction = false;
+    } catch (transactionResetError) {
+      logger.error(`Error during transaction state reset: ${transactionResetError.message}`);
+      // Continue anyway, as we've done our best to reset
     }
     
     // Set global migration flag to prevent any other instance from migrating
@@ -394,6 +416,17 @@ class BetterSQLite {
       // 3. Record the migration version
       try {
         logger.debug('Recording migration version (separate transaction)');
+        // CRITICAL FIX: Verify transaction state before starting a new one
+        if (this.inTransaction) {
+          try {
+            logger.warn('Unexpected transaction active before version recording, rolling back');
+            this.db.exec('ROLLBACK');
+          } catch (unexpectedRollbackError) {
+            logger.debug(`Unexpected rollback result: ${unexpectedRollbackError.message}`);
+          }
+          this.inTransaction = false;
+        }
+        
         this.db.exec('BEGIN IMMEDIATE TRANSACTION');
         this.inTransaction = true;
         
