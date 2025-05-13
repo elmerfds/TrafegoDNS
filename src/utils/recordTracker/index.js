@@ -64,53 +64,34 @@ class RecordTracker {
     // Initialize SQLite manager if available
     this.sqliteManager = null;
     this.usingSQLite = false;
+    this.initialized = false;
 
     // Try to use SQLite database if available
     try {
       const database = require('../../database');
 
-      // First check - wait up to 5 seconds for database to initialize if needed
+      // First check - check if database is initialized
       if (database) {
         if (!database.isInitialized()) {
-          logger.info('Waiting for SQLite database to initialize...');
-
-          // Try up to 10 times with 500ms delay (5 seconds total)
-          for (let i = 0; i < 10; i++) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-            if (database.isInitialized()) {
-              logger.info('SQLite database initialized successfully after waiting');
-              break;
-            }
-          }
-        }
-
-        // Try to initialize the SQLite manager
-        if (database.isInitialized()) {
+          logger.info('SQLite database not initialized yet, will use JSON storage for now');
+          // We'll check again when loadTrackedRecords is called
+        } else {
+          // Try to initialize the SQLite manager
           this.sqliteManager = new SQLiteRecordManager(database);
 
-          // Wait for repository to be available if needed
+          // Check if repositories are available
           if (!database.repositories.dnsTrackedRecord) {
-            logger.info('Waiting for SQLite repositories to initialize...');
+            logger.info('SQLite repositories not initialized yet, will use JSON storage for now');
+          } else {
+            this.sqliteManager = new SQLiteRecordManager(database);
+            this.usingSQLite = this.sqliteManager.initialize();
 
-            // Try up to 5 times with 500ms delay
-            for (let i = 0; i < 5; i++) {
-              await new Promise(resolve => setTimeout(resolve, 500));
-              if (database.repositories.dnsTrackedRecord) {
-                this.sqliteManager = new SQLiteRecordManager(database);
-                break;
-              }
+            if (this.usingSQLite) {
+              logger.info('DNS record tracker using SQLite for storage');
+            } else {
+              logger.warn('SQLite available but initialization failed, using JSON fallback');
             }
           }
-
-          this.usingSQLite = this.sqliteManager.initialize();
-
-          if (this.usingSQLite) {
-            logger.info('DNS record tracker using SQLite for storage');
-          } else {
-            logger.warn('SQLite available but initialization failed, using JSON fallback');
-          }
-        } else {
-          logger.warn('SQLite database not initialized after waiting, using JSON storage for DNS records');
         }
       } else {
         logger.debug('SQLite database module not available, using JSON storage for DNS records');
@@ -119,8 +100,23 @@ class RecordTracker {
       logger.debug(`Could not initialize SQLite for DNS records: ${error.message}`);
     }
 
-    // Initialize the tracker
-    this.loadTrackedRecords();
+    // Initialize the tracker - this will be done asynchronously
+    // We'll use "initialized" flag to track completion status
+    this._initializeTracker();
+  }
+
+  /**
+   * Initialize the tracker asynchronously
+   * @private
+   */
+  async _initializeTracker() {
+    try {
+      await this.loadTrackedRecords();
+      this.initialized = true;
+      logger.debug('Record tracker fully initialized');
+    } catch (error) {
+      logger.error(`Error initializing record tracker: ${error.message}`);
+    }
   }
   
   /**
