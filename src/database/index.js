@@ -5,6 +5,7 @@
 const logger = require('../utils/logger');
 const connection = require('./connection');
 const { migrateDnsTables } = require('./migrations/dnsTablesMigration');
+const { addLastRefreshedToProviderCache } = require('./migrations/addLastRefreshedToProviderCache');
 
 // Import repositories
 const UserRepository = require('./repository/userRepository');
@@ -72,7 +73,16 @@ async function initialize(migrate = true) {
     // Special DNS tables synchronization
     if (repositories.dnsManager) {
       try {
-        // Perform this after regular migrations
+        // Run custom migrations
+        try {
+          await addLastRefreshedToProviderCache(db);
+          logger.info('last_refreshed column migration completed');
+        } catch (migrationError) {
+          logger.error(`Failed to run last_refreshed column migration: ${migrationError.message}`);
+          // Continue with other migrations
+        }
+        
+        // Perform DNS tables synchronization
         await migrateDnsTables(db, repositories.dnsManager);
       } catch (error) {
         logger.error(`Failed to synchronize DNS tables: ${error.message}`);

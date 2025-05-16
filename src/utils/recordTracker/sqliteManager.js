@@ -174,10 +174,10 @@ class SQLiteRecordManager {
           } else {
             // Use legacy repository format
             await repository.trackRecord({
-              provider,
+              provider: provider || 'unknown',  // Ensure provider is never null
               record_id: recordId,
-              type: record.type,
-              name: record.name,
+              type: record.type || 'UNKNOWN',
+              name: record.name || recordId,
               content: record.content || record.value || '',
               ttl: record.ttl || 1,
               proxied: !!record.proxied,
@@ -230,10 +230,10 @@ class SQLiteRecordManager {
       } else {
         // Use legacy repository format
         await this.legacyRepository.trackRecord({
-          provider,
+          provider: provider || 'unknown',  // Ensure provider is never null
           record_id: record.id,
-          type: record.type,
-          name: record.name,
+          type: record.type || 'UNKNOWN',
+          name: record.name || record.id,
           content: record.content || record.value || '',
           ttl: record.ttl || 1,
           proxied: !!record.proxied,

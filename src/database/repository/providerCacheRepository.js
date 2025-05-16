@@ -89,6 +89,8 @@ class ProviderCacheRepository extends BaseRepository {
         return 0;
       }
 
+      // Ensure provider is not null
+      provider = provider || 'unknown';
       logger.info(`Refreshing provider cache with ${records.length} records from ${provider}`);
       
       // Start a transaction for bulk operations
@@ -105,13 +107,18 @@ class ProviderCacheRepository extends BaseRepository {
 
         // Process each record
         for (const record of records) {
-          if (!record || !record.id || !record.type || !record.name) {
-            logger.debug(`Skipping invalid record: ${JSON.stringify(record)}`);
+          if (!record) {
+            logger.debug(`Skipping null record`);
             continue;
           }
+          
+          // Ensure required fields exist
+          const recordId = record.id || record.record_id || `generated_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+          const recordType = record.type || 'UNKNOWN';
+          const recordName = record.name || 'unknown.name';
 
           // Add to incoming IDs set
-          incomingIds.add(record.id);
+          incomingIds.add(recordId);
 
           // Create or update the record
           const fingerprint = this._generateFingerprint(record);
@@ -131,9 +138,9 @@ class ProviderCacheRepository extends BaseRepository {
             last_refreshed = excluded.last_refreshed
           `, [
             provider,
-            record.id,
-            record.type,
-            record.name,
+            recordId,
+            recordType,
+            recordName,
             record.content || record.data || record.value || '',
             record.ttl || 1,
             record.proxied ? 1 : 0,
