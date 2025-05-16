@@ -548,15 +548,23 @@ class RecordTracker {
    * @returns {Promise<number>} - Number of newly tracked records
    */
   async trackAllActiveRecords(records, markAsAppManaged = true) {
-    if (!records || !Array.isArray(records) || records.length === 0) {
-      logger.debug('No active records to track');
+    if (!records || !Array.isArray(records)) {
+      logger.debug('No active records to track (null or not an array)');
+      return 0;
+    }
+    
+    // Ensure records is always an array
+    const recordsToTrack = Array.isArray(records) ? records : [];
+    
+    if (recordsToTrack.length === 0) {
+      logger.debug('No active records to track (empty array)');
       return 0;
     }
 
-    logger.info(`Tracking ${records.length} active DNS records (markAsAppManaged: ${markAsAppManaged})`);
+    logger.info(`Tracking ${recordsToTrack.length} active DNS records (markAsAppManaged: ${markAsAppManaged})`);
     let newlyTrackedCount = 0;
 
-    for (const record of records) {
+    for (const record of recordsToTrack) {
       if (!record || !record.id || !record.type || !record.name) {
         continue;
       }

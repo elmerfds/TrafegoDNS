@@ -20,6 +20,12 @@ async function processHostnames(hostnames, containerLabels, config, stats) {
     return { processedHostnames: [], dnsRecordConfigs: [] };
   }
   
+  // Handle null or undefined containerLabels
+  if (!containerLabels) {
+    logger.warn('No container labels provided, using empty object');
+    containerLabels = {};
+  }
+  
   logger.debug(`Processing ${hostnames.length} hostnames`);
   
   // Track processed hostnames for cleanup

@@ -119,21 +119,21 @@ class DNSManager {
       
       // Process hostnames to get DNS configurations
       const { processedHostnames, dnsRecordConfigs } = await processHostnames(
-        hostnames, 
-        containerLabels, 
+        hostnames || [], 
+        containerLabels || {}, 
         this.config, 
         this.dnsProvider
       );
       
       // Skip processing if no records to process
       if (!dnsRecordConfigs || dnsRecordConfigs.length === 0) {
-        this.stats.processedHostnames = processedHostnames.length;
+        this.stats.processedHostnames = processedHostnames ? processedHostnames.length : 0;
         this.stats.timestamp = new Date().toISOString();
         return this.stats;
       }
       
       // Update stats
-      this.stats.processedHostnames = processedHostnames.length;
+      this.stats.processedHostnames = processedHostnames ? processedHostnames.length : 0;
       
       // Generate batch operations for the provider
       const batchResult = await this.dnsProvider.batchEnsureRecords(dnsRecordConfigs);

@@ -7,6 +7,7 @@ const connection = require('./connection');
 const { migrateDnsTables } = require('./migrations/dnsTablesMigration');
 const { addLastRefreshedToProviderCache } = require('./migrations/addLastRefreshedToProviderCache');
 const { ensureLastRefreshedColumn } = require('./migrations/ensureLastRefreshedColumn');
+const { fixSqliteConstraints } = require('./migrations/fixSqliteConstraints');
 
 // Import repositories
 const UserRepository = require('./repository/userRepository');
@@ -89,6 +90,15 @@ async function initialize(migrate = true) {
           logger.info('Ensured last_refreshed column exists in dns_records table');
         } catch (ensureError) {
           logger.error(`Failed to ensure last_refreshed column: ${ensureError.message}`);
+          // Continue with other migrations
+        }
+        
+        // Apply the constraint fixes
+        try {
+          await fixSqliteConstraints(db);
+          logger.info('Applied SQLite constraint fixes');
+        } catch (constraintError) {
+          logger.error(`Failed to fix SQLite constraints: ${constraintError.message}`);
           // Continue with other migrations
         }
         

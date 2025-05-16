@@ -227,8 +227,14 @@ class SQLiteRecordManager {
     try {
       // Ensure provider is not null or undefined
       if (!provider) {
-        logger.warn(`Provider is undefined while tracking record ${record.name} (${record.type}) - using record's provider or "unknown"`);
+        logger.warn(`Provider is undefined while tracking record ${record.name || 'unnamed'} (${record.type || 'untyped'}) - using record's provider or "unknown"`);
         provider = record.provider || 'unknown';
+      }
+      
+      // Double-check to absolutely ensure provider is never null
+      if (!provider) {
+        logger.warn(`Provider still undefined after first check - forcing "unknown" for record ${JSON.stringify(record)}`);
+        provider = 'unknown';
       }
 
       // Get record key for better identification
