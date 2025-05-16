@@ -756,7 +756,7 @@ class BetterSQLite {
           provider TEXT NOT NULL,
           type TEXT NOT NULL,
           name TEXT NOT NULL,
-          content TEXT NOT NULL,
+          content TEXT,
           ttl INTEGER,
           proxied INTEGER DEFAULT 0,
           tracked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -766,6 +766,7 @@ class BetterSQLite {
           fingerprint TEXT,
           managed INTEGER DEFAULT 0,
           updated_at TIMESTAMP,
+          last_refreshed TEXT,
           UNIQUE(provider, record_id)
         )
       `, 'dns_records table');
@@ -844,6 +845,7 @@ class BetterSQLite {
         CREATE INDEX IF NOT EXISTS idx_dns_records_provider ON dns_records(provider);
         CREATE INDEX IF NOT EXISTS idx_dns_records_name ON dns_records(name);
         CREATE INDEX IF NOT EXISTS idx_dns_records_is_orphaned ON dns_records(is_orphaned);
+        CREATE INDEX IF NOT EXISTS idx_dns_records_lastrefresh ON dns_records(last_refreshed);
       `, 'dns_records indexes');
 
       // Users table

@@ -38,6 +38,9 @@ class DnsRecordRepository extends BaseRepository {
             tracked_at TEXT NOT NULL,
             updated_at TEXT,
             fingerprint TEXT,
+            last_refreshed TEXT,
+            last_processed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            managed INTEGER DEFAULT 0,
             UNIQUE(provider, record_id)
           )
         `);
@@ -47,6 +50,7 @@ class DnsRecordRepository extends BaseRepository {
         await this.db.run(`CREATE INDEX IF NOT EXISTS idx_dns_name ON ${this.tableName}(name)`);
         await this.db.run(`CREATE INDEX IF NOT EXISTS idx_dns_type ON ${this.tableName}(type)`);
         await this.db.run(`CREATE INDEX IF NOT EXISTS idx_dns_orphaned ON ${this.tableName}(is_orphaned)`);
+        await this.db.run(`CREATE INDEX IF NOT EXISTS idx_dns_lastrefreshed ON ${this.tableName}(last_refreshed)`);
 
         logger.info(`Created ${this.tableName} table and indexes`);
       }

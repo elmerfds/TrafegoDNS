@@ -86,6 +86,15 @@ class DNSTrackedRecordRepository {
       const now = new Date().toISOString();
       const metadata = record.metadata ? JSON.stringify(record.metadata) : null;
       
+      // Validate required parameters to prevent NOT NULL constraint failures
+      if (!record.provider) {
+        throw new Error('Provider is required when tracking DNS records');
+      }
+      
+      if (!record.record_id) {
+        throw new Error('Record ID is required when tracking DNS records');
+      }
+      
       const result = await this.db.run(`
         INSERT INTO ${this.tableName}
         (provider, record_id, type, name, content, ttl, proxied, tracked_at, metadata)
@@ -101,9 +110,9 @@ class DNSTrackedRecordRepository {
       `, [
         record.provider,
         record.record_id,
-        record.type,
-        record.name,
-        record.content,
+        record.type || 'UNKNOWN',
+        record.name || 'unknown',
+        record.content || '',
         record.ttl || 1,
         record.proxied ? 1 : 0,
         now,
