@@ -10,29 +10,50 @@ const logger = require('./logger');
  * @returns {Array<string>} - Array of extracted hostnames
  */
 function extractHostnamesFromRule(rule) {
+  // Safety check for invalid inputs
+  if (!rule || typeof rule !== 'string') {
+    logger.warn(`traefik.extractHostnamesFromRule: Invalid rule provided: ${typeof rule}`);
+    return [];
+  }
+  
   logger.trace(`traefik.extractHostnamesFromRule: Extracting hostnames from rule: ${rule}`);
   
-  const hostnames = [];
-  
-  // Handle Traefik v2 format: Host(`example.com`)
-  const v2HostRegex = /Host\(`([^`]+)`\)/g;
-  let match;
-  
-  while ((match = v2HostRegex.exec(rule)) !== null) {
-    logger.trace(`traefik.extractHostnamesFromRule: Found v2 hostname: ${match[1]}`);
-    hostnames.push(match[1]);
+  try {
+    const hostnames = [];
+    
+    // Handle Traefik v2 format: Host(`example.com`)
+    const v2HostRegex = /Host\(`([^`]+)`\)/g;
+    let match;
+    
+    while ((match = v2HostRegex.exec(rule)) !== null) {
+      if (match[1]) {
+        logger.trace(`traefik.extractHostnamesFromRule: Found v2 hostname: ${match[1]}`);
+        hostnames.push(match[1]);
+      }
+    }
+    
+    // Handle Traefik v1 format: Host:example.com
+    const v1HostRegex = /Host:([a-zA-Z0-9.-]+)/g;
+    
+    while ((match = v1HostRegex.exec(rule)) !== null) {
+      if (match[1]) {
+        logger.trace(`traefik.extractHostnamesFromRule: Found v1 hostname: ${match[1]}`);
+        hostnames.push(match[1]);
+      }
+    }
+    
+    // Return empty array immediately if no hostnames found
+    if (hostnames.length === 0) {
+      logger.trace(`traefik.extractHostnamesFromRule: No hostnames found in rule`);
+      return [];
+    }
+    
+    logger.trace(`traefik.extractHostnamesFromRule: Extracted ${hostnames.length} hostnames: ${hostnames.join(', ')}`);
+    return hostnames;
+  } catch (error) {
+    logger.error(`traefik.extractHostnamesFromRule: Error extracting hostnames: ${error.message}`);
+    return [];
   }
-  
-  // Handle Traefik v1 format: Host:example.com
-  const v1HostRegex = /Host:([a-zA-Z0-9.-]+)/g;
-  
-  while ((match = v1HostRegex.exec(rule)) !== null) {
-    logger.trace(`traefik.extractHostnamesFromRule: Found v1 hostname: ${match[1]}`);
-    hostnames.push(match[1]);
-  }
-  
-  logger.trace(`traefik.extractHostnamesFromRule: Extracted ${hostnames.length} hostnames: ${hostnames.join(', ')}`);
-  return hostnames;
 }
 
 /**
@@ -46,21 +67,51 @@ function findLabelsForRouter(router, containerLabelsCache, traefikLabelPrefix) {
   // Start with empty labels
   const labels = {};
   
-  // Check if router has a related container
-  const service = router.service;
-  if (service) {
-    // Try to find container by service name
-    Object.entries(containerLabelsCache).forEach(([key, containerLabels]) => {
-      // Various ways a container might be related to this router
-      if (
-        key === service || 
-        containerLabels[`${traefikLabelPrefix}http.routers.${router.name}.service`] === service ||
-        containerLabels[`${traefikLabelPrefix}http.services.${service}.loadbalancer.server.port`]
-      ) {
-        // Merge labels
-        Object.assign(labels, containerLabels);
+  // Defensive checks for all parameters
+  if (!router || typeof router !== 'object') {
+    logger.debug('findLabelsForRouter: Invalid router object provided');
+    return labels;
+  }
+  
+  if (!containerLabelsCache || typeof containerLabelsCache !== 'object') {
+    logger.debug('findLabelsForRouter: Invalid container labels cache provided');
+    return labels;
+  }
+  
+  if (!traefikLabelPrefix) {
+    logger.debug('findLabelsForRouter: No Traefik label prefix provided, using default');
+    traefikLabelPrefix = 'traefik.';
+  }
+  
+  try {
+    // Check if router has a related container
+    const service = router.service;
+    const routerName = router.name || 'unknown';
+    
+    if (service) {
+      // Try to find container by service name using safe iteration
+      try {
+        Object.entries(containerLabelsCache).forEach(([key, containerLabels]) => {
+          if (!containerLabels || typeof containerLabels !== 'object') {
+            return; // Skip invalid label objects
+          }
+          
+          // Various ways a container might be related to this router
+          if (
+            key === service || 
+            containerLabels[`${traefikLabelPrefix}http.routers.${routerName}.service`] === service ||
+            containerLabels[`${traefikLabelPrefix}http.services.${service}.loadbalancer.server.port`]
+          ) {
+            // Merge labels
+            Object.assign(labels, containerLabels);
+          }
+        });
+      } catch (iterationError) {
+        logger.warn(`findLabelsForRouter: Error iterating container labels: ${iterationError.message}`);
       }
-    });
+    }
+  } catch (error) {
+    logger.error(`findLabelsForRouter: Unexpected error: ${error.message}`);
   }
   
   return labels;
@@ -72,11 +123,21 @@ function findLabelsForRouter(router, containerLabelsCache, traefikLabelPrefix) {
  * @returns {string|null} - Service name or null if not found
  */
 function extractServiceName(router) {
-  if (!router || !router.service) {
+  try {
+    // Comprehensive safety check
+    if (!router || typeof router !== 'object') {
+      return null;
+    }
+    
+    if (!router.service || typeof router.service !== 'string' || router.service.trim() === '') {
+      return null;
+    }
+    
+    return router.service;
+  } catch (error) {
+    logger.error(`extractServiceName: Error extracting service name: ${error.message}`);
     return null;
   }
-  
-  return router.service;
 }
 
 module.exports = {

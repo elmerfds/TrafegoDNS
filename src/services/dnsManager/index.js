@@ -14,6 +14,7 @@ const { processHostnames } = require('./recordProcessor');
 const { cleanupOrphanedRecords } = require('./orphanedRecordCleaner');
 const { processManagedHostnames } = require('./managedHostnameProcessor');
 const { createStats, createPreviousStats, logStats } = require('./statistics');
+const { safeArrayLength, safeConcatArrays, safeGetProperty, safeForEach } = require('./safeHelpers');
 
 // Database module for repository access
 const database = require('../../database');
@@ -92,18 +93,42 @@ class DNSManager {
    */
   async processHostnames(hostnames, containerLabels) {
     try {
+      // Defensive programming: ensure hostnames is an array
+      if (!hostnames) {
+        logger.warn('Empty hostnames array passed to processHostnames');
+        hostnames = [];
+      } else if (!Array.isArray(hostnames)) {
+        logger.warn('Non-array passed to processHostnames, converting to array');
+        try {
+          // Try to convert to array if possible
+          hostnames = Array.from(hostnames);
+        } catch (conversionError) {
+          logger.error(`Failed to convert hostnames to array: ${conversionError.message}`);
+          hostnames = [];
+        }
+      }
+      
+      // Ensure containerLabels is an object
+      if (!containerLabels) {
+        logger.debug('Empty containerLabels passed to processHostnames');
+        containerLabels = {};
+      }
+      
+      // Get hostname count safely
+      const hostnameCount = safeArrayLength(hostnames);
+      
       // Only log at INFO level if the hostname count has changed or it's the first run
-      const hasCountChanged = this.previousStats.hostnameCount !== hostnames.length;
+      const hasCountChanged = this.previousStats.hostnameCount !== hostnameCount;
 
       if (hasCountChanged) {
-        logger.info(`Processing ${hostnames.length} hostnames for DNS management`);
+        logger.info(`Processing ${hostnameCount} hostnames for DNS management`);
       } else {
         // Log at debug level if nothing changed to reduce noise
-        logger.debug(`Processing ${hostnames.length} hostnames for DNS management`);
+        logger.debug(`Processing ${hostnameCount} hostnames for DNS management`);
       }
 
       // Update previous stats with current hostname count
-      this.previousStats.hostnameCount = hostnames.length;
+      this.previousStats.hostnameCount = hostnameCount;
 
       // Track if we've already logged the preserved hostnames
       // We only want to log this once during startup, not on every poll
@@ -136,7 +161,35 @@ class DNSManager {
       this.stats.processedHostnames = processedHostnames ? processedHostnames.length : 0;
       
       // Generate batch operations for the provider
-      const batchResult = await this.dnsProvider.batchEnsureRecords(dnsRecordConfigs);
+      let batchResult;
+      try {
+        batchResult = await this.dnsProvider.batchEnsureRecords(dnsRecordConfigs);
+      } catch (batchError) {
+        logger.error(`Error in batch DNS operations: ${batchError.message}`);
+        batchResult = {
+          created: [],
+          updated: [],
+          unchanged: [],
+          failed: []
+        };
+      }
+      
+      // Ensure batchResult and its properties exist
+      if (!batchResult) {
+        logger.warn('Batch operation returned undefined result, using empty results');
+        batchResult = {
+          created: [],
+          updated: [],
+          unchanged: [],
+          failed: []
+        };
+      }
+      
+      // Ensure all arrays exist
+      batchResult.created = batchResult.created || [];
+      batchResult.updated = batchResult.updated || [];
+      batchResult.unchanged = batchResult.unchanged || [];
+      batchResult.failed = batchResult.failed || [];
       
       // Update stats
       this.stats.created = batchResult.created.length;
@@ -147,21 +200,35 @@ class DNSManager {
       this.stats.timestamp = new Date().toISOString();
       
       // Track newly created or updated records
-      for (const record of [...batchResult.created, ...batchResult.updated]) {
-        try {
-          // Check if record is already tracked
-          const isTracked = await this.isRecordTracked(record);
-          
-          if (isTracked) {
-            // Update record ID if needed (e.g., if ID changed after creation)
-            await this.updateRecordId(record);
-          } else {
-            // Add new record to tracker
-            await this.trackRecord(record);
+      try {
+        // Use our safe helpers to avoid errors
+        const recordsToTrack = safeConcatArrays(batchResult.created, batchResult.updated);
+        
+        // Track each record
+        for (const record of recordsToTrack) {
+          try {
+            // Extra validation to ensure we have a valid record to track
+            if (!record || !record.id) {
+              logger.warn(`Skipping invalid record in tracking: ${JSON.stringify(record)}`);
+              continue;
+            }
+            
+            // Check if record is already tracked
+            const isTracked = await this.isRecordTracked(record);
+            
+            if (isTracked) {
+              // Update record ID if needed (e.g., if ID changed after creation)
+              await this.updateRecordId(record);
+            } else {
+              // Add new record to tracker
+              await this.trackRecord(record);
+            }
+          } catch (trackError) {
+            logger.error(`Failed to track record ${record?.name || 'unknown'}: ${trackError.message}`);
           }
-        } catch (trackError) {
-          logger.error(`Failed to track record ${record.name}: ${trackError.message}`);
         }
+      } catch (batchTrackError) {
+        logger.error(`Error tracking batch records: ${batchTrackError.message}`);
       }
       
       // Log statistics if anything changed or at debug level

@@ -148,40 +148,62 @@ class TraefikMonitor {
       
       // Get all routers from Traefik
       const routers = await this.getRouters();
+      
+      // Defensive check - ensure routers is an object
+      if (!routers || typeof routers !== 'object') {
+        logger.warn('Invalid router data returned from Traefik API');
+        // Emit empty update to avoid undefined errors downstream
+        this.eventBus.publish(EventTypes.TRAEFIK_ROUTERS_UPDATED, {
+          hostnames: [],
+          containerLabels: {}
+        });
+        return;
+      }
+      
       logger.debug(`Found ${Object.keys(routers).length} routers in Traefik`);
       
       // Collect hostname data
-      const { hostnames, containerLabels } = this.processRouters(routers);
+      const { hostnames = [], containerLabels = {} } = this.processRouters(routers);
+      
+      // Ensure hostnames is an array to prevent 'length' property errors
+      const hostnamesArray = Array.isArray(hostnames) ? hostnames : [];
       
       // Only log hostname count if it changed from previous poll
-      const hasChanged = this.previousStats.hostnameCount !== hostnames.length;
+      const hostnameCount = hostnamesArray.length;
+      const hasChanged = this.previousStats.hostnameCount !== hostnameCount;
 
       if (hasChanged) {
-        logger.info(`Found ${hostnames.length} hostnames from Traefik routers`);
+        logger.info(`Found ${hostnameCount} hostnames from Traefik routers`);
       } else {
         // Log at debug level instead of info when nothing has changed
-        logger.debug(`Found ${hostnames.length} hostnames from Traefik routers`);
+        logger.debug(`Found ${hostnameCount} hostnames from Traefik routers`);
       }
       
       // Update the previous count for next comparison
-      this.previousStats.hostnameCount = hostnames.length;
+      this.previousStats.hostnameCount = hostnameCount;
       
       // Merge router labels with Docker container labels
-      const mergedLabels = this.mergeContainerLabels(containerLabels, this.lastDockerLabels);
+      const mergedLabels = this.mergeContainerLabels(containerLabels, this.lastDockerLabels || {});
       
-      // Publish router update event
+      // Publish router update event - ALWAYS use hostnamesArray to prevent undefined issues
       this.eventBus.publish(EventTypes.TRAEFIK_ROUTERS_UPDATED, {
-        hostnames,
-        containerLabels: mergedLabels
+        hostnames: hostnamesArray,
+        containerLabels: mergedLabels || {}
       });
       
       // Publish poll completed event
       this.eventBus.publish(EventTypes.TRAEFIK_POLL_COMPLETED, {
         routerCount: Object.keys(routers).length,
-        hostnameCount: hostnames.length
+        hostnameCount: hostnameCount
       });
     } catch (error) {
       logger.error(`Error polling Traefik API: ${error.message}`);
+      
+      // On error, still emit an event with empty arrays to avoid undefined errors
+      this.eventBus.publish(EventTypes.TRAEFIK_ROUTERS_UPDATED, {
+        hostnames: [],
+        containerLabels: {}
+      });
       
       this.eventBus.publish(EventTypes.ERROR_OCCURRED, {
         source: 'TraefikMonitor.pollTraefikAPI',
@@ -199,28 +221,38 @@ class TraefikMonitor {
   async getRouters() {
     try {
       const response = await this.client.get('/http/routers');
+      
+      // Validate response data
+      if (!response || !response.data || typeof response.data !== 'object') {
+        logger.warn('Invalid response from Traefik API: empty or non-object data');
+        return {}; // Return empty object to avoid undefined errors
+      }
+      
       return response.data;
     } catch (error) {
       // Check for specific error types for better error messages
       if (error.code === 'ECONNREFUSED') {
         logger.error(`Connection refused to Traefik API at ${this.config.traefikApiUrl}. Is Traefik running?`);
-        throw new Error(`Connection refused to Traefik API at ${this.config.traefikApiUrl}. Is Traefik running?`);
+        return {}; // Return empty object instead of throwing
       }
       
       if (error.response && error.response.status === 401) {
         logger.error('Authentication failed for Traefik API. Check your username and password.');
-        throw new Error('Authentication failed for Traefik API. Check your username and password.');
+        return {}; // Return empty object instead of throwing
       }
       
       logger.error(`Failed to get Traefik routers: ${error.message}`);
-      throw error;
+      return {}; // Return empty object to avoid halting the application
     }
   }
   
   /**
    * Process routers to extract hostnames and container labels
+   * @param {Object} routers - Router objects from Traefik API
+   * @returns {Object} - Object containing hostnames array and containerLabels object
    */
   processRouters(routers) {
+    // Initialize with empty arrays to prevent undefined errors
     const hostnames = [];
     const containerLabels = {};
     
@@ -230,39 +262,57 @@ class TraefikMonitor {
       return { hostnames, containerLabels };
     }
     
-    for (const [_, router] of Object.entries(routers)) {
-      // Skip undefined or invalid routers
-      if (!router || !router.name) {
-        continue;
-      }
-      
-      const routerName = router.name;
-      if (router.rule && router.rule.includes('Host')) {
-        // Extract all hostnames from the rule
-        const routerHostnames = extractHostnamesFromRule(router.rule);
-        
-        if (!routerHostnames || !Array.isArray(routerHostnames)) {
-          logger.debug(`No valid hostnames extracted from rule for router "${routerName}"`);
+    try {
+      // Use Object.entries to avoid errors if routers isn't iterable
+      for (const [_, router] of Object.entries(routers)) {
+        // Skip undefined or invalid routers
+        if (!router || !router.name) {
           continue;
         }
         
-        for (const hostname of routerHostnames) {
-          // Skip invalid or empty hostnames
-          if (!hostname) {
+        const routerName = router.name;
+        if (router.rule && typeof router.rule === 'string' && router.rule.includes('Host')) {
+          try {
+            // Extract all hostnames from the rule
+            const routerHostnames = extractHostnamesFromRule(router.rule);
+            
+            if (!routerHostnames || !Array.isArray(routerHostnames)) {
+              logger.debug(`No valid hostnames extracted from rule for router "${routerName}"`);
+              continue;
+            }
+            
+            for (const hostname of routerHostnames) {
+              // Skip invalid or empty hostnames
+              if (!hostname) {
+                continue;
+              }
+              
+              hostnames.push(hostname);
+              
+              // Store router service information with hostname for later lookup
+              containerLabels[hostname] = {
+                [`${this.config.traefikLabelPrefix}http.routers.${routerName}.service`]: router.service || '',
+                routerName: routerName
+              };
+              
+              logger.trace(`Processed router "${routerName}" for hostname "${hostname}" with service "${router.service || 'unknown'}"`);
+            }
+          } catch (extractError) {
+            logger.warn(`Error extracting hostnames from rule for router "${routerName}": ${extractError.message}`);
             continue;
           }
-          
-          hostnames.push(hostname);
-          
-          // Store router service information with hostname for later lookup
-          containerLabels[hostname] = {
-            [`${this.config.traefikLabelPrefix}http.routers.${routerName}.service`]: router.service || '',
-            routerName: routerName
-          };
-          
-          logger.trace(`Processed router "${routerName}" for hostname "${hostname}" with service "${router.service || 'unknown'}"`);
         }
       }
+    } catch (processingError) {
+      logger.error(`Error processing routers: ${processingError.message}`);
+      // Return empty arrays if processing fails
+      return { hostnames: [], containerLabels: {} };
+    }
+    
+    // As a final safeguard, verify hostnames is a valid array
+    if (!Array.isArray(hostnames)) {
+      logger.warn('processRouters produced invalid hostnames (not an array), returning empty array');
+      return { hostnames: [], containerLabels: containerLabels || {} };
     }
     
     return { hostnames, containerLabels };
@@ -271,12 +321,28 @@ class TraefikMonitor {
   /**
    * Merge router-derived labels with actual container labels
    * This is crucial for getting the correct DNS labels from containers
+   * @param {Object} routerContainerLabels - Container labels from routers
+   * @param {Object} dockerLabelsCache - Container labels from Docker
+   * @returns {Object} - Merged labels
    */
   mergeContainerLabels(routerContainerLabels, dockerLabelsCache) {
     logger.debug('Merging router information with Docker container labels');
-    const mergedLabels = { ...routerContainerLabels };
-    const genericPrefix = this.config.genericLabelPrefix;
-    const providerPrefix = this.config.dnsLabelPrefix;
+    
+    // Defensive programming - ensure we have valid objects
+    if (!routerContainerLabels) {
+      logger.warn('No router container labels provided for merging, using empty object');
+      routerContainerLabels = {};
+    }
+    
+    if (!dockerLabelsCache) {
+      logger.warn('No Docker labels cache provided for merging, using empty object');
+      dockerLabelsCache = {};
+    }
+    
+    // Clone to avoid modifying the original - with extra safety for undefined input
+    const mergedLabels = { ...(routerContainerLabels || {}) };
+    const genericPrefix = this.config.genericLabelPrefix || 'dns.';
+    const providerPrefix = this.config.dnsLabelPrefix || 'dns.provider.';
     
     // For tracking changes in logging
     const firstPoll = !this.lastMergedLabels;
