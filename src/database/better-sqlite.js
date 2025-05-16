@@ -109,6 +109,11 @@ class BetterSQLite {
     }
 
     this._initializing = true;
+    let initAttempts = 0;
+    const MAX_INIT_ATTEMPTS = 3;
+
+    // Set to track if we've already created tables in this initialization cycle
+    let tablesCreated = false;
 
     try {
       // Check if we should skip migrations (set by parent module)
@@ -143,29 +148,49 @@ class BetterSQLite {
       // Reasonable cache size
       this.db.pragma('cache_size = -4000');
       
-      // Check if migration is necessary
+      // First, try to create the tables
+      // This ensures we have the basic schema in place
+      if (!tablesCreated) {
+        try {
+          await this.createTables(5, false);
+          logger.info('Database tables created successfully');
+          tablesCreated = true;
+        } catch (tableError) {
+          logger.warn(`Error in table creation: ${tableError.message}`);
+          // We'll still continue to check migrations
+        }
+      }
+      
+      // Now check if migration is necessary
+      // This is separated to avoid the loop between tables and migrations
       const needsMigration = await this.checkMigration();
       
       if (needsMigration) {
-        logger.info('Database needs migration, running migrations...');
+        initAttempts++;
+        logger.info(`Database needs migration, running migrations... (attempt ${initAttempts}/${MAX_INIT_ATTEMPTS})`);
         
-        // Make sure we're not in a transaction when starting migrations
-        if (this.inTransaction) {
-          logger.warn('Transaction already in progress before migrations, committing first');
-          await this.commit();
-        }
-        
-        // Run migrations with enhanced error handling
-        try {
-          await this.runMigrations();
-        } catch (migrationError) {
-          logger.error(`Migration error: ${migrationError.message}`);
-          // Ensure we're not left in a transaction state
+        // Only proceed if we haven't exceeded the maximum attempts
+        if (initAttempts <= MAX_INIT_ATTEMPTS) {
+          // Make sure we're not in a transaction when starting migrations
           if (this.inTransaction) {
-            logger.warn('Rolling back transaction after migration error');
-            await this.rollback();
+            logger.warn('Transaction already in progress before migrations, committing first');
+            await this.commit();
           }
-          throw migrationError;
+          
+          // Run migrations with enhanced error handling
+          try {
+            await this.runMigrations();
+          } catch (migrationError) {
+            logger.error(`Migration error: ${migrationError.message}`);
+            // Ensure we're not left in a transaction state
+            if (this.inTransaction) {
+              logger.warn('Rolling back transaction after migration error');
+              await this.rollback();
+            }
+            throw migrationError;
+          }
+        } else {
+          logger.warn(`Exceeded maximum migration attempts (${MAX_INIT_ATTEMPTS}), continuing without migration`);
         }
       }
       
@@ -202,54 +227,71 @@ class BetterSQLite {
    */
   async checkMigration() {
     try {
-      // Check if schema_migrations table exists
-      const stmt = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'");
-      const result = stmt.get();
+      // First check if dns_records table exists 
+      const recordsTableStmt = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='dns_records'");
+      const recordsTableResult = recordsTableStmt.get();
       
-      if (!result) {
+      if (!recordsTableResult) {
+        logger.debug('dns_records table does not exist, will create tables first');
+        return false; // Don't need migration yet, need to create tables first
+      }
+      
+      // Check if schema_migrations table exists
+      const migrationTableStmt = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'");
+      const migrationTableResult = migrationTableStmt.get();
+      
+      if (!migrationTableResult) {
+        logger.debug('schema_migrations table does not exist, will create it');
         return true;
       }
       
-      // Check the migration version specifically for updated_at column 
-      // This is more precise than just checking the latest version
-      const migrationStmt = this.db.prepare('SELECT id FROM schema_migrations WHERE name = ?');
-      const updateAtMigrationResult = migrationStmt.get('add_updated_at_column_to_dns_records');
-      
-      if (updateAtMigrationResult) {
-        logger.debug('add_updated_at_column_to_dns_records migration already recorded, no migration needed');
-        return false;
+      // Check if the updated_at column exists in dns_records
+      try {
+        const tableInfo = this.db.prepare('PRAGMA table_info(dns_records)').all();
+        const hasUpdatedAt = tableInfo.some(col => col.name === 'updated_at');
+        
+        if (!hasUpdatedAt) {
+          // If the column doesn't exist, definitely need migration
+          logger.debug('updated_at column does not exist in dns_records table, migration needed');
+          return true;
+        }
+        
+        // Check if the migration is recorded in schema_migrations
+        const migrationStmt = this.db.prepare('SELECT id FROM schema_migrations WHERE name = ?');
+        const updateAtMigrationResult = migrationStmt.get('add_updated_at_column_to_dns_records');
+        
+        if (updateAtMigrationResult) {
+          logger.debug('Migration for updated_at column is already recorded in schema_migrations');
+          return false; // Migration is already recorded, no need to run again
+        }
+        
+        // Column exists but migration record is missing - need to record the migration
+        logger.debug('updated_at column exists but migration record is missing, will record it');
+        return true;
+      } catch (pragmaError) {
+        logger.warn(`Could not check table info: ${pragmaError.message}`);
       }
       
-      // Also check the current max version
-      const versionStmt = this.db.prepare('SELECT version FROM schema_migrations ORDER BY id DESC LIMIT 1');
+      // Check the current migration version
+      const versionStmt = this.db.prepare('SELECT MAX(version) as version FROM schema_migrations');
       const versionResult = versionStmt.get();
-      const currentVersion = versionResult ? versionResult.version : 0;
+      const currentVersion = versionResult && versionResult.version ? versionResult.version : 0;
       
       // Compare with the latest migration version
       const latestVersion = 3; // Updated to include the updated_at column migration
       
-      // If we have the latest version but don't have the specific migration, handle it specially
-      if (currentVersion >= latestVersion && !updateAtMigrationResult) {
-        logger.info('Database version is current but specific migration record is missing');
-        
-        // Check if the column actually exists in the dns_records table
-        try {
-          const tableInfo = this.db.prepare('PRAGMA table_info(dns_records)').all();
-          const hasUpdatedAt = tableInfo.some(col => col.name === 'updated_at');
-          
-          if (hasUpdatedAt) {
-            logger.info('Column exists but migration record missing - will record migration');
-            return true; // Run the migration to record it, but it will detect column exists
-          }
-        } catch (pragmaError) {
-          logger.debug(`Could not check table info: ${pragmaError.message}`);
-        }
+      if (currentVersion >= latestVersion) {
+        logger.debug(`Current migration version (${currentVersion}) is up to date (${latestVersion})`);
+        return false;
       }
       
-      // Otherwise default to standard version check
-      return currentVersion < latestVersion;
+      logger.debug(`Current migration version (${currentVersion}) is behind latest (${latestVersion})`);
+      return true;
     } catch (error) {
       logger.error(`Error checking migration status: ${error.message}`);
+      // If there's an error checking migration status, assume we need migration
+      // but with a warning so it's clear this is a fallback
+      logger.warn('Assuming migration is needed due to error checking status');
       return true;
     }
   }
@@ -258,15 +300,24 @@ class BetterSQLite {
    * Run database migrations with enhanced transaction safety
    * Each operation runs in its own transaction to prevent nesting issues
    * @param {number} retries - Number of retries remaining for locked database
+   * @param {number} attempts - Number of migration attempts to track infinite loops
    * @returns {Promise<void>}
    */
-  async runMigrations(retries = 3) {
+  async runMigrations(retries = 3, attempts = 0) {
     // If we have no database connection, fail early
     if (!this.db) {
       throw new Error('Database connection not established');
     }
     
-    logger.info('Starting database migration process');
+    // Track migration attempts to prevent infinite loops
+    attempts++;
+    const MAX_MIGRATION_ATTEMPTS = 3;
+    if (attempts > MAX_MIGRATION_ATTEMPTS) {
+      logger.warn(`Migration attempt limit exceeded (${attempts}/${MAX_MIGRATION_ATTEMPTS}). Stopping to prevent infinite loop.`);
+      return; // Just return, don't throw, to allow the app to continue
+    }
+    
+    logger.info(`Starting database migration process (attempt ${attempts}/${MAX_MIGRATION_ATTEMPTS})`);
     
     // Make sure we're not already in a migration process - use static class flag
     // This prevents ANY instance from running migrations concurrently
@@ -279,8 +330,9 @@ class BetterSQLite {
       }
       
       if (_GLOBAL_MIGRATING_FLAG) {
-        // If it's still migrating after waiting, throw an error
-        throw new Error('Migration still in progress in another instance after timeout');
+        // If it's still migrating after waiting, don't throw - just log and continue
+        logger.warn('Migration still in progress in another instance after timeout, proceeding anyway');
+        _GLOBAL_MIGRATING_FLAG = false; // Force reset the flag to prevent deadlock
       } else {
         // Migration completed while we were waiting
         logger.info('Existing migration completed while waiting');
@@ -348,28 +400,6 @@ class BetterSQLite {
         }
       }
       
-      // Finally, verify we have a clean transaction state
-      let transactionActive = false;
-      try {
-        const inProgressCheck = this.db.prepare("PRAGMA transaction_status").get();
-        transactionActive = inProgressCheck && inProgressCheck.transaction_status > 0;
-      } catch (pragmaError) {
-        // If PRAGMA is not available, try our own check
-        try {
-          this.db.exec('BEGIN IMMEDIATE TRANSACTION');
-          this.db.exec('COMMIT');
-          transactionActive = false;
-        } catch (testError) {
-          transactionActive = testError.message.includes('cannot start a transaction within a transaction');
-        }
-      }
-      
-      if (transactionActive) {
-        logger.warn('Could not completely clear transaction state, proceeding anyway with caution');
-      } else {
-        logger.debug('Transaction state verified clean, proceeding with migrations');
-      }
-      
       // Reset our internal transaction flag regardless
       this.inTransaction = false;
     } catch (transactionResetError) {
@@ -425,7 +455,7 @@ class BetterSQLite {
           await new Promise(resolve => setTimeout(resolve, 500));
           this._migratingFlag = false;
           _GLOBAL_MIGRATING_FLAG = false;
-          return this.runMigrations(retries - 1);
+          return this.runMigrations(retries - 1, attempts);
         }
         
         logger.error('Error creating migrations table: ' + tableError.message);
@@ -444,6 +474,27 @@ class BetterSQLite {
       
       // 3. Run the updated_at column migration
       try {
+        // Double-check if we can skip this migration entirely
+        try {
+          // Check if the column already exists
+          const tableInfo = await this.all('PRAGMA table_info(dns_records)');
+          const hasUpdatedAt = tableInfo.some(col => col.name === 'updated_at');
+          
+          // Check if the migration is recorded
+          const migrationRecorded = await this.get(
+            'SELECT id FROM schema_migrations WHERE name = ?',
+            ['add_updated_at_column_to_dns_records']
+          );
+          
+          if (hasUpdatedAt && migrationRecorded) {
+            logger.info('Updated_at column exists and migration is recorded - no migration needed');
+            return; // Exit the function early, migration is complete
+          }
+        } catch (doubleCheckError) {
+          logger.debug(`Error in migration double-check: ${doubleCheckError.message}`);
+          // Continue with migration if the check fails
+        }
+        
         // Check if migration is already recorded
         const migrationRecorded = await this.get(
           'SELECT id FROM schema_migrations WHERE name = ?',
@@ -586,6 +637,34 @@ class BetterSQLite {
         throw versionError;
       }
       
+      // Final check to see if the migration was successful
+      try {
+        const columnExists = await this.get(`PRAGMA table_info(dns_records)`).then(
+          result => result && result.some(col => col.name === 'updated_at')
+        );
+        
+        const migrationRecorded = await this.get(
+          'SELECT id FROM schema_migrations WHERE name = ?',
+          ['add_updated_at_column_to_dns_records']
+        );
+        
+        if (columnExists && !migrationRecorded && attempts < MAX_MIGRATION_ATTEMPTS) {
+          logger.warn('Column exists but migration not recorded, will retry migration process');
+          
+          // Clear flags and try again
+          this._migratingFlag = false;
+          _GLOBAL_MIGRATING_FLAG = false;
+          
+          // Small delay to let things settle
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          // Try again with incremented attempts
+          return this.runMigrations(retries, attempts);
+        }
+      } catch (finalCheckError) {
+        logger.debug(`Error in final migration check: ${finalCheckError.message}`);
+      }
+      
       logger.info('Database migrations completed successfully');
     } catch (migrationError) {
       // Ensure any transaction is rolled back on error
@@ -694,58 +773,67 @@ class BetterSQLite {
       // Check if this is a new table creation with the latest schema (including updated_at column)
       try {
         // First check if dns_records table exists and has updated_at column
-        const recordsTableExists = await this.get(`
-          SELECT name FROM sqlite_master 
-          WHERE type='table' AND name='dns_records' AND sql LIKE '%updated_at%'
-        `);
+        const tableInfo = await this.all('PRAGMA table_info(dns_records)');
+        const hasUpdatedAt = tableInfo && tableInfo.some(col => col.name === 'updated_at');
         
-        // Only proceed if we have schema_migrations table and dns_records with updated_at
-        if (recordsTableExists) {
-          // Check if schema_migrations table exists
-          const migrationTableExists = await this.get(`
-            SELECT name FROM sqlite_master 
-            WHERE type='table' AND name='schema_migrations'
+        if (hasUpdatedAt) {
+          logger.debug('New tables created with updated_at column, ensuring migrations are recorded');
+          
+          // Make sure schema_migrations table exists
+          try {
+            await this.run(`
+              CREATE TABLE IF NOT EXISTS schema_migrations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                version INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+              )
+            `);
+          } catch (createError) {
+            logger.debug(`Error creating schema_migrations table: ${createError.message}`);
+          }
+          
+          // Check if migrations are already recorded
+          const migrationsRecorded = await this.get(`
+            SELECT COUNT(*) as count FROM schema_migrations 
+            WHERE name = 'add_updated_at_column_to_dns_records'
           `);
           
-          if (migrationTableExists) {
-            // Check if migrations are already recorded
-            const migrationsRecorded = await this.get(`
-              SELECT COUNT(*) as count FROM schema_migrations 
-              WHERE name = 'add_updated_at_column_to_dns_records'
-            `);
+          // Only record migrations if they haven't been recorded yet
+          if (!migrationsRecorded || migrationsRecorded.count === 0) {
+            logger.info('Recording all migrations for dns_records since table was created with latest schema');
             
-            // Only record migrations if they haven't been recorded yet
-            if (!migrationsRecorded || migrationsRecorded.count === 0) {
-              logger.info('Recording all migrations for dns_records since table was created with latest schema');
+            try {
+              // Use a transaction for this to ensure atomicity
+              await this.beginTransaction();
               
-              try {
-                // Use a transaction for this to ensure atomicity
-                this.db.exec('BEGIN IMMEDIATE TRANSACTION');
-                
-                const migrationStmt = this.db.prepare(
-                  'INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (?, ?)'
-                );
-                
-                // Record all migrations up to current version (3)
-                migrationStmt.run(1, 'initial_schema');
-                migrationStmt.run(2, 'add_last_processed_and_managed_columns');
-                migrationStmt.run(3, 'add_updated_at_column_to_dns_records');
-                
-                this.db.exec('COMMIT');
-                logger.info('All migrations recorded for newly created tables - migration system will be skipped');
-              } catch (migrationRecordError) {
-                try {
-                  this.db.exec('ROLLBACK');
-                } catch (rollbackError) {
-                  logger.debug(`Rollback error: ${rollbackError.message}`);
-                }
-                
-                logger.debug(`Error recording migrations: ${migrationRecordError.message}`);
-              }
-            } else {
-              logger.debug('Migrations already recorded in schema_migrations table');
+              // Record all migrations up to current version (3) using our safer run method
+              await this.run(
+                'INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (?, ?)',
+                [1, 'initial_schema']
+              );
+              
+              await this.run(
+                'INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (?, ?)',
+                [2, 'add_last_processed_and_managed_columns']
+              );
+              
+              await this.run(
+                'INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (?, ?)',
+                [3, 'add_updated_at_column_to_dns_records']
+              );
+              
+              await this.commit();
+              logger.info('All migrations recorded for newly created tables - migration system will be skipped');
+            } catch (migrationRecordError) {
+              await this.rollback();
+              logger.debug(`Error recording migrations: ${migrationRecordError.message}`);
             }
+          } else {
+            logger.debug('Migrations already recorded in schema_migrations table');
           }
+        } else {
+          logger.debug('Tables created but updated_at column not found - migrations will still be needed');
         }
       } catch (checkError) {
         logger.debug(`Error checking table state: ${checkError.message}`);

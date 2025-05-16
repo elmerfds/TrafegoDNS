@@ -4,12 +4,23 @@
  */
 const logger = require('../../utils/logger');
 
+// Migration counter to detect loops
+let migrationAttempts = 0;
+const MAX_MIGRATION_ATTEMPTS = 3;
+
 /**
  * Add updated_at column to dns_records table
  * @param {Object} db - Database connection
  * @returns {Promise<boolean>} - Success status
  */
 async function addUpdatedAtColumn(db) {
+  // Increment and check migration attempts to prevent infinite loops
+  migrationAttempts++;
+  if (migrationAttempts > MAX_MIGRATION_ATTEMPTS) {
+    logger.warn(`Migration attempted ${migrationAttempts} times, exceeding limit of ${MAX_MIGRATION_ATTEMPTS}. Exiting to prevent loop.`);
+    return true; // Return true to prevent further attempts
+  }
+
   // Immediately check if migration is already recorded before any other operations
   try {
     const migrationRecord = await db.get(
@@ -27,7 +38,7 @@ async function addUpdatedAtColumn(db) {
   }
 
   // Only log this if we're actually going to attempt the migration
-  logger.info('Running migration: Add updated_at column to dns_records table');
+  logger.info(`Running migration: Add updated_at column to dns_records table (attempt ${migrationAttempts}/${MAX_MIGRATION_ATTEMPTS})`);
   
   try {    
     // Check if the dns_records table exists
@@ -47,6 +58,17 @@ async function addUpdatedAtColumn(db) {
     
     if (updatedAtExists) {
       logger.info('updated_at column already exists in dns_records table');
+      
+      // Check if schema_migrations table exists
+      const migrationTableExists = await db.get(`
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='schema_migrations'
+      `);
+      
+      if (!migrationTableExists) {
+        logger.warn('schema_migrations table does not exist, cannot record migration');
+        return true; // Return true to indicate migration is "done"
+      }
       
       // Record the migration in the schema_migrations table to prevent future runs
       try {
@@ -81,6 +103,7 @@ async function addUpdatedAtColumn(db) {
           
           await db.commit();
           logger.info('Recorded migration in schema_migrations table');
+          migrationAttempts = 0; // Reset counter on success
         } catch (txError) {
           await db.rollback();
           logger.warn(`Could not record migration: ${txError.message}`);
@@ -115,7 +138,17 @@ async function addUpdatedAtColumn(db) {
         ON dns_records(updated_at)
       `);
       
-      // Record the migration version (assuming schema_migrations table exists)
+      // Make sure schema_migrations table exists
+      await db.run(`
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          version INTEGER NOT NULL,
+          name TEXT NOT NULL,
+          applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      
+      // Record the migration version
       const currentVersion = await db.get(
         'SELECT MAX(version) as version FROM schema_migrations'
       );
@@ -132,6 +165,7 @@ async function addUpdatedAtColumn(db) {
       await db.commit();
       
       logger.info('Successfully added updated_at column to dns_records table');
+      migrationAttempts = 0; // Reset counter on success
       return true;
     } catch (error) {
       // Rollback on error
