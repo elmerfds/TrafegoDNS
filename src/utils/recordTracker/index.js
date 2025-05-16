@@ -562,10 +562,11 @@ class RecordTracker {
    * Track all active records from the provider
    * This is useful for bootstrapping the tracker with existing records
    * @param {Array<Object>} records - Array of records from the provider
-   * @param {boolean} [markAsAppManaged=true] - Whether to mark newly tracked records as app-managed
+   * @param {boolean} [markAsAppManaged=true] - Default setting for whether to mark newly tracked records as app-managed
+   * @param {Map<string, Object>} [recordsToMarkAsManaged=null] - Optional map of record IDs to records that should be marked as managed
    * @returns {Promise<number>} - Number of newly tracked records
    */
-  async trackAllActiveRecords(records, markAsAppManaged = true) {
+  async trackAllActiveRecords(records, markAsAppManaged = true, recordsToMarkAsManaged = null) {
     if (!records || !Array.isArray(records)) {
       logger.debug('No active records to track (null or not an array)');
       return 0;
@@ -579,8 +580,17 @@ class RecordTracker {
       return 0;
     }
 
-    logger.info(`Tracking ${recordsToTrack.length} active DNS records (markAsAppManaged: ${markAsAppManaged})`);
+    // Determine if we have specific records to mark as managed (for first run matching)
+    const hasSpecificRecordsToMark = recordsToMarkAsManaged instanceof Map && recordsToMarkAsManaged.size > 0;
+    
+    if (hasSpecificRecordsToMark) {
+      logger.info(`Tracking ${recordsToTrack.length} active DNS records with ${recordsToMarkAsManaged.size} specifically marked as managed`);
+    } else {
+      logger.info(`Tracking ${recordsToTrack.length} active DNS records (default markAsAppManaged: ${markAsAppManaged})`);
+    }
+    
     let newlyTrackedCount = 0;
+    let specificlyManagedCount = 0;
 
     for (const record of recordsToTrack) {
       if (!record || !record.id || !record.type || !record.name) {
@@ -592,9 +602,18 @@ class RecordTracker {
         const isAlreadyTracked = await this.isTracked(record);
 
         if (!isAlreadyTracked) {
+          // Determine if this specific record should be marked as managed
+          // This allows selectively marking records as managed on first run if they match active hostnames
+          const shouldBeManaged = hasSpecificRecordsToMark && recordsToMarkAsManaged.has(record.id) ? 
+            true : markAsAppManaged;
+            
+          // Count specifically managed records for logging
+          if (hasSpecificRecordsToMark && shouldBeManaged) {
+            specificlyManagedCount++;
+          }
+          
           // Track the record with the appropriate app-managed setting
-          // During first run, we mark existing records as NOT app-managed for safety
-          const success = await this.trackRecord(record, markAsAppManaged);
+          const success = await this.trackRecord(record, shouldBeManaged);
           
           if (success) {
             // Add a timestamp for when the record was first seen
@@ -618,7 +637,12 @@ class RecordTracker {
       }
     }
 
-    logger.info(`Tracked ${newlyTrackedCount} new active DNS records (appManaged: ${markAsAppManaged})`);
+    if (hasSpecificRecordsToMark && specificlyManagedCount > 0) {
+      logger.info(`Tracked ${newlyTrackedCount} new active DNS records (${specificlyManagedCount} specifically marked as managed)`);
+    } else {
+      logger.info(`Tracked ${newlyTrackedCount} new active DNS records (appManaged: ${markAsAppManaged})`);
+    }
+    
     return newlyTrackedCount;
   }
 }

@@ -304,14 +304,111 @@ class DNSManager {
       // First run detection - this influences how we handle existing records
       const isFirstRun = global.isFirstRun === true;
       
-      // During first run, we mark pre-existing records as NOT app-managed for safety
+      // Get current hostnames from Traefik/Docker
+      let currentHostnames = [];
+      let recordsToMarkAsManaged = new Map();
+      
+      // If this is the first run, collect current hostnames from active services to match against DNS records
+      if (isFirstRun) {
+        logger.info('🔍 First run detected: collecting active hostnames to match pre-existing DNS records');
+        try {
+          // Get hostnames from global services if available
+          if (global.services && global.services.Monitor) {
+            if (this.config.operationMode.toLowerCase() === 'direct') {
+              // For Direct mode - get hostnames from Docker container labels
+              if (global.services.DockerMonitor) {
+                try {
+                  const containerLabels = global.services.DockerMonitor.getLabelCache ? 
+                    global.services.DockerMonitor.getLabelCache() : {};
+                    
+                  // Extract hostnames from container labels
+                  for (const [containerId, labels] of Object.entries(containerLabels)) {
+                    const dnsLabels = Object.keys(labels)
+                      .filter(key => key.startsWith('dns.') || key.startsWith('traefik.http.routers'))
+                      .reduce((obj, key) => {
+                        obj[key] = labels[key];
+                        return obj;
+                      }, {});
+                      
+                    // Look for hostnames in DNS and Traefik labels
+                    for (const [key, value] of Object.entries(dnsLabels)) {
+                      if (key.includes('host') || key.includes('name')) {
+                        // Extract potential hostnames
+                        const possibleHostnames = value.split(',').map(h => h.trim());
+                        currentHostnames.push(...possibleHostnames);
+                      }
+                    }
+                  }
+                } catch (dockerError) {
+                  logger.warn(`Could not get Docker container labels: ${dockerError.message}`);
+                }
+              }
+            } else {
+              // For Traefik mode - get hostnames from the Traefik monitor
+              if (global.services.TraefikMonitor) {
+                try {
+                  // If we can access the real-time hostnames from TraefikMonitor
+                  const traefikMonitor = global.services.TraefikMonitor;
+                  
+                  // Poll Traefik API directly to get current routers/hostnames
+                  const routers = await traefikMonitor.getRouters();
+                  if (routers) {
+                    const { hostnames } = traefikMonitor.processRouters(routers);
+                    if (Array.isArray(hostnames) && hostnames.length > 0) {
+                      currentHostnames.push(...hostnames);
+                    }
+                  }
+                } catch (traefikError) {
+                  logger.warn(`Could not get Traefik hostnames: ${traefikError.message}`);
+                }
+              }
+            }
+          }
+          
+          // Ensure we have unique hostnames
+          currentHostnames = [...new Set(currentHostnames)].filter(Boolean);
+          
+          if (currentHostnames.length > 0) {
+            logger.info(`Found ${currentHostnames.length} active hostnames to match against DNS records`);
+            
+            // Match records with current hostnames
+            for (const record of records) {
+              if (!record || !record.name) continue;
+              
+              // Extract the hostname part of the record name (remove provider zone)
+              const hostname = record.name.replace(`.${this.config.getProviderDomain()}`, '');
+              
+              // Check if the hostname matches any of our active hostnames
+              for (const activeHostname of currentHostnames) {
+                if (activeHostname === hostname || 
+                    activeHostname === record.name ||
+                    hostname.includes(activeHostname) ||
+                    activeHostname.includes(hostname)) {
+                  // Mark this record to be managed by the app
+                  recordsToMarkAsManaged.set(record.id, record);
+                  logger.info(`🔍 Found matching DNS record for active hostname: ${hostname}`);
+                  break;
+                }
+              }
+            }
+            
+            logger.info(`${recordsToMarkAsManaged.size} of ${records.length} DNS records match active hostnames and will be marked as app-managed`);
+          } else {
+            logger.warn('No active hostnames found to match against DNS records');
+          }
+        } catch (hostnameError) {
+          logger.warn(`Error collecting active hostnames: ${hostnameError.message}`);
+        }
+      }
+      
+      // During first run, we mark pre-existing records as NOT app-managed by default for safety
       // This prevents accidental deletion of records that existed before TrafegoDNS
       if (isFirstRun) {
-        logger.info('🔒 First run detected: marking pre-existing DNS records as NOT app-managed for safety');
+        logger.info('🔒 First run detected: marking pre-existing DNS records as NOT app-managed by default for safety');
       }
       
       // Determine whether to mark records as app-managed based on first run
-      const markAsAppManaged = !isFirstRun;
+      const defaultMarkAsAppManaged = !isFirstRun;
       
       // ------------------------
       // Update repository if available
@@ -323,6 +420,7 @@ class DNSManager {
           
           // For each record, check if it's already in managed records
           let newlyTrackedCount = 0;
+          let managedCount = 0;
           
           for (const record of records) {
             if (!record || !record.id || !record.type || !record.name) {
@@ -341,7 +439,17 @@ class DNSManager {
               // Double-check the provider is set to prevent NULL constraint failures
               recordToTrack.provider = recordToTrack.provider || 'unknown';
 
-              const success = await this.repositoryManager.trackRecord(recordToTrack, this.dnsProvider.name, markAsAppManaged);
+              // Determine if this record should be marked as app-managed
+              const shouldBeManaged = isFirstRun && recordsToMarkAsManaged.has(record.id) ? 
+                true : defaultMarkAsAppManaged;
+                
+              // If marking as managed, count it
+              if (shouldBeManaged) {
+                managedCount++;
+              }
+
+              // Track the record with the appropriate app-managed setting
+              const success = await this.repositoryManager.trackRecord(recordToTrack, this.dnsProvider.name, shouldBeManaged);
               if (success) {
                 newlyTrackedCount++;
               }
@@ -349,7 +457,10 @@ class DNSManager {
           }
           
           if (newlyTrackedCount > 0) {
-            logger.info(`Added ${newlyTrackedCount} pre-existing DNS records to repository (app-managed: ${markAsAppManaged})`);
+            logger.info(`Added ${newlyTrackedCount} pre-existing DNS records to repository`);
+            if (managedCount > 0) {
+              logger.info(`Marked ${managedCount} of those records as app-managed because they match active hostnames`);
+            }
           }
           
           // Ensure orphaned records are properly marked
@@ -365,19 +476,25 @@ class DNSManager {
       // ------------------------
       let trackedCount = 0;
       try {
-        trackedCount = await this.recordTracker.trackAllActiveRecords(records, markAsAppManaged);
+        // For legacy tracker, use the same logic for determining which records to mark as managed
+        trackedCount = await this.recordTracker.trackAllActiveRecords(
+          records, 
+          defaultMarkAsAppManaged,
+          isFirstRun ? recordsToMarkAsManaged : null // Pass the map of records to mark as managed
+        );
       } catch (trackerError) {
         logger.error(`Failed to synchronize legacy record tracker: ${trackerError.message}`);
       }
       
       if (trackedCount > 0) {
-        logger.info(`Added ${trackedCount} pre-existing DNS records to tracker (marked as not app-managed)`);
+        logger.info(`Added ${trackedCount} pre-existing DNS records to tracker`);
       }
       
       return { 
         success: true, 
         trackedCount: Math.max(trackedCount, 0),
-        totalRecords: records.length 
+        totalRecords: records.length,
+        managedCount: recordsToMarkAsManaged.size
       };
     } catch (error) {
       logger.error(`Failed to synchronize record tracker: ${error.message}`);
