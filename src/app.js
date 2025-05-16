@@ -164,6 +164,26 @@ async function start() {
     // Initialize API mode (default true)
     const useApiMode = process.env.USE_API_MODE !== 'false';
 
+    // Wait for database to be fully initialized
+    const database = require('./database');
+    if (!database.isInitialized()) {
+      logger.info('Waiting for database to be fully initialized before starting services...');
+      // Poll for database initialization with a timeout
+      const startTime = Date.now();
+      const timeoutMs = 10000; // 10 seconds timeout
+      
+      while (!database.isInitialized() && Date.now() - startTime < timeoutMs) {
+        // Wait for 100ms before checking again
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      if (!database.isInitialized()) {
+        logger.warn('Database not fully initialized after timeout, continuing anyway');
+      } else {
+        logger.info('Database is now fully initialized, continuing with service initialization');
+      }
+    }
+    
     // Initialize services
     const statusReporter = new StatusReporter(config, eventBus);
     const dnsManager = new DNSManager(config, eventBus);

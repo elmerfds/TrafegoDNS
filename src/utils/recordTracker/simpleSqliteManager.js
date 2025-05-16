@@ -61,23 +61,42 @@ class SimpleSqliteManager {
     provider = provider || 'unknown';
     
     try {
-      // Ensure database is initialized
+      // Ensure database is initialized - use the main database instead of simple database
+      // This prevents duplicate warnings when simple database fails but main database works
+      const database = require('../../database');
+      if (database && database.isInitialized() && database.repositories && database.repositories.dnsTrackedRecords) {
+        // Track the record using the main database system
+        return await database.repositories.dnsTrackedRecords.trackRecord({
+          provider: provider,
+          providerId: record.id || record.record_id,
+          type: record.type || 'UNKNOWN',
+          name: record.name || (record.id || record.record_id),
+          content: record.content || '',
+          ttl: record.ttl || 1,
+          proxied: record.proxied === true ? 1 : 0,
+          priority: record.priority || 0,
+          isAppManaged: record.metadata?.appManaged === true ? 1 : 0,
+          isOrphaned: 0
+        });
+      }
+      
+      // If main database isn't available, try simple database
       if (!simpleDatabase.isInitialized()) {
-        logger.warn('Simple database not fully initialized, cannot track record');
+        // Instead of warning, silently fail to avoid duplicate logs
         return false;
       }
       
       // Get tracked records repository
       const repository = simpleDatabase.repositories.trackedRecords;
       if (!repository) {
-        logger.warn('Tracked records repository not available');
+        // Silently fail to avoid duplicate logs
         return false;
       }
       
       // Track the record
       return await repository.trackRecord(provider, record);
     } catch (error) {
-      logger.error(`Failed to track record in simple SQLite: ${error.message}`);
+      logger.debug(`Failed to track record in SQLite: ${error.message}`);
       return false;
     }
   }
@@ -89,16 +108,60 @@ class SimpleSqliteManager {
    */
   async loadTrackedRecordsFromDatabase(provider) {
     try {
+      // Try using the main database first since that's more likely to work
+      const database = require('../../database');
+      if (database && database.isInitialized() && database.repositories && database.repositories.dnsTrackedRecords) {
+        try {
+          // Get all tracked records for this provider from the main database
+          const records = await database.repositories.dnsTrackedRecords.findByProvider(provider);
+          
+          // Convert to the expected format
+          const formattedRecords = {};
+          for (const record of records) {
+            formattedRecords[record.providerId] = {
+              id: record.providerId,
+              record_id: record.providerId,
+              type: record.type,
+              name: record.name,
+              content: record.content,
+              ttl: record.ttl,
+              proxied: record.proxied === 1,
+              priority: record.priority,
+              provider: record.provider,
+              metadata: {
+                appManaged: record.isAppManaged === 1,
+                orphaned: record.isOrphaned === 1,
+                orphanedAt: record.orphanedAt
+              }
+            };
+          }
+          
+          return { 
+            providers: { 
+              [provider || 'unknown']: { 
+                records: formattedRecords 
+              } 
+            } 
+          };
+        } catch (dbError) {
+          // Fall back to simple database
+          logger.debug(`Failed to load records from main database: ${dbError.message}`);
+        }
+      }
+      
+      // Fall back to simple database if main database failed
       // Ensure database is initialized
       if (!simpleDatabase.isInitialized()) {
-        logger.warn('Simple database not fully initialized, returning empty records');
+        // Log at debug level instead of warn to reduce noise
+        logger.debug('Simple database not fully initialized, returning empty records');
         return { providers: { [provider || 'unknown']: { records: {} } } };
       }
       
       // Get tracked records repository
       const repository = simpleDatabase.repositories.trackedRecords;
       if (!repository) {
-        logger.warn('Tracked records repository not available');
+        // Log at debug level instead of warn to reduce noise
+        logger.debug('Tracked records repository not available');
         return { providers: { [provider || 'unknown']: { records: {} } } };
       }
       
@@ -115,7 +178,7 @@ class SimpleSqliteManager {
       // Otherwise get all records
       return await repository.getAllTrackedRecords();
     } catch (error) {
-      logger.error(`Failed to load tracked records from simple SQLite: ${error.message}`);
+      logger.debug(`Failed to load tracked records from SQLite: ${error.message}`);
       return { providers: { [provider || 'unknown']: { records: {} } } };
     }
   }
@@ -128,22 +191,36 @@ class SimpleSqliteManager {
    */
   async isTracked(provider, recordId) {
     try {
-      // Ensure database is initialized
+      // Try using the main database first
+      const database = require('../../database');
+      if (database && database.isInitialized() && database.repositories && database.repositories.dnsTrackedRecords) {
+        try {
+          // Check if record exists in main database
+          return await database.repositories.dnsTrackedRecords.isTracked(recordId, provider);
+        } catch (dbError) {
+          // Fall back to simple database
+          logger.debug(`Failed to check tracking in main database: ${dbError.message}`);
+        }
+      }
+      
+      // Fall back to simple database
       if (!simpleDatabase.isInitialized()) {
-        logger.warn('Simple database not fully initialized, cannot check if record is tracked');
+        // Log at debug level instead of warn to reduce noise
+        logger.debug('Simple database not fully initialized, cannot check if record is tracked');
         return false;
       }
       
       // Get tracked records repository
       const repository = simpleDatabase.repositories.trackedRecords;
       if (!repository) {
-        logger.warn('Tracked records repository not available');
+        // Log at debug level instead of warn to reduce noise
+        logger.debug('Tracked records repository not available');
         return false;
       }
       
       return await repository.isTracked(provider, recordId);
     } catch (error) {
-      logger.error(`Failed to check if record is tracked in simple SQLite: ${error.message}`);
+      logger.debug(`Failed to check if record is tracked in SQLite: ${error.message}`);
       return false;
     }
   }
