@@ -53,7 +53,21 @@ class DNSProviderFactory {
       }
       
       // Create and return an instance
-      return new ProviderClass(config);
+      const provider = new ProviderClass(config);
+      
+      // Ensure the provider has a name set - critical for SQLite
+      if (!provider.name) {
+        provider.name = providerType || 'unknown';
+        logger.debug(`Set provider name to ${provider.name} in factory`);
+      }
+      
+      // Final safety check to prevent NULL constraint failures in SQLite
+      if (!provider.name) {
+        provider.name = 'unknown';
+        logger.warn('Provider name was still undefined, forcing to "unknown"');
+      }
+      
+      return provider;
     } catch (error) {
       logger.error(`Failed to create DNS provider '${providerType}': ${error.message}`);
       throw new Error(`DNS provider '${providerType}' not found or failed to initialize: ${error.message}`);

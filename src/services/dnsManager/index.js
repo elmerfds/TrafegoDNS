@@ -65,6 +65,12 @@ class DNSManager {
         logger.warn('DNS Repository Manager not available - using legacy record tracker only');
       }
 
+      // Set provider name if undefined (for internal tracking)
+      if (!this.dnsProvider.name) {
+        this.dnsProvider.name = this.config.dnsProvider || 'unknown';
+        logger.debug(`Set provider name to ${this.dnsProvider.name} for internal tracking`);
+      }
+      
       // Synchronize tracker with active records
       await this.synchronizeRecordTracker();
 
@@ -259,7 +265,16 @@ class DNSManager {
             const isTracked = await this.repositoryManager.isTracked(record.id, this.dnsProvider.name);
             
             if (!isTracked) {
-              const success = await this.repositoryManager.trackRecord(record, this.dnsProvider.name, markAsAppManaged);
+              // Ensure provider is always set to avoid NULL constraint errors
+              const recordToTrack = { ...record };
+              if (!recordToTrack.provider) {
+                recordToTrack.provider = this.dnsProvider.name || 'unknown';
+              }
+              
+              // Double-check the provider is set to prevent NULL constraint failures
+              recordToTrack.provider = recordToTrack.provider || 'unknown';
+
+              const success = await this.repositoryManager.trackRecord(recordToTrack, this.dnsProvider.name, markAsAppManaged);
               if (success) {
                 newlyTrackedCount++;
               }

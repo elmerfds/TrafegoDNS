@@ -6,6 +6,7 @@ const logger = require('../utils/logger');
 const connection = require('./connection');
 const { migrateDnsTables } = require('./migrations/dnsTablesMigration');
 const { addLastRefreshedToProviderCache } = require('./migrations/addLastRefreshedToProviderCache');
+const { ensureLastRefreshedColumn } = require('./migrations/ensureLastRefreshedColumn');
 
 // Import repositories
 const UserRepository = require('./repository/userRepository');
@@ -79,6 +80,15 @@ async function initialize(migrate = true) {
           logger.info('last_refreshed column migration completed');
         } catch (migrationError) {
           logger.error(`Failed to run last_refreshed column migration: ${migrationError.message}`);
+          // Continue with other migrations
+        }
+        
+        // Additional attempt to ensure last_refreshed column exists
+        try {
+          await ensureLastRefreshedColumn(db);
+          logger.info('Ensured last_refreshed column exists in dns_records table');
+        } catch (ensureError) {
+          logger.error(`Failed to ensure last_refreshed column: ${ensureError.message}`);
           // Continue with other migrations
         }
         

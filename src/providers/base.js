@@ -14,6 +14,11 @@ class DNSProvider {
     
     this.config = config;
     
+    // Set provider name for tracking - THIS IS CRITICAL FOR SQLITE
+    this.name = config.dnsProvider || 'unknown'; 
+    // Ensure name is never empty or undefined, as it causes SQLite constraint violations
+    if (!this.name) this.name = 'unknown';
+    
     // Initialize record cache
     this.recordCache = {
       records: [],
@@ -26,6 +31,13 @@ class DNSProvider {
    * @returns {Promise<boolean>} - True if initialization was successful
    */
   async init() {
+    // Double-check provider name is set - critical for SQLite functionality
+    if (!this.name) {
+      this.name = this.config.dnsProvider || 'unknown';
+      // Final safety check
+      if (!this.name) this.name = 'unknown';
+    }
+    
     throw new Error('Method init() must be implemented by subclass');
   }
   

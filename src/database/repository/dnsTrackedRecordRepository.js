@@ -88,8 +88,12 @@ class DNSTrackedRecordRepository {
       
       // Validate required parameters to prevent NOT NULL constraint failures
       if (!record.provider) {
-        throw new Error('Provider is required when tracking DNS records');
+        logger.warn('Provider is missing when tracking DNS record - using "unknown" provider');  
+        record.provider = 'unknown';
       }
+      
+      // Ensure provider is never null or undefined - redundant check as safeguard
+      record.provider = record.provider || 'unknown';
       
       if (!record.record_id) {
         throw new Error('Record ID is required when tracking DNS records');

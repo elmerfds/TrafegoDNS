@@ -91,6 +91,12 @@ class ManagedRecordsRepository {
         return false;
       }
       
+      // Ensure provider is not null or undefined
+      if (!provider) {
+        logger.warn(`Provider is undefined for record ${record.name} (${record.type}) - using record's provider or "unknown"`);
+        provider = record.provider || 'unknown';
+      }
+      
       const now = new Date().toISOString();
       
       // Create metadata object

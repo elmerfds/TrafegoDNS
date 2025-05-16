@@ -173,7 +173,7 @@ class SQLiteRecordManager {
             }, true);
           } else {
             // Use legacy repository format
-            await repository.trackRecord({
+            const recordToTrack = {
               provider: provider || 'unknown',  // Ensure provider is never null
               record_id: recordId,
               type: record.type || 'UNKNOWN',
@@ -185,7 +185,15 @@ class SQLiteRecordManager {
               orphaned_at: record.orphaned_at || null,
               tracked_at: record.tracked_at || new Date().toISOString(),
               metadata: JSON.stringify(metadata)
-            });
+            };
+            
+            // Double-check the provider is set to prevent NULL constraint failures
+            if (!recordToTrack.provider) {
+              logger.warn('Provider still undefined after first check, forcing "unknown" provider');
+              recordToTrack.provider = 'unknown';
+            }
+            
+            await repository.trackRecord(recordToTrack);
           }
           
           recordCount++;
@@ -217,16 +225,29 @@ class SQLiteRecordManager {
     }
 
     try {
+      // Ensure provider is not null or undefined
+      if (!provider) {
+        logger.warn(`Provider is undefined while tracking record ${record.name} (${record.type}) - using record's provider or "unknown"`);
+        provider = record.provider || 'unknown';
+      }
+
       // Get record key for better identification
       const recordKey = `${record.type}:${record.name}`;
-      logger.debug(`Tracking record in SQLite: ${recordKey} (ID: ${record.id})`);
+      logger.debug(`Tracking record in SQLite: ${recordKey} (ID: ${record.id}) for provider ${provider}`);
 
       // Prepare metadata
       const metadata = record.metadata || { appManaged: true };
       
       if (this.useNewArchitecture) {
         const repository = this.getRepository('managed');
-        return await repository.trackRecord(provider, record, true);
+        
+        // Create a copy of the record with provider field always set
+        const recordToTrack = { ...record };
+        if (!recordToTrack.provider) {
+          recordToTrack.provider = provider;
+        }
+        
+        return await repository.trackRecord(provider, recordToTrack, true);
       } else {
         // Use legacy repository format
         await this.legacyRepository.trackRecord({

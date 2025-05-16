@@ -85,6 +85,17 @@ class DNSRepositoryManager {
    */
   async trackRecord(record, provider, isAppManaged = true) {
     try {
+      // Ensure provider is not null or undefined
+      if (!provider) {
+        logger.warn(`Provider is undefined for record ${record.name} (${record.type}) - using record's provider value or "unknown"`);
+        provider = record.provider || 'unknown';
+      }
+
+      // Ensure record has all required fields
+      if (!record.provider) {
+        record.provider = provider;
+      }
+      
       logger.debug(`Tracking record ${record.name} (${record.type}) with ID ${record.id} for provider ${provider}`);
       
       return await this.managedRecords.trackRecord(provider, record, isAppManaged);

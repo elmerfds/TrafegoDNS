@@ -90,7 +90,10 @@ class ProviderCacheRepository extends BaseRepository {
       }
 
       // Ensure provider is not null
-      provider = provider || 'unknown';
+      if (!provider) {
+        logger.warn('Null or undefined provider detected during cache refresh - using "unknown" provider');
+        provider = 'unknown';
+      }
       logger.info(`Refreshing provider cache with ${records.length} records from ${provider}`);
       
       // Start a transaction for bulk operations

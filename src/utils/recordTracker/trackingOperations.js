@@ -5,6 +5,7 @@
 const logger = require('../logger');
 const { getRecordKey } = require('./keyManager');
 const { saveTrackedRecordsToFile } = require('./fileManager');
+const { ensureValidProvider, ensureRecordHasProvider } = require('./providerChecker');
 
 /**
  * Track a new DNS record
@@ -14,10 +15,28 @@ const { saveTrackedRecordsToFile } = require('./fileManager');
  * @param {Object} record - Record to track
  */
 function trackRecord(data, trackerFile, provider, record) {
-  const key = getRecordKey(record);
+  // Ensure provider is never undefined - use our utility
+  provider = ensureValidProvider(provider, 'unknown', 'trackRecord');
+  
+  // Ensure record has valid data
+  if (!record) {
+    logger.warn('Cannot track null or undefined record');
+    return;
+  }
+  
+  // Make a copy of the record to avoid modifying the original
+  const recordCopy = ensureRecordHasProvider(record, provider, 'trackRecord');
+  
+  const key = getRecordKey(recordCopy);
   if (!key) {
     logger.warn(`Cannot track record: Invalid record format`);
     return;
+  }
+  
+  // Make sure provider exists in data
+  if (!data.providers[provider]) {
+    logger.debug(`Creating new provider entry for ${provider} in record tracker`);
+    data.providers[provider] = { records: {} };
   }
   
   // Store the record ID (avoid storing the whole record to save space)
