@@ -41,6 +41,7 @@ const {
 
 // SQLite Manager for database operations
 const SQLiteRecordManager = require('./sqliteManager');
+const SimpleSqliteManager = require('./simpleSqliteManager');
 
 class RecordTracker {
   constructor(config) {
@@ -63,41 +64,47 @@ class RecordTracker {
 
     // Initialize SQLite manager if available
     this.sqliteManager = null;
+    this.simpleManager = null;
     this.usingSQLite = false;
     this.initialized = false;
 
-    // Try to use SQLite database if available
+    // First try the new simple SQLite manager
     try {
-      const database = require('../../database');
-
-      // First check - check if database is initialized
-      if (database) {
-        if (!database.isInitialized()) {
-          logger.info('SQLite database not initialized yet, will use JSON storage for now');
-          // We'll check again when loadTrackedRecords is called
-        } else {
-          // Try to initialize the SQLite manager
-          this.sqliteManager = new SQLiteRecordManager(database);
-
-          // Check if repositories are available
-          if (!database.repositories.dnsTrackedRecord) {
-            logger.info('SQLite repositories not initialized yet, will use JSON storage for now');
-          } else {
-            this.sqliteManager = new SQLiteRecordManager(database);
-            this.usingSQLite = this.sqliteManager.initialize();
-
-            if (this.usingSQLite) {
-              logger.info('DNS record tracker using SQLite for storage');
-            } else {
-              logger.warn('SQLite available but initialization failed, using JSON fallback');
-            }
-          }
-        }
+      logger.info('Initializing simple SQLite manager for record tracking');
+      this.simpleManager = SimpleSqliteManager;
+      const simpleInitSuccess = this.simpleManager.initialize();
+      
+      if (simpleInitSuccess) {
+        logger.info('Simple SQLite manager initialized successfully for record tracking');
+        this.usingSQLite = true;
       } else {
-        logger.debug('SQLite database module not available, using JSON storage for DNS records');
+        logger.warn('Simple SQLite manager initialization failed');
+        
+        // Fall back to legacy SQLite manager
+        try {
+          const database = require('../../database');
+          
+          if (database && database.isInitialized()) {
+            this.sqliteManager = new SQLiteRecordManager(database);
+            const legacyInitSuccess = this.sqliteManager.initialize();
+            
+            if (legacyInitSuccess) {
+              logger.info('Legacy SQLite manager initialized successfully');
+              this.usingSQLite = true;
+            } else {
+              logger.warn('Legacy SQLite manager initialization failed');
+              this.usingSQLite = false;
+            }
+          } else {
+            logger.info('SQLite database not initialized yet, will try again later');
+          }
+        } catch (legacyError) {
+          logger.debug(`Could not initialize legacy SQLite manager: ${legacyError.message}`);
+        }
       }
     } catch (error) {
-      logger.debug(`Could not initialize SQLite for DNS records: ${error.message}`);
+      logger.debug(`Could not initialize simple SQLite manager: ${error.message}`);
+      this.usingSQLite = false;
     }
 
     // Initialize the tracker - this will be done asynchronously
@@ -144,55 +151,46 @@ class RecordTracker {
    * Load tracked records from storage (SQLite only)
    */
   async loadTrackedRecords() {
-    // We only use SQLite now - JSON storage is permanently disabled
+    // First try using the simple manager
+    if (this.simpleManager) {
+      try {
+        // Load from simple SQLite database
+        this.data = await this.simpleManager.loadTrackedRecordsFromDatabase(this.provider);
+        this.usingSQLite = true;
+        
+        // Log success
+        const providerData = this.data.providers[this.provider] || { records: {} };
+        const recordCount = Object.keys(providerData.records || {}).length;
+        logger.debug(`Loaded ${recordCount} tracked records for provider ${this.provider} from simple SQLite`);
+        
+        return this.data;
+      } catch (simpleError) {
+        logger.warn(`Simple SQLite manager failed to load records: ${simpleError.message}`);
+        // Fall back to legacy manager
+      }
+    }
+    
+    // Try legacy SQLite manager
     if (this.usingSQLite && this.sqliteManager) {
       try {
-        // Load from SQLite database
+        // Load from legacy SQLite database
         this.data = await this.sqliteManager.loadTrackedRecordsFromDatabase(this.provider);
 
         // Log success
         const providerData = this.data.providers[this.provider] || { records: {} };
         const recordCount = Object.keys(providerData.records || {}).length;
-        logger.debug(`Loaded ${recordCount} tracked records for provider ${this.provider} from SQLite`);
+        logger.debug(`Loaded ${recordCount} tracked records for provider ${this.provider} from legacy SQLite`);
 
         return this.data;
       } catch (error) {
-        logger.error(`Failed to load tracked records from SQLite: ${error.message}`);
-        // Initialize empty data structure instead of falling back to JSON
-        this.data = { providers: { [this.provider]: { records: {} } } };
-        return this.data;
+        logger.error(`Failed to load tracked records from legacy SQLite: ${error.message}`);
       }
-    } else {
-      // Check if initialization is in progress
-      const database = require('../../database');
-      
-      // If the database is initializing but not fully initialized yet, use a temporary structure
-      if (database && database.forceInitialized) {
-        logger.info('SQLite database is initializing, using temporary data structure');
-        this.data = { providers: { [this.provider]: { records: {} } } };
-        return this.data;
-      }
-      
-      // Try to initialize SQLite again (for cases where database was initialized after this instance was created)
-      try {
-        if (database && database.isInitialized()) {
-          this.sqliteManager = new SQLiteRecordManager(database);
-          this.usingSQLite = this.sqliteManager.initialize();
-          
-          if (this.usingSQLite) {
-            logger.info('Successfully initialized SQLite for DNS record tracking on retry');
-            return await this.sqliteManager.loadTrackedRecordsFromDatabase(this.provider);
-          }
-        }
-      } catch (retryError) {
-        logger.debug(`Retry SQLite initialization failed: ${retryError.message}`);
-      }
-      
-      // If all attempts failed, initialize empty data structure
-      logger.warn('SQLite is required but not fully available yet - using temporary storage');
-      this.data = { providers: { [this.provider]: { records: {} } } };
-      return this.data;
     }
+
+    // If all attempts failed, initialize empty data structure
+    logger.warn('All SQLite attempts failed - using temporary storage');
+    this.data = { providers: { [this.provider]: { records: {} } } };
+    return this.data;
   }
 
   /**
@@ -247,17 +245,30 @@ class RecordTracker {
    */
   async trackRecord(record, isAppManaged = true) {
     // Check if we have a valid record
-    if (!record || !record.id || !record.name || !record.type) {
-      logger.warn(`Cannot track invalid record: ${JSON.stringify(record)}`);
+    if (!record) {
+      logger.warn('Cannot track null or undefined record');
+      return false;
+    }
+    
+    // Add minimal validation to allow records even with missing fields
+    if (!record.id && !record.record_id) {
+      logger.warn(`Cannot track record without ID: ${JSON.stringify(record)}`);
       return false;
     }
 
     // Add provider if not present (using the current provider)
     const recordToTrack = { ...record };
     if (!recordToTrack.provider) {
-      recordToTrack.provider = this.provider;
+      recordToTrack.provider = this.provider || 'unknown';
     }
+    
+    // Ensure provider is never null or undefined
+    recordToTrack.provider = recordToTrack.provider || 'unknown';
 
+    // Add minimal fields if missing
+    recordToTrack.type = recordToTrack.type || 'UNKNOWN';
+    recordToTrack.name = recordToTrack.name || (recordToTrack.id || recordToTrack.record_id);
+    
     // Add metadata to indicate if the record is managed by the app
     if (!recordToTrack.metadata) {
       recordToTrack.metadata = {};
@@ -265,43 +276,50 @@ class RecordTracker {
     recordToTrack.metadata.appManaged = isAppManaged;
     recordToTrack.metadata.trackedAt = new Date().toISOString();
 
-    // We only use SQLite now - JSON storage is permanently disabled
-    if (this.usingSQLite && this.sqliteManager) {
+    // First try the simple SQLite manager
+    if (this.simpleManager) {
+      try {
+        const success = await this.simpleManager.trackRecord(this.provider, recordToTrack);
+        if (success) {
+          logger.debug(`Successfully tracked ${recordToTrack.type} record for ${recordToTrack.name} in simple SQLite`);
+          return true;
+        }
+      } catch (simpleError) {
+        logger.warn(`Simple SQLite manager failed to track record: ${simpleError.message}`);
+        // Fall back to legacy manager
+      }
+    }
+
+    // Fall back to legacy SQLite manager
+    if (this.sqliteManager) {
       try {
         const success = await this.sqliteManager.trackRecord(this.provider, recordToTrack);
         if (success) {
-          // Also update in-memory data (no JSON file write)
-          this.data = await this.sqliteManager.loadTrackedRecordsFromDatabase(this.provider);
-          logger.debug(`Successfully tracked ${recordToTrack.type} record for ${recordToTrack.name} in SQLite (appManaged: ${isAppManaged})`);
+          logger.debug(`Successfully tracked ${recordToTrack.type} record for ${recordToTrack.name} in legacy SQLite`);
           return true;
-        } else {
-          logger.error(`Failed to track record in SQLite: ${recordToTrack.name} (${recordToTrack.type})`);
-          return false;
         }
       } catch (error) {
-        logger.error(`Failed to track record in SQLite: ${error.message}`);
-        return false;
+        logger.error(`Failed to track record in legacy SQLite: ${error.message}`);
       }
-    } else {
-      // Check if initialization is in progress
-      const database = require('../../database');
-      
-      // Try to initialize SQLite again
-      try {
-        if (database && database.isInitialized()) {
-          this.sqliteManager = new SQLiteRecordManager(database);
-          this.usingSQLite = this.sqliteManager.initialize();
-          
-          if (this.usingSQLite) {
-            logger.info('Successfully initialized SQLite for DNS record tracking on retry');
-            return await this.sqliteManager.trackRecord(this.provider, recordToTrack);
-          }
-        }
-      } catch (retryError) {
-        logger.debug(`Retry SQLite initialization failed: ${retryError.message}`);
+    }
+    
+    // Last resort: update in-memory data
+    try {
+      if (!this.data) {
+        this.data = { providers: {} };
       }
       
-      logger.warn('SQLite is required but not fully available yet - using temporary storage');
+      if (!this.data.providers[this.provider]) {
+        this.data.providers[this.provider] = { records: {} };
+      }
+      
+      const key = recordToTrack.id || recordToTrack.record_id;
+      this.data.providers[this.provider].records[key] = recordToTrack;
+      
+      logger.warn('All SQLite attempts failed - tracked record in memory only');
+      return true;
+    } catch (memoryError) {
+      logger.error(`Failed to track record in memory: ${memoryError.message}`);
       return false;
     }
   }

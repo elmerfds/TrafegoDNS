@@ -34,6 +34,12 @@ async function processHostnames(hostnames, containerLabels, config, stats) {
   // Collect all DNS record configurations to batch process
   const dnsRecordConfigs = [];
   
+  // Defensive check for hostnames array
+  if (!hostnames || !Array.isArray(hostnames) || hostnames.length === 0) {
+    logger.warn('No hostnames to process or invalid format');
+    return { processedHostnames: [], dnsRecordConfigs: [] };
+  }
+  
   // Process each hostname
   for (const hostname of hostnames) {
     try {

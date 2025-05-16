@@ -59,8 +59,23 @@ async function start() {
       } else {
         logger.info('✅ Acquired exclusive lock for database initialization');
       }
+      
+      // First try the new simplified database approach
+      try {
+        // Try to initialize the simplified database
+        logger.info('🔹 Trying simplified database implementation');
+        const simpleDatabase = require('./database/simple-database');
+        const simpleInitialized = await simpleDatabase.initialize();
+        
+        if (simpleInitialized) {
+          logger.info('✅ Simplified database initialized successfully');
+          global.simpleDatabase = simpleDatabase;
+        }
+      } catch (simpleDbError) {
+        logger.warn(`⚠️ Simplified database initialization failed: ${simpleDbError.message}`);
+      }
 
-      // Load database module
+      // Always load the legacy database module as fallback
       const database = require('./database');
       
       try {
