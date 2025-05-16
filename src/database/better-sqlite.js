@@ -559,8 +559,18 @@ class BetterSQLite {
                 rollback: () => this.rollback()
               };
               
-              // Run the migration
+              // Run the updated_at column migration
               await addUpdatedAtColumn(dbAdapter);
+              
+              // Run the last_refreshed column migration
+              try {
+                // Dynamically import the migration file
+                const { addLastRefreshedColumn } = require('./migrations/addLastRefreshedColumn');
+                await addLastRefreshedColumn(dbAdapter);
+              } catch (lastRefreshedError) {
+                logger.error(`Failed to run last_refreshed column migration: ${lastRefreshedError.message}`);
+                throw lastRefreshedError;
+              }
             } catch (migrationError) {
               logger.error(`Failed to run updated_at column migration: ${migrationError.message}`);
               throw migrationError;
