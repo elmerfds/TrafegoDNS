@@ -8,6 +8,8 @@ This document outlines the changes made to resolve the database initialization i
 
 2. **DNS Repository Manager Availability** - The application was showing "DNS repository manager not available, retrying" messages during startup, indicating timing issues with repository initialization.
 
+3. **Late Initialization** - The DNS Repository Manager sometimes initialized too late, causing the application to fall back to legacy record tracking.
+
 ## Solutions Implemented
 
 ### 1. Transaction Flag Inconsistency Fix
@@ -34,6 +36,17 @@ This issue was related to the timing and order of repository initialization, whe
 - Added staggered delays for initialization to avoid race conditions in clustered environments
 
 The initialization sequence now ensures that the most critical repositories are initialized first, and includes better verification that initialization was truly successful before proceeding.
+
+### 3. Proactive Repository Creation
+
+To address cases where the repository initializes too late, we've implemented a proactive approach:
+
+- Added immediate direct repository creation at the start of the initialization process
+- Implemented a parallel initialization approach with a short timeout
+- Reduced exponential backoff factor for faster retries
+- Added early success detection to prevent unnecessary retries
+
+This ensures that the DNS Repository Manager is available as early as possible in the startup process, preventing the application from falling back to legacy tracking unnecessarily.
 
 ## Implementation Details
 

@@ -33,8 +33,37 @@ async function initializeDnsRepositories(options = {}) {
     return retryDelayMs + jitter;
   };
   
-  // Exponential backoff factor
-  const backoffFactor = 1.5;
+  // Exponential backoff factor - reduced for faster recovery
+  const backoffFactor = 1.2;
+  
+  // Create repository directly on first attempt without waiting for normal initialization
+  if (!initResult && database && database.isInitialized() && database.db) {
+    // Attempt immediate direct creation before entering retry loop
+    try {
+      logger.info('Attempting immediate DNS repository manager creation on first attempt');
+      const DNSRepositoryManager = require('./dnsRepositoryManager');
+      database.repositories = database.repositories || {};
+      
+      // Only create if it doesn't already exist
+      if (!database.repositories.dnsManager) {
+        database.repositories.dnsManager = new DNSRepositoryManager(database.db);
+        
+        // Initialize the repository with a short timeout
+        const success = await Promise.race([
+          database.repositories.dnsManager.initialize(),
+          new Promise(resolve => setTimeout(() => resolve(false), 300)) // Short timeout
+        ]);
+        
+        if (success) {
+          logger.info('DNS repository manager created and initialized directly on first attempt');
+          initResult = true;
+          return true;
+        }
+      }
+    } catch (directCreationError) {
+      logger.debug(`Initial direct repository creation attempt failed: ${directCreationError.message}, continuing with regular process`);
+    }
+  }
   
   // Setup retry loop with exponential backoff
   while (attempts < maxRetries && !initResult) {
