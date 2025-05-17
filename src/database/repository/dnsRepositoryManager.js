@@ -19,6 +19,10 @@ class DNSRepositoryManager {
     // Set initialized flag
     this.initialized = false;
     
+    // Import the DNSTrackedRecordRepository
+    const DNSTrackedRecordRepository = require('./dnsTrackedRecordRepository');
+    this.trackedRecords = new DNSTrackedRecordRepository(db);
+    
     logger.debug('DNS Repository Manager created');
   }
 
@@ -30,6 +34,15 @@ class DNSRepositoryManager {
     try {
       await this.providerCache.initialize();
       await this.managedRecords.initialize();
+      
+      // Initialize tracked records repository
+      try {
+        await this.trackedRecords.initialize();
+      } catch (trackedError) {
+        logger.warn(`Failed to initialize DNS tracked records repository: ${trackedError.message}`);
+        // Continue without tracking records
+      }
+      
       this.initialized = true;
       logger.info('DNS Repository Manager initialized successfully');
       return true;
@@ -37,6 +50,18 @@ class DNSRepositoryManager {
       logger.error(`Failed to initialize DNS Repository Manager: ${error.message}`);
       return false;
     }
+  }
+  
+  /**
+   * Gets the tracked record repository
+   * @returns {Object|null} - The tracked record repository or null
+   */
+  getTrackedRecordRepository() {
+    if (!this.initialized) {
+      logger.warn('Attempting to get tracked record repository before initialization');
+    }
+    
+    return this.trackedRecords || null;
   }
 
   /**

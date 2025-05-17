@@ -61,27 +61,38 @@ class SQLiteManager {
     provider = provider || 'unknown';
     
     try {
-      // Ensure database is initialized - use the main database instead of database
-      // This prevents duplicate warnings when database fails
+      // Import the DNS Manager Bridge
+      const dnsManagerBridge = require('../../database/repository/dnsManagerBridge');
+      
+      // Try to track the record using the bridge
+      const success = await dnsManagerBridge.trackRecord(provider, record);
+      if (success) {
+        return true;
+      }
+      
+      // If bridge fails, fall back to direct database access
       const mainDatabase = require('../../database');
-      if (mainDatabase && mainDatabase.repositories && mainDatabase.repositories.dnsTrackedRecords) {
+      if (mainDatabase && mainDatabase.repositories && mainDatabase.repositories.dnsManager) {
         try {
-          // Track the record using the main database system
-          const result = await mainDatabase.repositories.dnsTrackedRecords.trackRecord({
-            provider: provider,
-            record_id: record.id || record.record_id,
-            type: record.type || 'UNKNOWN',
-            name: record.name || (record.id || record.record_id),
-            content: record.content || '',
-            ttl: record.ttl || 1,
-            proxied: record.proxied === true ? 1 : 0,
-            priority: record.priority || 0,
-            metadata: JSON.stringify({
-              appManaged: record.metadata?.appManaged === true,
-              trackedAt: new Date().toISOString()
-            })
-          });
-          return true;
+          // Get the tracked record repository
+          const repository = mainDatabase.repositories.dnsManager.getTrackedRecordRepository();
+          if (repository) {
+            // Track the record using the repository
+            await repository.trackRecord({
+              provider: provider,
+              record_id: record.id || record.record_id,
+              type: record.type || 'UNKNOWN',
+              name: record.name || (record.id || record.record_id),
+              content: record.content || '',
+              ttl: record.ttl || 1,
+              proxied: record.proxied === true ? 1 : 0,
+              metadata: JSON.stringify({
+                appManaged: record.metadata?.appManaged === true,
+                trackedAt: new Date().toISOString()
+              })
+            });
+            return true;
+          }
         } catch (mainDbError) {
           // If main tracking fails, log at debug level and continue with database
           logger.debug(`Main database tracking failed: ${mainDbError.message}`);
@@ -143,41 +154,39 @@ class SQLiteManager {
    */
   async loadTrackedRecordsFromDatabase(provider) {
     try {
-      // Try using the main database first since that's more likely to work
+      // Import the DNS Manager Bridge
+      const dnsManagerBridge = require('../../database/repository/dnsManagerBridge');
+      
+      // Try to get the records using the bridge
+      await dnsManagerBridge.initializeDnsRepositories();
+      const providerRecords = await dnsManagerBridge.getProviderRecords(provider);
+      
+      if (providerRecords && providerRecords.records) {
+        return { 
+          providers: { 
+            [provider || 'unknown']: providerRecords
+          } 
+        };
+      }
+      
+      // If bridge fails, fall back to direct database access
       const mainDatabase = require('../../database');
-      if (mainDatabase && mainDatabase.isInitialized() && mainDatabase.repositories && mainDatabase.repositories.dnsTrackedRecords) {
+      if (mainDatabase && mainDatabase.isInitialized() && mainDatabase.repositories && mainDatabase.repositories.dnsManager) {
         try {
-          // Get all tracked records for this provider from the main database
-          const records = await mainDatabase.repositories.dnsTrackedRecords.findByProvider(provider);
-          
-          // Convert to the expected format
-          const formattedRecords = {};
-          for (const record of records) {
-            formattedRecords[record.providerId] = {
-              id: record.providerId,
-              record_id: record.providerId,
-              type: record.type,
-              name: record.name,
-              content: record.content,
-              ttl: record.ttl,
-              proxied: record.proxied === 1,
-              priority: record.priority,
-              provider: record.provider,
-              metadata: {
-                appManaged: record.isAppManaged === 1,
-                orphaned: record.isOrphaned === 1,
-                orphanedAt: record.orphanedAt
-              }
-            };
+          // Get the tracked record repository
+          const repository = mainDatabase.repositories.dnsManager.getTrackedRecordRepository();
+          if (repository) {
+            // Get all records for this provider
+            const records = await repository.getProviderRecords(provider);
+            
+            if (records && records.records) {
+              return { 
+                providers: { 
+                  [provider || 'unknown']: records
+                } 
+              };
+            }
           }
-          
-          return { 
-            providers: { 
-              [provider || 'unknown']: { 
-                records: formattedRecords 
-              } 
-            } 
-          };
         } catch (dbError) {
           // Fall back to database
           logger.debug(`Failed to load records from main database: ${dbError.message}`);
