@@ -25,10 +25,13 @@ let forceInitialized = false;
 /**
  * Initialize database connection and repositories
  * @param {boolean} migrate - Whether to run migrations
+ * @param {Object} options - Additional initialization options
+ * @param {Array<string>} [options.onlyRepositories] - Only initialize specific repositories
  * @returns {Promise<boolean>} - Whether initialization was successful
  */
-async function initialize(migrate = true) {
-  if (initialized) {
+async function initialize(migrate = true, options = {}) {
+  // If already initialized, return early unless forced
+  if (initialized && !options.force) {
     return true;
   }
 
@@ -44,76 +47,145 @@ async function initialize(migrate = true) {
     // Set db reference to the connection
     db = connection;
 
-    // Create repositories
-    try {
-      repositories = {
-        user: new UserRepository(db),
-        revokedToken: new RevokedTokenRepository(db),
-        setting: new SettingRepository(db),
-        auditLog: new AuditLogRepository(db),
-        dnsManager: new DNSRepositoryManager(db)
-      };
+    // Determine which repositories to initialize
+    const onlyRepositories = options.onlyRepositories || null;
+    const shouldInitializeRepo = (name) => !onlyRepositories || onlyRepositories.includes(name);
+    
+    // Create repositories if they don't exist yet or reinitialization is forced
+    if (!repositories || Object.keys(repositories).length === 0 || options.force) {
+      repositories = repositories || {};
       
-      // Initialize repositories
-      for (const [name, repository] of Object.entries(repositories)) {
-        if (repository.initialize && typeof repository.initialize === 'function') {
-          try {
-            await repository.initialize();
-            logger.debug(`Initialized ${name} repository`);
-          } catch (repoInitError) {
-            logger.warn(`⚠️ Error initializing ${name} repository: ${repoInitError.message}`);
-            // Continue with other repositories
-          }
-        }
+      // Core repositories that should always be available
+      if (shouldInitializeRepo('user') && (!repositories.user || options.force)) {
+        repositories.user = new UserRepository(db);
       }
-    } catch (repoError) {
-      logger.error(`Failed to create repositories: ${repoError.message}`);
-      logger.debug(repoError.stack);
-      // Continue with initialization, treat repositories as partial
+      
+      if (shouldInitializeRepo('revokedToken') && (!repositories.revokedToken || options.force)) {
+        repositories.revokedToken = new RevokedTokenRepository(db);
+      }
+      
+      if (shouldInitializeRepo('setting') && (!repositories.setting || options.force)) {
+        repositories.setting = new SettingRepository(db);
+      }
+      
+      if (shouldInitializeRepo('auditLog') && (!repositories.auditLog || options.force)) {
+        repositories.auditLog = new AuditLogRepository(db);
+      }
+      
+      // DNS Manager repository
+      if (shouldInitializeRepo('dnsManager') && (!repositories.dnsManager || options.force)) {
+        repositories.dnsManager = new DNSRepositoryManager(db);
+      }
     }
     
-    // Special DNS tables synchronization
-    if (repositories.dnsManager) {
+    // Initialize each repository if it has an initialize method
+    const initPromises = [];
+    const initializedRepos = [];
+    
+    for (const [name, repository] of Object.entries(repositories)) {
+      // Skip repositories not in the whitelist if specified
+      if (!shouldInitializeRepo(name)) {
+        continue;
+      }
+      
+      if (repository && repository.initialize && typeof repository.initialize === 'function') {
+        try {
+          // Add to promises array for initialization
+          const initPromise = repository.initialize()
+            .then(() => {
+              logger.debug(`Initialized ${name} repository`);
+              initializedRepos.push(name);
+              return true;
+            })
+            .catch(repoInitError => {
+              logger.warn(`⚠️ Error initializing ${name} repository: ${repoInitError.message}`);
+              return false;
+            });
+          
+          initPromises.push(initPromise);
+        } catch (syncError) {
+          logger.error(`Synchronous error during ${name} repository initialization setup: ${syncError.message}`);
+        }
+      }
+    }
+    
+    // Wait for all repository initializations to complete
+    if (initPromises.length > 0) {
+      const results = await Promise.allSettled(initPromises);
+      const failedRepos = results
+        .map((result, index) => result.status === 'rejected' ? initializedRepos[index] : null)
+        .filter(Boolean);
+      
+      if (failedRepos.length > 0) {
+        logger.warn(`Some repositories failed to initialize: ${failedRepos.join(', ')}`);
+      }
+    }
+    
+    // Special DNS tables synchronization if migrations are requested and dnsManager exists
+    if (migrate && repositories.dnsManager) {
       try {
-        // Run custom migrations
-        try {
-          await addLastRefreshedToProviderCache(db);
-          logger.info('last_refreshed column migration completed');
-        } catch (migrationError) {
-          logger.error(`Failed to run last_refreshed column migration: ${migrationError.message}`);
-          // Continue with other migrations
-        }
-        
-        // Additional attempt to ensure last_refreshed column exists
-        try {
-          await ensureLastRefreshedColumn(db);
-          logger.info('Ensured last_refreshed column exists in dns_records table');
-        } catch (ensureError) {
-          logger.error(`Failed to ensure last_refreshed column: ${ensureError.message}`);
-          // Continue with other migrations
-        }
-        
-        // Apply the constraint fixes
-        try {
-          await fixSqliteConstraints(db);
-          logger.info('Applied SQLite constraint fixes');
-        } catch (constraintError) {
-          logger.error(`Failed to fix SQLite constraints: ${constraintError.message}`);
-          // Continue with other migrations
-        }
+        // Run all migrations in parallel for faster initialization
+        await Promise.allSettled([
+          // Last refreshed column migration
+          (async () => {
+            try {
+              await addLastRefreshedToProviderCache(db);
+              logger.info('last_refreshed column migration completed');
+            } catch (migrationError) {
+              logger.error(`Failed to run last_refreshed column migration: ${migrationError.message}`);
+            }
+          })(),
+          
+          // Ensure last_refreshed column exists
+          (async () => {
+            try {
+              await ensureLastRefreshedColumn(db);
+              logger.info('Ensured last_refreshed column exists in dns_records table');
+            } catch (ensureError) {
+              logger.error(`Failed to ensure last_refreshed column: ${ensureError.message}`);
+            }
+          })(),
+          
+          // Apply the constraint fixes
+          (async () => {
+            try {
+              await fixSqliteConstraints(db);
+              logger.info('Applied SQLite constraint fixes');
+            } catch (constraintError) {
+              logger.error(`Failed to fix SQLite constraints: ${constraintError.message}`);
+            }
+          })()
+        ]);
         
         // Perform DNS tables synchronization
-        await migrateDnsTables(db, repositories.dnsManager);
+        // This needs to run after the other migrations complete
+        try {
+          await migrateDnsTables(db, repositories.dnsManager);
+          logger.info('DNS tables migration completed successfully');
+        } catch (migrateError) {
+          logger.error(`Failed to migrate DNS tables: ${migrateError.message}`);
+        }
       } catch (error) {
         logger.error(`Failed to synchronize DNS tables: ${error.message}`);
         // Continue initialization - this isn't critical
       }
     }
 
+    // Mark as initialized - even partial initialization is better than none
     initialized = true;
+    
+    // Return the successful initialization result
     return true;
   } catch (error) {
     logger.error(`Failed to initialize database: ${error.message}`);
+    
+    // Check if we can mark as partially initialized for operations that don't need everything
+    if (db && db.isInitialized && repositories && Object.keys(repositories).length > 0) {
+      logger.warn('Database partially initialized - some features may be limited');
+      initialized = true;
+      return true;
+    }
+    
     throw error;
   }
 }

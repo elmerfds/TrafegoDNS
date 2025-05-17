@@ -32,20 +32,67 @@ class DNSRepositoryManager {
    */
   async initialize() {
     try {
-      await this.providerCache.initialize();
-      await this.managedRecords.initialize();
+      // Track initialization status for each repository
+      let providerCacheInitialized = false;
+      let managedRecordsInitialized = false;
+      let trackedRecordsInitialized = false;
       
-      // Initialize tracked records repository
-      try {
-        await this.trackedRecords.initialize();
-      } catch (trackedError) {
-        logger.warn(`Failed to initialize DNS tracked records repository: ${trackedError.message}`);
-        // Continue without tracking records
+      // Initialize all repositories in parallel
+      const results = await Promise.allSettled([
+        // Provider cache repository
+        (async () => {
+          try {
+            await this.providerCache.initialize();
+            providerCacheInitialized = true;
+            logger.debug('Provider cache repository initialized successfully');
+            return true;
+          } catch (error) {
+            logger.warn(`Failed to initialize provider cache repository: ${error.message}`);
+            return false;
+          }
+        })(),
+        
+        // Managed records repository
+        (async () => {
+          try {
+            await this.managedRecords.initialize();
+            managedRecordsInitialized = true;
+            logger.debug('Managed records repository initialized successfully');
+            return true;
+          } catch (error) {
+            logger.warn(`Failed to initialize managed records repository: ${error.message}`);
+            return false;
+          }
+        })(),
+        
+        // DNS tracked records repository
+        (async () => {
+          try {
+            await this.trackedRecords.initialize();
+            trackedRecordsInitialized = true;
+            logger.debug('DNS tracked records repository initialized successfully');
+            return true;
+          } catch (error) {
+            logger.warn(`Failed to initialize DNS tracked records repository: ${error.message}`);
+            return false;
+          }
+        })()
+      ]);
+      
+      // Set initialization status based on results
+      if (providerCacheInitialized && managedRecordsInitialized && trackedRecordsInitialized) {
+        this.initialized = true;
+        logger.info('DNS Repository Manager fully initialized successfully');
+      } else if (providerCacheInitialized || managedRecordsInitialized || trackedRecordsInitialized) {
+        this.initialized = true;
+        logger.warn('DNS Repository Manager partially initialized - some features may be limited');
+      } else {
+        this.initialized = false;
+        logger.error('DNS Repository Manager failed to initialize any repositories');
+        return false;
       }
       
-      this.initialized = true;
-      logger.info('DNS Repository Manager initialized successfully');
-      return true;
+      return this.initialized;
     } catch (error) {
       logger.error(`Failed to initialize DNS Repository Manager: ${error.message}`);
       return false;
@@ -54,11 +101,47 @@ class DNSRepositoryManager {
   
   /**
    * Gets the tracked record repository
-   * @returns {Object|null} - The tracked record repository or null
+   * @param {boolean} initializeIfNeeded - Whether to initialize the repository if not already initialized
+   * @returns {Promise<Object>|Object|null} - The tracked record repository or null
    */
-  getTrackedRecordRepository() {
+  getTrackedRecordRepository(initializeIfNeeded = false) {
+    // Return immediately if repository is available
+    if (this.trackedRecords && (this.initialized || this.trackedRecords.tableExists)) {
+      return this.trackedRecords;
+    }
+    
+    // Check if we need to initialize
     if (!this.initialized) {
-      logger.warn('Attempting to get tracked record repository before initialization');
+      if (initializeIfNeeded) {
+        // Return a promise to initialize the repository
+        return (async () => {
+          logger.info('Initializing DNS tracked records repository on-demand');
+          
+          try {
+            // Create if it doesn't exist
+            if (!this.trackedRecords) {
+              const DNSTrackedRecordRepository = require('./dnsTrackedRecordRepository');
+              this.trackedRecords = new DNSTrackedRecordRepository(this.db);
+            }
+            
+            // Initialize
+            try {
+              await this.trackedRecords.initialize();
+              logger.info('DNS tracked records repository initialized successfully on-demand');
+              return this.trackedRecords;
+            } catch (initError) {
+              logger.error(`Failed to initialize DNS tracked records repository on-demand: ${initError.message}`);
+              return null;
+            }
+          } catch (error) {
+            logger.error(`Failed to get DNS tracked records repository: ${error.message}`);
+            return null;
+          }
+        })();
+      } else {
+        // Log the warning
+        logger.warn('Attempting to get tracked record repository before initialization');
+      }
     }
     
     return this.trackedRecords || null;

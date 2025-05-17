@@ -8,18 +8,34 @@ class DNSTrackedRecordRepository {
   constructor(db) {
     this.db = db;
     this.tableName = 'dns_tracked_records';
-    this.initialize();
+    this.tableExists = false; // Will be set during initialization
+    
+    // Skip auto-initialize in constructor to avoid race conditions 
+    // and allow explicit initialization control
   }
 
   /**
    * Initialize the repository, creating tables if needed
+   * @param {Object} options - Initialization options
+   * @param {boolean} [options.createIfMissing=true] - Create table if it doesn't exist
+   * @param {boolean} [options.skipIfExists=false] - Skip initialization if table exists
+   * @returns {Promise<boolean>} - Whether initialization was successful
    */
-  async initialize() {
+  async initialize(options = {}) {
+    const { createIfMissing = true, skipIfExists = false } = options;
+    
     try {
-      // Create the dns_tracked_records table if it doesn't exist
-      const tableExists = await this.tableExists();
+      // Check if table exists
+      this.tableExists = await this.checkTableExists();
+      
+      // If table exists and we're skipping, return early
+      if (this.tableExists && skipIfExists) {
+        logger.debug(`${this.tableName} table already exists, skipping initialization`);
+        return true;
+      }
 
-      if (!tableExists) {
+      // Create the table if it doesn't exist and we're allowed to create it
+      if (!this.tableExists && createIfMissing) {
         logger.info(`Creating ${this.tableName} table`);
 
         // Use IF NOT EXISTS to avoid errors if the table was created in parallel
@@ -50,11 +66,16 @@ class DNSTrackedRecordRepository {
         await this.db.run(`CREATE INDEX IF NOT EXISTS idx_dns_tracked_orphaned ON ${this.tableName}(is_orphaned)`);
 
         logger.info(`Created ${this.tableName} table and indexes`);
+        
+        // Update table exists flag
+        this.tableExists = true;
       }
+      
+      return true;
     } catch (error) {
       logger.error(`Failed to initialize DNS tracked records table: ${error.message}`);
-      // Don't throw the error, let the application continue
-      // This prevents app crashes due to table initialization issues
+      // Don't throw the error, but return false to indicate failure
+      return false;
     }
   }
   
@@ -62,7 +83,7 @@ class DNSTrackedRecordRepository {
    * Check if the table exists
    * @returns {Promise<boolean>} - Whether the table exists
    */
-  async tableExists() {
+  async checkTableExists() {
     try {
       const result = await this.db.get(`
         SELECT name FROM sqlite_master 

@@ -7,51 +7,199 @@ const database = require('../index');
 
 /**
  * Initializes the DNS repositories and provides a bridge to the DNS Manager
+ * @param {Object} options - Initialization options
+ * @param {boolean} [options.force=false] - Force reinitialization even if already initialized
+ * @param {number} [options.maxRetries=3] - Maximum number of retries for initialization
+ * @param {number} [options.retryDelayMs=500] - Delay between retries in milliseconds
  * @returns {Promise<boolean>} Success status 
  */
-async function initializeDnsRepositories() {
-  try {
-    // First, ensure the database is initialized
-    if (!database.isInitialized()) {
-      logger.info('Database not initialized, initializing now...');
-      await database.initialize();
-    }
+async function initializeDnsRepositories(options = {}) {
+  const { 
+    force = false,
+    maxRetries = 3,
+    retryDelayMs = 500
+  } = options;
+  
+  // Track initialization attempts
+  let attempts = 0;
+  let initResult = false;
+  
+  // Setup retry loop
+  while (attempts < maxRetries && !initResult) {
+    attempts++;
+    
+    try {
+      // First, ensure the database is initialized
+      if (!database.isInitialized() || force) {
+        logger.info(`Database not fully initialized, initializing now (attempt ${attempts}/${maxRetries})...`);
+        
+        // Focus on initializing only the repositories we need
+        await database.initialize(true, {
+          force: force,
+          onlyRepositories: ['dnsManager']
+        });
+      }
 
-    // Check if repositories are available
-    if (!database.repositories || !database.repositories.dnsManager) {
-      logger.error('DNS repository manager not available');
-      return false;
+      // Check if repositories are available
+      if (!database.repositories || !database.repositories.dnsManager) {
+        if (attempts < maxRetries) {
+          logger.warn(`DNS repository manager not available, retrying (attempt ${attempts}/${maxRetries})...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+          continue;
+        } else {
+          logger.error('DNS repository manager not available after maximum retries');
+          
+          // Try creating it directly as a last resort
+          try {
+            // If the database is initialized but dnsManager is missing, create it directly
+            if (database.isInitialized() && database.db) {
+              const DNSRepositoryManager = require('./dnsRepositoryManager');
+              database.repositories = database.repositories || {};
+              database.repositories.dnsManager = new DNSRepositoryManager(database.db);
+              
+              // Initialize the repository
+              const success = await database.repositories.dnsManager.initialize();
+              if (success) {
+                logger.info('DNS repository manager created and initialized directly');
+                initResult = true;
+                return true;
+              }
+            }
+          } catch (directCreationError) {
+            logger.error(`Failed to create DNS repository manager directly: ${directCreationError.message}`);
+          }
+          
+          return false;
+        }
+      }
+      
+      // If we have the dnsManager, try to ensure it's initialized
+      if (database.repositories.dnsManager) {
+        // Check if the repository is marked as initialized
+        if (!database.repositories.dnsManager.isInitialized()) {
+          logger.info('DNS repository manager exists but not initialized, initializing now...');
+          
+          try {
+            const success = await database.repositories.dnsManager.initialize();
+            if (success) {
+              logger.info('DNS repository manager initialized successfully');
+              initResult = true;
+              return true;
+            } else {
+              if (attempts < maxRetries) {
+                logger.warn(`DNS repository manager initialization failed, retrying (attempt ${attempts}/${maxRetries})...`);
+                await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+                continue;
+              } else {
+                logger.error('DNS repository manager initialization failed after maximum retries');
+                return false;
+              }
+            }
+          } catch (initError) {
+            logger.error(`Error initializing DNS repository manager: ${initError.message}`);
+            if (attempts < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+              continue;
+            } else {
+              return false;
+            }
+          }
+        } else {
+          // Repository exists and is initialized
+          logger.debug('DNS repository manager already initialized');
+          initResult = true;
+          return true;
+        }
+      }
+    } catch (error) {
+      logger.error(`Failed to initialize DNS repositories (attempt ${attempts}/${maxRetries}): ${error.message}`);
+      
+      if (attempts < maxRetries) {
+        // Delay before retry
+        await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+      } else {
+        // Last attempt failed
+        return false;
+      }
     }
-
-    logger.info('DNS repository manager initialized successfully');
-    return true;
-  } catch (error) {
-    logger.error(`Failed to initialize DNS repositories: ${error.message}`);
-    return false;
   }
+  
+  return initResult;
 }
 
 /**
  * Gets a tracked record repository from the DNS Manager
- * @returns {Object|null} The tracked record repository or null
+ * @param {Object} options - Options for repository retrieval
+ * @param {boolean} [options.initialize=true] - Whether to initialize the repository if not found
+ * @param {boolean} [options.createIfNeeded=true] - Whether to create the repository if not found
+ * @param {boolean} [options.cached=true] - Whether to cache the repository for future use
+ * @returns {Promise<Object>|Object|null} The tracked record repository or null
  */
-function getTrackedRecordRepository() {
+async function getTrackedRecordRepository(options = {}) {
+  const {
+    initialize = true,
+    createIfNeeded = true,
+    cached = true
+  } = options;
+  
+  // Use a static cache for direct repository access
+  if (!getTrackedRecordRepository._directRepository) {
+    getTrackedRecordRepository._directRepository = null;
+  }
+  
+  // Return cached version if available and cached option is true
+  if (cached && getTrackedRecordRepository._directRepository) {
+    return getTrackedRecordRepository._directRepository;
+  }
+  
+  // Try to retrieve from various sources
   try {
-    // Check if the database module is available and initialized
-    if (database && database.isInitialized()) {
-      // Try to access the repository from the dnsManager
-      if (database.repositories && database.repositories.dnsManager) {
-        return database.repositories.dnsManager.getTrackedRecordRepository();
-      } else {
-        // If dnsManager is not available, try to load the DNSTrackedRecordRepository directly
-        try {
-          const DNSTrackedRecordRepository = require('./dnsTrackedRecordRepository');
-          return new DNSTrackedRecordRepository(database.db);
-        } catch (repoError) {
-          logger.debug(`Could not create DNSTrackedRecordRepository directly: ${repoError.message}`);
+    // 1. Try via DNS Repository Manager (preferred method)
+    if (database && database.isInitialized() && database.repositories && database.repositories.dnsManager) {
+      // Check if we should initialize on-demand
+      const repo = initialize ? 
+        await database.repositories.dnsManager.getTrackedRecordRepository(true) : 
+        database.repositories.dnsManager.getTrackedRecordRepository(false);
+      
+      // If we got a repository, return it (could be a promise or direct object)
+      if (repo) {
+        if (cached) {
+          // Wait for the repository if it's a promise
+          getTrackedRecordRepository._directRepository = await Promise.resolve(repo);
         }
+        return repo;
       }
     }
+    
+    // 2. If we get here, no repository was found, try to create directly if needed
+    if (createIfNeeded && database && database.isInitialized() && database.db) {
+      try {
+        const DNSTrackedRecordRepository = require('./dnsTrackedRecordRepository');
+        const directRepo = new DNSTrackedRecordRepository(database.db);
+        
+        // Initialize if requested
+        if (initialize) {
+          try {
+            // Initialize with create if missing option
+            await directRepo.initialize({ createIfMissing: true });
+            logger.debug('Created and initialized DNSTrackedRecordRepository directly');
+          } catch (initError) {
+            logger.warn(`Direct repository initialization failed: ${initError.message}`);
+          }
+        }
+        
+        // Cache if requested
+        if (cached) {
+          getTrackedRecordRepository._directRepository = directRepo;
+        }
+        
+        return directRepo;
+      } catch (repoError) {
+        logger.warn(`Could not create DNSTrackedRecordRepository directly: ${repoError.message}`);
+      }
+    }
+    
+    // No repository found or created
     return null;
   } catch (error) {
     logger.error(`Failed to get tracked record repository: ${error.message}`);
@@ -67,71 +215,8 @@ function getTrackedRecordRepository() {
  */
 async function trackRecord(provider, record) {
   try {
-    // Get the repository
-    const repository = getTrackedRecordRepository();
-    if (!repository) {
-      // Try to initialize the repository first
-      await initializeDnsRepositories();
-      
-      // Try getting the repository again
-      const retryRepo = getTrackedRecordRepository();
-      if (!retryRepo) {
-        // Still not available, try another approach
-        logger.debug('Could not get tracked record repository, falling back to direct database access');
-        
-        // Try to access the database directly
-        if (database && database.isInitialized() && database.db) {
-          try {
-            // Create a direct SQL query to insert the record
-            const now = new Date().toISOString();
-            const recordId = record.id || record.record_id;
-            const recordType = record.type || 'UNKNOWN';
-            const recordName = record.name || (record.id || record.record_id);
-            const content = record.content || '';
-            const ttl = record.ttl || 1;
-            const proxied = record.proxied === true ? 1 : 0;
-            const metadata = JSON.stringify({
-              appManaged: record.metadata?.appManaged === true,
-              trackedAt: now
-            });
-            
-            // Directly insert into dns_tracked_records table
-            await database.db.run(`
-              INSERT OR REPLACE INTO dns_tracked_records
-              (provider, record_id, type, name, content, ttl, proxied, tracked_at, metadata)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `, [provider, recordId, recordType, recordName, content, ttl, proxied, now, metadata]);
-            
-            return true;
-          } catch (directDbError) {
-            logger.debug(`Direct database access failed: ${directDbError.message}`);
-            throw new Error('Tracked record repository not available and direct DB access failed');
-          }
-        } else {
-          throw new Error('Tracked record repository not available');
-        }
-      }
-      
-      // Use the repository obtained on retry
-      await retryRepo.trackRecord({
-        provider: provider,
-        record_id: record.id || record.record_id,
-        type: record.type || 'UNKNOWN',
-        name: record.name || (record.id || record.record_id),
-        content: record.content || '',
-        ttl: record.ttl || 1,
-        proxied: record.proxied === true ? 1 : 0,
-        metadata: JSON.stringify({
-          appManaged: record.metadata?.appManaged === true,
-          trackedAt: new Date().toISOString()
-        })
-      });
-      
-      return true;
-    }
-
-    // Track the record using the repository found on first attempt
-    await repository.trackRecord({
+    // Format the record for tracking
+    const formattedRecord = {
       provider: provider,
       record_id: record.id || record.record_id,
       type: record.type || 'UNKNOWN',
@@ -143,9 +228,80 @@ async function trackRecord(provider, record) {
         appManaged: record.metadata?.appManaged === true,
         trackedAt: new Date().toISOString()
       })
+    };
+    
+    // Try getting a repository - this will create one if none exists
+    const repository = await getTrackedRecordRepository({
+      initialize: true,
+      createIfNeeded: true,
+      cached: true
     });
     
-    return true;
+    if (repository) {
+      // Track using the repository
+      await repository.trackRecord(formattedRecord);
+      return true;
+    }
+    
+    // If still no repository, try direct database access as a fallback
+    if (database && database.isInitialized() && database.db) {
+      try {
+        // Create a direct SQL query to insert the record
+        const now = new Date().toISOString();
+        
+        // First ensure the table exists
+        try {
+          await database.db.run(`
+            CREATE TABLE IF NOT EXISTS dns_tracked_records (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              provider TEXT NOT NULL,
+              record_id TEXT NOT NULL,
+              type TEXT NOT NULL,
+              name TEXT NOT NULL,
+              content TEXT,
+              ttl INTEGER,
+              proxied INTEGER DEFAULT 0,
+              is_orphaned INTEGER DEFAULT 0,
+              orphaned_at TEXT,
+              tracked_at TEXT NOT NULL,
+              updated_at TEXT,
+              first_seen TEXT,
+              metadata TEXT,
+              UNIQUE(provider, record_id)
+            )
+          `);
+        } catch (tableError) {
+          logger.debug(`Failed to create dns_tracked_records table: ${tableError.message}`);
+          // Continue anyway - table might already exist
+        }
+        
+        // Directly insert into dns_tracked_records table
+        await database.db.run(`
+          INSERT OR REPLACE INTO dns_tracked_records
+          (provider, record_id, type, name, content, ttl, proxied, tracked_at, metadata)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          formattedRecord.provider,
+          formattedRecord.record_id,
+          formattedRecord.type,
+          formattedRecord.name,
+          formattedRecord.content,
+          formattedRecord.ttl,
+          formattedRecord.proxied,
+          now,
+          formattedRecord.metadata
+        ]);
+        
+        return true;
+      } catch (directDbError) {
+        logger.error(`Direct database access failed: ${directDbError.message}`);
+        return false;
+      }
+    }
+    
+    // If we get here, all methods failed
+    logger.error('All attempts to track record failed - database not available');
+    return false;
   } catch (error) {
     logger.error(`Failed to track record in DNS repository: ${error.message}`);
     return false;
@@ -159,59 +315,63 @@ async function trackRecord(provider, record) {
  */
 async function getProviderRecords(provider) {
   try {
-    // Get the repository
-    const repository = getTrackedRecordRepository();
-    if (!repository) {
-      // Try to initialize the repository first
-      await initializeDnsRepositories();
-      
-      // Try getting the repository again
-      const retryRepo = getTrackedRecordRepository();
-      if (!retryRepo) {
-        // Still not available, try another approach
-        if (database && database.isInitialized() && database.db) {
-          try {
-            // Direct database query for provider records
-            const rows = await database.db.all(`
-              SELECT * FROM dns_tracked_records
-              WHERE provider = ?
-              ORDER BY name
-            `, [provider]);
-            
-            // Format results for compatibility
-            const records = {};
-            
-            for (const row of rows) {
-              records[row.record_id] = {
-                id: row.record_id,
-                type: row.type,
-                name: row.name,
-                content: row.content,
-                ttl: row.ttl,
-                proxied: row.proxied === 1,
-                tracked_at: row.tracked_at,
-                is_orphaned: row.is_orphaned === 1,
-                orphaned_at: row.orphaned_at,
-                metadata: row.metadata ? JSON.parse(row.metadata) : null
-              };
-            }
-            
-            return { records };
-          } catch (directDbError) {
-            logger.debug(`Direct database query for records failed: ${directDbError.message}`);
+    // Get a repository - this will create one if none exists
+    const repository = await getTrackedRecordRepository({
+      initialize: true,
+      createIfNeeded: true
+    });
+    
+    if (repository) {
+      // Get records using the repository
+      return await repository.getProviderRecords(provider);
+    }
+    
+    // If no repository is available, try direct database access
+    if (database && database.isInitialized() && database.db) {
+      try {
+        // Try to query the table directly
+        try {
+          // Direct database query for provider records
+          const rows = await database.db.all(`
+            SELECT * FROM dns_tracked_records
+            WHERE provider = ?
+            ORDER BY name
+          `, [provider]);
+          
+          // Format results for compatibility
+          const records = {};
+          
+          for (const row of rows) {
+            records[row.record_id] = {
+              id: row.record_id,
+              type: row.type,
+              name: row.name,
+              content: row.content,
+              ttl: row.ttl,
+              proxied: row.proxied === 1,
+              tracked_at: row.tracked_at,
+              is_orphaned: row.is_orphaned === 1,
+              orphaned_at: row.orphaned_at,
+              metadata: row.metadata ? JSON.parse(row.metadata) : null
+            };
+          }
+          
+          return { records };
+        } catch (queryError) {
+          // If the table doesn't exist yet, this is expected
+          if (queryError.message.includes('no such table')) {
+            logger.debug('dns_tracked_records table does not exist yet');
+          } else {
+            logger.warn(`Error querying dns_tracked_records table: ${queryError.message}`);
           }
         }
-        
-        // Return empty result if all methods fail
-        return { records: {} };
+      } catch (directDbError) {
+        logger.debug(`Direct database query for records failed: ${directDbError.message}`);
       }
-      
-      // Use the repository obtained on retry
-      return await retryRepo.getProviderRecords(provider);
     }
-
-    // Get the records using the repository found on first attempt
-    return await repository.getProviderRecords(provider);
+    
+    // Return empty result if all methods fail
+    return { records: {} };
   } catch (error) {
     logger.error(`Failed to get provider records: ${error.message}`);
     return { records: {} };
@@ -226,40 +386,39 @@ async function getProviderRecords(provider) {
  */
 async function isTracked(provider, recordId) {
   try {
-    // Get the repository
-    const repository = getTrackedRecordRepository();
-    if (!repository) {
-      // Try to initialize the repository first
-      await initializeDnsRepositories();
-      
-      // Try getting the repository again
-      const retryRepo = getTrackedRecordRepository();
-      if (!retryRepo) {
-        // Still not available, try another approach
-        if (database && database.isInitialized() && database.db) {
-          try {
-            // Direct database query to check if record exists
-            const record = await database.db.get(`
-              SELECT id FROM dns_tracked_records
-              WHERE provider = ? AND record_id = ?
-            `, [provider, recordId]);
-            
-            return !!record;
-          } catch (directDbError) {
-            logger.debug(`Direct database query to check tracked status failed: ${directDbError.message}`);
-          }
-        }
-        
-        // Return false if all methods fail
-        return false;
-      }
-      
-      // Use the repository obtained on retry
-      return await retryRepo.isTracked(provider, recordId);
+    // Get a repository - this will create one if none exists
+    const repository = await getTrackedRecordRepository({
+      initialize: true,
+      createIfNeeded: true
+    });
+    
+    if (repository) {
+      // Check if tracked using the repository
+      return await repository.isTracked(provider, recordId);
     }
-
-    // Check if the record is tracked using the repository found on first attempt
-    return await repository.isTracked(provider, recordId);
+    
+    // If no repository is available, try direct database access
+    if (database && database.isInitialized() && database.db) {
+      try {
+        // Direct database query to check if record exists
+        const record = await database.db.get(`
+          SELECT id FROM dns_tracked_records
+          WHERE provider = ? AND record_id = ?
+        `, [provider, recordId]);
+        
+        return !!record;
+      } catch (directDbError) {
+        // If table doesn't exist, this is expected
+        if (directDbError.message.includes('no such table')) {
+          logger.debug('dns_tracked_records table does not exist yet');
+        } else {
+          logger.debug(`Direct database query to check tracked status failed: ${directDbError.message}`);
+        }
+      }
+    }
+    
+    // If all methods fail, assume not tracked
+    return false;
   } catch (error) {
     logger.error(`Failed to check if record is tracked: ${error.message}`);
     return false;
