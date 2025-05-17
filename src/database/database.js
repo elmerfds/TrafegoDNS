@@ -1,10 +1,10 @@
 /**
- * Simple Database Module
- * A simpler approach to database operations
+ * Database Module
+ * A reliable approach to database operations
  */
 const logger = require('../utils/logger');
-const connection = require('./simple-connection');
-const SimpleTrackedRepository = require('./simple-tracked-repository');
+const connection = require('./connection');
+const TrackedRepository = require('./tracked-repository');
 
 // Database singleton
 const db = connection.db;
@@ -21,7 +21,7 @@ async function initialize() {
   }
   
   try {
-    logger.info('Initializing simplified database system');
+    logger.info('Initializing database system');
     
     // Initialize connection
     const connectionSuccess = await connection.initialize();
@@ -31,15 +31,15 @@ async function initialize() {
     
     // Create repositories
     repositories = {
-      trackedRecords: new SimpleTrackedRepository(db)
+      trackedRecords: new TrackedRepository(db)
     };
     
     initialized = true;
-    logger.info('Simplified database system initialized successfully');
+    logger.info('Database system initialized successfully');
     
     return true;
   } catch (error) {
-    logger.error(`Failed to initialize simplified database: ${error.message}`);
+    logger.error(`Failed to initialize database: ${error.message}`);
     return false;
   }
 }
@@ -61,10 +61,10 @@ async function close() {
     await connection.close();
     initialized = false;
     repositories = {};
-    logger.info('Simple database closed');
+    logger.info('Database closed');
     return true;
   } catch (error) {
-    logger.error(`Error closing simple database: ${error.message}`);
+    logger.error(`Error closing database: ${error.message}`);
     return false;
   }
 }

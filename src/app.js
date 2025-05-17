@@ -62,17 +62,17 @@ async function start() {
       
       // First try the new simplified database approach
       try {
-        // Try to initialize the simplified database
-        logger.info('🔹 Trying simplified database implementation');
-        const simpleDatabase = require('./database/simple-database');
-        const simpleInitialized = await simpleDatabase.initialize();
+        // Try to initialize the database
+        logger.info('🔹 Initializing optimized database implementation');
+        const optimizedDatabase = require('./database/database');
+        const dbInitialized = await optimizedDatabase.initialize();
         
-        if (simpleInitialized) {
-          logger.info('✅ Simplified database initialized successfully');
-          global.simpleDatabase = simpleDatabase;
+        if (dbInitialized) {
+          logger.info('✅ Database initialized successfully');
+          global.optimizedDatabase = optimizedDatabase;
         }
-      } catch (simpleDbError) {
-        logger.warn(`⚠️ Simplified database initialization failed: ${simpleDbError.message}`);
+      } catch (dbError) {
+        logger.warn(`⚠️ Database initialization failed: ${dbError.message}`);
       }
 
       // Always load the legacy database module as fallback

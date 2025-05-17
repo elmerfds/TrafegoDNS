@@ -40,8 +40,7 @@ const {
 } = require('./trackingOperations');
 
 // SQLite Manager for database operations
-const SQLiteRecordManager = require('./sqliteManager');
-const SimpleSqliteManager = require('./simpleSqliteManager');
+const SQLiteManager = require('./sqliteManager2');
 
 class RecordTracker {
   constructor(config) {
@@ -68,42 +67,21 @@ class RecordTracker {
     this.usingSQLite = false;
     this.initialized = false;
 
-    // First try the new simple SQLite manager
+    // Initialize the SQLite manager
     try {
-      logger.info('Initializing simple SQLite manager for record tracking');
-      this.simpleManager = SimpleSqliteManager;
-      const simpleInitSuccess = this.simpleManager.initialize();
+      logger.info('Initializing SQLite manager for record tracking');
+      this.sqliteManager = SQLiteManager;
+      const initSuccess = this.sqliteManager.initialize();
       
-      if (simpleInitSuccess) {
-        logger.info('Simple SQLite manager initialized successfully for record tracking');
+      if (initSuccess) {
+        logger.info('SQLite manager initialized successfully for record tracking');
         this.usingSQLite = true;
       } else {
-        logger.warn('Simple SQLite manager initialization failed');
-        
-        // Fall back to legacy SQLite manager
-        try {
-          const database = require('../../database');
-          
-          if (database && database.isInitialized()) {
-            this.sqliteManager = new SQLiteRecordManager(database);
-            const legacyInitSuccess = this.sqliteManager.initialize();
-            
-            if (legacyInitSuccess) {
-              logger.info('Legacy SQLite manager initialized successfully');
-              this.usingSQLite = true;
-            } else {
-              logger.warn('Legacy SQLite manager initialization failed');
-              this.usingSQLite = false;
-            }
-          } else {
-            logger.info('SQLite database not initialized yet, will try again later');
-          }
-        } catch (legacyError) {
-          logger.debug(`Could not initialize legacy SQLite manager: ${legacyError.message}`);
-        }
+        logger.warn('SQLite manager initialization failed');
+        this.usingSQLite = false;
       }
     } catch (error) {
-      logger.debug(`Could not initialize simple SQLite manager: ${error.message}`);
+      logger.debug(`Could not initialize SQLite manager: ${error.message}`);
       this.usingSQLite = false;
     }
 
@@ -151,39 +129,20 @@ class RecordTracker {
    * Load tracked records from storage (SQLite only)
    */
   async loadTrackedRecords() {
-    // First try using the simple manager
-    if (this.simpleManager) {
-      try {
-        // Load from simple SQLite database
-        this.data = await this.simpleManager.loadTrackedRecordsFromDatabase(this.provider);
-        this.usingSQLite = true;
-        
-        // Log success
-        const providerData = this.data.providers[this.provider] || { records: {} };
-        const recordCount = Object.keys(providerData.records || {}).length;
-        logger.debug(`Loaded ${recordCount} tracked records for provider ${this.provider} from simple SQLite`);
-        
-        return this.data;
-      } catch (simpleError) {
-        logger.warn(`Simple SQLite manager failed to load records: ${simpleError.message}`);
-        // Fall back to legacy manager
-      }
-    }
-    
-    // Try legacy SQLite manager
+    // Try SQLite manager if available
     if (this.usingSQLite && this.sqliteManager) {
       try {
-        // Load from legacy SQLite database
+        // Load from SQLite database
         this.data = await this.sqliteManager.loadTrackedRecordsFromDatabase(this.provider);
 
         // Log success
         const providerData = this.data.providers[this.provider] || { records: {} };
         const recordCount = Object.keys(providerData.records || {}).length;
-        logger.debug(`Loaded ${recordCount} tracked records for provider ${this.provider} from legacy SQLite`);
+        logger.debug(`Loaded ${recordCount} tracked records for provider ${this.provider} from SQLite`);
 
         return this.data;
       } catch (error) {
-        logger.error(`Failed to load tracked records from legacy SQLite: ${error.message}`);
+        logger.error(`Failed to load tracked records from SQLite: ${error.message}`);
       }
     }
 
@@ -276,32 +235,21 @@ class RecordTracker {
     recordToTrack.metadata.appManaged = isAppManaged;
     recordToTrack.metadata.trackedAt = new Date().toISOString();
 
-    // First try the simple SQLite manager
-    if (this.simpleManager) {
-      try {
-        const success = await this.simpleManager.trackRecord(this.provider, recordToTrack);
-        if (success) {
-          logger.debug(`Successfully tracked ${recordToTrack.type} record for ${recordToTrack.name} in simple SQLite`);
-          return true;
-        }
-      } catch (simpleError) {
-        logger.warn(`Simple SQLite manager failed to track record: ${simpleError.message}`);
-        // Fall back to legacy manager
-      }
-    }
-
-    // Fall back to legacy SQLite manager
+    // Try the SQLite manager
     if (this.sqliteManager) {
       try {
         const success = await this.sqliteManager.trackRecord(this.provider, recordToTrack);
         if (success) {
-          logger.debug(`Successfully tracked ${recordToTrack.type} record for ${recordToTrack.name} in legacy SQLite`);
+          logger.debug(`Successfully tracked ${recordToTrack.type} record for ${recordToTrack.name} in SQLite`);
           return true;
         }
-      } catch (error) {
-        logger.error(`Failed to track record in legacy SQLite: ${error.message}`);
+      } catch (sqliteError) {
+        logger.warn(`SQLite manager failed to track record: ${sqliteError.message}`);
+        // Fall back to in-memory tracking
       }
     }
+
+    // SQLite failed, continue to in-memory tracking
     
     // Last resort: update in-memory data
     try {

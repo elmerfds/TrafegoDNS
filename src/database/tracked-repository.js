@@ -1,10 +1,10 @@
 /**
- * Simple Tracked Records Repository
+ * DNS Tracked Records Repository
  * A streamlined repository for tracking DNS records
  */
 const logger = require('../utils/logger');
 
-class SimpleTrackedRepository {
+class TrackedRepository {
   constructor(db) {
     this.db = db;
     this.tableName = 'dns_tracked_records';
@@ -187,4 +187,4 @@ class SimpleTrackedRepository {
   }
 }
 
-module.exports = SimpleTrackedRepository;
+module.exports = TrackedRepository;
