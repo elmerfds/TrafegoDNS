@@ -90,5 +90,14 @@ else
   fi
 fi
 
+# Run fix-sqlite script to ensure better-sqlite3 is installed and configured
+if [ -f "/app/docker-s6/scripts/fix-sqlite.sh" ]; then
+  echo "Running SQLite fix script to ensure proper database initialization..."
+  chmod +x /app/docker-s6/scripts/fix-sqlite.sh
+  /app/docker-s6/scripts/fix-sqlite.sh
+else
+  echo "⚠️ SQLite fix script not found - skipping database fix"
+fi
+
 echo "Directory setup complete"
 echo "-------------------------------------"

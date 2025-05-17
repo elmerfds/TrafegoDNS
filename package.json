@@ -38,10 +38,10 @@
     "commander": "^11.1.0",
     "chalk": "^4.1.2",
     "cli-table3": "^0.6.3",
-    "inquirer": "^8.2.6"
+    "inquirer": "^8.2.6",
+    "better-sqlite3": "^9.2.2"
   },
   "optionalDependencies": {
-    "better-sqlite3": "^9.2.2",
     "sqlite3": "^5.1.6",
     "sqlite": "^5.0.1"
   }

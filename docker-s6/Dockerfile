@@ -7,8 +7,9 @@ RUN npm install --package-lock-only
 # Install build dependencies for native modules
 RUN apk add --no-cache python3 make g++ sqlite-dev
 
-# Install production dependencies
+# Install production dependencies including better-sqlite3
 RUN npm install --omit=dev
+RUN npm install better-sqlite3 --save
 
 # Stage 2: Build the application
 FROM node:23-alpine AS build
