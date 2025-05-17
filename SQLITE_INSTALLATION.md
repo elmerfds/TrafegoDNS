@@ -40,9 +40,9 @@ ModuleNotFoundError: No module named 'distutils'
 
 This means the build environment lacks the necessary tools to compile the native SQLite module. Ensure you have:
 - Python 3 with pip installed
-- Python setuptools package installed
+- Python setuptools (py3-setuptools in Alpine Linux)
 - C/C++ build tools (make, g++, etc.)
-- SQLite development libraries
+- SQLite development libraries (sqlite-dev in Alpine Linux)
 
 ### Restart Loop
 

@@ -5,10 +5,7 @@ COPY package.json .
 RUN npm install --package-lock-only
 
 # Install build dependencies for native modules
-RUN apk add --no-cache python3 py3-pip make g++ sqlite-dev python3-dev
-
-# Install Python distutils for building native modules
-RUN pip3 install setuptools
+RUN apk add --no-cache python3 py3-pip make g++ sqlite-dev python3-dev py3-setuptools
 
 # Install production dependencies including better-sqlite3
 RUN npm install --omit=dev --build-from-source better-sqlite3
@@ -33,10 +30,7 @@ ARG TARGETARCH
 USER root
 
 # Install required packages
-RUN apk add --no-cache shadow curl xz tar bash sqlite sqlite-dev python3 py3-pip make g++ python3-dev
-
-# Install Python distutils for building native modules
-RUN pip3 install setuptools
+RUN apk add --no-cache shadow curl xz tar bash sqlite sqlite-dev python3 py3-pip make g++ python3-dev py3-setuptools
 
 # Set architecture for s6-overlay download
 RUN case "${TARGETARCH}" in \
