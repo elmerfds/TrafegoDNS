@@ -99,35 +99,85 @@ class DNSTrackedRecordRepository {
         throw new Error('Record ID is required when tracking DNS records');
       }
       
-      const result = await this.db.run(`
-        INSERT INTO ${this.tableName}
-        (provider, record_id, type, name, content, ttl, proxied, tracked_at, metadata)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(provider, record_id) DO UPDATE SET
-        type = excluded.type,
-        name = excluded.name,
-        content = excluded.content,
-        ttl = excluded.ttl,
-        proxied = excluded.proxied,
-        updated_at = ?,
-        metadata = excluded.metadata
-      `, [
-        record.provider,
-        record.record_id,
-        record.type || 'UNKNOWN',
-        record.name || 'unknown',
-        record.content || '',
-        record.ttl || 1,
-        record.proxied ? 1 : 0,
-        now,
-        metadata,
-        now
-      ]);
-      
-      return {
-        ...record,
-        tracked_at: now
-      };
+      try {
+        const result = await this.db.run(`
+          INSERT INTO ${this.tableName}
+          (provider, record_id, type, name, content, ttl, proxied, tracked_at, metadata)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(provider, record_id) DO UPDATE SET
+          type = excluded.type,
+          name = excluded.name,
+          content = excluded.content,
+          ttl = excluded.ttl,
+          proxied = excluded.proxied,
+          updated_at = ?,
+          metadata = excluded.metadata
+        `, [
+          record.provider,
+          record.record_id,
+          record.type || 'UNKNOWN',
+          record.name || 'unknown',
+          record.content || '',
+          record.ttl || 1,
+          record.proxied ? 1 : 0,
+          now,
+          metadata,
+          now
+        ]);
+        
+        return {
+          ...record,
+          tracked_at: now
+        };
+      } catch (dbError) {
+        // Try to reconnect once if the error might be connection-related
+        if (dbError.message.includes('database is locked') || 
+            dbError.message.includes('no such table') ||
+            dbError.message.includes('SQLITE_BUSY')) {
+          
+          logger.debug('Attempting to re-initialize database connection for tracking records');
+          
+          // Wait a moment for the database to become available
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Ensure the table exists before continuing
+          await this.initialize();
+          
+          // Try the operation again
+          const retryResult = await this.db.run(`
+            INSERT INTO ${this.tableName}
+            (provider, record_id, type, name, content, ttl, proxied, tracked_at, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(provider, record_id) DO UPDATE SET
+            type = excluded.type,
+            name = excluded.name,
+            content = excluded.content,
+            ttl = excluded.ttl,
+            proxied = excluded.proxied,
+            updated_at = ?,
+            metadata = excluded.metadata
+          `, [
+            record.provider,
+            record.record_id,
+            record.type || 'UNKNOWN',
+            record.name || 'unknown',
+            record.content || '',
+            record.ttl || 1,
+            record.proxied ? 1 : 0,
+            now,
+            metadata,
+            now
+          ]);
+          
+          return {
+            ...record,
+            tracked_at: now
+          };
+        } else {
+          // If it's not a connection issue, rethrow
+          throw dbError;
+        }
+      }
     } catch (error) {
       logger.error(`Failed to track DNS record: ${error.message}`);
       throw error;

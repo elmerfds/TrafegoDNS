@@ -64,26 +64,47 @@ class SimpleSqliteManager {
       // Ensure database is initialized - use the main database instead of simple database
       // This prevents duplicate warnings when simple database fails but main database works
       const database = require('../../database');
-      if (database && database.isInitialized() && database.repositories && database.repositories.dnsTrackedRecords) {
-        // Track the record using the main database system
-        return await database.repositories.dnsTrackedRecords.trackRecord({
-          provider: provider,
-          providerId: record.id || record.record_id,
-          type: record.type || 'UNKNOWN',
-          name: record.name || (record.id || record.record_id),
-          content: record.content || '',
-          ttl: record.ttl || 1,
-          proxied: record.proxied === true ? 1 : 0,
-          priority: record.priority || 0,
-          isAppManaged: record.metadata?.appManaged === true ? 1 : 0,
-          isOrphaned: 0
-        });
+      if (database && database.repositories && database.repositories.dnsTrackedRecords) {
+        try {
+          // Track the record using the main database system
+          const result = await database.repositories.dnsTrackedRecords.trackRecord({
+            provider: provider,
+            record_id: record.id || record.record_id,
+            type: record.type || 'UNKNOWN',
+            name: record.name || (record.id || record.record_id),
+            content: record.content || '',
+            ttl: record.ttl || 1,
+            proxied: record.proxied === true ? 1 : 0,
+            priority: record.priority || 0,
+            metadata: JSON.stringify({
+              appManaged: record.metadata?.appManaged === true,
+              trackedAt: new Date().toISOString()
+            })
+          });
+          return true;
+        } catch (mainDbError) {
+          // If main tracking fails, log at debug level and continue with simple database
+          logger.debug(`Main database tracking failed: ${mainDbError.message}`);
+        }
       }
       
       // If main database isn't available, try simple database
       if (!simpleDatabase.isInitialized()) {
-        // Instead of warning, silently fail to avoid duplicate logs
-        return false;
+        // Try to initialize the simple database again
+        try {
+          await simpleDatabase.initialize();
+        } catch (initError) {
+          // Log at debug level to reduce noise
+          logger.debug(`Simple database initialization failed: ${initError.message}`);
+          return false;
+        }
+        
+        // Check if initialization succeeded
+        if (!simpleDatabase.isInitialized()) {
+          // Log at debug level to reduce noise
+          logger.debug('Simple database not initialized after retry');
+          return false;
+        }
       }
       
       // Get tracked records repository
@@ -96,8 +117,22 @@ class SimpleSqliteManager {
       // Track the record
       return await repository.trackRecord(provider, record);
     } catch (error) {
-      logger.debug(`Failed to track record in SQLite: ${error.message}`);
-      return false;
+      // Update the record in memory and continue silently
+      if (!this.memoryRecords) {
+        this.memoryRecords = new Map();
+      }
+      
+      // Store in memory as fallback
+      const recordKey = `${provider}:${record.id || record.record_id}`;
+      this.memoryRecords.set(recordKey, {
+        ...record,
+        provider,
+        tracked_at: new Date().toISOString()
+      });
+      
+      // Log at debug level to reduce noise
+      logger.debug(`Using memory-only tracking for record: ${recordKey}`);
+      return true;
     }
   }
   

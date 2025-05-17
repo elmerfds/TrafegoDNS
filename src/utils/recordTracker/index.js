@@ -305,6 +305,21 @@ class RecordTracker {
     
     // Last resort: update in-memory data
     try {
+      // Only show warning message for first few records to avoid log spam
+      if (!this._memoryTrackingWarningShown) {
+        logger.warn('SQLite tracking not available - using memory-only tracking as fallback');
+        this._memoryTrackingWarningShown = true;
+        this._memoryTrackedCount = 1;
+      } else {
+        this._memoryTrackedCount = (this._memoryTrackedCount || 0) + 1;
+        
+        // Only log a summary message every 10 records
+        if (this._memoryTrackedCount % 10 === 0) {
+          logger.debug(`Now tracking ${this._memoryTrackedCount} records in memory-only mode`);
+        }
+      }
+      
+      // Track in memory
       if (!this.data) {
         this.data = { providers: {} };
       }
@@ -316,7 +331,6 @@ class RecordTracker {
       const key = recordToTrack.id || recordToTrack.record_id;
       this.data.providers[this.provider].records[key] = recordToTrack;
       
-      logger.warn('All SQLite attempts failed - tracked record in memory only');
       return true;
     } catch (memoryError) {
       logger.error(`Failed to track record in memory: ${memoryError.message}`);

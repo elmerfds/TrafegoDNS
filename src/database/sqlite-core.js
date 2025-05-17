@@ -16,12 +16,38 @@ class SQLiteCore {
     this.dbPath = path.join(this.dataDir, 'trafegodns.db');
     
     // Ensure data directory exists
-    if (!fs.existsSync(this.dataDir)) {
-      try {
+    try {
+      if (!fs.existsSync(this.dataDir)) {
         fs.mkdirSync(this.dataDir, { recursive: true });
-        logger.debug(`Created database directory: ${this.dataDir}`);
-      } catch (error) {
-        logger.error(`Failed to create database directory: ${error.message}`);
+        logger.info(`Created database directory: ${this.dataDir}`);
+        
+        // Set appropriate permissions
+        try {
+          // Change ownership to node user if running as root
+          if (process.getuid && process.getuid() === 0) {
+            const { execSync } = require('child_process');
+            execSync(`chown -R node:node ${this.dataDir}`);
+            logger.info(`Changed ownership of ${this.dataDir} to node:node`);
+          }
+          
+          // Set full permissions to ensure write access
+          fs.chmodSync(this.dataDir, 0o777);
+          logger.info(`Set permissions on ${this.dataDir} to ensure write access`);
+        } catch (permError) {
+          logger.warn(`Could not set permissions on data directory: ${permError.message}`);
+        }
+      }
+      
+      // Ensure the database directory is still writable
+      fs.accessSync(this.dataDir, fs.constants.W_OK);
+    } catch (error) {
+      logger.error(`Database directory error: ${error.message}`);
+      // Try creating the directory one more time with full permissions
+      try {
+        fs.mkdirSync(this.dataDir, { recursive: true, mode: 0o777 });
+        logger.info(`Created database directory with full permissions: ${this.dataDir}`);
+      } catch (retryError) {
+        logger.error(`Failed to create database directory (final attempt): ${retryError.message}`);
       }
     }
   }
