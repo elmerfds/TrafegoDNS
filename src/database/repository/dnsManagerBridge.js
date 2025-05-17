@@ -16,41 +16,79 @@ const database = require('../index');
 async function initializeDnsRepositories(options = {}) {
   const { 
     force = false,
-    maxRetries = 3,
-    retryDelayMs = 500
+    maxRetries = 5,  // Increased from 3 to 5 for better reliability
+    retryDelayMs = 500,
+    immediateFirstAttempt = true // Skip delay on first attempt
   } = options;
   
   // Track initialization attempts
   let attempts = 0;
   let initResult = false;
   
-  // Setup retry loop
+  // Add jitter to retryDelay to avoid thundering herd problem
+  const getJitteredDelay = () => {
+    const jitterFactor = 0.3; // 30% jitter
+    const jitterRange = retryDelayMs * jitterFactor;
+    const jitter = Math.floor(Math.random() * jitterRange * 2) - jitterRange;
+    return retryDelayMs + jitter;
+  };
+  
+  // Exponential backoff factor
+  const backoffFactor = 1.5;
+  
+  // Setup retry loop with exponential backoff
   while (attempts < maxRetries && !initResult) {
     attempts++;
+    
+    // Calculate actual delay with exponential backoff and jitter
+    // Skip delay on first attempt if requested
+    const actualDelay = attempts === 1 && immediateFirstAttempt
+      ? 0
+      : getJitteredDelay() * Math.pow(backoffFactor, attempts - 1);
+
+    // Apply delay if needed (skip first attempt delay if configured)
+    if (actualDelay > 0) {
+      logger.debug(`Waiting ${Math.floor(actualDelay)}ms before DNS repository initialization attempt ${attempts}/${maxRetries}`);
+      await new Promise(resolve => setTimeout(resolve, actualDelay));
+    }
     
     try {
       // First, ensure the database is initialized
       if (!database.isInitialized() || force) {
         logger.info(`Database not fully initialized, initializing now (attempt ${attempts}/${maxRetries})...`);
         
-        // Focus on initializing only the repositories we need
-        await database.initialize(true, {
-          force: force,
-          onlyRepositories: ['dnsManager']
-        });
+        try {
+          // Focus on initializing only the repositories we need
+          await database.initialize(true, {
+            force: force,
+            onlyRepositories: ['dnsManager']
+          });
+        } catch (initError) {
+          logger.warn(`Database initialization error: ${initError.message}. Retrying...`);
+          continue;
+        }
       }
 
       // Check if repositories are available
       if (!database.repositories || !database.repositories.dnsManager) {
         if (attempts < maxRetries) {
-          logger.warn(`DNS repository manager not available, retrying (attempt ${attempts}/${maxRetries})...`);
-          await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+          logger.warn(`DNS repository manager not available, will retry (attempt ${attempts}/${maxRetries})...`);
           continue;
         } else {
           logger.error('DNS repository manager not available after maximum retries');
           
           // Try creating it directly as a last resort
           try {
+            // First check if repositories were created while we were logging
+            if (database.repositories && database.repositories.dnsManager) {
+              logger.info('DNS repository manager became available after last check');
+              const success = await database.repositories.dnsManager.initialize();
+              if (success) {
+                initResult = true;
+                return true;
+              }
+            }
+            
             // If the database is initialized but dnsManager is missing, create it directly
             if (database.isInitialized() && database.db) {
               const DNSRepositoryManager = require('./dnsRepositoryManager');
@@ -60,7 +98,7 @@ async function initializeDnsRepositories(options = {}) {
               // Initialize the repository
               const success = await database.repositories.dnsManager.initialize();
               if (success) {
-                logger.info('DNS repository manager created and initialized directly');
+                logger.info('DNS repository manager created and initialized directly as last resort');
                 initResult = true;
                 return true;
               }

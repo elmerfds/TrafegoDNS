@@ -936,7 +936,37 @@ class BetterSQLite {
       // Only commit if we started the transaction
       if (!alreadyInTransaction) {
         if (!this.inTransaction) {
-          logger.error('Transaction flag inconsistency in createTables');
+          logger.warn('Transaction flag inconsistency in createTables - attempting to recover');
+          
+          // First, check if there's actually a transaction in progress in SQLite
+          try {
+            const inProgressCheck = this.db.prepare("PRAGMA transaction_status").get();
+            if (inProgressCheck && inProgressCheck.transaction_status > 0) {
+              logger.info('Found active transaction despite flag mismatch, committing');
+              this.db.exec('COMMIT');
+              logger.info('Database tables created successfully');
+              return;
+            } else {
+              logger.info('No active transaction found, continuing without commit');
+              return;
+            }
+          } catch (pragmaError) {
+            logger.debug(`Could not check transaction status: ${pragmaError.message}`);
+            
+            // Try best effort commit - this will either succeed or fail with "no transaction active"
+            try {
+              this.db.exec('COMMIT');
+              logger.info('Commit succeeded despite transaction flag mismatch');
+            } catch (commitAttemptError) {
+              // If no transaction active, that's fine
+              if (commitAttemptError.message.includes('no transaction is active')) {
+                logger.debug('No transaction was active, continuing');
+              } else {
+                // For other errors, log but don't throw to avoid breaking initialization
+                logger.warn(`Non-critical error during commit attempt: ${commitAttemptError.message}`);
+              }
+            }
+          }
         } else {
           // Commit transaction safely
           try {

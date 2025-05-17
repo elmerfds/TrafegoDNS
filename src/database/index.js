@@ -82,12 +82,27 @@ async function initialize(migrate = true, options = {}) {
     const initPromises = [];
     const initializedRepos = [];
     
-    for (const [name, repository] of Object.entries(repositories)) {
-      // Skip repositories not in the whitelist if specified
-      if (!shouldInitializeRepo(name)) {
-        continue;
-      }
-      
+    // Prioritize DNSRepositoryManager initialization to ensure it's available early
+    // This helps avoid the "DNS Repository Manager not available" errors during startup
+    const repoPriority = {
+      dnsManager: 10,   // Highest priority
+      setting: 5,       // Medium priority
+      user: 3,          // Medium-low priority
+      revokedToken: 2,  // Low priority
+      auditLog: 1       // Lowest priority
+    };
+    
+    // Sort repository entries by priority
+    const sortedRepoEntries = Object.entries(repositories)
+      .filter(([name]) => shouldInitializeRepo(name))
+      .sort(([nameA], [nameB]) => {
+        const priorityA = repoPriority[nameA] || 0;
+        const priorityB = repoPriority[nameB] || 0;
+        return priorityB - priorityA; // Higher priority first
+      });
+    
+    // Process in priority order
+    for (const [name, repository] of sortedRepoEntries) {
       if (repository && repository.initialize && typeof repository.initialize === 'function') {
         try {
           // Add to promises array for initialization

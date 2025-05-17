@@ -37,6 +37,39 @@ class DNSRepositoryManager {
       let managedRecordsInitialized = false;
       let trackedRecordsInitialized = false;
       
+      // Check if we're already initialized - avoid duplicate initializations
+      if (this.initialized) {
+        logger.debug('DNS Repository Manager already initialized, skipping initialization');
+        
+        // Verify that repositories are actually initialized
+        const verificationResults = await Promise.allSettled([
+          this.providerCache.tableExists ? Promise.resolve(true) : this.providerCache.checkTableExists(),
+          this.managedRecords.tableExists ? Promise.resolve(true) : this.managedRecords.checkTableExists(),
+          this.trackedRecords.tableExists ? Promise.resolve(true) : this.trackedRecords.checkTableExists()
+        ]);
+        
+        // Check if any verification failed
+        const allTablesExist = verificationResults.every(result => 
+          result.status === 'fulfilled' && result.value === true
+        );
+        
+        if (allTablesExist) {
+          logger.debug('Verified all repository tables exist after previous initialization');
+          return true;
+        } else {
+          logger.warn('Repository claimed to be initialized but tables are missing - reinitializing');
+          // Continue with initialization
+        }
+      }
+      
+      // Delay mechanism to avoid race conditions in clustered environments
+      // This helps prevent multiple instances from initializing simultaneously
+      const initDelay = Math.floor(Math.random() * 1000); // Random delay between 0-1000ms
+      if (initDelay > 0) {
+        logger.debug(`Adding ${initDelay}ms staggered delay before repository initialization`);
+        await new Promise(resolve => setTimeout(resolve, initDelay));
+      }
+      
       // Initialize all repositories in parallel
       const results = await Promise.allSettled([
         // Provider cache repository
