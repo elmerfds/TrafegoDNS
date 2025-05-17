@@ -40,7 +40,7 @@ const {
 } = require('./trackingOperations');
 
 // SQLite Manager for database operations
-const SQLiteManager = require('./sqliteManager2');
+const SQLiteManager = require('./sqliteManager');
 
 class RecordTracker {
   constructor(config) {
