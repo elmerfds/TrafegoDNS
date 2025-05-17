@@ -88,7 +88,6 @@ async function close() {
     return false;
   }
 }
-}
 
 module.exports = {
   initialize,
