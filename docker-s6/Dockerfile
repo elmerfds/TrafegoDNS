@@ -1,18 +1,20 @@
 # Stage 1: Generate package-lock.json
-FROM node:23-alpine AS dependencies
+FROM node:18-alpine AS dependencies
 WORKDIR /app
 COPY package.json .
 RUN npm install --package-lock-only
 
 # Install build dependencies for native modules
-RUN apk add --no-cache python3 make g++ sqlite-dev
+RUN apk add --no-cache python3 py3-pip make g++ sqlite-dev python3-dev
+
+# Install Python distutils for building native modules
+RUN pip3 install setuptools
 
 # Install production dependencies including better-sqlite3
-RUN npm install --omit=dev
-RUN npm install better-sqlite3 --save
+RUN npm install --omit=dev --build-from-source better-sqlite3
 
 # Stage 2: Build the application
-FROM node:23-alpine AS build
+FROM node:18-alpine AS build
 WORKDIR /app
 COPY --from=dependencies /app/package*.json ./
 COPY --from=dependencies /app/node_modules ./node_modules
@@ -20,7 +22,7 @@ COPY src ./src
 COPY bin ./bin
 
 # Stage 3: Create the production image with s6-overlay
-FROM node:23-alpine
+FROM node:18-alpine
 WORKDIR /app
 
 # Install s6-overlay v3
@@ -31,7 +33,10 @@ ARG TARGETARCH
 USER root
 
 # Install required packages
-RUN apk add --no-cache shadow curl xz tar bash sqlite sqlite-dev
+RUN apk add --no-cache shadow curl xz tar bash sqlite sqlite-dev python3 py3-pip make g++ python3-dev
+
+# Install Python distutils for building native modules
+RUN pip3 install setuptools
 
 # Set architecture for s6-overlay download
 RUN case "${TARGETARCH}" in \

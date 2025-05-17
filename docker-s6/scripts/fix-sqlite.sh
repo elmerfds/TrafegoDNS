@@ -40,16 +40,30 @@ fi
 echo "Installing SQLite packages..."
 cd "$APP_DIR"
 
+# Install required build dependencies if not already installed
+echo "- Installing required build dependencies..."
+if command -v apk > /dev/null; then
+  apk add --no-cache python3 py3-pip make g++ sqlite-dev python3-dev build-base > /dev/null 2>&1
+  pip3 install setuptools > /dev/null 2>&1
+elif command -v apt-get > /dev/null; then
+  apt-get update > /dev/null 2>&1
+  apt-get install -y python3 python3-pip build-essential python3-dev sqlite3 libsqlite3-dev > /dev/null 2>&1
+  pip3 install setuptools > /dev/null 2>&1
+fi
+
 echo "- Installing better-sqlite3 (this may take a moment)..."
-npm install better-sqlite3 --save
+npm install --build-from-source better-sqlite3 --save
 
 if [ $? -ne 0 ]; then
   echo "⚠️ Failed to install better-sqlite3, trying sqlite3..."
-  npm install sqlite3 --save
+  npm install --build-from-source sqlite3 --save
   
   if [ $? -ne 0 ]; then
-    echo "❌ Failed to install any SQLite package. Please check that dev tools are installed."
-    echo "Try: apk add --no-cache python3 make g++ build-base"
+    echo "❌ Failed to install any SQLite package. Manual intervention required."
+    echo "Try running the following commands:"
+    echo "  apk add --no-cache python3 py3-pip make g++ sqlite-dev python3-dev build-base"
+    echo "  pip3 install setuptools"
+    echo "  npm install --build-from-source better-sqlite3 --save"
   else
     echo "✅ sqlite3 package installed successfully"
   fi

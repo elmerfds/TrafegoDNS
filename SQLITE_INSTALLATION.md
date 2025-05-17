@@ -10,11 +10,15 @@ For SQLite to work properly, the application requires:
 
 1. The `better-sqlite3` Node.js package
 2. SQLite system libraries (`sqlite` and `sqlite-dev` in Alpine Linux)
-3. Proper database directory permissions
+3. Python with setuptools (for building native modules)
+4. C/C++ compilation tools (make, g++)
+5. Proper database directory permissions
 
 ## Common Issues
 
-### Missing Package Error
+### Common Errors
+
+#### Missing Package Error
 
 If you see this error in the logs, it means the `better-sqlite3` package is not installed:
 
@@ -25,6 +29,20 @@ Could not import better-sqlite3: Cannot find package 'better-sqlite3' imported f
 This occurs when:
 - The package was not installed during the container build
 - The package is listed as an optional dependency but was not installed
+
+#### Native Module Build Failure
+
+If you see errors related to node-gyp or Python's distutils module:
+
+```
+ModuleNotFoundError: No module named 'distutils'
+```
+
+This means the build environment lacks the necessary tools to compile the native SQLite module. Ensure you have:
+- Python 3 with pip installed
+- Python setuptools package installed
+- C/C++ build tools (make, g++, etc.)
+- SQLite development libraries
 
 ### Restart Loop
 
