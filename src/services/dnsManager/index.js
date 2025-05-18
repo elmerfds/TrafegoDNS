@@ -204,6 +204,11 @@ class DNSManager {
         // Use our safe helpers to avoid errors
         const recordsToTrack = safeConcatArrays(batchResult.created, batchResult.updated);
         
+        // Log records we're about to track
+        if (recordsToTrack && recordsToTrack.length > 0) {
+          logger.info(`Tracking ${recordsToTrack.length} newly created/updated DNS records`);
+        }
+        
         // Track each record
         for (const record of recordsToTrack) {
           try {
@@ -213,15 +218,40 @@ class DNSManager {
               continue;
             }
             
+            // Always mark newly created records as appManaged=true since we just created them
+            const isNewlyCreated = batchResult.created.some(r => r.id === record.id);
+            if (isNewlyCreated) {
+              logger.info(`Tracking newly created record ${record.name} (${record.type}) with ID ${record.id}`);
+            }
+            
             // Check if record is already tracked
             const isTracked = await this.isRecordTracked(record);
             
             if (isTracked) {
               // Update record ID if needed (e.g., if ID changed after creation)
               await this.updateRecordId(record);
+              logger.debug(`Updated existing record tracking for ${record.name} (${record.type})`);
             } else {
-              // Add new record to tracker
-              await this.trackRecord(record);
+              // Add new record to tracker - always mark as app managed for newly created records
+              const success = await this.trackRecord(record, true);
+              if (success) {
+                logger.info(`Successfully tracked new record ${record.name} (${record.type})`);
+              } else {
+                logger.error(`Failed to track new record ${record.name} (${record.type})`);
+              }
+            }
+            
+            // Double check with repository to ensure record is properly tracked
+            if (this.repositoryManager) {
+              try {
+                const isNowTracked = await this.repositoryManager.isTracked(record.id, this.dnsProvider.name);
+                if (!isNowTracked) {
+                  logger.warn(`Record ${record.name} (${record.type}) not found in repository after tracking, retrying...`);
+                  await this.repositoryManager.trackRecord(record, this.dnsProvider.name, true);
+                }
+              } catch (repoError) {
+                logger.error(`Repository tracking verification failed: ${repoError.message}`);
+              }
             }
           } catch (trackError) {
             logger.error(`Failed to track record ${record?.name || 'unknown'}: ${trackError.message}`);
@@ -379,16 +409,22 @@ class DNSManager {
               const hostname = record.name.replace(`.${this.config.getProviderDomain()}`, '');
               
               // Check if the hostname matches any of our active hostnames
+              let matchFound = false;
               for (const activeHostname of currentHostnames) {
-                if (activeHostname === hostname || 
-                    activeHostname === record.name ||
-                    hostname.includes(activeHostname) ||
-                    activeHostname.includes(hostname)) {
+                // Perform exact matches only to avoid incorrect flagging
+                // Only consider exact hostname matches or exact FQDN matches
+                if (activeHostname === hostname || activeHostname === record.name) {
                   // Mark this record to be managed by the app
                   recordsToMarkAsManaged.set(record.id, record);
                   logger.info(`🔍 Found matching DNS record for active hostname: ${hostname}`);
+                  matchFound = true;
                   break;
                 }
+              }
+              
+              // Log when a record is NOT matched - useful for debugging
+              if (!matchFound && (record.type === 'A' || record.type === 'CNAME')) {
+                logger.debug(`Record ${record.name} (${record.type}) not matched to any active hostname`);
               }
             }
             

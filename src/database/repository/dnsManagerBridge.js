@@ -278,9 +278,10 @@ async function getTrackedRecordRepository(options = {}) {
  * Saves a record to the DNS tracked record repository
  * @param {string} provider - The DNS provider name
  * @param {Object} record - The record to save
+ * @param {boolean} [isAppManaged=true] - Whether this record is managed by the app
  * @returns {Promise<boolean>} Success status
  */
-async function trackRecord(provider, record) {
+async function trackRecord(provider, record, isAppManaged = true) {
   try {
     // Format the record for tracking
     const formattedRecord = {
@@ -292,7 +293,7 @@ async function trackRecord(provider, record) {
       ttl: record.ttl || 1,
       proxied: record.proxied === true ? 1 : 0,
       metadata: JSON.stringify({
-        appManaged: record.metadata?.appManaged === true,
+        appManaged: isAppManaged,
         trackedAt: new Date().toISOString()
       })
     };
@@ -342,6 +343,13 @@ async function trackRecord(provider, record) {
           // Continue anyway - table might already exist
         }
         
+        // Ensure we're explicitly marking newly created records as app-managed=true
+        // This is especially important for records created directly through operations.js
+        const metadata = JSON.stringify({
+          appManaged: isAppManaged,
+          trackedAt: now
+        });
+          
         // Directly insert into dns_tracked_records table
         await database.db.run(`
           INSERT OR REPLACE INTO dns_tracked_records
@@ -356,7 +364,7 @@ async function trackRecord(provider, record) {
           formattedRecord.ttl,
           formattedRecord.proxied,
           now,
-          formattedRecord.metadata
+          metadata
         ]);
         
         return true;

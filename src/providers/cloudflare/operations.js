@@ -41,6 +41,21 @@ async function createRecord(client, zoneId, record, updateRecordInCache) {
     logger.info(`✨ Created ${record.type} record for ${record.name}`);
     logger.success(`Created ${record.type} record for ${record.name}`);
     
+    // Ensure the record is tracked in the database immediately
+    try {
+      // Import DNS Manager Bridge for direct tracking
+      const dnsManagerBridge = require('../../database/repository/dnsManagerBridge');
+      const trackSuccess = await dnsManagerBridge.trackRecord(record.provider || 'cloudflare', createdRecord, true);
+      
+      if (trackSuccess) {
+        logger.debug(`Immediately tracked newly created record ${record.name} in database`);
+      } else {
+        logger.warn(`Failed to immediately track newly created record ${record.name} via bridge - will be tracked on next dnsManager cycle`);
+      }
+    } catch (trackError) {
+      logger.warn(`Error tracking newly created record ${record.name}: ${trackError.message}`);
+    }
+    
     // Update stats counter if available
     if (global.statsCounter) {
       global.statsCounter.created++;
@@ -90,6 +105,21 @@ async function updateRecord(client, zoneId, id, record, updateRecordInCache) {
     // Log at INFO level which record was updated
     logger.info(`📝 Updated ${record.type} record for ${record.name}`);
     logger.success(`Updated ${record.type} record for ${record.name}`);
+    
+    // Ensure the record is tracked in the database immediately
+    try {
+      // Import DNS Manager Bridge for direct tracking
+      const dnsManagerBridge = require('../../database/repository/dnsManagerBridge');
+      const trackSuccess = await dnsManagerBridge.trackRecord(record.provider || 'cloudflare', updatedRecord, true);
+      
+      if (trackSuccess) {
+        logger.debug(`Immediately tracked updated record ${record.name} in database`);
+      } else {
+        logger.warn(`Failed to immediately track updated record ${record.name} via bridge - will be tracked on next dnsManager cycle`);
+      }
+    } catch (trackError) {
+      logger.warn(`Error tracking updated record ${record.name}: ${trackError.message}`);
+    }
     
     // Update stats counter if available
     if (global.statsCounter) {
