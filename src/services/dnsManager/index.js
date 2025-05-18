@@ -46,6 +46,15 @@ class DNSManager {
     // Track cache TTL
     this.cacheTtl = parseInt(process.env.CACHE_TTL_MINUTES || 60, 10) * 60; // Convert to seconds
     
+    // Timer for orphaned records cleanup
+    this.orphanedRecordCleanupTimer = null;
+    
+    // Set default cleanup interval to 5 minutes (can be overridden by environment variable)
+    this.cleanupInterval = parseInt(process.env.CLEANUP_INTERVAL_MINUTES || 5, 10) * 60 * 1000; // Convert to milliseconds
+    
+    // Last active hostnames to check for orphaned records
+    this.lastActiveHostnames = [];
+    
     // Subscribe to relevant events
     setupEventSubscriptions(this.eventBus, this.processHostnames.bind(this));
   }
@@ -77,12 +86,64 @@ class DNSManager {
 
       // Process managed hostnames during initialization
       await this.processManagedHostnames();
+      
+      // Start the orphaned record cleanup timer
+      this.startOrphanedRecordCleanupTimer();
 
       logger.success('DNS Manager initialized successfully');
       return true;
     } catch (error) {
       logger.error(`Failed to initialize DNS Manager: ${error.message}`);
       throw error;
+    }
+  }
+  
+  /**
+   * Start the orphaned record cleanup timer
+   */
+  startOrphanedRecordCleanupTimer() {
+    // Clear any existing timer
+    if (this.orphanedRecordCleanupTimer) {
+      clearInterval(this.orphanedRecordCleanupTimer);
+    }
+    
+    // Log the cleanup interval
+    logger.info(`Starting orphaned DNS record cleanup timer with interval of ${this.cleanupInterval / 60000} minutes`);
+    
+    // Run an initial cleanup to catch any orphaned records right away
+    setTimeout(() => {
+      this.cleanupOrphanedRecordsWithLastHostnames();
+    }, 30000); // Start with a 30-second delay after initialization
+    
+    // Set up the interval for regular cleanups
+    this.orphanedRecordCleanupTimer = setInterval(() => {
+      this.cleanupOrphanedRecordsWithLastHostnames();
+    }, this.cleanupInterval);
+  }
+  
+  /**
+   * Run the orphaned record cleanup with the last known active hostnames
+   */
+  async cleanupOrphanedRecordsWithLastHostnames() {
+    try {
+      logger.debug('Running scheduled orphaned record cleanup check');
+      
+      // Import the specific orphanedRecordCleaner module
+      const { cleanupOrphanedRecords } = require('./orphanedRecordCleaner');
+      
+      // Use the last known active hostnames for cleanup
+      await cleanupOrphanedRecords(
+        this.lastActiveHostnames,
+        this.dnsProvider,
+        this.recordTracker,
+        this.config,
+        this.eventBus,
+        this.loggedPreservedRecords
+      );
+      
+      logger.debug('Scheduled orphaned record cleanup complete');
+    } catch (error) {
+      logger.error(`Failed to run orphaned record cleanup: ${error.message}`);
     }
   }
   
@@ -154,11 +215,19 @@ class DNSManager {
       if (!dnsRecordConfigs || dnsRecordConfigs.length === 0) {
         this.stats.processedHostnames = processedHostnames ? processedHostnames.length : 0;
         this.stats.timestamp = new Date().toISOString();
+        
+        // Update last active hostnames even when there are no configs to process
+        // This is important for tracking hostnames that may have disappeared
+        this.lastActiveHostnames = hostnames || [];
+        
         return this.stats;
       }
       
       // Update stats
       this.stats.processedHostnames = processedHostnames ? processedHostnames.length : 0;
+      
+      // Update last active hostnames
+      this.lastActiveHostnames = hostnames || [];
       
       // Generate batch operations for the provider
       let batchResult;
@@ -300,15 +369,24 @@ class DNSManager {
    */
   async cleanupOrphanedRecords(forceImmediate = false) {
     try {
-      const result = await cleanupOrphanedRecords(
-        this.config, 
+      // Import the orphaned record cleaner module
+      const { cleanupOrphanedRecords: cleanupFn } = require('./orphanedRecordCleaner');
+      
+      logger.info(`Manual orphaned record cleanup triggered${forceImmediate ? ' (with force immediate)' : ''}`);
+      
+      // Use the current active hostnames for cleanup
+      const result = await cleanupFn(
+        this.lastActiveHostnames, 
         this.dnsProvider, 
         this.recordTracker,
-        forceImmediate,
-        this.repositoryManager
+        this.config,
+        this.eventBus,
+        this.loggedPreservedRecords,
+        forceImmediate
       );
       
-      return result;
+      logger.info('Manual orphaned record cleanup completed');
+      return { success: true };
     } catch (error) {
       logger.error(`Failed to cleanup orphaned records: ${error.message}`);
       return { success: false, error: error.message };

@@ -19,6 +19,7 @@ const {
  * @param {Object} config - Configuration manager instance
  * @param {Object} eventBus - Event bus for publishing events
  * @param {Set} loggedPreservedRecords - Set to track already logged preserved records
+ * @param {boolean} forceImmediate - Whether to force immediate cleanup without grace period
  */
 async function cleanupOrphanedRecords(
   activeHostnames,
@@ -26,7 +27,8 @@ async function cleanupOrphanedRecords(
   recordTracker,
   config,
   eventBus,
-  loggedPreservedRecords
+  loggedPreservedRecords,
+  forceImmediate = false
 ) {
   try {
     logger.debug('Checking for orphaned DNS records...');
@@ -186,8 +188,9 @@ async function cleanupOrphanedRecords(
           const now = new Date();
           const elapsedMinutes = (now - parsedOrphanedTime) / (1000 * 60);
           
-          if (elapsedMinutes >= config.cleanupGracePeriod) {
-            // Grace period elapsed, we can delete the record
+          // Check if grace period has elapsed or forceImmediate is true
+          if (forceImmediate || elapsedMinutes >= config.cleanupGracePeriod) {
+            // Grace period elapsed or forced immediate cleanup, we can delete the record
             readyForDeletionCount++;
             
             // Format the display name for better reporting
@@ -195,7 +198,11 @@ async function cleanupOrphanedRecords(
                                (record.name === '@' ? config.getProviderDomain() 
                                                   : `${record.name}.${config.getProviderDomain()}`);
             
-            logger.info(`🗑️ Grace period elapsed (${Math.floor(elapsedMinutes)} minutes), removing orphaned DNS record: ${displayName} (${record.type})`);
+            if (forceImmediate) {
+              logger.info(`🗑️ Forced immediate cleanup - removing orphaned DNS record: ${displayName} (${record.type})`);
+            } else {
+              logger.info(`🗑️ Grace period elapsed (${Math.floor(elapsedMinutes)} minutes), removing orphaned DNS record: ${displayName} (${record.type})`);
+            }
             
             try {
               // IMPORTANT: Only delete records that were created by the app
