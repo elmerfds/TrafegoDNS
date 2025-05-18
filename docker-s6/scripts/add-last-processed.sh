@@ -63,34 +63,35 @@ cat > "$TMP_SQL" << 'EOF'
 BEGIN IMMEDIATE TRANSACTION;
 
 -- Check if last_processed column exists
-CREATE TEMP TABLE _column_exists AS
-SELECT 1 FROM pragma_table_info('dns_records') WHERE name='last_processed';
+SELECT CASE 
+  WHEN NOT EXISTS(SELECT 1 FROM pragma_table_info('dns_records') WHERE name='last_processed')
+  THEN 'Adding last_processed column'
+  ELSE 'last_processed column already exists'
+END AS last_processed_status;
 
--- Add last_processed column if needed
-INSERT INTO _column_exists 
-SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM _column_exists);
-
--- Add column if needed
-UPDATE _column_exists SET rowid = (
-  ALTER TABLE dns_records ADD COLUMN last_processed TIMESTAMP
-) WHERE (SELECT * FROM _column_exists) = 0;
+-- Add last_processed column if it doesn't exist
+SELECT CASE 
+  WHEN NOT EXISTS(SELECT 1 FROM pragma_table_info('dns_records') WHERE name='last_processed')
+  THEN (ALTER TABLE dns_records ADD COLUMN last_processed TIMESTAMP)
+  ELSE 'Column exists'
+END AS result;
 
 -- Initialize last_processed with tracked_at value for existing records
 UPDATE dns_records SET last_processed = tracked_at WHERE last_processed IS NULL;
 
 -- Check if managed column exists
-DROP TABLE _column_exists;
-CREATE TEMP TABLE _column_exists AS
-SELECT 1 FROM pragma_table_info('dns_records') WHERE name='managed';
+SELECT CASE 
+  WHEN NOT EXISTS(SELECT 1 FROM pragma_table_info('dns_records') WHERE name='managed')
+  THEN 'Adding managed column'
+  ELSE 'managed column already exists'
+END AS managed_status;
 
--- Add managed column if needed
-INSERT INTO _column_exists 
-SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM _column_exists);
-
--- Add column if needed
-UPDATE _column_exists SET rowid = (
-  ALTER TABLE dns_records ADD COLUMN managed INTEGER DEFAULT 0
-) WHERE (SELECT * FROM _column_exists) = 0;
+-- Add managed column if it doesn't exist
+SELECT CASE 
+  WHEN NOT EXISTS(SELECT 1 FROM pragma_table_info('dns_records') WHERE name='managed')
+  THEN (ALTER TABLE dns_records ADD COLUMN managed INTEGER DEFAULT 0)
+  ELSE 'Column exists'
+END AS result;
 
 -- Update schema version if table exists
 INSERT OR IGNORE INTO schema_migrations (version, name, applied_at) 
