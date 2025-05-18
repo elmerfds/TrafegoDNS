@@ -52,7 +52,7 @@ class DNSManager {
     // Set default cleanup interval to 5 minutes (can be overridden by environment variable)
     this.cleanupInterval = parseInt(process.env.CLEANUP_INTERVAL_MINUTES || 5, 10) * 60 * 1000; // Convert to milliseconds
     
-    // Last active hostnames to check for orphaned records
+    // Last active hostnames to check for orphaned records - initialize as empty array to avoid undefined
     this.lastActiveHostnames = [];
     
     // Subscribe to relevant events
@@ -102,23 +102,43 @@ class DNSManager {
    * Start the orphaned record cleanup timer
    */
   startOrphanedRecordCleanupTimer() {
-    // Clear any existing timer
-    if (this.orphanedRecordCleanupTimer) {
-      clearInterval(this.orphanedRecordCleanupTimer);
+    try {
+      // Clear any existing timer
+      if (this.orphanedRecordCleanupTimer) {
+        clearInterval(this.orphanedRecordCleanupTimer);
+      }
+      
+      // Ensure lastActiveHostnames is always an array to prevent errors
+      if (!this.lastActiveHostnames || !Array.isArray(this.lastActiveHostnames)) {
+        this.lastActiveHostnames = [];
+      }
+      
+      // Log the cleanup interval
+      logger.info(`Starting orphaned DNS record cleanup timer with interval of ${this.cleanupInterval / 60000} minutes`);
+      
+      // Run an initial cleanup to catch any orphaned records right away, but with a longer delay
+      // to ensure application is fully initialized
+      setTimeout(() => {
+        try {
+          this.cleanupOrphanedRecordsWithLastHostnames();
+        } catch (cleanupError) {
+          logger.error(`Error in initial orphaned record cleanup: ${cleanupError.message}`);
+        }
+      }, 60000); // Start with a 60-second delay after initialization
+      
+      // Set up the interval for regular cleanups
+      this.orphanedRecordCleanupTimer = setInterval(() => {
+        try {
+          this.cleanupOrphanedRecordsWithLastHostnames();
+        } catch (cleanupError) {
+          logger.error(`Error in scheduled orphaned record cleanup: ${cleanupError.message}`);
+        }
+      }, this.cleanupInterval);
+      
+      logger.debug('Orphaned record cleanup timer started successfully');
+    } catch (error) {
+      logger.error(`Failed to start orphaned record cleanup timer: ${error.message}`);
     }
-    
-    // Log the cleanup interval
-    logger.info(`Starting orphaned DNS record cleanup timer with interval of ${this.cleanupInterval / 60000} minutes`);
-    
-    // Run an initial cleanup to catch any orphaned records right away
-    setTimeout(() => {
-      this.cleanupOrphanedRecordsWithLastHostnames();
-    }, 30000); // Start with a 30-second delay after initialization
-    
-    // Set up the interval for regular cleanups
-    this.orphanedRecordCleanupTimer = setInterval(() => {
-      this.cleanupOrphanedRecordsWithLastHostnames();
-    }, this.cleanupInterval);
   }
   
   /**

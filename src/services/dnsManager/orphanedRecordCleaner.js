@@ -36,11 +36,14 @@ async function cleanupOrphanedRecords(
     // Get all DNS records for our zone (from cache when possible)
     const allRecords = await dnsProvider.getRecordsFromCache(true); // Force refresh
 
+    // Ensure activeHostnames is an array to avoid crashes
+    const safeActiveHostnames = Array.isArray(activeHostnames) ? activeHostnames : [];
+    
     // Create a map of active hostnames with variations for better matching
-    const hostnameMap = createHostnameMap(activeHostnames, config.getProviderDomain());
+    const hostnameMap = createHostnameMap(safeActiveHostnames, config.getProviderDomain());
 
     // Normalize active hostnames for backward compatibility with existing code
-    const normalizedActiveHostnames = new Set(activeHostnames.map(host => normalizeHostname(host)));
+    const normalizedActiveHostnames = new Set(safeActiveHostnames.map(host => normalizeHostname(host)));
 
     // Log all active hostnames in trace mode
     logger.trace(`Active hostnames: ${Array.from(normalizedActiveHostnames).join(', ')}`);

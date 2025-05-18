@@ -37,9 +37,18 @@ function normalizeHostname(hostname) {
  */
 function createHostnameMap(hostnames, baseDomain) {
   const hostnameMap = new Map();
-  const normalizedBaseDomain = normalizeHostname(baseDomain);
+  const normalizedBaseDomain = normalizeHostname(baseDomain || '');
+  
+  // Ensure hostnames is iterable and handle null/undefined gracefully
+  if (!hostnames || !Array.isArray(hostnames)) {
+    logger.warn('Invalid hostnames array passed to createHostnameMap, using empty array');
+    return hostnameMap;
+  }
   
   hostnames.forEach(hostname => {
+    // Skip null or undefined hostnames
+    if (hostname === null || hostname === undefined) return;
+  
     const normalizedHostname = normalizeHostname(hostname);
     
     // Skip empty hostnames
@@ -47,6 +56,9 @@ function createHostnameMap(hostnames, baseDomain) {
     
     // Store the original form
     hostnameMap.set(normalizedHostname, hostname);
+    
+    // Skip domain-related processing if we don't have a base domain
+    if (!normalizedBaseDomain) return;
     
     // Store without the domain if it's a subdomain
     if (normalizedHostname.endsWith(normalizedBaseDomain) && 
