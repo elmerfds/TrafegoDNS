@@ -71,7 +71,10 @@ function createHostnameMap(hostnames, baseDomain) {
     }
     
     // Store with the domain explicitly appended
-    if (!normalizedHostname.endsWith(normalizedBaseDomain) &&
+    // Ensure normalizedHostname is a string before calling string methods
+    if (typeof normalizedHostname === 'string' && 
+        normalizedBaseDomain && 
+        !normalizedHostname.endsWith(normalizedBaseDomain) &&
         !normalizedHostname.includes('.')) {
       const withDomain = `${normalizedHostname}.${normalizedBaseDomain}`;
       hostnameMap.set(withDomain, hostname);

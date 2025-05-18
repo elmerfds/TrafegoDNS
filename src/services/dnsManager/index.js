@@ -23,10 +23,54 @@ class DNSManager {
   constructor(config, eventBus) {
     this.config = config;
     this.eventBus = eventBus;
-    this.dnsProvider = DNSProviderFactory.createProvider(config);
+    
+    // Initialize DNS provider with defensive error handling
+    try {
+      this.dnsProvider = DNSProviderFactory.createProvider(config);
+      logger.debug('DNS Provider initialized successfully');
+    } catch (providerError) {
+      logger.error(`Failed to initialize DNS Provider: ${providerError.message}`);
+      this.dnsProvider = null; // Ensure we don't have an undefined provider
+    }
     
     // Initialize record tracker (legacy system - kept for backward compatibility)
-    this.recordTracker = new RecordTracker(config);
+    try {
+      this.recordTracker = new RecordTracker(config);
+      logger.debug('Record Tracker initialized successfully');
+      
+      // Ensure all necessary properties exist on the record tracker
+      if (!this.recordTracker.managedHostnames) {
+        this.recordTracker.managedHostnames = [];
+        logger.debug('Initialized empty managedHostnames array in record tracker');
+      }
+      
+      if (!this.recordTracker.preservedHostnames) {
+        this.recordTracker.preservedHostnames = [];
+        logger.debug('Initialized empty preservedHostnames array in record tracker');
+      }
+      
+      if (!this.recordTracker.data) {
+        this.recordTracker.data = { providers: {} };
+        logger.debug('Initialized empty data object in record tracker');
+      }
+    } catch (trackerError) {
+      logger.error(`Failed to initialize Record Tracker: ${trackerError.message}`);
+      // Create a minimal record tracker object to prevent undefined errors
+      this.recordTracker = {
+        managedHostnames: [],
+        preservedHostnames: [],
+        data: { providers: {} },
+        isTracked: () => false,
+        trackRecord: () => false,
+        isRecordOrphaned: () => false,
+        markRecordOrphaned: () => false,
+        unmarkRecordOrphaned: () => false,
+        untrackRecord: () => false,
+        shouldPreserveHostname: () => false,
+        getRecordOrphanedTime: () => new Date(),
+        trackAllActiveRecords: () => 0
+      };
+    }
     
     // Repository manager will be initialized during init()
     this.repositoryManager = null;
@@ -55,8 +99,15 @@ class DNSManager {
     // Last active hostnames to check for orphaned records - initialize as empty array to avoid undefined
     this.lastActiveHostnames = [];
     
-    // Subscribe to relevant events
-    setupEventSubscriptions(this.eventBus, this.processHostnames.bind(this));
+    // Subscribe to relevant events with error handling
+    try {
+      setupEventSubscriptions(this.eventBus, this.processHostnames.bind(this));
+      logger.debug('Event subscriptions set up successfully');
+    } catch (eventError) {
+      logger.error(`Failed to set up event subscriptions: ${eventError.message}`);
+    }
+    
+    logger.debug('DNSManager constructor completed');
   }
   
   /**
@@ -116,19 +167,38 @@ class DNSManager {
       // Log the cleanup interval
       logger.info(`Starting orphaned DNS record cleanup timer with interval of ${this.cleanupInterval / 60000} minutes`);
       
-      // Run an initial cleanup to catch any orphaned records right away, but with a longer delay
-      // to ensure application is fully initialized
+      // Run an initial cleanup with a much longer delay (2 minutes)
+      // This ensures that the application is fully initialized and has had time
+      // to collect initial hostnames before attempting orphaned record cleanup
+      const initialDelay = 120000; // 2 minutes
+      logger.info(`Scheduling initial orphaned record cleanup with ${initialDelay/1000} second delay to ensure proper initialization`);
+      
       setTimeout(() => {
         try {
+          // Double-check that we have the necessary components initialized
+          if (!this.dnsProvider) {
+            logger.warn('DNS Provider not initialized for orphaned record cleanup, skipping');
+            return;
+          }
+          if (!this.recordTracker) {
+            logger.warn('Record Tracker not initialized for orphaned record cleanup, skipping');
+            return;
+          }
+          logger.info('Running initial orphaned record cleanup after startup delay');
           this.cleanupOrphanedRecordsWithLastHostnames();
         } catch (cleanupError) {
           logger.error(`Error in initial orphaned record cleanup: ${cleanupError.message}`);
         }
-      }, 60000); // Start with a 60-second delay after initialization
+      }, initialDelay);
       
-      // Set up the interval for regular cleanups
+      // Set up the interval for regular cleanups with proper error handling
       this.orphanedRecordCleanupTimer = setInterval(() => {
         try {
+          // Always validate components before cleanup
+          if (!this.dnsProvider || !this.recordTracker) {
+            logger.warn('Required components not initialized for orphaned record cleanup, skipping');
+            return;
+          }
           this.cleanupOrphanedRecordsWithLastHostnames();
         } catch (cleanupError) {
           logger.error(`Error in scheduled orphaned record cleanup: ${cleanupError.message}`);
@@ -148,6 +218,33 @@ class DNSManager {
     try {
       logger.debug('Running scheduled orphaned record cleanup check');
       
+      // Validate all required components are available before proceeding
+      if (!this.dnsProvider) {
+        logger.warn('DNS Provider not available for orphaned record cleanup, skipping');
+        return;
+      }
+      
+      if (!this.recordTracker) {
+        logger.warn('Record Tracker not available for orphaned record cleanup, skipping');
+        return;
+      }
+      
+      if (!this.config) {
+        logger.warn('Configuration not available for orphaned record cleanup, skipping');
+        return;
+      }
+      
+      // Ensure lastActiveHostnames is an array
+      if (!this.lastActiveHostnames || !Array.isArray(this.lastActiveHostnames)) {
+        logger.warn('lastActiveHostnames is not an array, initializing empty array');
+        this.lastActiveHostnames = [];
+      }
+      
+      // Initialize loggedPreservedRecords if needed
+      if (!this.loggedPreservedRecords) {
+        this.loggedPreservedRecords = new Set();
+      }
+      
       // Import the specific orphanedRecordCleaner module
       const { cleanupOrphanedRecords } = require('./orphanedRecordCleaner');
       
@@ -164,6 +261,7 @@ class DNSManager {
       logger.debug('Scheduled orphaned record cleanup complete');
     } catch (error) {
       logger.error(`Failed to run orphaned record cleanup: ${error.message}`);
+      logger.debug(`Error stack: ${error.stack}`);
     }
   }
   
@@ -375,7 +473,19 @@ class DNSManager {
    */
   async processManagedHostnames() {
     try {
-      const result = await processManagedHostnames(this.config, this.dnsProvider, this.trackRecord.bind(this));
+      // Ensure recordTracker is initialized and has managedHostnames array before calling processor
+      if (!this.recordTracker) {
+        logger.warn('Record tracker not initialized, skipping managed hostnames processing');
+        return { success: false, error: 'Record tracker not initialized' };
+      }
+      
+      // Initialize managedHostnames array if it doesn't exist
+      if (!this.recordTracker.managedHostnames) {
+        this.recordTracker.managedHostnames = [];
+        logger.debug('Initialized empty managedHostnames array in record tracker');
+      }
+      
+      const result = await processManagedHostnames(this.dnsProvider, this.recordTracker);
       return result;
     } catch (error) {
       logger.error(`Failed to process managed hostnames: ${error.message}`);

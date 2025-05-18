@@ -137,8 +137,14 @@ async function cleanupOrphanedRecords(
       }
 
       // Also check if this record is in the managed hostnames list
-      if (recordTracker.managedHostnames &&
-          recordTracker.managedHostnames.some(h => h.hostname.toLowerCase() === recordFqdn.toLowerCase())) {
+      // Use extra checks to prevent undefined errors
+      if (recordTracker && recordTracker.managedHostnames && 
+          Array.isArray(recordTracker.managedHostnames) &&
+          recordFqdn && // Ensure recordFqdn is defined
+          recordTracker.managedHostnames.some(h => h && h.hostname && 
+                                             typeof h.hostname === 'string' &&
+                                             typeof recordFqdn === 'string' &&
+                                             h.hostname.toLowerCase() === recordFqdn.toLowerCase())) {
         // Create a unique key for this record for tracking log messages
         const recordKey = `${recordFqdn}-${record.type}-managed`;
 
