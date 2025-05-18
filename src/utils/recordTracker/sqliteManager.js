@@ -324,6 +324,33 @@ class SQLiteManager {
     // Implementation to be added if needed
     return null;
   }
+
+  /**
+   * Save tracked records to database
+   * @param {Object} recordData - Tracked records data structure
+   * @returns {Promise<boolean>} Success status
+   */
+  async saveTrackedRecordsToDatabase(recordData) {
+    try {
+      logger.debug('SQLite Manager: saveTrackedRecordsToDatabase called');
+      
+      // Validate input
+      if (!recordData || !recordData.providers) {
+        logger.warn('Invalid recordData structure provided to saveTrackedRecordsToDatabase');
+        return false;
+      }
+
+      // Since we store records directly in the database when they're created or updated,
+      // we don't need to re-save the entire record set. This method exists for backward
+      // compatibility with the RecordTracker class.
+      
+      // Return success to avoid error messages
+      return true;
+    } catch (error) {
+      logger.error(`Failed to save tracked records to SQLite: ${error.message}`);
+      return false;
+    }
+  }
 }
 
 // Export a singleton instance

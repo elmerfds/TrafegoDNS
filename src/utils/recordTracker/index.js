@@ -180,7 +180,8 @@ class RecordTracker {
       // Try to initialize SQLite again
       try {
         if (database && database.isInitialized()) {
-          this.sqliteManager = new SQLiteRecordManager(database);
+          // Use the singleton SQLiteManager instance (not instantiate new one)
+          this.sqliteManager = require('./sqliteManager');
           this.usingSQLite = this.sqliteManager.initialize();
           
           if (this.usingSQLite) {

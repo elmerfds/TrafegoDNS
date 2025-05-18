@@ -420,9 +420,10 @@ class DNSManager {
               logger.debug(`Updated existing record tracking for ${record.name} (${record.type})`);
             } else {
               // Add new record to tracker - always mark as app managed for newly created records
+              // This is appropriate since we're creating these records in response to active hostnames
               const success = await this.trackRecord(record, true);
               if (success) {
-                logger.info(`Successfully tracked new record ${record.name} (${record.type})`);
+                logger.info(`Successfully tracked new record ${record.name} (${record.type}) with appManaged=true (this is a newly created record)`);
               } else {
                 logger.error(`Failed to track new record ${record.name} (${record.type})`);
               }
@@ -618,13 +619,17 @@ class DNSManager {
               
               // Check if the hostname matches any of our active hostnames
               let matchFound = false;
+              
+              logger.debug(`Checking DNS record ${record.name} (${record.type}) against ${currentHostnames.length} active hostnames`);
+              
               for (const activeHostname of currentHostnames) {
                 // Perform exact matches only to avoid incorrect flagging
                 // Only consider exact hostname matches or exact FQDN matches
                 if (activeHostname === hostname || activeHostname === record.name) {
                   // Mark this record to be managed by the app
                   recordsToMarkAsManaged.set(record.id, record);
-                  logger.info(`🔍 Found matching DNS record for active hostname: ${hostname}`);
+                  logger.info(`🔍 Found matching DNS record for active hostname: ${hostname} (${record.type})`);
+                  logger.debug(`Match details: activeHostname="${activeHostname}", hostname="${hostname}", record.name="${record.name}"`);
                   matchFound = true;
                   break;
                 }
@@ -651,8 +656,13 @@ class DNSManager {
         logger.info('🔒 First run detected: marking pre-existing DNS records as NOT app-managed by default for safety');
       }
       
-      // Determine whether to mark records as app-managed based on first run
-      const defaultMarkAsAppManaged = !isFirstRun;
+      // We should ALWAYS set defaultMarkAsAppManaged to false (not true)
+      // Records should only be marked as app-managed if they match active hostnames
+      // regardless of whether this is the first run or not
+      const defaultMarkAsAppManaged = false;
+      
+      logger.info(`Setting default markAsAppManaged: ${defaultMarkAsAppManaged} (records will only be marked as app-managed if explicitly matched to active hostnames)`);
+      
       
       // ------------------------
       // Update repository if available
@@ -731,7 +741,7 @@ class DNSManager {
       }
       
       if (trackedCount > 0) {
-        logger.info(`Added ${trackedCount} pre-existing DNS records to tracker`);
+        logger.info(`Added ${trackedCount} pre-existing DNS records to tracker (with default appManaged=${defaultMarkAsAppManaged})`);
       }
       
       return { 
