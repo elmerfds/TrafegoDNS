@@ -353,6 +353,9 @@ class DNSManager {
       // Update last active hostnames
       this.lastActiveHostnames = hostnames || [];
       
+      // Mark existing records as app-managed if they match active hostnames
+      await this.updateExistingRecordsForActiveHostnames(hostnames || []);
+      
       // Generate batch operations for the provider
       let batchResult;
       try {
@@ -1047,6 +1050,166 @@ class DNSManager {
     }
   }
   
+  /**
+   * Mark existing DNS records as app-managed if they match active hostnames
+   * This ensures that after initialization, records that match hostnames are properly
+   * marked as app-managed so they can be cleaned up if they become orphaned
+   * @param {Array<string>} activeHostnames - List of active hostnames from Traefik/Docker
+   */
+  async updateExistingRecordsForActiveHostnames(activeHostnames) {
+    try {
+      if (!activeHostnames || activeHostnames.length === 0) {
+        logger.debug('No active hostnames to check against existing records');
+        return;
+      }
+      
+      logger.debug(`Checking ${activeHostnames.length} active hostnames against existing DNS records`);
+      
+      // Get all records from the provider
+      const allRecords = await this.dnsProvider.getRecordsFromCache(false);
+      
+      if (!allRecords || !Array.isArray(allRecords) || allRecords.length === 0) {
+        logger.debug('No DNS records found in cache to update appManaged status');
+        return;
+      }
+      
+      // Create normalized versions of hostnames for matching
+      const normalizedActiveHostnames = activeHostnames.map(h => {
+        // Convert to lowercase and trim whitespace
+        const normalized = h ? h.trim().toLowerCase() : '';
+        
+        // Add domain if needed
+        if (normalized && !normalized.includes('.')) {
+          return `${normalized}.${this.config.getProviderDomain()}`;
+        }
+        return normalized;
+      }).filter(Boolean); // Remove empty values
+      
+      // Log the normalized hostnames at debug level
+      logger.debug(`Normalized active hostnames: ${normalizedActiveHostnames.join(', ')}`);
+      
+      // Keep track of records we update
+      let updatedCount = 0;
+      
+      // Check each record against active hostnames
+      for (const record of allRecords) {
+        if (!record || !record.name || !record.type || !record.id) {
+          continue; // Skip invalid records
+        }
+        
+        // Normalize record name
+        const normalizedRecordName = record.name.trim().toLowerCase();
+        
+        // Check if this record matches any active hostname (exact match)
+        const matchingHostname = normalizedActiveHostnames.find(hostname => 
+          hostname === normalizedRecordName || 
+          // Also check with the domain removed if it's a subdomain
+          hostname === normalizedRecordName.replace(`.${this.config.getProviderDomain()}`, '')
+        );
+        
+        if (matchingHostname) {
+          // This record matches an active hostname - check if it's already marked as app-managed
+          const isAppManaged = await this.isRecordAppManaged(record);
+          
+          if (!isAppManaged) {
+            // Mark as app-managed since it matches an active hostname
+            await this.updateRecordAppManaged(record, true);
+            logger.info(`Marked existing record ${record.name} (${record.type}) as app-managed because it matches active hostname: ${matchingHostname}`);
+            updatedCount++;
+          }
+        }
+      }
+      
+      if (updatedCount > 0) {
+        logger.info(`Updated ${updatedCount} existing DNS records to appManaged=true because they match active hostnames`);
+      } else {
+        logger.debug('No DNS records needed appManaged status update');
+      }
+      
+    } catch (error) {
+      logger.error(`Failed to update existing records for active hostnames: ${error.message}`);
+    }
+  }
+  
+  /**
+   * Check if a record is marked as app-managed
+   * @param {Object} record - The record to check
+   * @returns {Promise<boolean>} Whether the record is app-managed
+   */
+  async isRecordAppManaged(record) {
+    try {
+      if (!record || !record.id) {
+        return false;
+      }
+      
+      // Check with repository manager if available
+      if (this.repositoryManager) {
+        try {
+          const metadata = await this.repositoryManager.managedRecords.getRecordMetadata(
+            this.dnsProvider.name, record.id
+          );
+          return metadata && metadata.appManaged === true;
+        } catch (repoError) {
+          logger.debug(`Failed to get app-managed status from repository: ${repoError.message}`);
+        }
+      }
+      
+      // Fall back to record tracker
+      return this.recordTracker.isRecordAppManaged(record);
+    } catch (error) {
+      logger.error(`Failed to check if record is app-managed: ${error.message}`);
+      return false;
+    }
+  }
+  
+  /**
+   * Update a record's app-managed status
+   * @param {Object} record - The record to update
+   * @param {boolean} isAppManaged - Whether the record should be marked as app-managed
+   * @returns {Promise<boolean>} Success status
+   */
+  async updateRecordAppManaged(record, isAppManaged) {
+    try {
+      if (!record || !record.id) {
+        return false;
+      }
+      
+      // Update with repository manager if available
+      if (this.repositoryManager) {
+        try {
+          // Get current metadata
+          const currentMetadata = await this.repositoryManager.managedRecords.getRecordMetadata(
+            this.dnsProvider.name, record.id
+          ) || {};
+          
+          // Update app-managed status
+          const newMetadata = {
+            ...currentMetadata,
+            appManaged: isAppManaged,
+            updatedAt: new Date().toISOString()
+          };
+          
+          // Save updated metadata
+          const success = await this.repositoryManager.managedRecords.updateRecordMetadata(
+            this.dnsProvider.name, record.id, JSON.stringify(newMetadata)
+          );
+          
+          if (success) {
+            return true;
+          }
+        } catch (repoError) {
+          logger.debug(`Failed to update app-managed status in repository: ${repoError.message}`);
+        }
+      }
+      
+      // Fall back to record tracker
+      return this.recordTracker.updateRecordAppManaged(record, isAppManaged);
+    } catch (error) {
+      logger.error(`Failed to update record app-managed status: ${error.message}`);
+      return false;
+    }
+  }
+
   /**
    * Check if provider cache needs refresh
    */

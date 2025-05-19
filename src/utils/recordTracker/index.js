@@ -527,6 +527,105 @@ class RecordTracker {
   getCurrentProviderRecords() {
     return getCurrentProviderRecords(this.data, this.provider);
   }
+  
+  /**
+   * Check if a record is marked as app-managed
+   * @param {Object} record - Record to check
+   * @returns {Promise<boolean>} Whether the record is app-managed
+   */
+  async isRecordAppManaged(record) {
+    try {
+      // Check if this record is tracked
+      const isTracked = await this.isTracked(record);
+      if (!isTracked) {
+        return false;
+      }
+      
+      // Get the record ID
+      const recordId = record.id;
+      
+      // Try SQLite first if available
+      if (this.sqliteManager && this.sqliteManager.repository && this.sqliteManager.repository.isAppManaged) {
+        try {
+          return await this.sqliteManager.repository.isAppManaged(this.provider, recordId);
+        } catch (error) {
+          logger.debug(`Failed to check if record is app-managed in SQLite: ${error.message}`);
+        }
+      }
+      
+      // Fall back to in-memory check
+      const providerData = this.data?.providers?.[this.provider];
+      const recordData = providerData?.records?.[recordId];
+      
+      return !!(recordData && recordData.metadata && recordData.metadata.appManaged === true);
+    } catch (error) {
+      logger.error(`Failed to check if record is app-managed: ${error.message}`);
+      return false;
+    }
+  }
+  
+  /**
+   * Update a record's app-managed status
+   * @param {Object} record - Record to update
+   * @param {boolean} isAppManaged - Whether the record should be app-managed
+   * @returns {Promise<boolean>} Success status
+   */
+  async updateRecordAppManaged(record, isAppManaged) {
+    try {
+      // Check if this record is tracked
+      const isTracked = await this.isTracked(record);
+      
+      if (!isTracked) {
+        // Track it first
+        await this.trackRecord(record, isAppManaged);
+        return true;
+      }
+      
+      // Get the record ID
+      const recordId = record.id;
+      
+      // Try SQLite first if available
+      if (this.sqliteManager && this.sqliteManager.repository && this.sqliteManager.repository.updateRecordMetadata) {
+        try {
+          // Get current metadata
+          const currentMetadata = await this.sqliteManager.repository.getRecordMetadata(this.provider, recordId) || {};
+          
+          // Update app-managed status
+          const newMetadata = {
+            ...currentMetadata,
+            appManaged: isAppManaged,
+            updatedAt: new Date().toISOString()
+          };
+          
+          // Save updated metadata
+          await this.sqliteManager.repository.updateRecordMetadata(this.provider, recordId, JSON.stringify(newMetadata));
+          return true;
+        } catch (error) {
+          logger.debug(`Failed to update record app-managed status in SQLite: ${error.message}`);
+        }
+      }
+      
+      // Fall back to in-memory update
+      if (this.data?.providers?.[this.provider]?.records?.[recordId]) {
+        // Update metadata
+        if (!this.data.providers[this.provider].records[recordId].metadata) {
+          this.data.providers[this.provider].records[recordId].metadata = {};
+        }
+        
+        this.data.providers[this.provider].records[recordId].metadata.appManaged = isAppManaged;
+        this.data.providers[this.provider].records[recordId].metadata.updatedAt = new Date().toISOString();
+        
+        // Save to disk
+        await this.saveTrackedRecords();
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      logger.error(`Failed to update record app-managed status: ${error.message}`);
+      return false;
+    }
+  }
 
   /**
    * Track all active records from the provider

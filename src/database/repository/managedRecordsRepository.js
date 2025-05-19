@@ -196,10 +196,79 @@ class ManagedRecordsRepository {
         SELECT id FROM ${this.tableName}
         WHERE provider = ? AND type = ? AND name = ?
       `, [provider, type, name]);
-
+      
       return !!record;
     } catch (error) {
       logger.error(`Failed to check if record is tracked by type and name: ${error.message}`);
+      return false;
+    }
+  }
+      
+  /**
+   * Get record metadata
+   * @param {string} provider - DNS provider name
+   * @param {string} recordId - Record ID
+   * @returns {Promise<Object|null>} - Record metadata or null
+   */
+  async getRecordMetadata(provider, recordId) {
+    try {
+      const record = await this.db.get(`
+        SELECT metadata FROM ${this.tableName}
+        WHERE provider = ? AND record_id = ?
+      `, [provider, recordId]);
+
+      if (!record || !record.metadata) {
+        return null;
+      }
+
+      try {
+        return JSON.parse(record.metadata);
+      } catch (parseError) {
+        logger.error(`Failed to parse record metadata: ${parseError.message}`);
+        return null;
+      }
+    } catch (error) {
+      logger.error(`Failed to get record metadata: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Update record metadata
+   * @param {string} provider - DNS provider name
+   * @param {string} recordId - Record ID
+   * @param {string} metadata - JSON string of metadata
+   * @returns {Promise<boolean>} - Success status
+   */
+  async updateRecordMetadata(provider, recordId, metadata) {
+    try {
+      const now = new Date().toISOString();
+
+      const result = await this.db.run(`
+        UPDATE ${this.tableName}
+        SET metadata = ?, updated_at = ?
+        WHERE provider = ? AND record_id = ?
+      `, [metadata, now, provider, recordId]);
+
+      return result.changes > 0;
+    } catch (error) {
+      logger.error(`Failed to update record metadata: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Check if a record is app managed
+   * @param {string} provider - DNS provider name
+   * @param {string} recordId - Record ID
+   * @returns {Promise<boolean>} - Whether the record is app managed
+   */
+  async isAppManaged(provider, recordId) {
+    try {
+      const metadata = await this.getRecordMetadata(provider, recordId);
+      return metadata && metadata.appManaged === true;
+    } catch (error) {
+      logger.error(`Failed to check if record is app managed: ${error.message}`);
       return false;
     }
   }
