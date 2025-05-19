@@ -265,11 +265,14 @@ async function syncProviderToTracked(db) {
       
       for (const record of newRecords) {
         // Create metadata
+        // IMPORTANT: Never mark pre-existing records as app-managed during initial migrations
+        // This would cause them to be deleted as orphaned if they don't match active hostnames
         const metadata = JSON.stringify({
-          appManaged: false,
+          appManaged: false, // Always false for safety - only records that match hostnames should be marked as managed
           autoTracked: true,
           trackedAt: now,
-          source: 'provider_cache'
+          source: 'provider_cache',
+          importedByMigration: true
         });
         
         await db.run(`

@@ -85,6 +85,13 @@ class RecordTracker {
       this.usingSQLite = false;
     }
 
+    // Display important info message about DNS record management behavior
+    logger.info("--- IMPORTANT DNS RECORD MANAGEMENT BEHAVIOR ---");
+    logger.info("TrafegoDNS only marks DNS records as app-managed if they exactly match active hostnames from Traefik or Docker");
+    logger.info("Records not marked as app-managed will be preserved and NEVER deleted during cleanup");
+    logger.info("This prevents accidental deletion of important records like MX, TXT, etc.");
+    logger.info("-----------------------------------------------");
+    
     // Initialize the tracker - this will be done asynchronously
     // We'll use "initialized" flag to track completion status
     this._initializeTracker();

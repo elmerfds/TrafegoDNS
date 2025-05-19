@@ -278,10 +278,10 @@ async function getTrackedRecordRepository(options = {}) {
  * Saves a record to the DNS tracked record repository
  * @param {string} provider - The DNS provider name
  * @param {Object} record - The record to save
- * @param {boolean} [isAppManaged=true] - Whether this record is managed by the app
+ * @param {boolean} [isAppManaged=false] - Whether this record is managed by the app - DEFAULT IS FALSE FOR SAFETY
  * @returns {Promise<boolean>} Success status
  */
-async function trackRecord(provider, record, isAppManaged = true) {
+async function trackRecord(provider, record, isAppManaged = false) {
   try {
     // Format the record for tracking
     const formattedRecord = {

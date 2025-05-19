@@ -45,10 +45,12 @@ async function createRecord(client, zoneId, record, updateRecordInCache) {
     try {
       // Import DNS Manager Bridge for direct tracking
       const dnsManagerBridge = require('../../database/repository/dnsManagerBridge');
+      // Records we directly create should be marked as app-managed=true
+      // since these records were explicitly created by the application
       const trackSuccess = await dnsManagerBridge.trackRecord(record.provider || 'cloudflare', createdRecord, true);
       
       if (trackSuccess) {
-        logger.debug(`Immediately tracked newly created record ${record.name} in database`);
+        logger.debug(`Immediately tracked newly created record ${record.name} in database with appManaged=true`);
       } else {
         logger.warn(`Failed to immediately track newly created record ${record.name} via bridge - will be tracked on next dnsManager cycle`);
       }
@@ -110,10 +112,12 @@ async function updateRecord(client, zoneId, id, record, updateRecordInCache) {
     try {
       // Import DNS Manager Bridge for direct tracking
       const dnsManagerBridge = require('../../database/repository/dnsManagerBridge');
+      // Records we directly update should be marked as app-managed=true
+      // since these records were explicitly modified by the application
       const trackSuccess = await dnsManagerBridge.trackRecord(record.provider || 'cloudflare', updatedRecord, true);
       
       if (trackSuccess) {
-        logger.debug(`Immediately tracked updated record ${record.name} in database`);
+        logger.debug(`Immediately tracked updated record ${record.name} in database with appManaged=true`);
       } else {
         logger.warn(`Failed to immediately track updated record ${record.name} via bridge - will be tracked on next dnsManager cycle`);
       }
