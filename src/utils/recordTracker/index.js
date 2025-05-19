@@ -566,9 +566,10 @@ class RecordTracker {
 
         if (!isAlreadyTracked) {
           // Determine if this specific record should be marked as managed
-          // This allows selectively marking records as managed on first run if they match active hostnames
-          const shouldBeManaged = hasSpecificRecordsToMark && recordsToMarkAsManaged.has(record.id) ? 
-            true : markAsAppManaged;
+          // Only mark records as app-managed if they specifically match active hostnames
+          // We should never use the default markAsAppManaged value if we have specific records to mark
+          const shouldBeManaged = hasSpecificRecordsToMark ? 
+            recordsToMarkAsManaged.has(record.id) : markAsAppManaged;
             
           // Count specifically managed records for logging
           if (hasSpecificRecordsToMark && shouldBeManaged) {

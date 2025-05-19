@@ -2,6 +2,12 @@
  * DNS Manager Service - Main Module
  * Responsible for managing DNS records through the selected provider
  * This is a modular implementation that orchestrates specialized sub-modules
+ * 
+ * IMPORTANT BEHAVIOR:
+ * - Only DNS records that EXACTLY match active hostnames from Traefik/Docker will be marked as app-managed
+ * - Records that aren't marked as app-managed will NOT be deleted during cleanup
+ * - During initialization, default markAsAppManaged is set to false for safety
+ * - All provider DNS records are tracked, but not all are marked as app-managed
  */
 const { DNSProviderFactory } = require('../../providers');
 const logger = require('../../utils/logger');
@@ -622,13 +628,23 @@ class DNSManager {
               
               logger.debug(`Checking DNS record ${record.name} (${record.type}) against ${currentHostnames.length} active hostnames`);
               
+              // Normalize record hostname for better comparison
+              const normalizedRecordHostname = hostname ? hostname.toLowerCase() : '';
+              const normalizedRecordName = record.name ? record.name.toLowerCase() : '';
+              
               for (const activeHostname of currentHostnames) {
-                // Perform exact matches only to avoid incorrect flagging
-                // Only consider exact hostname matches or exact FQDN matches
-                if (activeHostname === hostname || activeHostname === record.name) {
+                if (!activeHostname) continue; // Skip empty hostnames
+                
+                // Normalize active hostname
+                const normalizedActiveHostname = activeHostname.toLowerCase();
+                
+                // Only perform EXACT matching - no partial matches allowed
+                // This ensures only records that exactly match active hostnames are marked as app-managed
+                if (normalizedActiveHostname === normalizedRecordHostname || 
+                    normalizedActiveHostname === normalizedRecordName) {
                   // Mark this record to be managed by the app
                   recordsToMarkAsManaged.set(record.id, record);
-                  logger.info(`🔍 Found matching DNS record for active hostname: ${hostname} (${record.type})`);
+                  logger.info(`🔍 Found exact matching DNS record for active hostname: ${hostname} (${record.type})`);
                   logger.debug(`Match details: activeHostname="${activeHostname}", hostname="${hostname}", record.name="${record.name}"`);
                   matchFound = true;
                   break;
@@ -661,7 +677,14 @@ class DNSManager {
       // regardless of whether this is the first run or not
       const defaultMarkAsAppManaged = false;
       
-      logger.info(`Setting default markAsAppManaged: ${defaultMarkAsAppManaged} (records will only be marked as app-managed if explicitly matched to active hostnames)`);
+      logger.info(`Setting default markAsAppManaged: ${defaultMarkAsAppManaged} - IMPORTANT: Only DNS records that EXACTLY match active hostnames from Traefik/Docker will be marked as app-managed`);
+      
+      // Log this clearly to avoid confusion
+      if (recordsToMarkAsManaged.size > 0) {
+        logger.info(`Records that match active hostnames: ${recordsToMarkAsManaged.size} of ${records.length} will be marked as app-managed`);
+      } else {
+        logger.info(`No DNS records match active hostnames, none will be automatically marked as app-managed`);
+      }
       
       
       // ------------------------
@@ -694,8 +717,9 @@ class DNSManager {
               recordToTrack.provider = recordToTrack.provider || 'unknown';
 
               // Determine if this record should be marked as app-managed
-              const shouldBeManaged = isFirstRun && recordsToMarkAsManaged.has(record.id) ? 
-                true : defaultMarkAsAppManaged;
+              // Only mark as managed if it's in the recordsToMarkAsManaged map
+              // This ensures we ONLY mark records as app-managed if they exactly match active hostnames
+              const shouldBeManaged = recordsToMarkAsManaged.has(record.id);
                 
               // If marking as managed, count it
               if (shouldBeManaged) {
