@@ -118,10 +118,18 @@ async function processHostnames(hostnames, containerLabels, config, stats) {
  * Ensure a hostname is a fully qualified domain name
  */
 function ensureFqdn(hostname, zone) {
-  if (hostname.includes('.')) {
-    return hostname;
+  // Handle undefined or null inputs
+  if (!hostname || !zone) {
+    return hostname || '';
   }
-  return `${hostname}.${zone}`;
+  
+  // Convert to string to ensure we can call includes
+  const hostnameStr = String(hostname);
+  
+  if (hostnameStr.includes('.')) {
+    return hostnameStr;
+  }
+  return `${hostnameStr}.${zone}`;
 }
 
 module.exports = {

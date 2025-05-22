@@ -107,10 +107,16 @@ class DNSManager {
     
     // Subscribe to relevant events with error handling
     try {
-      setupEventSubscriptions(this.eventBus, this.processHostnames.bind(this));
-      logger.debug('Event subscriptions set up successfully');
+      // Ensure eventBus exists before setting up subscriptions
+      if (this.eventBus) {
+        setupEventSubscriptions(this.eventBus, this.processHostnames.bind(this));
+        logger.debug('Event subscriptions set up successfully');
+      } else {
+        logger.warn('No event bus available, skipping event subscriptions');
+      }
     } catch (eventError) {
       logger.error(`Failed to set up event subscriptions: ${eventError.message}`);
+      logger.debug(`Event subscription error stack: ${eventError.stack}`);
     }
     
     logger.debug('DNSManager constructor completed');
