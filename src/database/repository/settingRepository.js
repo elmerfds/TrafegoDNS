@@ -21,7 +21,7 @@ class SettingRepository extends BaseRepository {
       const tableExists = await this.tableExists();
 
       if (!tableExists) {
-        logger.info(`Creating ${this.tableName} table`);
+        logger.info(`Creating ${this.tableName} table...`);
 
         await this.db.run(`
           CREATE TABLE IF NOT EXISTS ${this.tableName} (
@@ -36,6 +36,8 @@ class SettingRepository extends BaseRepository {
         await this.db.run(`CREATE INDEX IF NOT EXISTS idx_settings_key ON ${this.tableName}(key)`);
 
         logger.info(`Created ${this.tableName} table and indexes`);
+      } else {
+        logger.debug(`${this.tableName} table already exists`);
       }
     } catch (error) {
       logger.error(`Failed to initialize ${this.tableName} table: ${error.message}`);
@@ -54,9 +56,12 @@ class SettingRepository extends BaseRepository {
         WHERE type='table' AND name=?
       `, [this.tableName]);
 
-      return !!result;
+      const exists = !!result;
+      logger.debug(`Table ${this.tableName} exists check: ${exists}`);
+      return exists;
     } catch (error) {
       logger.error(`Failed to check if table exists: ${error.message}`);
+      // If we can't check, assume it doesn't exist to trigger creation
       return false;
     }
   }

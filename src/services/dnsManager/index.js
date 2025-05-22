@@ -353,8 +353,12 @@ class DNSManager {
       // Update last active hostnames
       this.lastActiveHostnames = hostnames || [];
       
-      // Mark existing records as app-managed if they match active hostnames
-      await this.updateExistingRecordsForActiveHostnames(hostnames || []);
+      // Only update existing records on first run or if explicitly needed
+      // This prevents re-marking records as app-managed on every restart
+      if (global.isFirstRun === true) {
+        logger.debug('First run detected, will update existing records for active hostnames');
+        await this.updateExistingRecordsForActiveHostnames(hostnames || []);
+      }
       
       // Generate batch operations for the provider
       let batchResult;
