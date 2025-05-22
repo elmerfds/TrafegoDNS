@@ -105,7 +105,17 @@ class DNSTrackedRecordRepository {
   async trackRecord(record) {
     try {
       const now = new Date().toISOString();
-      const metadata = record.metadata ? JSON.stringify(record.metadata) : null;
+      // Check if metadata is already a string (it shouldn't be double stringified)
+      let metadata = null;
+      if (record.metadata) {
+        if (typeof record.metadata === 'string') {
+          // If it's already a string, use it as is
+          metadata = record.metadata;
+        } else {
+          // If it's an object, stringify it
+          metadata = JSON.stringify(record.metadata);
+        }
+      }
       
       // Validate required parameters to prevent NOT NULL constraint failures
       if (!record.provider) {

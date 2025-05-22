@@ -292,10 +292,10 @@ async function trackRecord(provider, record, isAppManaged = false) {
       content: record.content || '',
       ttl: record.ttl || 1,
       proxied: record.proxied === true ? 1 : 0,
-      metadata: JSON.stringify({
+      metadata: {
         appManaged: isAppManaged,
         trackedAt: new Date().toISOString()
-      })
+      }
     };
     
     // Try getting a repository - this will create one if none exists

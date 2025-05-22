@@ -623,8 +623,34 @@ class DNSManager {
             for (const record of records) {
               if (!record || !record.name) continue;
               
+              // Only consider A and CNAME records for app management
+              // MX, TXT, and other record types should never be automatically marked as app-managed
+              // unless explicitly created by the app (which would be tracked differently)
+              if (record.type !== 'A' && record.type !== 'CNAME') {
+                logger.debug(`Skipping ${record.type} record ${record.name} - only A/CNAME records are considered for app management`);
+                continue;
+              }
+              
               // Extract the hostname part of the record name (remove provider zone)
-              const hostname = record.name.replace(`.${this.config.getProviderDomain()}`, '');
+              const providerDomain = this.config.getProviderDomain();
+              let hostname = record.name;
+              
+              // Handle apex domain records properly
+              if (record.name === providerDomain) {
+                // This is an apex record (e.g., example.com)
+                // Skip it - apex records should not be automatically managed
+                logger.debug(`Skipping apex domain record ${record.name} (${record.type})`);
+                continue;
+              } else if (record.name.endsWith(`.${providerDomain}`)) {
+                // This is a subdomain record (e.g., app.example.com)
+                hostname = record.name.replace(`.${providerDomain}`, '');
+              }
+              
+              // Skip if hostname is empty or undefined (safety check)
+              if (!hostname) {
+                logger.debug(`Skipping record ${record.name} - empty hostname after processing`);
+                continue;
+              }
               
               // Check if the hostname matches any of our active hostnames
               let matchFound = false;
@@ -632,8 +658,8 @@ class DNSManager {
               logger.debug(`Checking DNS record ${record.name} (${record.type}) against ${currentHostnames.length} active hostnames`);
               
               // Normalize record hostname for better comparison
-              const normalizedRecordHostname = hostname ? hostname.toLowerCase() : '';
-              const normalizedRecordName = record.name ? record.name.toLowerCase() : '';
+              const normalizedRecordHostname = hostname.toLowerCase();
+              const normalizedRecordName = record.name.toLowerCase();
               
               for (const activeHostname of currentHostnames) {
                 if (!activeHostname) continue; // Skip empty hostnames

@@ -86,10 +86,10 @@ class SQLiteManager {
               content: record.content || '',
               ttl: record.ttl || 1,
               proxied: record.proxied === true ? 1 : 0,
-              metadata: JSON.stringify({
+              metadata: {
                 appManaged: record.metadata?.appManaged === true,
                 trackedAt: new Date().toISOString()
-              })
+              }
             });
             return true;
           }
