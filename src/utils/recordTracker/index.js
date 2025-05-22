@@ -5,6 +5,7 @@
  * Modular implementation that orchestrates specialized sub-modules
  */
 const logger = require('../logger');
+const database = require('../../database');
 
 // Import sub-modules
 const {
@@ -368,13 +369,19 @@ class RecordTracker {
         const newRecordId = newRecord.id || newRecord;
 
         // If we can identify by type and name, try that first
-        if (oldRecord.type && oldRecord.name && this.sqliteManager.repository.updateRecordByTypeAndName) {
-          const success = await this.sqliteManager.repository.updateRecordByTypeAndName(
-            this.provider,
-            oldRecord.type,
-            oldRecord.name,
-            newRecordId
-          );
+        if (oldRecord.type && oldRecord.name) {
+          // Update repository reference if needed
+          if (!this.sqliteManager.repository && database && database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.trackedRecords) {
+            this.sqliteManager.repository = database.repositories.dnsManager.trackedRecords;
+          }
+          
+          if (this.sqliteManager.repository && this.sqliteManager.repository.updateRecordByTypeAndName) {
+            const success = await this.sqliteManager.repository.updateRecordByTypeAndName(
+              this.provider,
+              oldRecord.type,
+              oldRecord.name,
+              newRecordId
+            );
 
           if (success) {
             // Also update in-memory data (use dummy key if needed)
@@ -552,9 +559,16 @@ class RecordTracker {
       const recordId = record.id;
       
       // Try SQLite first if available
-      if (this.sqliteManager && this.sqliteManager.repository && this.sqliteManager.repository.isAppManaged) {
+      if (this.sqliteManager) {
         try {
-          return await this.sqliteManager.repository.isAppManaged(this.provider, recordId);
+          // Update repository reference if needed
+          if (!this.sqliteManager.repository && database && database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.trackedRecords) {
+            this.sqliteManager.repository = database.repositories.dnsManager.trackedRecords;
+          }
+          
+          if (this.sqliteManager.repository && this.sqliteManager.repository.isAppManaged) {
+            return await this.sqliteManager.repository.isAppManaged(this.provider, recordId);
+          }
         } catch (error) {
           logger.debug(`Failed to check if record is app-managed in SQLite: ${error.message}`);
         }
@@ -592,10 +606,16 @@ class RecordTracker {
       const recordId = record.id;
       
       // Try SQLite first if available
-      if (this.sqliteManager && this.sqliteManager.repository && this.sqliteManager.repository.updateRecordMetadata) {
+      if (this.sqliteManager) {
         try {
-          // Get current metadata
-          const currentMetadata = await this.sqliteManager.repository.getRecordMetadata(this.provider, recordId) || {};
+          // Update repository reference if needed
+          if (!this.sqliteManager.repository && database && database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.trackedRecords) {
+            this.sqliteManager.repository = database.repositories.dnsManager.trackedRecords;
+          }
+          
+          if (this.sqliteManager.repository && this.sqliteManager.repository.updateRecordMetadata) {
+            // Get current metadata
+            const currentMetadata = await this.sqliteManager.repository.getRecordMetadata(this.provider, recordId) || {};
           
           // Update app-managed status
           const newMetadata = {

@@ -8,6 +8,7 @@ class SQLiteManager {
   constructor() {
     this.initialized = false;
     this.trackedRepository = null;
+    this.repository = null; // Reference to the tracked records repository
   }
   
   /**
@@ -23,6 +24,12 @@ class SQLiteManager {
         
         // We'll continue and check later if initialization completed
         logger.debug('Continuing with initialization in background');
+      }
+      
+      // Try to get the repository reference
+      if (database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.trackedRecords) {
+        this.repository = database.repositories.dnsManager.trackedRecords;
+        logger.debug('SQLite manager connected to tracked records repository');
       }
       
       // Set initialized flag - we'll check actual database status when needed
@@ -59,6 +66,11 @@ class SQLiteManager {
     
     // Validate provider
     provider = provider || 'unknown';
+    
+    // Update repository reference if needed
+    if (!this.repository && database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.trackedRecords) {
+      this.repository = database.repositories.dnsManager.trackedRecords;
+    }
     
     try {
       // Import the DNS Manager Bridge
@@ -237,10 +249,14 @@ class SQLiteManager {
     try {
       // Try using the main database first
       const mainDatabase = require('../../database');
-      if (mainDatabase && mainDatabase.isInitialized() && mainDatabase.repositories && mainDatabase.repositories.dnsTrackedRecords) {
+      if (mainDatabase && mainDatabase.isInitialized() && mainDatabase.repositories && mainDatabase.repositories.dnsManager) {
         try {
-          // Check if record exists in main database
-          return await mainDatabase.repositories.dnsTrackedRecords.isTracked(recordId, provider);
+          // Get the tracked records repository from DNS manager
+          const trackedRecordsRepo = mainDatabase.repositories.dnsManager.trackedRecords;
+          if (trackedRecordsRepo) {
+            // Check if record exists in main database
+            return await trackedRecordsRepo.isTracked(provider, recordId);
+          }
         } catch (dbError) {
           // Fall back to database
           logger.debug(`Failed to check tracking in main database: ${dbError.message}`);
@@ -277,8 +293,38 @@ class SQLiteManager {
    * @returns {Promise<boolean>} Success status
    */
   async updateRecordId(provider, oldRecordId, newRecordId) {
-    // Implementation to be added if needed
-    return false;
+    try {
+      // Try using the main database first
+      const mainDatabase = require('../../database');
+      if (mainDatabase && mainDatabase.isInitialized() && mainDatabase.repositories && mainDatabase.repositories.dnsManager) {
+        try {
+          // Get the tracked records repository from DNS manager
+          const trackedRecordsRepo = mainDatabase.repositories.dnsManager.trackedRecords;
+          if (trackedRecordsRepo) {
+            return await trackedRecordsRepo.updateRecordId(provider, oldRecordId, newRecordId);
+          }
+        } catch (dbError) {
+          logger.debug(`Failed to update record ID in main database: ${dbError.message}`);
+        }
+      }
+      
+      // Fall back to database
+      if (!database.isInitialized()) {
+        logger.debug('Database not fully initialized, cannot update record ID');
+        return false;
+      }
+      
+      const repository = database.repositories.trackedRecords;
+      if (!repository) {
+        logger.debug('Tracked records repository not available');
+        return false;
+      }
+      
+      return await repository.updateRecordId(provider, oldRecordId, newRecordId);
+    } catch (error) {
+      logger.error(`Failed to update record ID in SQLite: ${error.message}`);
+      return false;
+    }
   }
 
   /**
@@ -288,8 +334,38 @@ class SQLiteManager {
    * @returns {Promise<boolean>} Success status
    */
   async markRecordOrphaned(provider, recordId) {
-    // Implementation to be added if needed
-    return false;
+    try {
+      // Try using the main database first
+      const mainDatabase = require('../../database');
+      if (mainDatabase && mainDatabase.isInitialized() && mainDatabase.repositories && mainDatabase.repositories.dnsManager) {
+        try {
+          // Get the tracked records repository from DNS manager
+          const trackedRecordsRepo = mainDatabase.repositories.dnsManager.trackedRecords;
+          if (trackedRecordsRepo) {
+            return await trackedRecordsRepo.markRecordOrphaned(provider, recordId);
+          }
+        } catch (dbError) {
+          logger.debug(`Failed to mark record as orphaned in main database: ${dbError.message}`);
+        }
+      }
+      
+      // Fall back to database
+      if (!database.isInitialized()) {
+        logger.debug('Database not fully initialized, cannot mark record as orphaned');
+        return false;
+      }
+      
+      const repository = database.repositories.trackedRecords;
+      if (!repository) {
+        logger.debug('Tracked records repository not available');
+        return false;
+      }
+      
+      return await repository.markRecordOrphaned(provider, recordId);
+    } catch (error) {
+      logger.error(`Failed to mark record as orphaned in SQLite: ${error.message}`);
+      return false;
+    }
   }
 
   /**
@@ -299,8 +375,38 @@ class SQLiteManager {
    * @returns {Promise<boolean>} Success status
    */
   async unmarkRecordOrphaned(provider, recordId) {
-    // Implementation to be added if needed
-    return false;
+    try {
+      // Try using the main database first
+      const mainDatabase = require('../../database');
+      if (mainDatabase && mainDatabase.isInitialized() && mainDatabase.repositories && mainDatabase.repositories.dnsManager) {
+        try {
+          // Get the tracked records repository from DNS manager
+          const trackedRecordsRepo = mainDatabase.repositories.dnsManager.trackedRecords;
+          if (trackedRecordsRepo) {
+            return await trackedRecordsRepo.unmarkRecordOrphaned(provider, recordId);
+          }
+        } catch (dbError) {
+          logger.debug(`Failed to unmark record as orphaned in main database: ${dbError.message}`);
+        }
+      }
+      
+      // Fall back to database
+      if (!database.isInitialized()) {
+        logger.debug('Database not fully initialized, cannot unmark record as orphaned');
+        return false;
+      }
+      
+      const repository = database.repositories.trackedRecords;
+      if (!repository) {
+        logger.debug('Tracked records repository not available');
+        return false;
+      }
+      
+      return await repository.unmarkRecordOrphaned(provider, recordId);
+    } catch (error) {
+      logger.error(`Failed to unmark record as orphaned in SQLite: ${error.message}`);
+      return false;
+    }
   }
 
   /**
@@ -310,8 +416,38 @@ class SQLiteManager {
    * @returns {Promise<boolean>} Whether record is orphaned
    */
   async isRecordOrphaned(provider, recordId) {
-    // Implementation to be added if needed
-    return false;
+    try {
+      // Try using the main database first
+      const mainDatabase = require('../../database');
+      if (mainDatabase && mainDatabase.isInitialized() && mainDatabase.repositories && mainDatabase.repositories.dnsManager) {
+        try {
+          // Get the tracked records repository from DNS manager
+          const trackedRecordsRepo = mainDatabase.repositories.dnsManager.trackedRecords;
+          if (trackedRecordsRepo) {
+            return await trackedRecordsRepo.isRecordOrphaned(provider, recordId);
+          }
+        } catch (dbError) {
+          logger.debug(`Failed to check if record is orphaned in main database: ${dbError.message}`);
+        }
+      }
+      
+      // Fall back to database
+      if (!database.isInitialized()) {
+        logger.debug('Database not fully initialized, cannot check if record is orphaned');
+        return false;
+      }
+      
+      const repository = database.repositories.trackedRecords;
+      if (!repository) {
+        logger.debug('Tracked records repository not available');
+        return false;
+      }
+      
+      return await repository.isRecordOrphaned(provider, recordId);
+    } catch (error) {
+      logger.error(`Failed to check if record is orphaned in SQLite: ${error.message}`);
+      return false;
+    }
   }
 
   /**
@@ -321,8 +457,38 @@ class SQLiteManager {
    * @returns {Promise<string|null>} Orphaned time or null
    */
   async getRecordOrphanedTime(provider, recordId) {
-    // Implementation to be added if needed
-    return null;
+    try {
+      // Try using the main database first
+      const mainDatabase = require('../../database');
+      if (mainDatabase && mainDatabase.isInitialized() && mainDatabase.repositories && mainDatabase.repositories.dnsManager) {
+        try {
+          // Get the tracked records repository from DNS manager
+          const trackedRecordsRepo = mainDatabase.repositories.dnsManager.trackedRecords;
+          if (trackedRecordsRepo) {
+            return await trackedRecordsRepo.getRecordOrphanedTime(provider, recordId);
+          }
+        } catch (dbError) {
+          logger.debug(`Failed to get record orphaned time from main database: ${dbError.message}`);
+        }
+      }
+      
+      // Fall back to database
+      if (!database.isInitialized()) {
+        logger.debug('Database not fully initialized, cannot get record orphaned time');
+        return null;
+      }
+      
+      const repository = database.repositories.trackedRecords;
+      if (!repository) {
+        logger.debug('Tracked records repository not available');
+        return null;
+      }
+      
+      return await repository.getRecordOrphanedTime(provider, recordId);
+    } catch (error) {
+      logger.error(`Failed to get record orphaned time from SQLite: ${error.message}`);
+      return null;
+    }
   }
 
   /**
