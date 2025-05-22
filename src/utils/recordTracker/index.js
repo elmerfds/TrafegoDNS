@@ -51,7 +51,14 @@ class RecordTracker {
     this.trackerFile = paths.trackerFile;
     this.legacyTrackerFile = paths.legacyTrackerFile;
 
-    this.providerDomain = config.getProviderDomain();
+    // Safely get provider domain with error handling
+    try {
+      this.providerDomain = config.getProviderDomain();
+    } catch (error) {
+      logger.error(`Failed to get provider domain: ${error.message}`);
+      this.providerDomain = '';
+    }
+    
     this.provider = config.dnsProvider;
 
     // Load preserved hostnames from config, but suppress the log for now

@@ -109,7 +109,17 @@ class DNSManager {
     try {
       // Ensure eventBus exists before setting up subscriptions
       if (this.eventBus) {
-        setupEventSubscriptions(this.eventBus, this.processHostnames.bind(this));
+        // Wrap processHostnames to add error handling
+        const safeProcessHostnames = async (hostnames, containerLabels) => {
+          try {
+            await this.processHostnames(hostnames, containerLabels);
+          } catch (error) {
+            logger.error(`Error in processHostnames: ${error.message}`);
+            logger.debug(`ProcessHostnames error stack: ${error.stack}`);
+          }
+        };
+        
+        setupEventSubscriptions(this.eventBus, safeProcessHostnames);
         logger.debug('Event subscriptions set up successfully');
       } else {
         logger.warn('No event bus available, skipping event subscriptions');

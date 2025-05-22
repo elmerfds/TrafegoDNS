@@ -57,7 +57,8 @@ class ConfigManager {
     
     // Global DNS defaults
     this.defaultRecordType = EnvironmentLoader.getString('DNS_DEFAULT_TYPE', 'CNAME');
-    this.defaultContent = EnvironmentLoader.getString('DNS_DEFAULT_CONTENT', this.getProviderDomain());
+    // Don't call getProviderDomain() here as it's not ready yet - set it later
+    this.defaultContent = EnvironmentLoader.getString('DNS_DEFAULT_CONTENT', '');
     this.defaultProxied = EnvironmentLoader.getBool('DNS_DEFAULT_PROXIED', true);
     
     // Set default TTL based on the provider
@@ -139,6 +140,16 @@ class ConfigManager {
     
     // IP refresh interval in milliseconds (default: 1 hour)
     this.ipRefreshInterval = EnvironmentLoader.getInt('IP_REFRESH_INTERVAL', 3600000);
+    
+    // Now that provider config is validated, set the default content if not provided
+    if (!this.defaultContent && !process.env.DNS_DEFAULT_CONTENT) {
+      this.defaultContent = this.getProviderDomain();
+    }
+    
+    // Update CNAME default content as well
+    if (!this.recordDefaults.CNAME.content) {
+      this.recordDefaults.CNAME.content = this.defaultContent;
+    }
     
     // Schedule immediate IP update and then periodic refresh
     this.updatePublicIPs().then(() => {
