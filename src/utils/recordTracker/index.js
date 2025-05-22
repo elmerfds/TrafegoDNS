@@ -618,16 +618,17 @@ class RecordTracker {
             // Get current metadata
             const currentMetadata = await this.sqliteManager.repository.getRecordMetadata(this.provider, recordId) || {};
           
-          // Update app-managed status
-          const newMetadata = {
-            ...currentMetadata,
-            appManaged: isAppManaged,
-            updatedAt: new Date().toISOString()
-          };
-          
-          // Save updated metadata
-          await this.sqliteManager.repository.updateRecordMetadata(this.provider, recordId, JSON.stringify(newMetadata));
-          return true;
+            // Update app-managed status
+            const newMetadata = {
+              ...currentMetadata,
+              appManaged: isAppManaged,
+              updatedAt: new Date().toISOString()
+            };
+            
+            // Save updated metadata
+            await this.sqliteManager.repository.updateRecordMetadata(this.provider, recordId, JSON.stringify(newMetadata));
+            return true;
+          }
         } catch (error) {
           logger.debug(`Failed to update record app-managed status in SQLite: ${error.message}`);
         }
