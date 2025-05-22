@@ -383,11 +383,12 @@ class RecordTracker {
               newRecordId
             );
 
-          if (success) {
-            // Also update in-memory data (use dummy key if needed)
-            const dummyOldRecord = oldRecord.id ? oldRecord : { ...newRecord, id: 'temp-id' };
-            updateRecordIdOperation(this.data, this.trackerFile, this.provider, dummyOldRecord, newRecord);
-            return true;
+            if (success) {
+              // Also update in-memory data (use dummy key if needed)
+              const dummyOldRecord = oldRecord.id ? oldRecord : { ...newRecord, id: 'temp-id' };
+              updateRecordIdOperation(this.data, this.trackerFile, this.provider, dummyOldRecord, newRecord);
+              return true;
+            }
           }
         }
 
