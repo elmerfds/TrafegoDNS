@@ -90,6 +90,17 @@ try {
         nonAppManagedCount++;
       }
       
+      // Also fix apex domain records (where name equals provider domain)
+      // Get provider domain from environment or use the TLD of the record
+      const providerDomain = process.env.DNS_PROVIDER_ZONE || record.name.split('.').slice(-2).join('.');
+      if (newMetadata && newMetadata.appManaged === true && 
+          record.name === providerDomain) {
+        console.log(`\nFixing incorrect appManaged=true for apex domain record: ${record.name} (${record.type})`);
+        newMetadata.appManaged = false;
+        needsUpdate = true;
+        nonAppManagedCount++;
+      }
+      
       // Update the record if needed
       if (needsUpdate && newMetadata) {
         const metadataStr = JSON.stringify(newMetadata);

@@ -1123,6 +1123,21 @@ class DNSManager {
           continue; // Skip invalid records
         }
         
+        // Only consider A and CNAME records for app management
+        // MX, TXT, and other record types should never be automatically marked as app-managed
+        if (record.type !== 'A' && record.type !== 'CNAME') {
+          logger.debug(`Skipping ${record.type} record ${record.name} - only A/CNAME records are considered for automatic app management`);
+          continue;
+        }
+        
+        // Skip apex domain records (records where name equals the provider domain)
+        // These should not be automatically marked as app-managed
+        const providerDomain = this.config.getProviderDomain();
+        if (record.name === providerDomain || record.name.toLowerCase() === providerDomain.toLowerCase()) {
+          logger.debug(`Skipping apex domain record ${record.name} (${record.type}) - apex records are not automatically app-managed`);
+          continue;
+        }
+        
         // Normalize record name
         const normalizedRecordName = record.name.trim().toLowerCase();
         
