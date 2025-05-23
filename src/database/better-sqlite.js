@@ -145,14 +145,29 @@ class BetterSQLite {
         logger.error('Database corruption detected');
         
         // Attempt recovery
-        const recovered = await this.attemptRecovery();
-        if (!recovered) {
+        const recoveryNeeded = await this.attemptRecovery();
+        if (recoveryNeeded === false) {
+          // Recovery deleted the database file, we need to start fresh
+          // Close the current corrupted connection
+          if (this.db) {
+            try {
+              this.db.close();
+            } catch (e) {
+              // Ignore close errors on corrupted db
+            }
+            this.db = null;
+          }
+          
+          // Open a fresh database connection
+          logger.info('Creating fresh database after corruption recovery...');
+          this.db = new this.SQLite(this.dbPath, { 
+            verbose: process.env.DEBUG_MODE === 'true' ? logger.debug : null
+          });
+          
+          // Continue with normal initialization
+        } else {
           throw new Error('Database is corrupted and recovery failed');
         }
-        
-        // Database was recovered, return success
-        // The recovery process already reinitialized the database
-        return true;
       }
       
       // Enable foreign keys
@@ -300,15 +315,14 @@ class BetterSQLite {
       
       // Reinitialize with fresh database
       this.isInitialized = false;
-      const success = await this.initialize();
+      this._initializing = false; // Reset initialization flag
       
-      if (success) {
-        logger.info('Database recovery successful - created fresh database');
-        return true;
-      }
+      // We cannot reinitialize here because we're already in the initialize method
+      // Instead, we'll return false to indicate recovery is needed
+      // The caller should handle reinitialization
       
-      logger.error('Database recovery failed');
-      return false;
+      logger.info('Database file removed. A fresh database will be created.');
+      return false; // Return false to trigger a fresh initialization
     } catch (error) {
       logger.error(`Database recovery error: ${error.message}`);
       return false;
@@ -1439,10 +1453,20 @@ class BetterSQLite {
         
         // Attempt recovery
         const recovered = await this.attemptRecovery();
-        if (recovered) {
-          logger.info('Database recovered, please retry the operation');
-          throw new Error('Database was corrupted but has been recovered. Please retry the operation.');
+        if (!recovered) {
+          // Recovery failed or needs reinitialization
+          logger.warn('Database recovery initiated. Application restart may be required.');
+          
+          // Try to reinitialize the database module
+          try {
+            const dbModule = require('./index');
+            await dbModule.reinitializeAfterRecovery();
+          } catch (reinitError) {
+            logger.error(`Failed to reinitialize database module: ${reinitError.message}`);
+          }
         }
+        
+        throw new Error('Database corruption detected. Recovery attempted. Please retry the operation.');
       }
       
       logger.error(`Error executing query: ${error.message}`);
@@ -1479,10 +1503,20 @@ class BetterSQLite {
         
         // Attempt recovery
         const recovered = await this.attemptRecovery();
-        if (recovered) {
-          logger.info('Database recovered, please retry the operation');
-          throw new Error('Database was corrupted but has been recovered. Please retry the operation.');
+        if (!recovered) {
+          // Recovery failed or needs reinitialization
+          logger.warn('Database recovery initiated. Application restart may be required.');
+          
+          // Try to reinitialize the database module
+          try {
+            const dbModule = require('./index');
+            await dbModule.reinitializeAfterRecovery();
+          } catch (reinitError) {
+            logger.error(`Failed to reinitialize database module: ${reinitError.message}`);
+          }
         }
+        
+        throw new Error('Database corruption detected. Recovery attempted. Please retry the operation.');
       }
       
       logger.error(`Error executing query: ${error.message}`);
@@ -1519,10 +1553,20 @@ class BetterSQLite {
         
         // Attempt recovery
         const recovered = await this.attemptRecovery();
-        if (recovered) {
-          logger.info('Database recovered, please retry the operation');
-          throw new Error('Database was corrupted but has been recovered. Please retry the operation.');
+        if (!recovered) {
+          // Recovery failed or needs reinitialization
+          logger.warn('Database recovery initiated. Application restart may be required.');
+          
+          // Try to reinitialize the database module
+          try {
+            const dbModule = require('./index');
+            await dbModule.reinitializeAfterRecovery();
+          } catch (reinitError) {
+            logger.error(`Failed to reinitialize database module: ${reinitError.message}`);
+          }
         }
+        
+        throw new Error('Database corruption detected. Recovery attempted. Please retry the operation.');
       }
       
       logger.error(`Error executing query: ${error.message}`);

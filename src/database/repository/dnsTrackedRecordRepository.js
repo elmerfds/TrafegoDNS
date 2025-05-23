@@ -39,6 +39,11 @@ class DNSTrackedRecordRepository {
         logger.info(`Creating ${this.tableName} table`);
 
         // Use IF NOT EXISTS to avoid errors if the table was created in parallel
+        if (!this.db || !this.db.run) {
+          logger.error('Database connection not available, cannot create table');
+          return false;
+        }
+        
         await this.db.run(`
           CREATE TABLE IF NOT EXISTS ${this.tableName} (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,6 +90,11 @@ class DNSTrackedRecordRepository {
    */
   async checkTableExists() {
     try {
+      if (!this.db || !this.db.get) {
+        logger.debug('Database not available for table existence check');
+        return false;
+      }
+      
       const result = await this.db.get(`
         SELECT name FROM sqlite_master 
         WHERE type='table' AND name=?
@@ -104,6 +114,11 @@ class DNSTrackedRecordRepository {
    */
   async trackRecord(record) {
     try {
+      if (!this.db || !this.db.run) {
+        logger.debug('Database not available for tracking record');
+        return record; // Return the record as-is to avoid breaking the flow
+      }
+      
       const now = new Date().toISOString();
       // Check if metadata is already a string (it shouldn't be double stringified)
       let metadata = null;
@@ -223,6 +238,11 @@ class DNSTrackedRecordRepository {
    */
   async untrackRecord(provider, recordId) {
     try {
+      if (!this.db || !this.db.run) {
+        logger.debug('Database not available for untracking record');
+        return false;
+      }
+      
       const result = await this.db.run(`
         DELETE FROM ${this.tableName}
         WHERE provider = ? AND record_id = ?
@@ -243,6 +263,11 @@ class DNSTrackedRecordRepository {
    */
   async isTracked(provider, recordId) {
     try {
+      if (!this.db || !this.db.get) {
+        logger.debug('Database not available for tracking check');
+        return false;
+      }
+      
       const record = await this.db.get(`
         SELECT id FROM ${this.tableName}
         WHERE provider = ? AND record_id = ?
@@ -422,6 +447,11 @@ class DNSTrackedRecordRepository {
    */
   async getAllTrackedRecords() {
     try {
+      if (!this.db || !this.db.all) {
+        logger.debug('Database not available for getting all tracked records');
+        return { providers: {} };
+      }
+      
       const rows = await this.db.all(`
         SELECT * FROM ${this.tableName}
         ORDER BY provider, name
@@ -504,6 +534,11 @@ class DNSTrackedRecordRepository {
    */
   async markRecordOrphaned(provider, recordId) {
     try {
+      if (!this.db || !this.db.run) {
+        logger.debug('Database not available for marking record as orphaned');
+        return false;
+      }
+      
       const now = new Date().toISOString();
       
       const result = await this.db.run(`
@@ -550,6 +585,11 @@ class DNSTrackedRecordRepository {
    */
   async isRecordOrphaned(provider, recordId) {
     try {
+      if (!this.db || !this.db.get) {
+        logger.debug('Database not available for orphaned check');
+        return false;
+      }
+      
       const record = await this.db.get(`
         SELECT is_orphaned FROM ${this.tableName}
         WHERE provider = ? AND record_id = ?
@@ -570,6 +610,11 @@ class DNSTrackedRecordRepository {
    */
   async getRecordOrphanedTime(provider, recordId) {
     try {
+      if (!this.db || !this.db.get) {
+        logger.debug('Database not available for orphaned time check');
+        return null;
+      }
+      
       const record = await this.db.get(`
         SELECT orphaned_at FROM ${this.tableName}
         WHERE provider = ? AND record_id = ? AND is_orphaned = 1
@@ -621,6 +666,11 @@ class DNSTrackedRecordRepository {
    */
   async getRecordsByOrphanedStatus(isOrphaned) {
     try {
+      if (!this.db || !this.db.all) {
+        logger.debug('Database not available for getting records by orphaned status');
+        return [];
+      }
+      
       const orphanValue = isOrphaned ? 1 : 0;
       
       const rows = await this.db.all(`

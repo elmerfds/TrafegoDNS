@@ -21,6 +21,13 @@ async function performDatabaseOnlyCleanup(recordTracker, config, forceImmediate 
   try {
     logger.info('Performing database-only cleanup of expired orphaned records');
     
+    // Check if database is available
+    const database = require('../../database');
+    if (!database.isInitialized()) {
+      logger.warn('Database not initialized, skipping database-only cleanup');
+      return;
+    }
+    
     // Get grace period from config
     const gracePeriodMinutes = parseInt(config.getOrphanedGracePeriod()) || 15;
     const gracePeriodMs = gracePeriodMinutes * 60 * 1000;
@@ -95,6 +102,13 @@ async function cleanupOrphanedRecords(
 ) {
   try {
     logger.debug('Checking for orphaned DNS records...');
+    
+    // Check if database is available before proceeding
+    const database = require('../../database');
+    if (!database.isInitialized()) {
+      logger.warn('Database not initialized, skipping orphaned record cleanup');
+      return;
+    }
 
     // Try to get all DNS records for our zone (from cache when possible)
     let allRecords = [];

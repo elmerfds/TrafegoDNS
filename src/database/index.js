@@ -222,6 +222,46 @@ function setForceInitialized(value) {
 }
 
 /**
+ * Reinitialize database after corruption recovery
+ * This updates all repository references to use the new database connection
+ * @returns {Promise<boolean>}
+ */
+async function reinitializeAfterRecovery() {
+  try {
+    logger.info('Reinitializing database repositories after recovery...');
+    
+    // Get the new database connection
+    db = connection;
+    
+    // Update all repository database references
+    for (const [name, repository] of Object.entries(repositories)) {
+      if (repository && typeof repository === 'object') {
+        // Update the db reference in each repository
+        if (repository.repositories) {
+          // This is a manager with sub-repositories
+          for (const [subName, subRepo] of Object.entries(repository.repositories)) {
+            if (subRepo && subRepo.db !== undefined) {
+              subRepo.db = db;
+              logger.debug(`Updated database reference for ${name}.${subName}`);
+            }
+          }
+        } else if (repository.db !== undefined) {
+          // This is a direct repository
+          repository.db = db;
+          logger.debug(`Updated database reference for ${name}`);
+        }
+      }
+    }
+    
+    logger.info('Database repositories reinitialized successfully');
+    return true;
+  } catch (error) {
+    logger.error(`Failed to reinitialize repositories: ${error.message}`);
+    return false;
+  }
+}
+
+/**
  * Close database connection
  * @returns {Promise<boolean>}
  */
@@ -246,6 +286,7 @@ module.exports = {
   initialize,
   isInitialized,
   setForceInitialized,
+  reinitializeAfterRecovery,
   close,
   get db() {
     return db;
