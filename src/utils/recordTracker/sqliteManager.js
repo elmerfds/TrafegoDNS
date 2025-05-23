@@ -492,6 +492,47 @@ class SQLiteManager {
   }
 
   /**
+   * Untrack a record from SQLite
+   * @param {string} provider - Provider name
+   * @param {string} recordId - Record ID
+   * @returns {Promise<boolean>} Success status
+   */
+  async untrackRecord(provider, recordId) {
+    try {
+      // Try using the main database first
+      const mainDatabase = require('../../database');
+      if (mainDatabase && mainDatabase.isInitialized() && mainDatabase.repositories && mainDatabase.repositories.dnsManager) {
+        try {
+          // Get the tracked records repository from DNS manager
+          const trackedRecordsRepo = mainDatabase.repositories.dnsManager.trackedRecords;
+          if (trackedRecordsRepo) {
+            return await trackedRecordsRepo.untrackRecord(provider, recordId);
+          }
+        } catch (dbError) {
+          logger.debug(`Failed to untrack record in main database: ${dbError.message}`);
+        }
+      }
+      
+      // Fall back to database
+      if (!database.isInitialized()) {
+        logger.debug('Database not fully initialized, cannot untrack record');
+        return false;
+      }
+      
+      const repository = database.repositories.trackedRecords;
+      if (!repository) {
+        logger.debug('Tracked records repository not available');
+        return false;
+      }
+      
+      return await repository.untrackRecord(provider, recordId);
+    } catch (error) {
+      logger.error(`Failed to untrack record from SQLite: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
    * Save tracked records to database
    * @param {Object} recordData - Tracked records data structure
    * @returns {Promise<boolean>} Success status
