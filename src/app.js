@@ -216,7 +216,7 @@ async function start() {
       try {
         // Start API server
         const apiPort = process.env.API_PORT || 3000;
-        apiServer = startApiServer(apiPort, config, eventBus);
+        apiServer = await startApiServer(apiPort, config, eventBus);
 
         // Inject local auth bypass middleware
         apiServer.app.use(localAuthBypass(config));

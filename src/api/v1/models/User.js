@@ -31,9 +31,8 @@ class UserModel {
     this.retryCount = 0;
     this.usingJsonFallback = false;
     
-    // Delay initialization to allow database to be ready
-    // Use a longer delay to avoid race conditions with SQLite initialization
-    setTimeout(() => this.init(), 2000);
+    // Don't auto-initialize - wait for explicit initialization
+    // This prevents creating JSON files before SQLite is ready
   }
   
   /**
@@ -108,9 +107,9 @@ class UserModel {
       
       // Check if users file exists
       if (!fs.existsSync(USERS_FILE)) {
-        // If migrated, don't create new JSON file
-        if (usersMigrated) {
-          logger.debug('Users already migrated to SQLite, skipping JSON file creation');
+        // If migrated or SQLite-only mode is enforced, don't create new JSON file
+        if (usersMigrated || process.env.DISABLE_JSON_STORAGE === 'true') {
+          logger.debug('Users already migrated to SQLite or SQLite-only mode enforced, skipping JSON file creation');
           this.users = [];
         } else {
           logger.debug('Users file does not exist, creating with default admin user');
@@ -138,9 +137,9 @@ class UserModel {
       
       // Check if tokens file exists
       if (!fs.existsSync(TOKENS_FILE)) {
-        // If migrated, don't create new JSON file
-        if (tokensMigrated) {
-          logger.debug('Tokens already migrated to SQLite, skipping JSON file creation');
+        // If migrated or SQLite-only mode is enforced, don't create new JSON file
+        if (tokensMigrated || process.env.DISABLE_JSON_STORAGE === 'true') {
+          logger.debug('Tokens already migrated to SQLite or SQLite-only mode enforced, skipping JSON file creation');
           this.revokedTokens = [];
         } else {
           logger.debug('Revoked tokens file does not exist, creating empty file');
@@ -226,13 +225,23 @@ class UserModel {
           // Check if SQLite is actually not installed vs just slow to initialize
           const database = this.loadDatabase();
           if (!database) {
-            // SQLite module not available at all - fall back to JSON
-            logger.warn('SQLite module not available, falling back to JSON storage');
-            logger.warn('This is not recommended for production use');
+            // SQLite module not available at all
+            logger.warn('SQLite module not available');
             
-            this.initJsonStorage();
-            this.initialized = true;
-            return true;
+            // Check if SQLite-only mode is enforced
+            if (process.env.DISABLE_JSON_STORAGE === 'true') {
+              logger.error('SQLite-only mode is enforced but SQLite is not available');
+              logger.error('Cannot initialize user system without SQLite');
+              this.initialized = false;
+              return false;
+            } else {
+              logger.warn('Falling back to JSON storage');
+              logger.warn('This is not recommended for production use');
+              
+              this.initJsonStorage();
+              this.initialized = true;
+              return true;
+            }
           } else {
             // SQLite exists but isn't initialized - this is likely a startup race condition
             // Don't create JSON files, just fail initialization
@@ -248,10 +257,17 @@ class UserModel {
       // Only fall back to JSON if SQLite module is not available
       const database = this.loadDatabase();
       if (!database) {
-        logger.warn('Falling back to JSON storage due to missing SQLite module');
-        this.initJsonStorage();
-        this.initialized = true;
-        return false;
+        // Check if SQLite-only mode is enforced
+        if (process.env.DISABLE_JSON_STORAGE === 'true') {
+          logger.error('SQLite-only mode is enforced but SQLite module failed to load');
+          this.initialized = false;
+          return false;
+        } else {
+          logger.warn('Falling back to JSON storage due to missing SQLite module');
+          this.initJsonStorage();
+          this.initialized = true;
+          return false;
+        }
       } else {
         // SQLite exists but there was an error - don't create JSON files
         logger.error('SQLite initialization error - will retry');
@@ -266,6 +282,27 @@ class UserModel {
     }
   }
   
+  /**
+   * Ensure the model is initialized
+   * Call this before using the model to ensure it's ready
+   */
+  async ensureInitialized() {
+    if (this.initialized) {
+      return true;
+    }
+    
+    // Check if initialization is already in progress
+    if (this._initPromise) {
+      return this._initPromise;
+    }
+    
+    // Start initialization
+    this._initPromise = this.init();
+    const result = await this._initPromise;
+    this._initPromise = null;
+    return result;
+  }
+
   /**
    * Reinitialize the database connection
    * Useful if database becomes available after startup

@@ -17,6 +17,9 @@ const SocketServer = require('./socketServer');
 // Import routes
 const v1Routes = require('./v1/routes');
 
+// Import User model for initialization
+const User = require('./v1/models/User');
+
 // Create Express app
 const app = express();
 
@@ -109,8 +112,18 @@ app.use(errorHandler);
  * @param {Function} callback - Callback function to run after server starts
  * @returns {Object} - Server instance
  */
-function startApiServer(port, config, eventBus, callback) {
+async function startApiServer(port, config, eventBus, callback) {
   const apiPort = port || process.env.API_PORT || 3000;
+
+  // Initialize User model now that database should be ready
+  logger.info('Initializing User model...');
+  try {
+    await User.ensureInitialized();
+    logger.info('User model initialized successfully');
+  } catch (error) {
+    logger.error(`Failed to initialize User model: ${error.message}`);
+    // Continue anyway - the model will retry
+  }
 
   // Create HTTP server
   const server = http.createServer(app);
