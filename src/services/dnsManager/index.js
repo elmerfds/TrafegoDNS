@@ -701,7 +701,7 @@ class DNSManager {
                     normalizedActiveHostname === normalizedRecordName) {
                   // Mark this record to be managed by the app
                   recordsToMarkAsManaged.set(record.id, record);
-                  logger.info(`🔍 Found exact matching DNS record for active hostname: ${hostname} (${record.type})`);
+                  logger.debug(`🔍 Found exact matching DNS record for active hostname: ${hostname} (${record.type})`);
                   logger.debug(`Match details: activeHostname="${activeHostname}", hostname="${hostname}", record.name="${record.name}"`);
                   matchFound = true;
                   break;
@@ -1183,7 +1183,7 @@ class DNSManager {
           if (!isAppManaged) {
             // Mark as app-managed since it matches an active hostname
             await this.updateRecordAppManaged(record, true);
-            logger.info(`Marked existing record ${record.name} (${record.type}) as app-managed because it matches active hostname: ${matchingHostname}`);
+            logger.debug(`Marked existing record ${record.name} (${record.type}) as app-managed because it matches active hostname: ${matchingHostname}`);
             updatedCount++;
           }
         }

@@ -161,6 +161,9 @@ async function cleanupOrphanedRecords(
     const newlyPreservedList = [];
     const newlyPreservedManaged = [];
     
+    // Track orphaned records for summary logging
+    const newlyOrphanedRecords = [];
+    
     // Find records that were created by this tool but no longer exist in Traefik
     const domainSuffix = `.${config.getProviderDomain()}`;
     const domainName = config.getProviderDomain().toLowerCase();
@@ -405,8 +408,8 @@ async function cleanupOrphanedRecords(
               }
             }
             
-            // Enhanced logging with reasoning for why we're marking this as orphaned
-            logger.info(`🕒 Marking DNS record as orphaned: ${recordFqdn} (${record.type})${firstSeenInfo}
+            // Log details at debug level
+            logger.debug(`🕒 Marking DNS record as orphaned: ${recordFqdn} (${record.type})${firstSeenInfo}
             - Reason: No matching active hostname in current containers/Traefik routes
             - App-managed: Yes (created by TrafegoDNS)
             - Grace period: Will be deleted after ${config.cleanupGracePeriod} minutes
@@ -414,6 +417,7 @@ async function cleanupOrphanedRecords(
             
             await recordTracker.markRecordOrphaned(record);
             newlyOrphanedCount++;
+            newlyOrphanedRecords.push(`${recordFqdn} (${record.type})`);
           } else {
             logger.debug(`Skipping orphan marking for non-app-managed record: ${recordFqdn} (${record.type})
             - Reason: Record was not created by TrafegoDNS
@@ -441,6 +445,11 @@ async function cleanupOrphanedRecords(
     // Log summary of actions
     if (newlyOrphanedCount > 0 || readyForDeletionCount > 0 || reactivatedCount > 0) {
       logger.info(`Orphaned records: ${newlyOrphanedCount} newly marked, ${readyForDeletionCount} deleted after grace period, ${reactivatedCount} reactivated`);
+      
+      // Log summary of newly orphaned records at info level
+      if (newlyOrphanedRecords.length > 0) {
+        logger.info(`Newly orphaned records (will be deleted after ${config.cleanupGracePeriod} minutes): ${newlyOrphanedRecords.join(', ')}`);
+      }
     } else {
       logger.debug('No orphaned DNS records found');
     }
