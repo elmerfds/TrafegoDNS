@@ -69,26 +69,8 @@ else
   echo "✅ No DNS records JSON files found - SQLite will be used exclusively"
 fi
 
-# Run database migration script if needed
-if [ -f "/app/docker-s6/scripts/add-last-processed.sh" ]; then
-  echo "Checking and updating database schema if needed..."
-  chmod +x /app/docker-s6/scripts/add-last-processed.sh
-  s6-setuidgid abc /app/docker-s6/scripts/add-last-processed.sh
-fi
-
-# Check for JSON files and migrations
-if [ -f "/app/docker-s6/scripts/manage-json-files.sh" ]; then
-  chmod +x /app/docker-s6/scripts/manage-json-files.sh
-  echo "Checking JSON files and migration status..."
-  s6-setuidgid abc /app/docker-s6/scripts/manage-json-files.sh
-else
-  # Fallback to basic migration status check
-  if [ -f /config/data/trafegodns.db ] && [ -f /config/data/.json_migration_complete ]; then
-    echo "JSON migration has been completed. Original files are preserved."
-  else
-    echo "JSON migration status unknown. Files will be migrated if needed."
-  fi
-fi
+# The application now handles all database initialization and migration internally
+# No need for external migration scripts
 
 # Run fix-sqlite script to ensure better-sqlite3 is installed and configured
 if [ -f "/app/docker-s6/scripts/fix-sqlite.sh" ]; then
