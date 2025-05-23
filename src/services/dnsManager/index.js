@@ -465,6 +465,18 @@ class DNSManager {
       // Emit statistics event
       this.eventBus.emit(EventTypes.DNS_RECORDS_PROCESSED, this.stats);
       
+      // Check if hostname count decreased - if so, immediately check for orphaned records
+      if (hasCountChanged && hostnameCount < this.previousStats.hostnameCount) {
+        logger.info(`Hostname count decreased from ${this.previousStats.hostnameCount} to ${hostnameCount}, checking for orphaned records immediately`);
+        
+        // Run orphaned cleanup without waiting for timer
+        try {
+          await this.cleanupOrphanedRecordsWithLastHostnames();
+        } catch (cleanupError) {
+          logger.error(`Failed to run immediate orphaned cleanup: ${cleanupError.message}`);
+        }
+      }
+      
       return this.stats;
     } catch (error) {
       logger.error(`Error processing hostnames: ${error.message}`);
