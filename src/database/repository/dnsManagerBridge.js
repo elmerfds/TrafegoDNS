@@ -283,6 +283,8 @@ async function getTrackedRecordRepository(options = {}) {
  */
 async function trackRecord(provider, record, isAppManaged = false) {
   try {
+    logger.debug(`dnsManagerBridge.trackRecord called: provider=${provider}, record.id=${record.id}, record.name=${record.name}, isAppManaged=${isAppManaged}`);
+    
     // Format the record for tracking
     const formattedRecord = {
       provider: provider,
@@ -298,6 +300,8 @@ async function trackRecord(provider, record, isAppManaged = false) {
       }
     };
     
+    logger.debug(`Formatted record for tracking: ${JSON.stringify(formattedRecord)}`);
+    
     // Try getting a repository - this will create one if none exists
     const repository = await getTrackedRecordRepository({
       initialize: true,
@@ -306,9 +310,13 @@ async function trackRecord(provider, record, isAppManaged = false) {
     });
     
     if (repository) {
+      logger.debug(`Got repository, tracking record ${formattedRecord.name}`);
       // Track using the repository
       await repository.trackRecord(formattedRecord);
+      logger.info(`✅ Successfully tracked record ${formattedRecord.name} via repository`);
       return true;
+    } else {
+      logger.warn(`No repository available for tracking record ${formattedRecord.name}`);
     }
     
     // If still no repository, try direct database access as a fallback

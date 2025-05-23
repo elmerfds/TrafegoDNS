@@ -47,15 +47,17 @@ async function createRecord(client, zoneId, record, updateRecordInCache) {
       const dnsManagerBridge = require('../../database/repository/dnsManagerBridge');
       // Records we directly create should be marked as app-managed=true
       // since these records were explicitly created by the application
+      logger.info(`Tracking newly created record ${record.name} (ID: ${createdRecord.id}) in database`);
       const trackSuccess = await dnsManagerBridge.trackRecord(record.provider || 'cloudflare', createdRecord, true);
       
       if (trackSuccess) {
-        logger.debug(`Immediately tracked newly created record ${record.name} in database with appManaged=true`);
+        logger.info(`✅ Successfully tracked newly created record ${record.name} in database with appManaged=true`);
       } else {
-        logger.warn(`Failed to immediately track newly created record ${record.name} via bridge - will be tracked on next dnsManager cycle`);
+        logger.error(`❌ Failed to immediately track newly created record ${record.name} via bridge - will be tracked on next dnsManager cycle`);
       }
     } catch (trackError) {
-      logger.warn(`Error tracking newly created record ${record.name}: ${trackError.message}`);
+      logger.error(`❌ Error tracking newly created record ${record.name}: ${trackError.message}`);
+      logger.debug(`Track error stack: ${trackError.stack}`);
     }
     
     // Update stats counter if available
