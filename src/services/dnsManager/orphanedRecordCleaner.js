@@ -12,6 +12,69 @@ const {
 } = require('../../utils/recordTracker/recordMatcher');
 
 /**
+ * Perform database-only cleanup when API is unavailable
+ * @param {Object} recordTracker - Record tracker instance
+ * @param {Object} config - Configuration manager instance
+ * @param {boolean} forceImmediate - Whether to ignore grace period
+ */
+async function performDatabaseOnlyCleanup(recordTracker, config, forceImmediate = false) {
+  try {
+    logger.info('Performing database-only cleanup of expired orphaned records');
+    
+    // Get grace period from config
+    const gracePeriodMinutes = parseInt(config.getOrphanedGracePeriod()) || 15;
+    const gracePeriodMs = gracePeriodMinutes * 60 * 1000;
+    const now = new Date();
+    
+    let cleanedCount = 0;
+    
+    // Check if recordTracker has SQLite manager for orphaned records
+    if (recordTracker.sqliteManager) {
+      // Get all orphaned records from database
+      const trackedData = await recordTracker.sqliteManager.loadTrackedRecordsFromDatabase();
+      
+      if (trackedData && trackedData.providers) {
+        for (const [provider, providerData] of Object.entries(trackedData.providers)) {
+          if (providerData && providerData.records) {
+            for (const [recordId, record] of Object.entries(providerData.records)) {
+              // Check if record is orphaned
+              const isOrphaned = await recordTracker.sqliteManager.isRecordOrphaned(provider, recordId);
+              if (isOrphaned) {
+                const orphanedTime = await recordTracker.sqliteManager.getRecordOrphanedTime(provider, recordId);
+                
+                if (orphanedTime) {
+                  const orphanedDate = new Date(orphanedTime);
+                  const timeSinceOrphaned = now - orphanedDate;
+                  const minutesSinceOrphaned = Math.floor(timeSinceOrphaned / (1000 * 60));
+                  
+                  // Check if grace period has elapsed or force immediate
+                  if (forceImmediate || timeSinceOrphaned >= gracePeriodMs) {
+                    logger.info(`🗑️ Database-only cleanup: Removing expired orphaned record ${record.name} (${record.type}) - orphaned for ${minutesSinceOrphaned} minutes`);
+                    
+                    // Remove from tracking database
+                    try {
+                      await recordTracker.sqliteManager.untrackRecord(provider, recordId);
+                      cleanedCount++;
+                    } catch (untrackError) {
+                      logger.error(`Failed to untrack record ${recordId} during database cleanup: ${untrackError.message}`);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    logger.info(`Database-only cleanup completed: ${cleanedCount} expired orphaned records removed from tracking`);
+    
+  } catch (error) {
+    logger.error(`Database-only cleanup failed: ${error.message}`);
+  }
+}
+
+/**
  * Clean up orphaned DNS records
  * @param {Array<string>} activeHostnames - List of currently active hostnames
  * @param {Object} dnsProvider - DNS provider instance
@@ -33,8 +96,29 @@ async function cleanupOrphanedRecords(
   try {
     logger.debug('Checking for orphaned DNS records...');
 
-    // Get all DNS records for our zone (from cache when possible)
-    const allRecords = await dnsProvider.getRecordsFromCache(true); // Force refresh
+    // Try to get all DNS records for our zone (from cache when possible)
+    let allRecords = [];
+    let usingCachedData = false;
+    
+    try {
+      allRecords = await dnsProvider.getRecordsFromCache(true); // Force refresh
+    } catch (apiError) {
+      logger.warn(`DNS provider API unavailable (${apiError.message}), using cached data for orphaned record cleanup`);
+      
+      // Fall back to cached data without refresh
+      try {
+        allRecords = await dnsProvider.getRecordsFromCache(false); // Use cache only
+        usingCachedData = true;
+        logger.info('Using cached DNS records for orphaned record cleanup due to API connectivity issues');
+      } catch (cacheError) {
+        logger.error(`Cannot access cached DNS records either (${cacheError.message}), skipping provider-based cleanup`);
+        
+        // Fall back to database-only cleanup for expired orphaned records
+        logger.info('Attempting database-only cleanup of expired orphaned records');
+        await performDatabaseOnlyCleanup(recordTracker, config, forceImmediate);
+        return;
+      }
+    }
 
     // Ensure activeHostnames is an array to avoid crashes
     const safeActiveHostnames = Array.isArray(activeHostnames) ? activeHostnames : [];
