@@ -104,6 +104,7 @@ class DNSManager {
     
     // Last active hostnames to check for orphaned records - initialize as empty array to avoid undefined
     this.lastActiveHostnames = [];
+    this.hasRunInitialCleanup = false;
     
     // Subscribe to relevant events with error handling
     try {
@@ -189,11 +190,15 @@ class DNSManager {
       // Log the cleanup interval
       logger.info(`Starting orphaned DNS record cleanup timer with interval of ${this.cleanupInterval / 60000} minutes`);
       
-      // Run the cleanup immediately on startup
-      logger.info('Running initial orphaned record cleanup on startup');
-      if (this.dnsProvider && this.recordTracker) {
-        this.cleanupOrphanedRecordsWithLastHostnames()
-          .catch(error => logger.error(`Initial orphaned record cleanup failed: ${error.message}`));
+      // Run the cleanup immediately on startup only if we have active hostnames
+      if (this.lastActiveHostnames && this.lastActiveHostnames.length > 0) {
+        logger.info('Running initial orphaned record cleanup on startup');
+        if (this.dnsProvider && this.recordTracker) {
+          this.cleanupOrphanedRecordsWithLastHostnames()
+            .catch(error => logger.error(`Initial orphaned record cleanup failed: ${error.message}`));
+        }
+      } else {
+        logger.info('Skipping initial orphaned record cleanup - no active hostnames processed yet');
       }
       
       // Set up the interval for regular cleanups with proper error handling
@@ -482,6 +487,14 @@ class DNSManager {
         } catch (cleanupError) {
           logger.error(`Failed to run immediate orphaned cleanup: ${cleanupError.message}`);
         }
+      }
+      
+      // After processing hostnames, run the first orphaned cleanup if it hasn't run yet
+      if (this.lastActiveHostnames && this.lastActiveHostnames.length > 0 && !this.hasRunInitialCleanup) {
+        this.hasRunInitialCleanup = true;
+        logger.info('Running initial orphaned record cleanup after processing hostnames');
+        this.cleanupOrphanedRecordsWithLastHostnames()
+          .catch(error => logger.error(`Post-processing orphaned cleanup failed: ${error.message}`));
       }
       
       return this.stats;

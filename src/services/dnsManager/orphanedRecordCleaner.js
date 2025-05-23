@@ -109,6 +109,12 @@ async function cleanupOrphanedRecords(
       logger.warn('Database not initialized, skipping orphaned record cleanup');
       return;
     }
+    
+    // Don't run cleanup if we have no active hostnames yet (prevents false orphaning on startup)
+    if (!activeHostnames || activeHostnames.length === 0) {
+      logger.info('No active hostnames available yet, skipping orphaned record cleanup to prevent false positives');
+      return;
+    }
 
     // Try to get all DNS records for our zone (from cache when possible)
     let allRecords = [];
