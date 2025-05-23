@@ -189,30 +189,6 @@ class DNSManager {
       // Log the cleanup interval
       logger.info(`Starting orphaned DNS record cleanup timer with interval of ${this.cleanupInterval / 60000} minutes`);
       
-      // Run an initial cleanup with a much longer delay (2 minutes)
-      // This ensures that the application is fully initialized and has had time
-      // to collect initial hostnames before attempting orphaned record cleanup
-      const initialDelay = 120000; // 2 minutes
-      logger.info(`Scheduling initial orphaned record cleanup with ${initialDelay/1000} second delay to ensure proper initialization`);
-      
-      setTimeout(() => {
-        try {
-          // Double-check that we have the necessary components initialized
-          if (!this.dnsProvider) {
-            logger.warn('DNS Provider not initialized for orphaned record cleanup, skipping');
-            return;
-          }
-          if (!this.recordTracker) {
-            logger.warn('Record Tracker not initialized for orphaned record cleanup, skipping');
-            return;
-          }
-          logger.info('Running initial orphaned record cleanup after startup delay');
-          this.cleanupOrphanedRecordsWithLastHostnames();
-        } catch (cleanupError) {
-          logger.error(`Error in initial orphaned record cleanup: ${cleanupError.message}`);
-        }
-      }, initialDelay);
-      
       // Set up the interval for regular cleanups with proper error handling
       this.orphanedRecordCleanupTimer = setInterval(() => {
         try {
