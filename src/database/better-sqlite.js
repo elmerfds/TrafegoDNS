@@ -139,6 +139,22 @@ class BetterSQLite {
         verbose: process.env.DEBUG_MODE === 'true' ? logger.debug : null
       });
       
+      // Check database integrity first
+      const isHealthy = await this.checkIntegrity();
+      if (!isHealthy) {
+        logger.error('Database corruption detected');
+        
+        // Attempt recovery
+        const recovered = await this.attemptRecovery();
+        if (!recovered) {
+          throw new Error('Database is corrupted and recovery failed');
+        }
+        
+        // Database was recovered, return success
+        // The recovery process already reinitialized the database
+        return true;
+      }
+      
       // Enable foreign keys
       this.db.pragma('foreign_keys = ON');
       
@@ -217,6 +233,84 @@ class BetterSQLite {
         }
       }
       
+      return false;
+    }
+  }
+
+  /**
+   * Check database integrity
+   * @returns {Promise<boolean>} Whether database is healthy
+   */
+  async checkIntegrity() {
+    try {
+      if (!this.db) return false;
+      
+      const result = this.db.prepare('PRAGMA integrity_check').get();
+      
+      if (result && result.integrity_check === 'ok') {
+        logger.debug('Database integrity check passed');
+        return true;
+      }
+      
+      logger.error(`Database integrity check failed: ${result ? result.integrity_check : 'unknown error'}`);
+      return false;
+    } catch (error) {
+      logger.error(`Error checking database integrity: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Attempt to recover corrupted database
+   * @returns {Promise<boolean>} Whether recovery was successful
+   */
+  async attemptRecovery() {
+    try {
+      logger.warn('Attempting database recovery...');
+      
+      // Create backup of corrupted database
+      const backupPath = `${this.dbPath}.corrupted.${Date.now()}`;
+      
+      try {
+        fs.copyFileSync(this.dbPath, backupPath);
+        logger.info(`Created backup of corrupted database: ${backupPath}`);
+      } catch (backupError) {
+        logger.warn(`Could not create backup: ${backupError.message}`);
+      }
+      
+      // Close current connection
+      if (this.db) {
+        try {
+          this.db.close();
+        } catch (closeError) {
+          logger.debug(`Error closing corrupted database: ${closeError.message}`);
+        }
+        this.db = null;
+        this.isConnected = false;
+      }
+      
+      // Delete corrupted database
+      try {
+        fs.unlinkSync(this.dbPath);
+        logger.info('Removed corrupted database file');
+      } catch (unlinkError) {
+        logger.error(`Could not remove corrupted database: ${unlinkError.message}`);
+        return false;
+      }
+      
+      // Reinitialize with fresh database
+      this.isInitialized = false;
+      const success = await this.initialize();
+      
+      if (success) {
+        logger.info('Database recovery successful - created fresh database');
+        return true;
+      }
+      
+      logger.error('Database recovery failed');
+      return false;
+    } catch (error) {
+      logger.error(`Database recovery error: ${error.message}`);
       return false;
     }
   }
@@ -1339,6 +1433,18 @@ class BetterSQLite {
         return this.run(sql, params, retries - 1);
       }
 
+      // Check for database corruption
+      if (error.message.includes('database disk image is malformed')) {
+        logger.error('Database corruption detected during query execution');
+        
+        // Attempt recovery
+        const recovered = await this.attemptRecovery();
+        if (recovered) {
+          logger.info('Database recovered, please retry the operation');
+          throw new Error('Database was corrupted but has been recovered. Please retry the operation.');
+        }
+      }
+      
       logger.error(`Error executing query: ${error.message}`);
       logger.debug(`Query: ${sql}`);
       logger.debug(`Params: ${JSON.stringify(params)}`);
@@ -1367,6 +1473,18 @@ class BetterSQLite {
         return this.get(sql, params, retries - 1);
       }
 
+      // Check for database corruption
+      if (error.message.includes('database disk image is malformed')) {
+        logger.error('Database corruption detected during query execution');
+        
+        // Attempt recovery
+        const recovered = await this.attemptRecovery();
+        if (recovered) {
+          logger.info('Database recovered, please retry the operation');
+          throw new Error('Database was corrupted but has been recovered. Please retry the operation.');
+        }
+      }
+      
       logger.error(`Error executing query: ${error.message}`);
       logger.debug(`Query: ${sql}`);
       logger.debug(`Params: ${JSON.stringify(params)}`);
@@ -1395,6 +1513,18 @@ class BetterSQLite {
         return this.all(sql, params, retries - 1);
       }
 
+      // Check for database corruption
+      if (error.message.includes('database disk image is malformed')) {
+        logger.error('Database corruption detected during query execution');
+        
+        // Attempt recovery
+        const recovered = await this.attemptRecovery();
+        if (recovered) {
+          logger.info('Database recovered, please retry the operation');
+          throw new Error('Database was corrupted but has been recovered. Please retry the operation.');
+        }
+      }
+      
       logger.error(`Error executing query: ${error.message}`);
       logger.debug(`Query: ${sql}`);
       logger.debug(`Params: ${JSON.stringify(params)}`);

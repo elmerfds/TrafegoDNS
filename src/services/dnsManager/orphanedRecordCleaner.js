@@ -329,8 +329,14 @@ async function cleanupOrphanedRecords(
                 
                 await dnsProvider.deleteRecord(record.id);
 
-                // Remove record from tracker
-                await recordTracker.untrackRecord(record);
+                // Remove record from tracker - but don't fail if database has issues
+                try {
+                  await recordTracker.untrackRecord(record);
+                } catch (untrackError) {
+                  // Log the error but continue - the DNS record was already deleted successfully
+                  logger.warn(`Failed to untrack deleted record from database: ${untrackError.message}`);
+                  logger.debug('This is non-critical - the DNS record has been deleted from the provider');
+                }
 
                 // Publish delete event
                 eventBus.publish(EventTypes.DNS_RECORD_DELETED, {

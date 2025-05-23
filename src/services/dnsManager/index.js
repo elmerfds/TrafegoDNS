@@ -189,6 +189,13 @@ class DNSManager {
       // Log the cleanup interval
       logger.info(`Starting orphaned DNS record cleanup timer with interval of ${this.cleanupInterval / 60000} minutes`);
       
+      // Run the cleanup immediately on startup
+      logger.info('Running initial orphaned record cleanup on startup');
+      if (this.dnsProvider && this.recordTracker) {
+        this.cleanupOrphanedRecordsWithLastHostnames()
+          .catch(error => logger.error(`Initial orphaned record cleanup failed: ${error.message}`));
+      }
+      
       // Set up the interval for regular cleanups with proper error handling
       this.orphanedRecordCleanupTimer = setInterval(() => {
         try {
