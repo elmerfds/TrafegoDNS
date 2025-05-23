@@ -376,6 +376,8 @@ class SQLiteManager {
    */
   async unmarkRecordOrphaned(provider, recordId) {
     try {
+      logger.debug(`SQLiteManager.unmarkRecordOrphaned called: provider=${provider}, recordId=${recordId}`);
+      
       // Try using the main database first
       const mainDatabase = require('../../database');
       if (mainDatabase && mainDatabase.isInitialized() && mainDatabase.repositories && mainDatabase.repositories.dnsManager) {
@@ -383,7 +385,10 @@ class SQLiteManager {
           // Get the tracked records repository from DNS manager
           const trackedRecordsRepo = mainDatabase.repositories.dnsManager.trackedRecords;
           if (trackedRecordsRepo) {
+            logger.debug(`Using main database tracked records repository`);
             return await trackedRecordsRepo.unmarkRecordOrphaned(provider, recordId);
+          } else {
+            logger.warn(`Main database tracked records repository not available`);
           }
         } catch (dbError) {
           logger.debug(`Failed to unmark record as orphaned in main database: ${dbError.message}`);

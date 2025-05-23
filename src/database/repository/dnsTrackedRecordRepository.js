@@ -562,13 +562,26 @@ class DNSTrackedRecordRepository {
    */
   async unmarkRecordOrphaned(provider, recordId) {
     try {
+      if (!this.db || !this.db.run) {
+        logger.error('Database not available for unmarking record as orphaned');
+        return false;
+      }
+      
       const now = new Date().toISOString();
+      
+      logger.debug(`Unmarking record as orphaned: provider=${provider}, recordId=${recordId}`);
       
       const result = await this.db.run(`
         UPDATE ${this.tableName}
         SET is_orphaned = 0, orphaned_at = NULL, updated_at = ?
         WHERE provider = ? AND record_id = ?
       `, [now, provider, recordId]);
+      
+      logger.debug(`Unmark orphaned result: ${result.changes} rows updated`);
+      
+      if (result.changes === 0) {
+        logger.warn(`No rows updated when unmarking orphaned record: provider=${provider}, recordId=${recordId}`);
+      }
       
       return result.changes > 0;
     } catch (error) {

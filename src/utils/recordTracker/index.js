@@ -436,7 +436,13 @@ class RecordTracker {
     // Try to use SQLite first if available
     if (this.usingSQLite && this.sqliteManager) {
       try {
-        const recordId = record.id || record;
+        // Extract the record ID - handle both 'id' and 'record_id' fields
+        const recordId = typeof record === 'string' ? record : (record.id || record.record_id);
+        if (!recordId) {
+          logger.error('Cannot mark record as orphaned: no record ID found');
+          return false;
+        }
+        
         const success = await this.sqliteManager.markRecordOrphaned(this.provider, recordId);
         if (success) {
           // Also update in-memory data
@@ -472,7 +478,14 @@ class RecordTracker {
     // Try to use SQLite first if available
     if (this.usingSQLite && this.sqliteManager) {
       try {
-        const recordId = record.id || record;
+        // Extract the record ID - handle both 'id' and 'record_id' fields
+        const recordId = typeof record === 'string' ? record : (record.id || record.record_id);
+        if (!recordId) {
+          logger.error('Cannot unmark record as orphaned: no record ID found');
+          return false;
+        }
+        
+        logger.debug(`Unmarking record as orphaned - ID: ${recordId}`);
         const success = await this.sqliteManager.unmarkRecordOrphaned(this.provider, recordId);
         if (success) {
           // Also update in-memory data
@@ -498,7 +511,13 @@ class RecordTracker {
     // Try to use SQLite first if available
     if (this.usingSQLite && this.sqliteManager) {
       try {
-        const recordId = record.id || record;
+        // Extract the record ID - handle both 'id' and 'record_id' fields
+        const recordId = typeof record === 'string' ? record : (record.id || record.record_id);
+        if (!recordId) {
+          logger.debug('Cannot check if record is orphaned: no record ID found');
+          return false;
+        }
+        
         return await this.sqliteManager.isRecordOrphaned(this.provider, recordId);
       } catch (error) {
         logger.error(`Failed to check if record is orphaned in SQLite: ${error.message}`);
@@ -517,7 +536,13 @@ class RecordTracker {
     // Try to use SQLite first if available
     if (this.usingSQLite && this.sqliteManager) {
       try {
-        const recordId = record.id || record;
+        // Extract the record ID - handle both 'id' and 'record_id' fields
+        const recordId = typeof record === 'string' ? record : (record.id || record.record_id);
+        if (!recordId) {
+          logger.debug('Cannot get orphaned time: no record ID found');
+          return null;
+        }
+        
         return await this.sqliteManager.getRecordOrphanedTime(this.provider, recordId);
       } catch (error) {
         logger.error(`Failed to get record orphaned time from SQLite: ${error.message}`);

@@ -434,7 +434,8 @@ async function cleanupOrphanedRecords(
           logger.info(`✅ DNS record is active again, removing orphaned mark: ${recordFqdn} (${record.type})
           - Reason: Now matches an active hostname
           - Matching hostname: ${matchingHostname || '[Using legacy hostname match]'}
-          - Action: Unmarking as orphaned to prevent deletion`);
+          - Action: Unmarking as orphaned to prevent deletion
+          - Record ID: ${record.id}`);
           
           await recordTracker.unmarkRecordOrphaned(record);
           reactivatedCount++;

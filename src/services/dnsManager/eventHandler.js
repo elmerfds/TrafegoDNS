@@ -18,18 +18,22 @@ function setupEventSubscriptions(eventBus, processHostnamesHandler) {
   
   // Subscribe to Traefik router updates
   eventBus.subscribe(EventTypes.TRAEFIK_ROUTERS_UPDATED, async (data) => {
+    if (!data) {
+      logger.warn('Received TRAEFIK_ROUTERS_UPDATED event with no data');
+      return;
+    }
     const { hostnames, containerLabels } = data;
     await processHostnamesHandler(hostnames, containerLabels);
   });
 
   // Subscribe to Docker container events for tracking removed containers
-  eventBus.subscribe(EventTypes.DOCKER_CONTAINER_DESTROYED, async (data) => {
+  eventBus.subscribe(EventTypes.CONTAINER_DESTROYED, async (data) => {
     // When a container is destroyed, it might be a good time to check for orphaned records
     // The processHostnamesHandler will be called on the next Traefik poll, which will update
     // the active hostnames list and then the scheduled cleanup timer will take care of the rest.
     
     // Log this event at debug level
-    logger.debug(`Container destroyed: ${data.name}. Will check for orphaned records on next cleanup.`);
+    logger.debug(`Container destroyed: ${data?.name || 'unknown'}. Will check for orphaned records on next cleanup.`);
   });
   
   logger.debug('DNS Manager event subscriptions configured');

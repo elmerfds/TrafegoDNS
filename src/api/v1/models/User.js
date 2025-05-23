@@ -709,5 +709,8 @@ class UserModel {
   }
 }
 
-// Export singleton instance
-module.exports = new UserModel();
+// Create singleton instance but don't initialize yet
+const userModelInstance = new UserModel();
+
+// Export the instance
+module.exports = userModelInstance;

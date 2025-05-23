@@ -67,7 +67,7 @@ class UserRepository extends BaseRepository {
         logger.info('Creating default admin user in database');
         await this.create({
           username: 'admin',
-          passwordHash: bcrypt.hashSync('admin123', 10),
+          password_hash: bcrypt.hashSync('admin123', 10),
           role: 'admin'
         });
       }
