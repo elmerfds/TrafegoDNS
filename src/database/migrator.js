@@ -66,10 +66,7 @@ class DatabaseMigrator {
         // Continue to finish
       }
 
-      // Create a marker file to indicate successful migration
       if (totalMigrated > 0) {
-        const markerFile = path.join(this.dataDir, '.json_migration_complete');
-        fs.writeFileSync(markerFile, new Date().toISOString());
         logger.info(`Migration from JSON to SQLite completed successfully (${totalMigrated} records)`);
       } else {
         logger.info('No records needed migration from JSON to SQLite');
@@ -153,15 +150,11 @@ class DatabaseMigrator {
 
         logger.info(`Migrated ${migratedCount} DNS records from JSON`);
 
-        // Keep JSON file as backup with timestamp
+        // Rename JSON file to indicate it's been migrated
         if (migratedCount > 0) {
-          const backupFile = `${sourceFile}.bak.${Date.now()}`;
-          fs.copyFileSync(sourceFile, backupFile);
-          logger.info(`Created backup of DNS records JSON at ${backupFile}`);
-
-          // Create a marker file to indicate migration
-          const markerFile = path.join(this.dataDir, '.dns_records_migrated');
-          fs.writeFileSync(markerFile, new Date().toISOString());
+          const migratedFile = `${sourceFile}.migrated`;
+          fs.renameSync(sourceFile, migratedFile);
+          logger.info(`Renamed migrated file to ${path.basename(migratedFile)}`);
         }
 
         return migratedCount;
@@ -306,6 +299,26 @@ class DatabaseMigrator {
       }
 
       try {
+        // Check if this is just the default admin user (fresh install)
+        const isDefaultOnly = Array.isArray(jsonData) && 
+                             jsonData.length === 1 && 
+                             jsonData[0].username === 'admin' &&
+                             jsonData[0].id === '1' &&
+                             !jsonData[0].lastLogin;
+
+        if (isDefaultOnly) {
+          logger.info('Detected fresh install with default admin user only, skipping migration');
+          // Delete the file instead of migrating
+          fs.unlinkSync(usersFile);
+          logger.debug('Removed default users.json file');
+          
+          // Commit empty transaction
+          if (!isInTransaction) {
+            await this.db.commit();
+          }
+          return 0;
+        }
+
         // Migrate users
         const migratedCount = await this.repositories.user.migrateFromJson(jsonData);
 
@@ -317,15 +330,11 @@ class DatabaseMigrator {
 
         logger.info(`Migrated ${migratedCount} users from JSON`);
 
-        // Keep JSON file as backup with timestamp
+        // Rename JSON file to indicate it's been migrated
         if (migratedCount > 0) {
-          const backupFile = `${usersFile}.bak.${Date.now()}`;
-          fs.copyFileSync(usersFile, backupFile);
-          logger.info(`Created backup of users JSON at ${backupFile}`);
-
-          // Create a marker file to indicate migration
-          const markerFile = path.join(this.dataDir, '.users_migrated');
-          fs.writeFileSync(markerFile, new Date().toISOString());
+          const migratedFile = `${usersFile}.migrated`;
+          fs.renameSync(usersFile, migratedFile);
+          logger.info(`Renamed migrated file to ${path.basename(migratedFile)}`);
         }
 
         return migratedCount;
@@ -372,7 +381,10 @@ class DatabaseMigrator {
       }
 
       if (!jsonData || !Array.isArray(jsonData) || jsonData.length === 0) {
-        logger.info('No revoked tokens to migrate');
+        logger.info('No revoked tokens to migrate (empty file)');
+        // Delete the empty file instead of migrating
+        fs.unlinkSync(tokensFile);
+        logger.debug('Removed empty revoked-tokens.json file');
         return 0;
       }
 
@@ -412,15 +424,11 @@ class DatabaseMigrator {
 
         logger.info(`Migrated ${migratedCount} revoked tokens from JSON`);
 
-        // Keep JSON file as backup with timestamp
+        // Rename JSON file to indicate it's been migrated
         if (migratedCount > 0) {
-          const backupFile = `${tokensFile}.bak.${Date.now()}`;
-          fs.copyFileSync(tokensFile, backupFile);
-          logger.info(`Created backup of revoked tokens JSON at ${backupFile}`);
-
-          // Create a marker file to indicate migration
-          const markerFile = path.join(this.dataDir, '.tokens_migrated');
-          fs.writeFileSync(markerFile, new Date().toISOString());
+          const migratedFile = `${tokensFile}.migrated`;
+          fs.renameSync(tokensFile, migratedFile);
+          logger.info(`Renamed migrated file to ${path.basename(migratedFile)}`);
         }
 
         return migratedCount;
@@ -524,15 +532,11 @@ class DatabaseMigrator {
         logger.info(`Migrated ${migratedCount} DNS tracked records from JSON`);
         totalMigrated = migratedCount + additionalMigrated;
 
-        // Keep JSON file as backup with timestamp
+        // Rename JSON file to indicate it's been migrated
         if (migratedCount > 0) {
-          const backupFile = `${sourceFile}.bak.${Date.now()}`;
-          fs.copyFileSync(sourceFile, backupFile);
-          logger.info(`Created backup of DNS tracked records JSON at ${backupFile}`);
-
-          // Create a marker file to indicate migration
-          const markerFile = path.join(this.dataDir, '.dns_tracked_records_migrated');
-          fs.writeFileSync(markerFile, new Date().toISOString());
+          const migratedFile = `${sourceFile}.migrated`;
+          fs.renameSync(sourceFile, migratedFile);
+          logger.info(`Renamed migrated file to ${path.basename(migratedFile)}`);
         }
 
         return totalMigrated;

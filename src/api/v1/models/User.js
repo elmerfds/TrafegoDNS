@@ -32,7 +32,8 @@ class UserModel {
     this.usingJsonFallback = false;
     
     // Delay initialization to allow database to be ready
-    setTimeout(() => this.init(), 500);
+    // Use a longer delay to avoid race conditions with SQLite initialization
+    setTimeout(() => this.init(), 2000);
   }
   
   /**
@@ -101,36 +102,56 @@ class UserModel {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
       
+      // Check if data has been migrated to SQLite by looking for .migrated files
+      const usersMigrated = fs.existsSync(`${USERS_FILE}.migrated`);
+      const tokensMigrated = fs.existsSync(`${TOKENS_FILE}.migrated`);
+      
       // Check if users file exists
       if (!fs.existsSync(USERS_FILE)) {
-        logger.debug('Users file does not exist, creating with default admin user');
-        
-        // Create default admin user
-        const defaultAdmin = {
-          id: '1',
-          username: 'admin',
-          passwordHash: bcrypt.hashSync('admin123', 10),
-          role: 'admin',
-          createdAt: new Date().toISOString(),
-          lastLogin: null
-        };
-        
-        // Save to file
-        fs.writeFileSync(USERS_FILE, JSON.stringify([defaultAdmin], null, 2));
-        logger.info('Created default admin user in JSON storage');
+        // If migrated, don't create new JSON file
+        if (usersMigrated) {
+          logger.debug('Users already migrated to SQLite, skipping JSON file creation');
+          this.users = [];
+        } else {
+          logger.debug('Users file does not exist, creating with default admin user');
+          
+          // Create default admin user
+          const defaultAdmin = {
+            id: '1',
+            username: 'admin',
+            passwordHash: bcrypt.hashSync('admin123', 10),
+            role: 'admin',
+            createdAt: new Date().toISOString(),
+            lastLogin: null
+          };
+          
+          // Save to file
+          fs.writeFileSync(USERS_FILE, JSON.stringify([defaultAdmin], null, 2));
+          logger.info('Created default admin user in JSON storage');
+        }
       }
       
-      // Load users from file
-      this.loadUsers();
+      // Load users from file only if it exists
+      if (fs.existsSync(USERS_FILE)) {
+        this.loadUsers();
+      }
       
       // Check if tokens file exists
       if (!fs.existsSync(TOKENS_FILE)) {
-        logger.debug('Revoked tokens file does not exist, creating empty file');
-        fs.writeFileSync(TOKENS_FILE, JSON.stringify([], null, 2));
+        // If migrated, don't create new JSON file
+        if (tokensMigrated) {
+          logger.debug('Tokens already migrated to SQLite, skipping JSON file creation');
+          this.revokedTokens = [];
+        } else {
+          logger.debug('Revoked tokens file does not exist, creating empty file');
+          fs.writeFileSync(TOKENS_FILE, JSON.stringify([], null, 2));
+        }
       }
       
-      // Load revoked tokens from file
-      this.loadRevokedTokens();
+      // Load revoked tokens from file only if it exists
+      if (fs.existsSync(TOKENS_FILE)) {
+        this.loadRevokedTokens();
+      }
       
       // Mark as using JSON fallback
       this.usingJsonFallback = true;
@@ -190,44 +211,58 @@ class UserModel {
         // Database not ready, check if we should retry
         if (this.retryCount < MAX_RETRIES) {
           this.retryCount++;
-          logger.warn(`SQLite database not ready, will retry in ${RETRY_INTERVAL/1000} second(s) (attempt ${this.retryCount}/${MAX_RETRIES})`);
+          logger.debug(`SQLite database not ready yet, will retry in ${RETRY_INTERVAL/1000} second(s) (attempt ${this.retryCount}/${MAX_RETRIES})`);
           
           // Schedule retry
           setTimeout(() => this.init(), RETRY_INTERVAL);
           
-          // If this is the first retry, initialize JSON storage as a fallback
-          if (this.retryCount === 1) {
-            logger.warn('Falling back to JSON storage while waiting for SQLite');
-            logger.warn('This is a temporary measure and not recommended for production');
-            this.initJsonStorage();
-            this.initialized = true;
-          }
-          
+          // Don't create JSON files while waiting for SQLite
+          // The database will create the default admin user when it initializes
           return false;
         } else {
-          // Max retries reached, fall back to JSON storage permanently
-          logger.warn(`Giving up on SQLite after ${MAX_RETRIES} retry attempts`);
-          logger.warn('Permanently falling back to JSON storage for user management');
-          logger.warn('This is not recommended for production use');
+          // Max retries reached
+          logger.error(`SQLite database not available after ${MAX_RETRIES} attempts`);
           
-          // Initialize JSON storage if not already done
-          if (!this.usingJsonFallback) {
+          // Check if SQLite is actually not installed vs just slow to initialize
+          const database = this.loadDatabase();
+          if (!database) {
+            // SQLite module not available at all - fall back to JSON
+            logger.warn('SQLite module not available, falling back to JSON storage');
+            logger.warn('This is not recommended for production use');
+            
             this.initJsonStorage();
+            this.initialized = true;
+            return true;
+          } else {
+            // SQLite exists but isn't initialized - this is likely a startup race condition
+            // Don't create JSON files, just fail initialization
+            logger.error('SQLite module exists but failed to initialize - please check database configuration');
+            this.initialized = false;
+            return false;
           }
-          
-          this.initialized = true;
-          return true;
         }
       }
     } catch (error) {
       logger.error(`Failed to initialize user database: ${error.message}`);
-      logger.error(`Stack trace: ${error.stack}`);
       
-      // Fall back to JSON storage on error
-      logger.warn('Falling back to JSON storage due to initialization error');
-      this.initJsonStorage();
-      this.initialized = true;
-      return false;
+      // Only fall back to JSON if SQLite module is not available
+      const database = this.loadDatabase();
+      if (!database) {
+        logger.warn('Falling back to JSON storage due to missing SQLite module');
+        this.initJsonStorage();
+        this.initialized = true;
+        return false;
+      } else {
+        // SQLite exists but there was an error - don't create JSON files
+        logger.error('SQLite initialization error - will retry');
+        this.initialized = false;
+        
+        // Schedule a retry if we haven't exceeded max attempts
+        if (this.retryCount < MAX_RETRIES) {
+          setTimeout(() => this.init(), RETRY_INTERVAL);
+        }
+        return false;
+      }
     }
   }
   
@@ -336,6 +371,12 @@ class UserModel {
    */
   saveUsers() {
     try {
+      // Check if already migrated to SQLite
+      if (fs.existsSync(`${USERS_FILE}.migrated`)) {
+        logger.debug('Users already migrated to SQLite, skipping JSON save');
+        return true;
+      }
+      
       fs.writeFileSync(USERS_FILE, JSON.stringify(this.users, null, 2));
       logger.debug(`Saved ${this.users.length} users to JSON storage`);
       return true;
@@ -350,6 +391,12 @@ class UserModel {
    */
   saveRevokedTokens() {
     try {
+      // Check if already migrated to SQLite
+      if (fs.existsSync(`${TOKENS_FILE}.migrated`)) {
+        logger.debug('Tokens already migrated to SQLite, skipping JSON save');
+        return true;
+      }
+      
       fs.writeFileSync(TOKENS_FILE, JSON.stringify(this.revokedTokens, null, 2));
       logger.debug(`Saved ${this.revokedTokens.length} revoked tokens to JSON storage`);
       return true;

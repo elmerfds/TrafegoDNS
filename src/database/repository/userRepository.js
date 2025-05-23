@@ -41,10 +41,38 @@ class UserRepository extends BaseRepository {
         await this.db.run(`CREATE INDEX IF NOT EXISTS idx_users_role ON ${this.tableName}(role)`);
 
         logger.info(`Created ${this.tableName} table and indexes`);
+        
+        // Create default admin user for fresh installs
+        await this.ensureDefaultAdmin();
+      } else {
+        // Check if any users exist
+        const userCount = await this.count();
+        if (userCount === 0) {
+          await this.ensureDefaultAdmin();
+        }
       }
     } catch (error) {
       logger.error(`Failed to initialize ${this.tableName} table: ${error.message}`);
       // Don't throw the error, just log it - allow application to continue
+    }
+  }
+
+  /**
+   * Ensure default admin user exists
+   */
+  async ensureDefaultAdmin() {
+    try {
+      const adminExists = await this.findByUsername('admin');
+      if (!adminExists) {
+        logger.info('Creating default admin user in database');
+        await this.create({
+          username: 'admin',
+          passwordHash: bcrypt.hashSync('admin123', 10),
+          role: 'admin'
+        });
+      }
+    } catch (error) {
+      logger.error(`Failed to ensure default admin user: ${error.message}`);
     }
   }
 
