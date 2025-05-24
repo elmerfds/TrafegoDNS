@@ -51,6 +51,57 @@ function initCli(apiClient, config, eventBus) {
           displayHelp();
           break;
           
+        case 'db':
+          // Handle database commands
+          const dbCommands = require('./commands/db');
+          const subCommand = args[0];
+          const dbArgs = args.slice(1);
+          
+          switch (subCommand) {
+            case 'list':
+              // Parse arguments for db list
+              const listArgs = {};
+              for (let i = 0; i < dbArgs.length; i++) {
+                if (dbArgs[i] === '--managed') listArgs.managed = true;
+                else if (dbArgs[i] === '--orphaned') listArgs.orphaned = true;
+                else if (dbArgs[i] === '--type' && dbArgs[i+1]) {
+                  listArgs.type = dbArgs[i+1];
+                  i++;
+                }
+                else if (dbArgs[i] === '--limit' && dbArgs[i+1]) {
+                  listArgs.limit = parseInt(dbArgs[i+1]);
+                  i++;
+                }
+              }
+              await dbCommands.listRecords(listArgs, { apiClient });
+              break;
+              
+            case 'status':
+              await dbCommands.status({}, { apiClient });
+              break;
+              
+            case 'cleanup':
+              await dbCommands.cleanupOrphaned({}, { apiClient });
+              break;
+              
+            case 'refresh':
+              await dbCommands.refreshRecords({}, { apiClient });
+              break;
+              
+            case 'sync':
+              await dbCommands.syncTables({}, { apiClient });
+              break;
+              
+            default:
+              console.log('Available db commands:');
+              console.log('  db list [--managed] [--orphaned] [--type TYPE] [--limit N]');
+              console.log('  db status');
+              console.log('  db cleanup');
+              console.log('  db refresh');
+              console.log('  db sync');
+          }
+          break;
+          
         case 'status':
           const status = await apiClient.getStatus();
           console.log('System Status:');
@@ -59,15 +110,9 @@ function initCli(apiClient, config, eventBus) {
           
         case 'records':
         case 'dns':
-          const records = await apiClient.getDnsRecords();
-          console.log('DNS Records:');
-          if (records.data && records.data.length > 0) {
-            records.data.forEach(record => {
-              console.log(`${record.id}: ${record.name} (${record.type}) -> ${record.content}`);
-            });
-          } else {
-            console.log('No DNS records found');
-          }
+          // Import the db command for better output
+          const dbCommands = require('./commands/db');
+          await dbCommands.listRecords(args, { apiClient });
           break;
           
         case 'config':
@@ -164,14 +209,24 @@ function displayHelp() {
   console.log('\nTrafegoDNS CLI Commands:');
   console.log('  help               - Show this help message');
   console.log('  status             - Show system status');
-  console.log('  records, dns       - List all DNS records');
+  console.log('  records, dns       - List all DNS records (with managed status)');
   console.log('  config             - Show current configuration');
   console.log('  hostnames          - List managed hostnames');
   console.log('  containers         - List Docker containers');
   console.log('  refresh            - Force DNS refresh');
   console.log('  add <name> <type> <content> [ttl] [proxied] - Add a new DNS record');
   console.log('  delete, del <id>   - Delete a DNS record');
-  console.log('  exit, quit         - Exit the CLI (server continues running)\n');
+  console.log('  exit, quit         - Exit the CLI (server continues running)');
+  console.log('\nDatabase Commands:');
+  console.log('  db list [options]  - List DNS records from database');
+  console.log('    --managed        - Show only app-managed records');
+  console.log('    --orphaned       - Show only orphaned records');
+  console.log('    --type TYPE      - Filter by record type');
+  console.log('    --limit N        - Limit number of results');
+  console.log('  db status          - Show database statistics');
+  console.log('  db cleanup         - Mark orphaned records for cleanup');
+  console.log('  db refresh         - Refresh DNS records from provider');
+  console.log('  db sync            - Sync DNS record tables\n');
 }
 
 module.exports = { start };
