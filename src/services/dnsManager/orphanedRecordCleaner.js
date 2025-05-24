@@ -360,6 +360,21 @@ async function cleanupOrphanedRecords(
                   logger.warn(`Failed to untrack deleted record from database: ${untrackError.message}`);
                   logger.debug('This is non-critical - the DNS record has been deleted from the provider');
                 }
+                
+                // Also remove from provider cache (dns_records table)
+                try {
+                  const database = require('../../database');
+                  if (database && database.isInitialized() && database.repositories && database.repositories.dnsManager) {
+                    const providerCache = database.repositories.dnsManager.providerCache;
+                    if (providerCache) {
+                      await providerCache.deleteRecord(config.dnsProvider, record.id);
+                      logger.debug(`Removed deleted record ${record.id} from provider cache`);
+                    }
+                  }
+                } catch (cacheError) {
+                  logger.warn(`Failed to remove deleted record from provider cache: ${cacheError.message}`);
+                  // This is non-critical - continue
+                }
 
                 // Publish delete event
                 eventBus.publish(EventTypes.DNS_RECORD_DELETED, {

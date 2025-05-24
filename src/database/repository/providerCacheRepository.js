@@ -339,6 +339,32 @@ class ProviderCacheRepository extends BaseRepository {
   }
 
   /**
+   * Delete a record from the cache
+   * @param {string} provider - Provider name
+   * @param {string} recordId - Provider record ID
+   * @returns {Promise<boolean>} - Success status
+   */
+  async deleteRecord(provider, recordId) {
+    try {
+      const result = await this.db.run(`
+        DELETE FROM ${this.tableName}
+        WHERE provider = ? AND id = ?
+      `, [provider, recordId]);
+      
+      if (result.changes > 0) {
+        logger.debug(`Deleted record ${recordId} from provider cache`);
+        return true;
+      } else {
+        logger.debug(`Record ${recordId} not found in provider cache for deletion`);
+        return false;
+      }
+    } catch (error) {
+      logger.error(`Failed to delete record from provider cache: ${error.message}`);
+      return false;
+    }
+  }
+  
+  /**
    * Generate a fingerprint for a record
    * Used to detect changes in record content
    * @param {Object} record - DNS record
