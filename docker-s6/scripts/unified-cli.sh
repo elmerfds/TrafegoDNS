@@ -167,7 +167,7 @@ function list_records() {
   LEFT JOIN dns_tracked_records dtr 
     ON dr.provider = dtr.provider 
     AND dr.record_id = dtr.record_id
-  ORDER BY dr.zone_name, dr.name, dr.type;"
+  ORDER BY dr.name, dr.type;"
 
   sqlite3 -csv "$DB_FILE" "$query" | \
   while IFS="," read -r id type name content orphaned managed; do
@@ -389,17 +389,17 @@ function search_records() {
     # Map field names to table prefix
     case "$field" in
       "type"|"name"|"content")
-        sql_query="$base_query WHERE dr.$field LIKE '%$value%' ORDER BY dr.zone_name, dr.name, dr.type;"
+        sql_query="$base_query WHERE dr.$field LIKE '%$value%' ORDER BY dr.name, dr.type;"
         ;;
       "id")
-        sql_query="$base_query WHERE dr.record_id LIKE '%$value%' ORDER BY dr.zone_name, dr.name, dr.type;"
+        sql_query="$base_query WHERE dr.record_id LIKE '%$value%' ORDER BY dr.name, dr.type;"
         ;;
     esac
   else
     # Generic search across multiple fields
     sql_query="$base_query
               WHERE dr.name LIKE '%$query%' OR dr.content LIKE '%$query%' OR dr.type LIKE '%$query%'
-              ORDER BY dr.zone_name, dr.name, dr.type;"
+              ORDER BY dr.name, dr.type;"
   fi
 
   # Run the query
