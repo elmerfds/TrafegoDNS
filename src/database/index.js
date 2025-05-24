@@ -44,8 +44,8 @@ async function initialize(migrate = true, options = {}) {
       throw new Error('Failed to initialize database connection');
     }
     
-    // Set db reference to the connection
-    db = connection;
+    // Set db reference to the actual database object
+    db = connection.db;
 
     // Determine which repositories to initialize
     const onlyRepositories = options.onlyRepositories || null;
