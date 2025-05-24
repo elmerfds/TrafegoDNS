@@ -46,6 +46,9 @@ function initCli(apiClient, config, eventBus) {
       
       const [command, ...args] = trimmedLine.split(' ');
       
+      // Import db commands once at the beginning
+      const dbCommands = require('./commands/db');
+      
       switch (command.toLowerCase()) {
         case 'help':
           displayHelp();
@@ -53,7 +56,6 @@ function initCli(apiClient, config, eventBus) {
           
         case 'db':
           // Handle database commands
-          const dbCommands = require('./commands/db');
           const subCommand = args[0];
           const dbArgs = args.slice(1);
           
@@ -110,8 +112,7 @@ function initCli(apiClient, config, eventBus) {
           
         case 'records':
         case 'dns':
-          // Import the db command for better output
-          const dbCommands = require('./commands/db');
+          // Use the db command for better output
           await dbCommands.listRecords(args, { apiClient });
           break;
           
