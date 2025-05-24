@@ -27,6 +27,8 @@ async function listRecords(args, context) {
     
     // Try to use API client first if available
     if (apiClient) {
+      console.log(chalk.cyan('=== DNS Records ==')); 
+      console.log(chalk.gray('Reading from API'));
       const response = await apiClient.getDnsRecords(options);
       records = response.data;
     } 
@@ -54,6 +56,10 @@ async function listRecords(args, context) {
     }
     // Last resort, try to load the database directly
     else {
+      console.log(chalk.cyan('=== DNS Records ==='));
+      console.log('');
+      console.log(chalk.gray('Reading from SQLite database'));
+      console.log('');
       try {
         const database = require('../../database');
         if (!database.isInitialized()) {
@@ -116,29 +122,70 @@ async function listRecords(args, context) {
             }
           }
           
-          // Build query
-          let query = `SELECT * FROM ${tableName}`;
+          // Build query - if using dns_records, join with dns_tracked_records to get managed status
+          let query;
           const params = [];
           const conditions = [];
           
+          if (tableName === 'dns_records') {
+            // Join with tracked records to get managed status
+            query = `
+              SELECT 
+                dr.*,
+                CASE 
+                  WHEN dtr.record_id IS NOT NULL AND json_extract(dtr.metadata, '$.appManaged') = 1 
+                  THEN 1 
+                  ELSE 0 
+                END as isAppManaged,
+                dtr.is_orphaned
+              FROM dns_records dr
+              LEFT JOIN dns_tracked_records dtr 
+                ON dr.provider = dtr.provider 
+                AND dr.id = dtr.record_id
+            `;
+          } else {
+            // Query tracked records directly
+            query = `
+              SELECT *,
+                json_extract(metadata, '$.appManaged') as isAppManaged
+              FROM ${tableName}
+            `;
+          }
+          
           if (options.type) {
-            conditions.push('type = ?');
+            if (tableName === 'dns_records') {
+              conditions.push('dr.type = ?');
+            } else {
+              conditions.push('type = ?');
+            }
             params.push(options.type.toUpperCase());
           }
           
           if (options.orphaned) {
-            conditions.push('is_orphaned = 1');
+            if (tableName === 'dns_records') {
+              conditions.push('dtr.is_orphaned = 1');
+            } else {
+              conditions.push('is_orphaned = 1');
+            }
           }
           
-          if (tableName === 'dns_tracked_records' && options.managed) {
-            conditions.push("json_extract(metadata, '$.appManaged') = 1");
+          if (options.managed) {
+            if (tableName === 'dns_records') {
+              conditions.push("json_extract(dtr.metadata, '$.appManaged') = 1");
+            } else {
+              conditions.push("json_extract(metadata, '$.appManaged') = 1");
+            }
           }
           
           if (conditions.length > 0) {
             query += ' WHERE ' + conditions.join(' AND ');
           }
           
-          query += ' ORDER BY name ASC LIMIT ?';
+          if (tableName === 'dns_records') {
+            query += ' ORDER BY dr.name ASC LIMIT ?';
+          } else {
+            query += ' ORDER BY name ASC LIMIT ?';
+          }
           params.push(options.limit);
           
           records = await database.db.all(query, params);
