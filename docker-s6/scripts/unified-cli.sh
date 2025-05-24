@@ -151,14 +151,23 @@ function list_records() {
   echo ""
   format_table_header
 
-  # Check if 'managed' column exists
-  has_managed=0
-  if sqlite3 "$DB_FILE" ".schema dns_records" | grep -q "managed"; then
-    has_managed=1
-    query="SELECT id, type, name, content, is_orphaned, managed FROM dns_records ORDER BY id;"
-  else
-    query="SELECT id, type, name, content, is_orphaned, 0 AS managed FROM dns_records ORDER BY id;"
-  fi
+  # Use JOIN query to get managed status from dns_tracked_records
+  query="SELECT 
+    dr.record_id as id,
+    dr.type,
+    dr.name,
+    dr.content,
+    COALESCE(dtr.is_orphaned, 0) as is_orphaned,
+    CASE 
+      WHEN dtr.record_id IS NOT NULL AND json_extract(dtr.metadata, '$.appManaged') = 1 
+      THEN 1 
+      ELSE 0 
+    END as managed
+  FROM dns_records dr
+  LEFT JOIN dns_tracked_records dtr 
+    ON dr.provider = dtr.provider 
+    AND dr.record_id = dtr.record_id
+  ORDER BY dr.zone_name, dr.name, dr.type;"
 
   sqlite3 -csv "$DB_FILE" "$query" | \
   while IFS="," read -r id type name content orphaned managed; do
@@ -213,48 +222,30 @@ function process_records() {
   # Initialize logger for consistency with previous output
   echo "Logger initialised with level: INFO (2)"
 
-  # Check if managed column exists
-  has_managed=0
-  if sqlite3 "$DB_FILE" ".schema dns_records" 2>/dev/null | grep -q "managed"; then
-    has_managed=1
-  fi
-
   # Get current timestamp in ISO format
   now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-  # Check if last_processed column exists
-  has_last_processed=0
-  if sqlite3 "$DB_FILE" ".schema dns_records" 2>/dev/null | grep -q "last_processed"; then
-    has_last_processed=1
-  fi
-
-  # Update records based on schema
-  if [ "$has_managed" -eq 1 ] && [ "$has_last_processed" -eq 1 ]; then
-    # Full schema with managed and last_processed
-    sqlite3 "$DB_FILE" "UPDATE dns_records SET last_processed = '$now', is_orphaned = 0 WHERE managed = 1;"
+  # Update last_processed in dns_tracked_records for managed records
+  if sqlite3 "$DB_FILE" ".tables" | grep -q "dns_tracked_records"; then
+    sqlite3 "$DB_FILE" "UPDATE dns_tracked_records SET updated_at = '$now', is_orphaned = 0 WHERE json_extract(metadata, '$.appManaged') = 1;"
     echo_color $GREEN "Updated managed DNS records with new timestamp"
-  elif [ "$has_last_processed" -eq 1 ]; then
-    # Legacy schema with last_processed but no managed flag
-    sqlite3 "$DB_FILE" "UPDATE dns_records SET last_processed = '$now';"
-    echo_color $GREEN "Updated all DNS records with new timestamp"
   else
-    # Basic schema without last_processed column - just mark as processed
-    echo_color $GREEN "Records marked as processed (no timestamp column available)"
+    echo_color $YELLOW "DNS tracked records table not found"
   fi
 
   # Get counts for reporting
   total=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records;")
 
+  # Get managed count from tracked records
   managed=0
-  if [ "$has_managed" -eq 1 ]; then
-    managed=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE managed = 1;")
+  if sqlite3 "$DB_FILE" ".tables" | grep -q "dns_tracked_records"; then
+    managed=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_tracked_records WHERE json_extract(metadata, '$.appManaged') = 1;")
   fi
 
+  # Get orphaned count from tracked records
   orphaned=0
-  if sqlite3 "$DB_FILE" ".schema dns_records" | grep -q "is_orphaned"; then
-    orphaned=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE is_orphaned = 1;")
-  elif sqlite3 "$DB_FILE" ".schema dns_records" | grep -q "orphaned"; then
-    orphaned=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE orphaned = 1;")
+  if sqlite3 "$DB_FILE" ".tables" | grep -q "dns_tracked_records"; then
+    orphaned=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_tracked_records WHERE is_orphaned = 1;")
   fi
 
   echo_color $GREEN "DNS records processed successfully"
@@ -294,18 +285,16 @@ function show_status() {
   # Get record counts
   total=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records;")
 
-  # Check if is_orphaned column exists
+  # Get orphaned count from dns_tracked_records table
   orphaned=0
-  if sqlite3 "$DB_FILE" ".schema dns_records" | grep -q "is_orphaned"; then
-    orphaned=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE is_orphaned = 1;")
-  elif sqlite3 "$DB_FILE" ".schema dns_records" | grep -q "orphaned"; then
-    orphaned=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE orphaned = 1;")
+  if sqlite3 "$DB_FILE" ".tables" | grep -q "dns_tracked_records"; then
+    orphaned=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_tracked_records WHERE is_orphaned = 1;")
   fi
 
-  # Check if managed column exists
+  # Get managed count from dns_tracked_records table with appManaged metadata
   managed=0
-  if sqlite3 "$DB_FILE" ".schema dns_records" | grep -q "managed"; then
-    managed=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE managed = 1;")
+  if sqlite3 "$DB_FILE" ".tables" | grep -q "dns_tracked_records"; then
+    managed=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_tracked_records WHERE json_extract(metadata, '$.appManaged') = 1;")
   fi
 
   users=0
@@ -374,34 +363,43 @@ function search_records() {
   echo ""
   format_table_header
 
-  # Check if managed column exists
-  has_managed=0
-  if sqlite3 "$DB_FILE" ".schema dns_records" | grep -q "managed"; then
-    has_managed=1
-  fi
+  # Prepare SQL query with JOIN
+  base_query="SELECT 
+    dr.record_id as id,
+    dr.type,
+    dr.name,
+    dr.content,
+    COALESCE(dtr.is_orphaned, 0) as is_orphaned,
+    CASE 
+      WHEN dtr.record_id IS NOT NULL AND json_extract(dtr.metadata, '$.appManaged') = 1 
+      THEN 1 
+      ELSE 0 
+    END as managed
+  FROM dns_records dr
+  LEFT JOIN dns_tracked_records dtr 
+    ON dr.provider = dtr.provider 
+    AND dr.record_id = dtr.record_id"
 
-  # Prepare SQL query based on search type
+  # Add WHERE clause based on search type
   if [[ "$query" == *"="* ]]; then
     # Field-specific search
     field=$(echo "$query" | cut -d'=' -f1)
     value=$(echo "$query" | cut -d'=' -f2)
-
-    if [ "$has_managed" -eq 1 ]; then
-      sql_query="SELECT id, type, name, content, is_orphaned, managed FROM dns_records WHERE $field LIKE '%$value%' ORDER BY id;"
-    else
-      sql_query="SELECT id, type, name, content, is_orphaned, 0 AS managed FROM dns_records WHERE $field LIKE '%$value%' ORDER BY id;"
-    fi
+    
+    # Map field names to table prefix
+    case "$field" in
+      "type"|"name"|"content")
+        sql_query="$base_query WHERE dr.$field LIKE '%$value%' ORDER BY dr.zone_name, dr.name, dr.type;"
+        ;;
+      "id")
+        sql_query="$base_query WHERE dr.record_id LIKE '%$value%' ORDER BY dr.zone_name, dr.name, dr.type;"
+        ;;
+    esac
   else
     # Generic search across multiple fields
-    if [ "$has_managed" -eq 1 ]; then
-      sql_query="SELECT id, type, name, content, is_orphaned, managed FROM dns_records
-                WHERE name LIKE '%$query%' OR content LIKE '%$query%' OR type LIKE '%$query%'
-                ORDER BY id;"
-    else
-      sql_query="SELECT id, type, name, content, is_orphaned, 0 AS managed FROM dns_records
-                WHERE name LIKE '%$query%' OR content LIKE '%$query%' OR type LIKE '%$query%'
-                ORDER BY id;"
-    fi
+    sql_query="$base_query
+              WHERE dr.name LIKE '%$query%' OR dr.content LIKE '%$query%' OR dr.type LIKE '%$query%'
+              ORDER BY dr.zone_name, dr.name, dr.type;"
   fi
 
   # Run the query
@@ -430,7 +428,14 @@ function search_records() {
   if [[ "$query" == *"="* ]]; then
     field=$(echo "$query" | cut -d'=' -f1)
     value=$(echo "$query" | cut -d'=' -f2)
-    count=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE $field LIKE '%$value%';")
+    case "$field" in
+      "type"|"name"|"content")
+        count=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE $field LIKE '%$value%';")
+        ;;
+      "id")
+        count=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE record_id LIKE '%$value%';")
+        ;;
+    esac
   else
     count=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records
              WHERE name LIKE '%$query%' OR content LIKE '%$query%' OR type LIKE '%$query%';")
@@ -464,7 +469,7 @@ function delete_record() {
   echo_color $YELLOW "Deleting DNS record with ID: $record_id"
 
   # Check if record exists
-  record_exists=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE id = $record_id;")
+  record_exists=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records WHERE record_id = '$record_id';")
 
   if [ "$record_exists" -eq "0" ]; then
     echo_color $RED "Error: Record with ID $record_id does not exist"
@@ -472,7 +477,7 @@ function delete_record() {
   fi
 
   # Get record details before deletion for confirmation
-  record_details=$(sqlite3 -csv "$DB_FILE" "SELECT type, name, content FROM dns_records WHERE id = $record_id;")
+  record_details=$(sqlite3 -csv "$DB_FILE" "SELECT type, name, content FROM dns_records WHERE record_id = '$record_id';")
   IFS="," read -r type name content <<< "$record_details"
 
   # Double-check with the user
@@ -492,7 +497,7 @@ function delete_record() {
   fi
 
   # Delete the record from SQLite
-  sqlite3 "$DB_FILE" "DELETE FROM dns_records WHERE id = $record_id;"
+  sqlite3 "$DB_FILE" "DELETE FROM dns_records WHERE record_id = '$record_id';"
 
   # Check if deletion was successful
   if [ $? -eq 0 ]; then

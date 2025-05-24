@@ -141,7 +141,7 @@ async function listRecords(args, context) {
               FROM dns_records dr
               LEFT JOIN dns_tracked_records dtr 
                 ON dr.provider = dtr.provider 
-                AND dr.id = dtr.record_id
+                AND dr.record_id = dtr.record_id
             `;
           } else {
             // Query tracked records directly
