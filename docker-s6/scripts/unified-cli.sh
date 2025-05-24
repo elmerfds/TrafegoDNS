@@ -191,6 +191,8 @@ function list_records() {
   echo "+---------+--------+--------------------------------+--------------------------------+-----------+"
   total=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM dns_records;")
   echo "Total records: $total"
+  echo ""
+  echo_color $GRAY "Tip: Use 'trafegodns search id=<partial-id>' to see full record IDs"
 }
 
 function process_records() {
@@ -405,9 +407,20 @@ function search_records() {
   # Run the query
   sqlite3 -csv "$DB_FILE" "$sql_query" | \
   while IFS="," read -r id type name content orphaned managed; do
-    # Truncate ID if needed
-    if [ ${#id} -gt 8 ]; then
-      id="${id:0:7}..."
+    # Store full ID for later use
+    full_id="$id"
+    
+    # Check if this is an ID search - if so, show full ID
+    if [[ "$query" == "id="* ]]; then
+      # For ID searches, show the full ID
+      display_id="$id"
+    else
+      # Truncate ID if needed for other searches
+      if [ ${#id} -gt 8 ]; then
+        display_id="${id:0:7}..."
+      else
+        display_id="$id"
+      fi
     fi
 
     # Determine status
@@ -419,7 +432,7 @@ function search_records() {
       status=$(status_text "unmanaged" "Unmanaged")
     fi
 
-    printf "| %-8s | %-6s | %-30s | %-30s | %-9s |\n" "$id" "$type" "$name" "$content" "$status"
+    printf "| %-8s | %-6s | %-30s | %-30s | %-9s |\n" "$display_id" "$type" "$name" "$content" "$status"
   done
 
   echo "+---------+--------+--------------------------------+--------------------------------+-----------+"
