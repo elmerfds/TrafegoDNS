@@ -65,15 +65,30 @@ class UserRepository extends BaseRepository {
       const adminExists = await this.findByUsername('admin');
       if (!adminExists) {
         logger.info('Creating default admin user in database');
-        await this.create({
-          username: 'admin',
-          password_hash: bcrypt.hashSync('admin123', 10),
-          role: 'admin',
-          created_at: new Date().toISOString()
-        });
+        try {
+          await this.create({
+            username: 'admin',
+            password_hash: bcrypt.hashSync('admin123', 10),
+            role: 'admin',
+            created_at: new Date().toISOString()
+          });
+          logger.info('Default admin user created successfully');
+        } catch (createError) {
+          // Check if it's a unique constraint error
+          if (createError.message && createError.message.includes('UNIQUE constraint failed')) {
+            logger.debug('Admin user already exists (caught unique constraint error)');
+          } else {
+            throw createError;
+          }
+        }
+      } else {
+        logger.debug('Admin user already exists');
       }
     } catch (error) {
-      logger.error(`Failed to ensure default admin user: ${error.message}`);
+      // Only log as error if it's not a unique constraint issue
+      if (!error.message || !error.message.includes('UNIQUE constraint failed')) {
+        logger.error(`Failed to ensure default admin user: ${error.message}`);
+      }
     }
   }
 
