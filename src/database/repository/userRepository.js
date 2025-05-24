@@ -68,7 +68,8 @@ class UserRepository extends BaseRepository {
         await this.create({
           username: 'admin',
           password_hash: bcrypt.hashSync('admin123', 10),
-          role: 'admin'
+          role: 'admin',
+          created_at: new Date().toISOString()
         });
       }
     } catch (error) {

@@ -118,8 +118,21 @@ async function startApiServer(port, config, eventBus, callback) {
   // Initialize User model now that database should be ready
   logger.info('Initializing User model...');
   try {
-    await User.ensureInitialized();
-    logger.info('User model initialized successfully');
+    // Check if User model has the method
+    if (User && typeof User.ensureInitialized === 'function') {
+      await User.ensureInitialized();
+      logger.info('User model initialized successfully');
+    } else {
+      logger.warn('User model does not have ensureInitialized method, checking structure...');
+      logger.debug(`User model type: ${typeof User}`);
+      logger.debug(`User model keys: ${User ? Object.keys(User).join(', ') : 'null'}`);
+      
+      // Try to initialize directly if needed
+      if (User && typeof User.init === 'function') {
+        logger.info('Using init method instead');
+        User.init();
+      }
+    }
   } catch (error) {
     logger.error(`Failed to initialize User model: ${error.message}`);
     // Continue anyway - the model will retry
