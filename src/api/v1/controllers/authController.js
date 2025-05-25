@@ -34,7 +34,7 @@ const login = asyncHandler(async (req, res) => {
   
   // Update last login
   await User.update(user.id, {
-    lastLogin: new Date().toISOString()
+    last_login: new Date().toISOString()
   });
   
   // Set refresh token as cookie

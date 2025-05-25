@@ -62,27 +62,41 @@ class UserRepository extends BaseRepository {
    */
   async ensureDefaultAdmin() {
     try {
-      const adminExists = await this.findByUsername('admin');
-      if (!adminExists) {
-        logger.info('Creating default admin user in database');
-        try {
-          await this.create({
-            username: 'admin',
-            password_hash: bcrypt.hashSync('admin123', 10),
-            role: 'admin',
-            created_at: new Date().toISOString()
-          });
-          logger.info('Default admin user created successfully');
-        } catch (createError) {
-          // Check if it's a unique constraint error
-          if (createError.message && createError.message.includes('UNIQUE constraint failed')) {
-            logger.debug('Admin user already exists (caught unique constraint error)');
-          } else {
-            throw createError;
-          }
+      // Check if any users exist first
+      const existingUsers = await this.findAll();
+      if (existingUsers && existingUsers.length > 0) {
+        logger.debug('Users already exist, skipping default admin creation');
+        return;
+      }
+
+      // Get admin credentials from environment variables
+      const defaultUsername = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
+      const defaultPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'admin123';
+      const defaultEmail = process.env.DEFAULT_ADMIN_EMAIL || null;
+
+      logger.info(`Creating default admin user: ${defaultUsername}`);
+      try {
+        const userData = {
+          username: defaultUsername,
+          password_hash: bcrypt.hashSync(defaultPassword, 10),
+          role: 'admin',
+          created_at: new Date().toISOString()
+        };
+
+        // Add email if provided
+        if (defaultEmail) {
+          userData.email = defaultEmail;
         }
-      } else {
-        logger.debug('Admin user already exists');
+
+        await this.create(userData);
+        logger.info(`Default admin user '${defaultUsername}' created successfully`);
+      } catch (createError) {
+        // Check if it's a unique constraint error
+        if (createError.message && createError.message.includes('UNIQUE constraint failed')) {
+          logger.debug('Admin user already exists (caught unique constraint error)');
+        } else {
+          throw createError;
+        }
       }
     } catch (error) {
       // Only log as error if it's not a unique constraint issue
