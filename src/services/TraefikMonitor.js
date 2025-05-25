@@ -47,6 +47,9 @@ class TraefikMonitor {
     // Last container ID to name mapping
     this.lastContainerIdToName = new Map();
     
+    // Debounce timer for container events
+    this.pollDebounceTimer = null;
+    
     // Subscribe to Docker label updates
     this.setupEventSubscriptions();
   }
@@ -89,30 +92,36 @@ class TraefikMonitor {
 
     // Subscribe to container destroyed events to trigger immediate poll
     this.eventBus.subscribe(EventTypes.CONTAINER_DESTROYED, async (data) => {
-      logger.info(`Container destroyed event received in TraefikMonitor: ${data?.name || 'unknown'}`);
+      logger.debug(`Container destroyed: ${data?.name || 'unknown'} - scheduling Traefik poll`);
       
-      // Wait a moment for Traefik to update its routers
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Use debouncing to prevent multiple polls
+      if (this.pollDebounceTimer) {
+        clearTimeout(this.pollDebounceTimer);
+      }
       
-      // Trigger immediate poll
-      logger.info('Triggering immediate Traefik poll after container destruction');
-      this.pollTraefikAPI().catch(error => {
-        logger.error(`Failed to poll Traefik after container destruction: ${error.message}`);
-      });
+      this.pollDebounceTimer = setTimeout(() => {
+        logger.debug('Polling Traefik after container changes');
+        this.pollTraefikAPI().catch(error => {
+          logger.error(`Failed to poll Traefik after container destruction: ${error.message}`);
+        });
+      }, 1000);
     });
 
     // Subscribe to container stopped events to trigger immediate poll
     this.eventBus.subscribe(EventTypes.CONTAINER_STOPPED, async (data) => {
-      logger.info(`Container stopped event received in TraefikMonitor: ${data?.name || 'unknown'}`);
+      logger.debug(`Container stopped: ${data?.name || 'unknown'} - scheduling Traefik poll`);
       
-      // Wait a moment for Traefik to update its routers
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Use debouncing to prevent multiple polls
+      if (this.pollDebounceTimer) {
+        clearTimeout(this.pollDebounceTimer);
+      }
       
-      // Trigger immediate poll
-      logger.info('Triggering immediate Traefik poll after container stop');
-      this.pollTraefikAPI().catch(error => {
-        logger.error(`Failed to poll Traefik after container stop: ${error.message}`);
-      });
+      this.pollDebounceTimer = setTimeout(() => {
+        logger.debug('Polling Traefik after container changes');
+        this.pollTraefikAPI().catch(error => {
+          logger.error(`Failed to poll Traefik after container stop: ${error.message}`);
+        });
+      }, 1000);
     });
   }
   

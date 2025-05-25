@@ -29,7 +29,7 @@ function setupEventSubscriptions(eventBus, processHostnamesHandler, dnsManager) 
 
   // Subscribe to Docker container events for tracking removed containers
   eventBus.subscribe(EventTypes.CONTAINER_DESTROYED, async (data) => {
-    logger.info(`Container destroyed: ${data?.name || 'unknown'}. Triggering immediate orphaned records check.`);
+    logger.debug(`Container destroyed: ${data?.name || 'unknown'}`);
     
     // If dnsManager is available, trigger immediate orphaned cleanup
     if (dnsManager && dnsManager.cleanupOrphanedRecordsWithLastHostnames) {
@@ -37,7 +37,7 @@ function setupEventSubscriptions(eventBus, processHostnamesHandler, dnsManager) 
         // Wait a short moment for any pending DNS updates to complete
         await new Promise(resolve => setTimeout(resolve, 2000));
         
-        logger.info('Running immediate orphaned record cleanup after container destruction');
+        logger.debug('Running orphaned record cleanup after container destruction');
         await dnsManager.cleanupOrphanedRecordsWithLastHostnames();
       } catch (error) {
         logger.error(`Failed to run immediate orphaned cleanup after container destruction: ${error.message}`);
@@ -47,7 +47,7 @@ function setupEventSubscriptions(eventBus, processHostnamesHandler, dnsManager) 
 
   // Also subscribe to container stopped events
   eventBus.subscribe(EventTypes.CONTAINER_STOPPED, async (data) => {
-    logger.info(`Container stopped: ${data?.name || 'unknown'}. Triggering immediate orphaned records check.`);
+    logger.debug(`Container stopped: ${data?.name || 'unknown'}`);
     
     // If dnsManager is available, trigger immediate orphaned cleanup
     if (dnsManager && dnsManager.cleanupOrphanedRecordsWithLastHostnames) {
@@ -55,7 +55,7 @@ function setupEventSubscriptions(eventBus, processHostnamesHandler, dnsManager) 
         // Wait a short moment for any pending DNS updates to complete
         await new Promise(resolve => setTimeout(resolve, 2000));
         
-        logger.info('Running immediate orphaned record cleanup after container stop');
+        logger.debug('Running orphaned record cleanup after container stop');
         await dnsManager.cleanupOrphanedRecordsWithLastHostnames();
       } catch (error) {
         logger.error(`Failed to run immediate orphaned cleanup after container stop: ${error.message}`);

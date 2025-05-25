@@ -21,6 +21,9 @@ class DirectDNSManager {
     // Last container labels from Docker service
     this.lastDockerLabels = {};
     
+    // Debounce timer for container events
+    this.pollDebounceTimer = null;
+    
     // Subscribe to Docker label updates - same approach as TraefikMonitor
     this.setupEventSubscriptions();
   }
@@ -47,24 +50,36 @@ class DirectDNSManager {
 
     // Subscribe to container destroyed events to trigger immediate poll
     this.eventBus.subscribe(EventTypes.CONTAINER_DESTROYED, async (data) => {
-      logger.info(`Container destroyed event received in DirectDNSManager: ${data?.name || 'unknown'}`);
+      logger.debug(`Container destroyed: ${data?.name || 'unknown'} - scheduling container poll`);
       
-      // Trigger immediate poll
-      logger.info('Triggering immediate container poll after container destruction');
-      this.pollContainers().catch(error => {
-        logger.error(`Failed to poll containers after container destruction: ${error.message}`);
-      });
+      // Use debouncing to prevent multiple polls
+      if (this.pollDebounceTimer) {
+        clearTimeout(this.pollDebounceTimer);
+      }
+      
+      this.pollDebounceTimer = setTimeout(() => {
+        logger.debug('Polling containers after container changes');
+        this.pollContainers().catch(error => {
+          logger.error(`Failed to poll containers after container destruction: ${error.message}`);
+        });
+      }, 1000);
     });
 
     // Subscribe to container stopped events to trigger immediate poll
     this.eventBus.subscribe(EventTypes.CONTAINER_STOPPED, async (data) => {
-      logger.info(`Container stopped event received in DirectDNSManager: ${data?.name || 'unknown'}`);
+      logger.debug(`Container stopped: ${data?.name || 'unknown'} - scheduling container poll`);
       
-      // Trigger immediate poll
-      logger.info('Triggering immediate container poll after container stop');
-      this.pollContainers().catch(error => {
-        logger.error(`Failed to poll containers after container stop: ${error.message}`);
-      });
+      // Use debouncing to prevent multiple polls
+      if (this.pollDebounceTimer) {
+        clearTimeout(this.pollDebounceTimer);
+      }
+      
+      this.pollDebounceTimer = setTimeout(() => {
+        logger.debug('Polling containers after container changes');
+        this.pollContainers().catch(error => {
+          logger.error(`Failed to poll containers after container stop: ${error.message}`);
+        });
+      }, 1000);
     });
   }
 

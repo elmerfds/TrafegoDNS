@@ -112,6 +112,9 @@ class DNSManager {
     this.lastActiveHostnames = [];
     this.hasRunInitialCleanup = false;
     
+    // Debounce timer for orphaned cleanup
+    this.orphanedCleanupDebounceTimer = null;
+    
     // Subscribe to relevant events with error handling
     try {
       // Ensure eventBus exists before setting up subscriptions
@@ -304,54 +307,61 @@ class DNSManager {
    * Run the orphaned record cleanup with the last known active hostnames
    */
   async cleanupOrphanedRecordsWithLastHostnames() {
-    try {
-      logger.debug('Running scheduled orphaned record cleanup check');
-      
-      // Validate all required components are available before proceeding
-      if (!this.dnsProvider) {
-        logger.warn('DNS Provider not available for orphaned record cleanup, skipping');
-        return;
-      }
-      
-      if (!this.recordTracker) {
-        logger.warn('Record Tracker not available for orphaned record cleanup, skipping');
-        return;
-      }
-      
-      if (!this.config) {
-        logger.warn('Configuration not available for orphaned record cleanup, skipping');
-        return;
-      }
-      
-      // Ensure lastActiveHostnames is an array
-      if (!this.lastActiveHostnames || !Array.isArray(this.lastActiveHostnames)) {
-        logger.warn('lastActiveHostnames is not an array, initializing empty array');
-        this.lastActiveHostnames = [];
-      }
-      
-      // Initialize loggedPreservedRecords if needed
-      if (!this.loggedPreservedRecords) {
-        this.loggedPreservedRecords = new Set();
-      }
-      
-      // Import the specific orphanedRecordCleaner module
-      const { cleanupOrphanedRecords } = require('./orphanedRecordCleaner');
-      
-      // Use the last known active hostnames for cleanup
-      await cleanupOrphanedRecords(
-        this.lastActiveHostnames,
-        this.dnsProvider,
-        this.recordTracker,
-        this.config,
-        this.eventBus,
-        this.loggedPreservedRecords
-      );
-      
-      logger.debug('Scheduled orphaned record cleanup complete');
-    } catch (error) {
-      logger.error(`Failed to run orphaned record cleanup: ${error.message}`);
-      logger.debug(`Error stack: ${error.stack}`);
+    // Use debouncing to prevent multiple simultaneous cleanups
+    if (this.orphanedCleanupDebounceTimer) {
+      clearTimeout(this.orphanedCleanupDebounceTimer);
     }
+    
+    this.orphanedCleanupDebounceTimer = setTimeout(async () => {
+      try {
+        logger.debug('Running orphaned record cleanup check');
+        
+        // Validate all required components are available before proceeding
+        if (!this.dnsProvider) {
+          logger.warn('DNS Provider not available for orphaned record cleanup, skipping');
+          return;
+        }
+        
+        if (!this.recordTracker) {
+          logger.warn('Record Tracker not available for orphaned record cleanup, skipping');
+          return;
+        }
+        
+        if (!this.config) {
+          logger.warn('Configuration not available for orphaned record cleanup, skipping');
+          return;
+        }
+        
+        // Ensure lastActiveHostnames is an array
+        if (!this.lastActiveHostnames || !Array.isArray(this.lastActiveHostnames)) {
+          logger.warn('lastActiveHostnames is not an array, initializing empty array');
+          this.lastActiveHostnames = [];
+        }
+        
+        // Initialize loggedPreservedRecords if needed
+        if (!this.loggedPreservedRecords) {
+          this.loggedPreservedRecords = new Set();
+        }
+        
+        // Import the specific orphanedRecordCleaner module
+        const { cleanupOrphanedRecords } = require('./orphanedRecordCleaner');
+        
+        // Use the last known active hostnames for cleanup
+        await cleanupOrphanedRecords(
+          this.lastActiveHostnames,
+          this.dnsProvider,
+          this.recordTracker,
+          this.config,
+          this.eventBus,
+          this.loggedPreservedRecords
+        );
+        
+        logger.debug('Orphaned record cleanup complete');
+      } catch (error) {
+        logger.error(`Failed to run orphaned record cleanup: ${error.message}`);
+        logger.debug(`Error stack: ${error.stack}`);
+      }
+    }, 3000); // 3 second debounce delay
   }
   
   /**

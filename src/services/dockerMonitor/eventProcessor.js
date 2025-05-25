@@ -132,12 +132,15 @@ async function handleContainerStart(containerId, eventData, docker, containerTra
  * Handle container stop event
  */
 function handleContainerStop(containerId, eventData, eventBus) {
-  logger.debug(`Container stopped: ${containerId}`);
+  // Extract container name from event data
+  const containerName = eventData.Actor?.Attributes?.name || containerId.substring(0, 12);
+  logger.debug(`Container stopped: ${containerName}`);
   
   // Publish container stop event
   if (eventBus) {
     eventBus.publish(EventTypes.CONTAINER_STOPPED, {
-      id: containerId
+      id: containerId,
+      name: containerName
     });
   }
 }
@@ -146,12 +149,15 @@ function handleContainerStop(containerId, eventData, eventBus) {
  * Handle container destroy event
  */
 function handleContainerDestroy(containerId, eventData, eventBus) {
-  logger.debug(`Container destroyed: ${containerId}`);
+  // Extract container name from event data
+  const containerName = eventData.Actor?.Attributes?.name || containerId.substring(0, 12);
+  logger.debug(`Container destroyed: ${containerName}`);
   
   // Publish container destroy event
   if (eventBus) {
     eventBus.publish(EventTypes.CONTAINER_DESTROYED, {
-      id: containerId
+      id: containerId,
+      name: containerName
     });
   }
 }
