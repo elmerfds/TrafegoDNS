@@ -102,6 +102,12 @@ class DNSManager {
     // Set default cleanup interval to 5 minutes (can be overridden by environment variable)
     this.cleanupInterval = parseInt(process.env.CLEANUP_INTERVAL_MINUTES || 5, 10) * 60 * 1000; // Convert to milliseconds
     
+    // Timer for provider cache database sync
+    this.providerCacheSyncTimer = null;
+    
+    // Set provider cache sync interval (use the same interval as DNS cache refresh)
+    this.providerCacheSyncInterval = this.config.cacheRefreshInterval; // Already in milliseconds
+    
     // Last active hostnames to check for orphaned records - initialize as empty array to avoid undefined
     this.lastActiveHostnames = [];
     this.hasRunInitialCleanup = false;
@@ -163,6 +169,9 @@ class DNSManager {
       
       // Start the orphaned record cleanup timer
       this.startOrphanedRecordCleanupTimer();
+      
+      // Start the provider cache sync timer
+      this.startProviderCacheSyncTimer();
 
       logger.success('DNS Manager initialized successfully');
       return true;
@@ -218,6 +227,76 @@ class DNSManager {
       logger.debug('Orphaned record cleanup timer started successfully');
     } catch (error) {
       logger.error(`Failed to start orphaned record cleanup timer: ${error.message}`);
+    }
+  }
+  
+  /**
+   * Start the provider cache sync timer
+   */
+  startProviderCacheSyncTimer() {
+    try {
+      // Clear any existing timer
+      if (this.providerCacheSyncTimer) {
+        clearInterval(this.providerCacheSyncTimer);
+      }
+      
+      // Log the sync interval
+      logger.info(`Starting provider cache database sync timer with interval of ${this.providerCacheSyncInterval / 60000} minutes`);
+      
+      // Set up the interval for regular syncs
+      this.providerCacheSyncTimer = setInterval(() => {
+        this.syncProviderCacheToDatabase()
+          .catch(error => logger.error(`Provider cache sync failed: ${error.message}`));
+      }, this.providerCacheSyncInterval);
+      
+      logger.debug('Provider cache sync timer started successfully');
+    } catch (error) {
+      logger.error(`Failed to start provider cache sync timer: ${error.message}`);
+    }
+  }
+  
+  /**
+   * Stop the provider cache sync timer
+   */
+  stopProviderCacheSyncTimer() {
+    if (this.providerCacheSyncTimer) {
+      clearInterval(this.providerCacheSyncTimer);
+      this.providerCacheSyncTimer = null;
+      logger.debug('Provider cache sync timer stopped');
+    }
+  }
+  
+  /**
+   * Sync the provider's in-memory cache to the database
+   */
+  async syncProviderCacheToDatabase() {
+    try {
+      logger.debug('Syncing provider cache to database...');
+      
+      // Check if components are available
+      if (!this.dnsProvider || !this.repositoryManager) {
+        logger.warn('Required components not available for provider cache sync');
+        return;
+      }
+      
+      // Get records from provider's in-memory cache (this will refresh if needed)
+      const records = await this.dnsProvider.getRecordsFromCache();
+      
+      if (!records || !Array.isArray(records)) {
+        logger.warn('No records to sync from provider cache');
+        return;
+      }
+      
+      // Sync to database
+      const result = await this.repositoryManager.refreshProviderCache(records, this.dnsProvider.name);
+      
+      if (result.success) {
+        logger.info(`Provider cache synced to database: ${result.refreshedCount} records for ${result.provider}`);
+      } else {
+        logger.error(`Failed to sync provider cache to database: ${result.error}`);
+      }
+    } catch (error) {
+      logger.error(`Error syncing provider cache to database: ${error.message}`);
     }
   }
   
@@ -503,6 +582,28 @@ class DNSManager {
       this.stats.error = error.message;
       this.eventBus.emit(EventTypes.DNS_RECORDS_PROCESSED, this.stats);
       return this.stats;
+    }
+  }
+  
+  /**
+   * Cleanup method to stop all timers
+   */
+  async cleanup() {
+    try {
+      logger.info('Cleaning up DNS Manager...');
+      
+      // Stop orphaned record cleanup timer
+      if (this.orphanedRecordCleanupTimer) {
+        clearInterval(this.orphanedRecordCleanupTimer);
+        this.orphanedRecordCleanupTimer = null;
+      }
+      
+      // Stop provider cache sync timer
+      this.stopProviderCacheSyncTimer();
+      
+      logger.info('DNS Manager cleanup completed');
+    } catch (error) {
+      logger.error(`Error during DNS Manager cleanup: ${error.message}`);
     }
   }
   
