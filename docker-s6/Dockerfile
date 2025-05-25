@@ -12,7 +12,7 @@ RUN npm install --omit=dev --build-from-source better-sqlite3
 
 # Stage 2: Build the React web UI
 FROM node:18-alpine AS web-build
-WORKDIR /app
+WORKDIR /app/web
 COPY src/web/package*.json ./
 RUN npm install
 COPY src/web ./
@@ -25,7 +25,9 @@ COPY --from=dependencies /app/package*.json ./
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY src ./src
 COPY bin ./bin
-# Copy built web UI
+# Copy built web UI from the web-build stage
+# The web UI is built to /app/api/public in the web-build stage
+RUN mkdir -p ./src/api/public
 COPY --from=web-build /app/api/public ./src/api/public
 
 # Stage 4: Create the production image with s6-overlay
