@@ -1,0 +1,42 @@
+services:
+  trafegodns:
+    image: ghcr.io/elmerfds/trafegodns:dev
+    container_name: Trafegodns
+    restart: unless-stopped
+    # user: "0:0"
+    labels:
+      - "net.unraid.docker.icon=https://raw.githubusercontent.com/elmerfds/TrafegoDNS/refs/heads/main/logo/logo.png"
+    env_file:
+      - extra.env
+    environment:
+      - LOG_LEVEL=INFO
+      - PUID=99
+      - PGID=100
+      - ENABLE_SWAGGER=true
+      - CLI_TOKEN=rzk8btk8mkf9MTJ-gja
+      
+      # Enable authentication for Web UI
+      - AUTH_ENABLED=true
+      
+      # JWT configuration
+      - JWT_SECRET=your-secret-jwt-key-change-this
+      - JWT_EXPIRES_IN=24h
+      
+      # Default admin account (created on first run)
+      - DEFAULT_ADMIN_USERNAME=admin
+      - DEFAULT_ADMIN_PASSWORD=changeme
+      - DEFAULT_ADMIN_EMAIL=admin@example.com
+      
+    ports:
+      - "3070:3000/tcp"  # Web UI and API (changed from 3000 to 9999)
+      # - "3060:8080/tcp"  # Remove this unless you have another service on 8080
+                   
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /mnt/cache/appdata/trafegodns/config:/config
+    networks:
+      - traefik-network       
+
+networks:
+  traefik-network:
+    external: true
