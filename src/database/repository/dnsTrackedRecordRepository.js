@@ -992,7 +992,7 @@ class DNSTrackedRecordRepository {
         DELETE FROM ${this.tableName}
         WHERE provider = ? 
         AND type = ? 
-        AND hostname = ? 
+        AND name = ? 
         AND record_id != ?
         AND is_orphaned = 1
       `, [provider, type, name, currentRecordId]);
