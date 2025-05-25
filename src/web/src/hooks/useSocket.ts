@@ -7,7 +7,7 @@ export function useSocket() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      const socket = getSocket()
+      getSocket()
       
       return () => {
         // Don't disconnect on component unmount, only on logout

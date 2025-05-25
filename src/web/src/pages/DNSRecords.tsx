@@ -38,8 +38,7 @@ import {
   Search,
   AlertCircle,
   Globe,
-  Container,
-  Link2
+  Container
 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
