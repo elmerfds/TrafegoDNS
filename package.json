@@ -9,7 +9,10 @@
     "start:cli": "NODE_ENV=production DISABLE_API=true node src/app.js",
     "dev": "NODE_ENV=development node src/app.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "cli": "node bin/trafego"
+    "cli": "node bin/trafego",
+    "web:dev": "cd src/web && npm run dev",
+    "web:build": "cd src/web && npm run build",
+    "web:install": "cd src/web && npm install"
   },
   "bin": {
     "trafego": "./bin/trafego"

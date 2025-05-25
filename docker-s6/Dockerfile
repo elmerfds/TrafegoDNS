@@ -10,15 +10,25 @@ RUN apk add --no-cache python3 py3-pip make g++ sqlite-dev python3-dev py3-setup
 # Install production dependencies including better-sqlite3
 RUN npm install --omit=dev --build-from-source better-sqlite3
 
-# Stage 2: Build the application
+# Stage 2: Build the React web UI
+FROM node:18-alpine AS web-build
+WORKDIR /app
+COPY src/web/package*.json ./
+RUN npm install
+COPY src/web ./
+RUN npm run build
+
+# Stage 3: Build the application
 FROM node:18-alpine AS build
 WORKDIR /app
 COPY --from=dependencies /app/package*.json ./
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY src ./src
 COPY bin ./bin
+# Copy built web UI
+COPY --from=web-build /app/api/public ./src/api/public
 
-# Stage 3: Create the production image with s6-overlay
+# Stage 4: Create the production image with s6-overlay
 FROM node:18-alpine
 WORKDIR /app
 
@@ -99,14 +109,14 @@ RUN head -1 /etc/cont-init.d/* /etc/services.d/trafegodns/*
 VOLUME /config
 
 # Expose API port
-EXPOSE 3000
+EXPOSE 9999
 
 # Avoid timeout errors adjusting permissions during first run
 ENV S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0
 
 # CLI tool configuration
 ENV CLI_TOKEN=trafegodns-cli
-ENV API_URL=http://localhost:3000
+ENV API_URL=http://localhost:9999
 ENV CONTAINER=true
 ENV TRAFEGO_CLI=true
 ENV CONFIG_DIR=/config
