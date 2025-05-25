@@ -660,6 +660,48 @@ services:
 | `LOG_LEVEL` | Logging verbosity (ERROR, WARN, INFO, DEBUG, TRACE) | `INFO` | No |
 | `DNS_CACHE_REFRESH_INTERVAL` | How often to refresh DNS cache (ms) | `3600000` (1 hour) | No |
 | `API_TIMEOUT` | API request timeout (ms) | `60000` (1 minute) | No |
+| `API_PORT` | Port for REST API server | `3000` | No |
+
+## REST API
+
+TrafegoDNS includes a comprehensive REST API for programmatic access to all features. The API is automatically enabled and provides:
+
+### Features
+
+- **JWT Authentication**: Secure token-based authentication with role-based access control
+- **Role-Based Access**: Three roles - `admin` (full access), `operator` (manage DNS), `viewer` (read-only)
+- **Real-time Updates**: WebSocket support for live DNS record updates
+- **Rate Limiting**: Protection against API abuse
+- **Swagger Documentation**: Interactive API documentation at `/api/docs`
+
+### Authentication
+
+To use the API, first obtain a JWT token:
+
+```bash
+curl -X POST http://localhost:3000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "your-password"}'
+```
+
+Then include the token in subsequent requests:
+
+```bash
+curl -X GET http://localhost:3000/api/v1/dns/records \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Key Endpoints
+
+- **Authentication**: `/api/v1/auth/*` - Login, refresh tokens, user management
+- **DNS Records**: `/api/v1/dns/*` - CRUD operations on DNS records
+- **Containers**: `/api/v1/containers/*` - View container status and labels
+- **Configuration**: `/api/v1/config/*` - Manage application settings
+- **Status**: `/api/v1/status/*` - System health and metrics
+
+### Local Auth Bypass
+
+The CLI uses a local authentication bypass mechanism, allowing it to access the API without credentials when run from within the container.
 
 ## Command Line Interface
 
@@ -722,6 +764,14 @@ environment:
   - CLEANUP_ORPHANED=true
   - CLEANUP_GRACE_PERIOD=15  # Minutes before deletion (default: 15)
 ```
+
+### How Orphaned Detection Works
+
+TrafegoDNS immediately detects when containers are stopped or destroyed:
+
+1. **Immediate Detection**: When a container is stopped or destroyed, TrafegoDNS immediately triggers a check for orphaned DNS records
+2. **Grace Period**: Records are marked as orphaned but not deleted immediately, allowing time for container restarts
+3. **Automatic Recovery**: If the container comes back online within the grace period, the record is automatically preserved
 
 This process includes a grace period to prevent premature deletion during container updates or service maintenance:
 
@@ -839,7 +889,7 @@ The application maintains a persistent record of all DNS entries it creates in a
 
 ## Configuration Storage
 
-TrafegoDNS stores its configuration and data files in the `/config` directory within the container, which should be mounted as a volume for persistence:
+TrafegoDNS stores its configuration and data in a SQLite database within the `/config` directory, which should be mounted as a volume for persistence:
 
 ```yaml
 volumes:
@@ -847,17 +897,24 @@ volumes:
   - ./config:/config
 ```
 
-The main configuration files include:
+### Database Architecture
 
-- `/config/data/dns-records.json` - Tracking information for all DNS records managed by the application
+The application uses SQLite with the following tables:
 
-This approach provides several benefits:
+- **`dns_records`** - Provider cache table storing all DNS records fetched from your DNS provider
+- **`dns_tracked_records`** - Tracks all records that TrafegoDNS knows about (both app-managed and external)
+- **`dns_managed_records`** - Records specifically created and managed by TrafegoDNS
+- **`users`** - User accounts for API authentication
+- **`settings`** - Key-value configuration storage
 
-1. **Data Persistence**: All data is stored in a mounted volume that persists across container restarts and updates
-2. **Backup Capability**: The config directory can be easily backed up
-3. **Migration Support**: Moving to a new server is as simple as copying the config directory
+### Data Persistence Features
 
-The application will automatically migrate any existing data from legacy locations into the new structure.
+1. **Automatic Migration**: The application includes a migration system that automatically updates the database schema
+2. **Provider Cache Sync**: DNS records are periodically synced from the provider to the local database (interval controlled by `DNS_CACHE_REFRESH_INTERVAL`)
+3. **First-Run Mode**: On first run, the application operates conservatively to avoid affecting existing DNS records
+4. **Backup Capability**: The SQLite database can be easily backed up by copying the `/config/data/trafegodns.db` file
+
+The application automatically migrates from the legacy JSON storage to SQLite on first run.
 
 ## DNS Management Modes
 

@@ -146,6 +146,14 @@ class DNSTrackedRecordRepository {
       }
       
       try {
+        // Before inserting, clean up any orphaned duplicates
+        await this.cleanupOrphanedDuplicates(
+          record.provider,
+          record.type || 'UNKNOWN',
+          record.name || 'unknown',
+          record.record_id
+        );
+
         const result = await this.db.run(`
           INSERT INTO ${this.tableName}
           (provider, record_id, type, name, content, ttl, proxied, tracked_at, metadata)
@@ -960,6 +968,43 @@ class DNSTrackedRecordRepository {
     } catch (error) {
       logger.error(`Failed to get record first_seen timestamp: ${error.message}`);
       return null;
+    }
+  }
+
+  /**
+   * Clean up orphaned duplicate records
+   * When a record is recreated with a new ID, remove the old orphaned entry
+   * @param {string} provider - DNS provider name
+   * @param {string} type - Record type
+   * @param {string} name - Record name (hostname)
+   * @param {string} currentRecordId - The current active record ID
+   * @returns {Promise<number>} - Number of records cleaned up
+   */
+  async cleanupOrphanedDuplicates(provider, type, name, currentRecordId) {
+    try {
+      if (!this.db || !this.db.run) {
+        logger.debug('Database not available for cleaning orphaned duplicates');
+        return 0;
+      }
+      
+      // Delete any orphaned records with the same type and name but different record_id
+      const result = await this.db.run(`
+        DELETE FROM ${this.tableName}
+        WHERE provider = ? 
+        AND type = ? 
+        AND hostname = ? 
+        AND record_id != ?
+        AND is_orphaned = 1
+      `, [provider, type, name, currentRecordId]);
+      
+      if (result.changes > 0) {
+        logger.info(`Cleaned up ${result.changes} orphaned duplicate record(s) for ${name} (${type})`);
+      }
+      
+      return result.changes;
+    } catch (error) {
+      logger.error(`Failed to cleanup orphaned duplicates: ${error.message}`);
+      return 0;
     }
   }
 }
