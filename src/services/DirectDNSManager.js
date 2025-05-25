@@ -44,6 +44,28 @@ class DirectDNSManager {
         logger.debug('Updated Docker container labels cache in DirectDNSManager');
       }
     });
+
+    // Subscribe to container destroyed events to trigger immediate poll
+    this.eventBus.subscribe(EventTypes.CONTAINER_DESTROYED, async (data) => {
+      logger.info(`Container destroyed event received in DirectDNSManager: ${data?.name || 'unknown'}`);
+      
+      // Trigger immediate poll
+      logger.info('Triggering immediate container poll after container destruction');
+      this.pollContainers().catch(error => {
+        logger.error(`Failed to poll containers after container destruction: ${error.message}`);
+      });
+    });
+
+    // Subscribe to container stopped events to trigger immediate poll
+    this.eventBus.subscribe(EventTypes.CONTAINER_STOPPED, async (data) => {
+      logger.info(`Container stopped event received in DirectDNSManager: ${data?.name || 'unknown'}`);
+      
+      // Trigger immediate poll
+      logger.info('Triggering immediate container poll after container stop');
+      this.pollContainers().catch(error => {
+        logger.error(`Failed to poll containers after container stop: ${error.message}`);
+      });
+    });
   }
 
   /**

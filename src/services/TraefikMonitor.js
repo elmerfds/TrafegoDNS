@@ -86,6 +86,34 @@ class TraefikMonitor {
       this.lastContainerIdToName = containerIdToName || new Map();
       logger.debug('Updated Docker container labels cache in TraefikMonitor');
     });
+
+    // Subscribe to container destroyed events to trigger immediate poll
+    this.eventBus.subscribe(EventTypes.CONTAINER_DESTROYED, async (data) => {
+      logger.info(`Container destroyed event received in TraefikMonitor: ${data?.name || 'unknown'}`);
+      
+      // Wait a moment for Traefik to update its routers
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Trigger immediate poll
+      logger.info('Triggering immediate Traefik poll after container destruction');
+      this.pollTraefikAPI().catch(error => {
+        logger.error(`Failed to poll Traefik after container destruction: ${error.message}`);
+      });
+    });
+
+    // Subscribe to container stopped events to trigger immediate poll
+    this.eventBus.subscribe(EventTypes.CONTAINER_STOPPED, async (data) => {
+      logger.info(`Container stopped event received in TraefikMonitor: ${data?.name || 'unknown'}`);
+      
+      // Wait a moment for Traefik to update its routers
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Trigger immediate poll
+      logger.info('Triggering immediate Traefik poll after container stop');
+      this.pollTraefikAPI().catch(error => {
+        logger.error(`Failed to poll Traefik after container stop: ${error.message}`);
+      });
+    });
   }
   
   /**

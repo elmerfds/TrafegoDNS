@@ -120,7 +120,7 @@ class DNSManager {
           }
         };
         
-        setupEventSubscriptions(this.eventBus, safeProcessHostnames);
+        setupEventSubscriptions(this.eventBus, safeProcessHostnames, this);
         logger.debug('Event subscriptions set up successfully');
       } else {
         logger.warn('No event bus available, skipping event subscriptions');
