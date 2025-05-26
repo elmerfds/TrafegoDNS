@@ -222,7 +222,7 @@ export function UsersPage() {
                 <Input
                   id="username"
                   value={formData.username}
-                  onChange={(e) =>
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                     setFormData({ ...formData, username: e.target.value })
                   }
                   placeholder="Enter username"
@@ -234,7 +234,7 @@ export function UsersPage() {
                   id="password"
                   type="password"
                   value={formData.password}
-                  onChange={(e) =>
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                     setFormData({ ...formData, password: e.target.value })
                   }
                   placeholder="Enter password (min 8 characters)"
@@ -349,7 +349,7 @@ export function UsersPage() {
               <Input
                 id="edit-username"
                 value={formData.username}
-                onChange={(e) =>
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setFormData({ ...formData, username: e.target.value })
                 }
                 placeholder="Enter username"
@@ -361,7 +361,7 @@ export function UsersPage() {
                 id="edit-password"
                 type="password"
                 value={formData.password}
-                onChange={(e) =>
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setFormData({ ...formData, password: e.target.value })
                 }
                 placeholder="Leave blank to keep current password"
