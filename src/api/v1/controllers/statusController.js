@@ -17,9 +17,13 @@ const getStatus = asyncHandler(async (req, res) => {
   // Get references to main services
   const { DNSManager, DockerMonitor } = global.services || {};
   
+  // Get configuration values
+  const { ConfigManager } = global.services || {};
+  const packageJson = require('../../../../package.json');
+  
   // Basic status info
   const status = {
-    version: process.env.npm_package_version || '1.0.0',
+    version: packageJson.version || process.env.npm_package_version || '1.0.0',
     uptime: process.uptime(),
     hostname: os.hostname(),
     services: {}
@@ -28,19 +32,38 @@ const getStatus = asyncHandler(async (req, res) => {
   // Add DNS provider status if available
   if (DNSManager && DNSManager.dnsProvider) {
     status.services.dnsProvider = {
-      type: DNSManager.config.dnsProvider,
-      domain: DNSManager.config.getProviderDomain(),
+      type: DNSManager.config.dnsProvider || ConfigManager?.dnsProvider,
+      domain: DNSManager.config.domain || ConfigManager?.domain,
       status: 'active'
+    };
+  } else if (ConfigManager) {
+    status.services.dnsProvider = {
+      type: ConfigManager.dnsProvider,
+      domain: ConfigManager.domain,
+      status: 'inactive'
     };
   }
   
   // Add Docker monitor status if available
   if (DockerMonitor) {
     try {
-      const dockerConnected = await DockerMonitor.testConnection();
+      let dockerConnected = false;
+      // Try different ways to check connection
+      if (typeof DockerMonitor.testConnection === 'function') {
+        dockerConnected = await DockerMonitor.testConnection();
+      } else if (DockerMonitor.docker) {
+        // Try to ping Docker
+        try {
+          await DockerMonitor.docker.ping();
+          dockerConnected = true;
+        } catch {
+          dockerConnected = false;
+        }
+      }
+      
       status.services.dockerMonitor = {
         status: dockerConnected ? 'connected' : 'disconnected',
-        socketPath: DockerMonitor.config.dockerSocket
+        socketPath: DockerMonitor.config?.dockerSocket || ConfigManager?.dockerSocket || '/var/run/docker.sock'
       };
     } catch (error) {
       status.services.dockerMonitor = {
@@ -51,34 +74,50 @@ const getStatus = asyncHandler(async (req, res) => {
   }
   
   // Add operation mode
-  if (global.config) {
+  if (ConfigManager) {
+    status.operationMode = ConfigManager.operationMode;
+  } else if (global.config) {
     status.operationMode = global.config.operationMode;
   }
   
   // Add statistics
   try {
-    const database = require('../../../database');
+    const { database } = require('../../../database');
     let dnsRecordCount = 0;
     let containerCount = 0;
     let hostnameCount = 0;
     
-    // Try to get DNS record count
-    if (database && database.repositories && database.repositories.dnsRecord) {
+    // Try to get DNS record count from provider cache (primary source)
+    if (database && database.repositories && database.repositories.providerCache) {
       try {
-        dnsRecordCount = await database.repositories.dnsRecord.count();
+        dnsRecordCount = await database.repositories.providerCache.count();
       } catch (e) {
-        logger.debug(`Failed to get DNS record count: ${e.message}`);
+        logger.debug(`Failed to get DNS record count from provider cache: ${e.message}`);
+        // Fallback to dnsRecord repository
+        if (database.repositories.dnsRecord) {
+          try {
+            dnsRecordCount = await database.repositories.dnsRecord.count();
+          } catch (e2) {
+            logger.debug(`Failed to get DNS record count from dnsRecord: ${e2.message}`);
+          }
+        }
       }
     }
     
     // Try to get container count
     if (DockerMonitor) {
       try {
-        // Check if getContainerCount method exists
-        if (typeof DockerMonitor.getContainerCount === 'function') {
+        // Check if containerTracker exists (new architecture)
+        if (DockerMonitor.containerTracker && DockerMonitor.containerTracker.containers) {
+          containerCount = DockerMonitor.containerTracker.containers.size || 0;
+        } else if (DockerMonitor.containerIds) {
+          // Fallback to containerIds
+          containerCount = DockerMonitor.containerIds.size || 0;
+        } else if (typeof DockerMonitor.getContainerCount === 'function') {
+          // Fallback to method
           containerCount = await DockerMonitor.getContainerCount();
         } else if (DockerMonitor.containers) {
-          // Fallback to counting containers map
+          // Fallback to containers map
           containerCount = DockerMonitor.containers.size || 0;
         }
       } catch (e) {
@@ -87,11 +126,34 @@ const getStatus = asyncHandler(async (req, res) => {
     }
     
     // Try to get hostname count
-    if (database && database.repositories && database.repositories.managedRecords) {
+    if (DNSManager && DNSManager.recordTracker) {
       try {
-        hostnameCount = await database.repositories.managedRecords.count();
+        let managedCount = 0;
+        let preservedCount = 0;
+        
+        // Count managed hostnames
+        if (Array.isArray(DNSManager.recordTracker.managedHostnames)) {
+          managedCount = DNSManager.recordTracker.managedHostnames.length;
+        } else if (DNSManager.recordTracker.managedHostnames && typeof DNSManager.recordTracker.managedHostnames === 'object') {
+          managedCount = Object.keys(DNSManager.recordTracker.managedHostnames).length;
+        }
+        
+        // Count preserved hostnames
+        if (Array.isArray(DNSManager.recordTracker.preservedHostnames)) {
+          preservedCount = DNSManager.recordTracker.preservedHostnames.length;
+        }
+        
+        hostnameCount = managedCount + preservedCount;
       } catch (e) {
-        logger.debug(`Failed to get hostname count: ${e.message}`);
+        logger.debug(`Failed to get hostname count from recordTracker: ${e.message}`);
+        // Fallback to database
+        if (database && database.repositories && database.repositories.managedRecords) {
+          try {
+            hostnameCount = await database.repositories.managedRecords.count();
+          } catch (e2) {
+            logger.debug(`Failed to get hostname count from database: ${e2.message}`);
+          }
+        }
       }
     }
     

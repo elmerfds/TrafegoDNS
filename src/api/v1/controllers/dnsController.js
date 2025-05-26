@@ -565,11 +565,17 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
           formattedTime = orphanedTime; // Already a string
         } else if (orphanedTime instanceof Date) {
           formattedTime = orphanedTime.toISOString(); // Date object
+        } else if (typeof orphanedTime === 'object' && orphanedTime.timestamp) {
+          // Handle the object format from orphan manager
+          formattedTime = orphanedTime.timestamp;
+        } else if (typeof orphanedTime === 'object' && orphanedTime.timeMs) {
+          // Handle the object format with timeMs
+          formattedTime = new Date(orphanedTime.timeMs).toISOString();
         } else {
           try {
             formattedTime = new Date(orphanedTime).toISOString(); // Try to convert to Date
           } catch (e) {
-            logger.warn(`Invalid orphanedTime format: ${typeof orphanedTime}`);
+            logger.warn(`Invalid orphanedTime format: ${JSON.stringify(orphanedTime)}`);
           }
         }
       }
@@ -577,8 +583,14 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
       // Get grace period info
       const gracePeriod = DNSManager.config.cleanupGracePeriod || 15; // Default 15 minutes
       const now = new Date();
-      const orphanedDate = typeof orphanedTime === 'string' ? new Date(orphanedTime) : orphanedTime;
-      const elapsedMinutes = orphanedDate ? Math.floor((now - orphanedDate) / (1000 * 60)) : 0;
+      let orphanedDate = null;
+      
+      // Parse orphaned date
+      if (formattedTime) {
+        orphanedDate = new Date(formattedTime);
+      }
+      
+      const elapsedMinutes = orphanedDate && !isNaN(orphanedDate) ? Math.floor((now - orphanedDate) / (1000 * 60)) : 0;
       const remainingMinutes = Math.max(0, gracePeriod - elapsedMinutes);
       
       return {
