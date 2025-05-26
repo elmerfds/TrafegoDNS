@@ -46,19 +46,14 @@ if (fs.existsSync(publicPath) && fs.existsSync(path.join(publicPath, 'assets')))
   logger.warn('Web UI build not found. Web interface will not be available.');
 }
 
-// Middleware
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "blob:"],
-      connectSrc: ["'self'", "ws:", "wss:"]
-    }
-  },
-  crossOriginEmbedderPolicy: false
-}))
+// Disable all security headers temporarily to debug
+app.use((req, res, next) => {
+  // Log what's being requested
+  if (req.path === '/' || req.path.endsWith('.html')) {
+    logger.info(`Serving HTML request: ${req.path} from ${webUIPath || 'no UI path'}`);
+  }
+  next();
+})
 app.use(configureCors()); // CORS handling with configuration
 app.use(express.json()); // Parse JSON request body
 app.use(express.urlencoded({ extended: false })); // Parse URL-encoded request body
@@ -90,21 +85,10 @@ app.get('/api-docs', (req, res) => {
 logger.info('API documentation available at /swagger.html (using CDN-based Swagger UI)');
 logger.info('API specification available at /api/v1/swagger.json');
 
-// Serve static files from the public directory (including web UI and API docs)
+// Serve static files from web UI directory if available
 if (webUIPath) {
   logger.info(`Serving static files from: ${webUIPath}`);
-  // Serve all static files from the web UI path
-  app.use(express.static(webUIPath, {
-    // Don't serve index.html automatically for directory requests
-    // We'll handle that in the catch-all route for SPA support
-    index: false,
-    // Set proper cache headers for assets
-    setHeaders: (res, filePath) => {
-      if (filePath.includes('/assets/')) {
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-      }
-    }
-  }));
+  app.use(express.static(webUIPath));
 }
 
 // API Routes
@@ -134,29 +118,13 @@ app.use('/api/*', (req, res) => {
   });
 });
 
-// Serve the web UI for all other routes (SPA support)
+// Catch all routes - serve index.html for SPA
 app.get('*', (req, res) => {
-  if (webUIPath) {
-    const indexPath = path.join(webUIPath, 'index.html');
-    if (fs.existsSync(indexPath)) {
-      res.sendFile(indexPath);
-    } else {
-      res.status(404).send('index.html not found in web UI build directory.');
-    }
+  const indexPath = path.join(webUIPath || publicPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
   } else {
-    // No built web UI found - show message
-    res.status(404).send(`
-      <!DOCTYPE html>
-      <html>
-      <head><title>TrafegoDNS</title></head>
-      <body>
-        <h1>Web UI Not Found</h1>
-        <p>The web UI has not been built yet. Please build the web UI first.</p>
-        <p>API endpoints are available at <a href="/api/v1">/api/v1</a></p>
-        <p>API documentation: <a href="/swagger.html">/swagger.html</a></p>
-      </body>
-      </html>
-    `);
+    res.status(404).send('Web UI not found');
   }
 });
 
