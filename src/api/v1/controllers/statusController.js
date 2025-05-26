@@ -58,17 +58,48 @@ const getStatus = asyncHandler(async (req, res) => {
   // Add statistics
   try {
     const database = require('../../../database');
-    if (database && database.repositories) {
-      const dnsRecordCount = await database.repositories.dnsRecord.count();
-      const containerCount = DockerMonitor ? await DockerMonitor.getContainerCount() : 0;
-      const hostnameCount = await database.repositories.managedRecords.count();
-      
-      status.statistics = {
-        totalRecords: dnsRecordCount || 0,
-        totalContainers: containerCount || 0,
-        totalHostnames: hostnameCount || 0
-      };
+    let dnsRecordCount = 0;
+    let containerCount = 0;
+    let hostnameCount = 0;
+    
+    // Try to get DNS record count
+    if (database && database.repositories && database.repositories.dnsRecord) {
+      try {
+        dnsRecordCount = await database.repositories.dnsRecord.count();
+      } catch (e) {
+        logger.debug(`Failed to get DNS record count: ${e.message}`);
+      }
     }
+    
+    // Try to get container count
+    if (DockerMonitor) {
+      try {
+        // Check if getContainerCount method exists
+        if (typeof DockerMonitor.getContainerCount === 'function') {
+          containerCount = await DockerMonitor.getContainerCount();
+        } else if (DockerMonitor.containers) {
+          // Fallback to counting containers map
+          containerCount = DockerMonitor.containers.size || 0;
+        }
+      } catch (e) {
+        logger.debug(`Failed to get container count: ${e.message}`);
+      }
+    }
+    
+    // Try to get hostname count
+    if (database && database.repositories && database.repositories.managedRecords) {
+      try {
+        hostnameCount = await database.repositories.managedRecords.count();
+      } catch (e) {
+        logger.debug(`Failed to get hostname count: ${e.message}`);
+      }
+    }
+    
+    status.statistics = {
+      totalRecords: dnsRecordCount || 0,
+      totalContainers: containerCount || 0,
+      totalHostnames: hostnameCount || 0
+    };
   } catch (error) {
     logger.warn(`Failed to get statistics: ${error.message}`);
     status.statistics = {

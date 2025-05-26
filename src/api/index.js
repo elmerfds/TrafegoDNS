@@ -26,6 +26,11 @@ const app = express();
 // Serve static files from the 'public' directory
 app.use(express.static(__dirname + '/public'));
 
+// Serve the web UI from the built directory
+const path = require('path');
+const webDistPath = path.join(__dirname, '../../web/dist');
+app.use(express.static(webDistPath));
+
 // Middleware
 app.use(helmet({
   contentSecurityPolicy: {
@@ -99,6 +104,16 @@ app.use('/api/*', (req, res) => {
     code: 'ENDPOINT_NOT_FOUND',
     message: `Endpoint not found: ${req.method} ${req.originalUrl}`
   });
+});
+
+// Serve the web UI for all other routes (SPA support)
+app.get('*', (req, res) => {
+  const indexPath = path.join(webDistPath, 'index.html');
+  if (require('fs').existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).send('Web UI not found. Please build the web UI first.');
+  }
 });
 
 // Error handling middleware

@@ -18,47 +18,44 @@ const getConfig = asyncHandler(async (req, res) => {
   }
   
   try {
-    // Get current configuration
-    const config = ConfigManager.getConfig();
-    
-    // Filter out sensitive information
+    // Get current configuration from ConfigManager properties
     const safeConfig = {
       // Application settings
-      operationMode: config.operationMode,
-      pollInterval: config.pollInterval,
-      watchDockerEvents: config.watchDockerEvents,
-      cleanupOrphaned: config.cleanupOrphaned,
-      cleanupGracePeriod: config.cleanupGracePeriod,
+      operationMode: ConfigManager.operationMode,
+      pollInterval: ConfigManager.pollInterval,
+      watchDockerEvents: ConfigManager.watchDockerEvents,
+      cleanupOrphaned: ConfigManager.cleanupOrphaned,
+      cleanupGracePeriod: ConfigManager.cleanupGracePeriod,
       
       // DNS provider settings
-      dnsProvider: config.dnsProvider,
-      dnsLabelPrefix: config.dnsLabelPrefix,
-      dnsDefaultType: config.dnsDefaultType,
-      dnsDefaultContent: config.dnsDefaultContent,
-      dnsDefaultProxied: config.dnsDefaultProxied,
-      dnsDefaultTTL: config.dnsDefaultTTL,
-      dnsDefaultManage: config.dnsDefaultManage,
+      dnsProvider: ConfigManager.dnsProvider,
+      dnsLabelPrefix: ConfigManager.dnsLabelPrefix,
+      dnsDefaultType: ConfigManager.defaultType,
+      dnsDefaultContent: ConfigManager.defaultContent,
+      dnsDefaultProxied: ConfigManager.defaultProxied,
+      dnsDefaultTTL: ConfigManager.defaultTTL,
+      dnsDefaultManage: ConfigManager.defaultManage,
       
       // Domain settings
-      domain: config.domain,
+      domain: ConfigManager.getProviderDomain(),
       
       // IP settings
-      publicIP: config.publicIP,
-      publicIPv6: config.publicIPv6,
-      ipRefreshInterval: config.ipRefreshInterval,
+      publicIP: ConfigManager.getPublicIPSync(),
+      publicIPv6: ConfigManager.getPublicIPv6Sync(),
+      ipRefreshInterval: ConfigManager.ipRefreshInterval,
       
       // Traefik settings (if applicable)
-      traefikApiUrl: config.traefikApiUrl ? 
-        config.traefikApiUrl.replace(/\/\/.*@/, '//***:***@') : null, // Hide auth details
+      traefikApiUrl: ConfigManager.traefikApiUrl ? 
+        ConfigManager.traefikApiUrl.replace(/\/\/.*@/, '//***:***@') : null, // Hide auth details
       
       // Docker settings
-      dockerSocket: config.dockerSocket,
+      dockerSocket: ConfigManager.dockerSocket,
       
       // Cache settings
-      dnsCacheRefreshInterval: config.dnsCacheRefreshInterval,
+      dnsCacheRefreshInterval: ConfigManager.dnsCacheRefreshInterval,
       
       // Network settings
-      apiTimeout: config.apiTimeout
+      apiTimeout: ConfigManager.apiTimeout
     };
     
     res.json({

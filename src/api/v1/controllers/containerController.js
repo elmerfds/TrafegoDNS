@@ -23,12 +23,22 @@ const getContainers = asyncHandler(async (req, res) => {
     const onlyWithLabels = req.query.withLabels === 'true';
     const labelFilter = req.query.labelPrefix || '';
     
-    // Get containers with options to filter by labels
-    const containers = await DockerMonitor.client.getContainers({
-      onlyRunning: req.query.onlyRunning !== 'false',
-      withLabels: onlyWithLabels,
-      labelPrefix: labelFilter
-    });
+    // Get containers from DockerMonitor
+    let containers = [];
+    
+    // Check if DockerMonitor has a method to get containers
+    if (typeof DockerMonitor.getContainers === 'function') {
+      containers = await DockerMonitor.getContainers();
+    } else if (DockerMonitor.docker) {
+      // Use Docker API directly if available
+      const dockerContainers = await DockerMonitor.docker.listContainers({
+        all: req.query.onlyRunning === 'false'
+      });
+      containers = dockerContainers;
+    } else if (DockerMonitor.containers) {
+      // Fallback to containers map if available
+      containers = Array.from(DockerMonitor.containers.values());
+    }
     
     // Format container data for API response
     const formattedContainers = containers.map(container => {

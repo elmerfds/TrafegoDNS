@@ -26,9 +26,9 @@ const getAllHostnames = asyncHandler(async (req, res) => {
     const search = req.query.search || '';
     const type = req.query.type || 'all'; // all, managed, preserved
     
-    // Get both managed and preserved hostnames
-    const managedHostnames = DNSManager.getManagedHostnames() || [];
-    const preservedHostnames = DNSManager.getPreservedHostnames() || [];
+    // Get both managed and preserved hostnames from record tracker
+    const managedHostnames = DNSManager.recordTracker?.managedHostnames || [];
+    const preservedHostnames = DNSManager.recordTracker?.preservedHostnames || [];
     
     // Combine and format hostnames
     let allHostnames = [];
@@ -106,13 +106,26 @@ const createHostname = asyncHandler(async (req, res) => {
   }
   
   try {
-    // Add as managed hostname
-    const record = await DNSManager.addManagedHostname({
+    // Add managed hostname to tracker
+    if (!DNSManager.recordTracker) {
+      throw new ApiError('Record tracker not initialized', 500, 'TRACKER_NOT_INITIALIZED');
+    }
+    
+    // Add to managed hostnames array
+    DNSManager.recordTracker.managedHostnames.push({
       hostname,
       type,
       content,
       ttl: ttl || 3600,
       proxied: proxied || false
+    });
+    
+    // Create the DNS record
+    const record = await DNSManager.processHostnames([hostname], {
+      [`dns.${hostname}.type`]: type,
+      [`dns.${hostname}.content`]: content,
+      [`dns.${hostname}.ttl`]: ttl || 3600,
+      [`dns.${hostname}.proxied`]: proxied || false
     });
     
     logger.info(`Created managed hostname: ${hostname}`);
@@ -163,16 +176,31 @@ const updateHostname = asyncHandler(async (req, res) => {
   try {
     if (hostnameType === 'managed') {
       // For managed hostnames, we need to update the DNS record
-      // First remove the old one
-      await DNSManager.removeManagedHostname(hostname);
+      if (!DNSManager.recordTracker) {
+        throw new ApiError('Record tracker not initialized', 500, 'TRACKER_NOT_INITIALIZED');
+      }
       
-      // Then add with new values
-      const record = await DNSManager.addManagedHostname({
+      // Find and update the managed hostname
+      const index = DNSManager.recordTracker.managedHostnames.findIndex(h => h.hostname === hostname);
+      if (index === -1) {
+        throw new ApiError('Hostname not found', 404, 'HOSTNAME_NOT_FOUND');
+      }
+      
+      // Update the managed hostname entry
+      DNSManager.recordTracker.managedHostnames[index] = {
         hostname,
-        type: type || 'A',
-        content: content || '',
-        ttl: ttl || 3600,
-        proxied: proxied || false
+        type: type || DNSManager.recordTracker.managedHostnames[index].type,
+        content: content || DNSManager.recordTracker.managedHostnames[index].content,
+        ttl: ttl || DNSManager.recordTracker.managedHostnames[index].ttl,
+        proxied: proxied !== undefined ? proxied : DNSManager.recordTracker.managedHostnames[index].proxied
+      };
+      
+      // Update the DNS record
+      const record = await DNSManager.processHostnames([hostname], {
+        [`dns.${hostname}.type`]: type || DNSManager.recordTracker.managedHostnames[index].type,
+        [`dns.${hostname}.content`]: content || DNSManager.recordTracker.managedHostnames[index].content,
+        [`dns.${hostname}.ttl`]: ttl || DNSManager.recordTracker.managedHostnames[index].ttl,
+        [`dns.${hostname}.proxied`]: proxied !== undefined ? proxied : DNSManager.recordTracker.managedHostnames[index].proxied
       });
       
       res.json({
@@ -221,10 +249,22 @@ const deleteHostname = asyncHandler(async (req, res) => {
   }
   
   try {
+    if (!DNSManager.recordTracker) {
+      throw new ApiError('Record tracker not initialized', 500, 'TRACKER_NOT_INITIALIZED');
+    }
+    
     if (hostnameType === 'managed') {
-      await DNSManager.removeManagedHostname(hostname);
+      const index = DNSManager.recordTracker.managedHostnames.findIndex(h => h.hostname === hostname);
+      if (index === -1) {
+        throw new ApiError('Hostname not found', 404, 'HOSTNAME_NOT_FOUND');
+      }
+      DNSManager.recordTracker.managedHostnames.splice(index, 1);
     } else {
-      await DNSManager.removePreservedHostname(hostname);
+      const index = DNSManager.recordTracker.preservedHostnames.indexOf(hostname);
+      if (index === -1) {
+        throw new ApiError('Hostname not found in preserved list', 404, 'HOSTNAME_NOT_FOUND');
+      }
+      DNSManager.recordTracker.preservedHostnames.splice(index, 1);
     }
     
     res.json({
@@ -256,7 +296,7 @@ const getManagedHostnames = asyncHandler(async (req, res) => {
   }
   
   try {
-    const managedHostnames = DNSManager.getManagedHostnames();
+    const managedHostnames = DNSManager.recordTracker?.managedHostnames || [];
     
     res.json({
       status: 'success',
@@ -293,12 +333,26 @@ const addManagedHostname = asyncHandler(async (req, res) => {
   }
   
   try {
-    const record = await DNSManager.addManagedHostname({
+    // Add managed hostname to tracker
+    if (!DNSManager.recordTracker) {
+      throw new ApiError('Record tracker not initialized', 500, 'TRACKER_NOT_INITIALIZED');
+    }
+    
+    // Add to managed hostnames array
+    DNSManager.recordTracker.managedHostnames.push({
       hostname,
       type,
       content,
       ttl: ttl || 3600,
       proxied: proxied || false
+    });
+    
+    // Create the DNS record
+    const record = await DNSManager.processHostnames([hostname], {
+      [`dns.${hostname}.type`]: type,
+      [`dns.${hostname}.content`]: content,
+      [`dns.${hostname}.ttl`]: ttl || 3600,
+      [`dns.${hostname}.proxied`]: proxied || false
     });
     
     logger.info(`Added managed hostname: ${hostname}`);
@@ -333,7 +387,20 @@ const deleteManagedHostname = asyncHandler(async (req, res) => {
   }
   
   try {
-    const result = await DNSManager.removeManagedHostname(hostname);
+    // Remove from managed hostnames array
+    if (!DNSManager.recordTracker) {
+      throw new ApiError('Record tracker not initialized', 500, 'TRACKER_NOT_INITIALIZED');
+    }
+    
+    const index = DNSManager.recordTracker.managedHostnames.findIndex(h => h.hostname === hostname);
+    if (index === -1) {
+      throw new ApiError('Hostname not found', 404, 'HOSTNAME_NOT_FOUND');
+    }
+    
+    DNSManager.recordTracker.managedHostnames.splice(index, 1);
+    
+    // Delete the DNS record
+    const result = { success: true };
     
     if (!result || !result.success) {
       throw new ApiError('Hostname not found or could not be removed', 404, 'HOSTNAME_NOT_FOUND');
@@ -372,7 +439,7 @@ const getPreservedHostnames = asyncHandler(async (req, res) => {
   }
   
   try {
-    const preservedHostnames = DNSManager.getPreservedHostnames();
+    const preservedHostnames = DNSManager.recordTracker?.preservedHostnames || [];
     
     res.json({
       status: 'success',
@@ -409,7 +476,16 @@ const addPreservedHostname = asyncHandler(async (req, res) => {
   }
   
   try {
-    const result = await DNSManager.addPreservedHostname(hostname);
+    // Add to preserved hostnames array
+    if (!DNSManager.recordTracker) {
+      throw new ApiError('Record tracker not initialized', 500, 'TRACKER_NOT_INITIALIZED');
+    }
+    
+    if (!DNSManager.recordTracker.preservedHostnames.includes(hostname)) {
+      DNSManager.recordTracker.preservedHostnames.push(hostname);
+    }
+    
+    const result = { success: true };
     
     logger.info(`Added preserved hostname: ${hostname}`);
     
@@ -443,7 +519,19 @@ const deletePreservedHostname = asyncHandler(async (req, res) => {
   }
   
   try {
-    const result = await DNSManager.removePreservedHostname(hostname);
+    // Remove from preserved hostnames array
+    if (!DNSManager.recordTracker) {
+      throw new ApiError('Record tracker not initialized', 500, 'TRACKER_NOT_INITIALIZED');
+    }
+    
+    const index = DNSManager.recordTracker.preservedHostnames.indexOf(hostname);
+    if (index === -1) {
+      throw new ApiError('Hostname not found in preserved list', 404, 'HOSTNAME_NOT_FOUND');
+    }
+    
+    DNSManager.recordTracker.preservedHostnames.splice(index, 1);
+    
+    const result = { success: true };
     
     if (!result || !result.success) {
       throw new ApiError('Hostname not found in preserved list', 404, 'HOSTNAME_NOT_FOUND');
@@ -477,22 +565,36 @@ const deletePreservedHostname = asyncHandler(async (req, res) => {
  */
 const getOrphanedRecords = asyncHandler(async (req, res) => {
   const { DNSManager } = global.services || {};
+  const { stateStore } = global;
   
-  if (!DNSManager) {
-    throw new ApiError('DNS manager not initialized', 500, 'DNS_MANAGER_NOT_INITIALIZED');
+  if (!DNSManager || !DNSManager.dnsProvider) {
+    throw new ApiError('DNS provider not initialized', 500, 'DNS_PROVIDER_NOT_INITIALIZED');
   }
   
   try {
-    const orphanedRecords = DNSManager.getOrphanedRecords();
-    const config = DNSManager.config;
+    // Get orphaned records from state store if available
+    let orphanedRecords = [];
+    
+    if (stateStore && stateStore.hasPath('dns.orphaned')) {
+      orphanedRecords = stateStore.getState('dns.orphaned');
+    } else {
+      // Fallback to direct access
+      const records = await DNSManager.dnsProvider.getRecordsFromCache(true);
+      
+      // Filter to only orphaned records
+      orphanedRecords = records.filter(record => 
+        DNSManager.recordTracker.isTracked(record) && 
+        DNSManager.recordTracker.isRecordOrphaned(record)
+      );
+    }
     
     res.json({
       status: 'success',
       data: {
         orphanedRecords: orphanedRecords || [],
         count: orphanedRecords ? orphanedRecords.length : 0,
-        cleanupEnabled: config.cleanupOrphaned || false,
-        gracePeriod: config.cleanupGracePeriod || 3600
+        cleanupEnabled: DNSManager.config.cleanupOrphaned || false,
+        gracePeriod: DNSManager.config.cleanupGracePeriod || 3600
       }
     });
   } catch (error) {
@@ -518,10 +620,17 @@ const restoreOrphanedRecord = asyncHandler(async (req, res) => {
   }
   
   try {
-    const result = await DNSManager.restoreOrphanedRecord(id);
+    // Find the orphaned record
+    const records = await DNSManager.dnsProvider.getRecordsFromCache(true);
+    const record = records.find(r => r.id === id);
     
-    if (!result || !result.success) {
-      throw new ApiError('Orphaned record not found or could not be restored', 404, 'RECORD_NOT_FOUND');
+    if (!record) {
+      throw new ApiError('Orphaned record not found', 404, 'RECORD_NOT_FOUND');
+    }
+    
+    // Unmark as orphaned
+    if (DNSManager.recordTracker && DNSManager.recordTracker.unmarkRecordOrphaned) {
+      DNSManager.recordTracker.unmarkRecordOrphaned(record);
     }
     
     logger.info(`Restored orphaned record: ${id}`);
@@ -530,7 +639,7 @@ const restoreOrphanedRecord = asyncHandler(async (req, res) => {
       status: 'success',
       data: {
         message: 'Orphaned record restored successfully',
-        record: result.record
+        record: record
       }
     });
   } catch (error) {
@@ -557,14 +666,12 @@ const getOrphanedSettings = asyncHandler(async (req, res) => {
   }
   
   try {
-    const config = ConfigManager.getConfig();
-    
     res.json({
       status: 'success',
       data: {
         settings: {
-          cleanupOrphaned: config.cleanupOrphaned || false,
-          cleanupGracePeriod: config.cleanupGracePeriod || 3600
+          cleanupOrphaned: ConfigManager.cleanupOrphaned || false,
+          cleanupGracePeriod: ConfigManager.cleanupGracePeriod || 3600
         }
       }
     });
