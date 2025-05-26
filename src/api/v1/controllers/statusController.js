@@ -55,6 +55,34 @@ const getStatus = asyncHandler(async (req, res) => {
     status.operationMode = global.config.operationMode;
   }
   
+  // Add statistics
+  try {
+    const database = require('../../../database');
+    if (database && database.repositories) {
+      const dnsRecordCount = await database.repositories.dnsRecord.count();
+      const containerCount = DockerMonitor ? await DockerMonitor.getContainerCount() : 0;
+      const hostnameCount = await database.repositories.managedRecords.count();
+      
+      status.statistics = {
+        totalRecords: dnsRecordCount || 0,
+        totalContainers: containerCount || 0,
+        totalHostnames: hostnameCount || 0
+      };
+    }
+  } catch (error) {
+    logger.warn(`Failed to get statistics: ${error.message}`);
+    status.statistics = {
+      totalRecords: 0,
+      totalContainers: 0,
+      totalHostnames: 0
+    };
+  }
+  
+  // Add basic health status
+  status.healthy = true;
+  status.mode = status.operationMode;
+  status.provider = status.services?.dnsProvider?.type || 'Unknown';
+  
   res.json({
     status: 'success',
     data: status

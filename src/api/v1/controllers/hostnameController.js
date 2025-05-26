@@ -402,6 +402,195 @@ const updateOrphanedSettings = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * @desc    Get all hostnames (managed and preserved combined)
+ * @route   GET /api/v1/hostnames
+ * @access  Private
+ */
+const getAllHostnames = asyncHandler(async (req, res) => {
+  const database = require('../../../database');
+  
+  try {
+    // Get query parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const search = req.query.search || '';
+    const type = req.query.type || 'all';
+    
+    // Get managed records from database
+    let allHostnames = [];
+    
+    if (database && database.repositories && database.repositories.managedRecords) {
+      const managedRecords = await database.repositories.managedRecords.findAll();
+      
+      // Convert to expected format
+      allHostnames = managedRecords.map(record => ({
+        id: record.id.toString(),
+        hostname: record.hostname,
+        type: record.is_preserved ? 'preserved' : 'managed',
+        source: record.source || 'manual',
+        containerId: record.container_id,
+        containerName: record.container_name,
+        recordCount: 0, // Will be populated if needed
+        createdAt: record.created_at,
+        updatedAt: record.updated_at
+      }));
+    }
+    
+    // Apply filters
+    if (search) {
+      allHostnames = allHostnames.filter(h => 
+        h.hostname.toLowerCase().includes(search.toLowerCase()) ||
+        (h.containerName && h.containerName.toLowerCase().includes(search.toLowerCase()))
+      );
+    }
+    
+    if (type !== 'all') {
+      allHostnames = allHostnames.filter(h => h.type === type);
+    }
+    
+    // Apply pagination
+    const startIndex = (page - 1) * limit;
+    const endIndex = page * limit;
+    const paginatedHostnames = allHostnames.slice(startIndex, endIndex);
+    
+    res.json({
+      status: 'success',
+      data: {
+        hostnames: paginatedHostnames,
+        total: allHostnames.length,
+        page: page,
+        limit: limit
+      }
+    });
+  } catch (error) {
+    throw new ApiError(
+      `Failed to get hostnames: ${error.message}`,
+      500,
+      'HOSTNAMES_FETCH_ERROR'
+    );
+  }
+});
+
+/**
+ * @desc    Create a new hostname
+ * @route   POST /api/v1/hostnames
+ * @access  Private/Admin/Operator
+ */
+const createHostname = asyncHandler(async (req, res) => {
+  const database = require('../../../database');
+  const { hostname, type = 'preserved' } = req.body;
+  
+  if (!hostname) {
+    throw new ApiError('Hostname is required', 400, 'HOSTNAME_REQUIRED');
+  }
+  
+  try {
+    // Create preserved hostname
+    const record = await database.repositories.managedRecords.create({
+      hostname,
+      is_preserved: type === 'preserved' ? 1 : 0,
+      source: 'manual',
+      created_at: new Date().toISOString()
+    });
+    
+    res.json({
+      status: 'success',
+      data: {
+        id: record.id.toString(),
+        hostname: record.hostname,
+        type: record.is_preserved ? 'preserved' : 'managed',
+        createdAt: record.created_at
+      }
+    });
+  } catch (error) {
+    throw new ApiError(
+      `Failed to create hostname: ${error.message}`,
+      500,
+      'HOSTNAME_CREATE_ERROR'
+    );
+  }
+});
+
+/**
+ * @desc    Update a hostname
+ * @route   PUT /api/v1/hostnames/:id
+ * @access  Private/Admin/Operator
+ */
+const updateHostname = asyncHandler(async (req, res) => {
+  const database = require('../../../database');
+  const { id } = req.params;
+  const { type } = req.body;
+  
+  try {
+    const record = await database.repositories.managedRecords.findById(id);
+    
+    if (!record) {
+      throw new ApiError('Hostname not found', 404, 'HOSTNAME_NOT_FOUND');
+    }
+    
+    // Update the type
+    await database.repositories.managedRecords.update(id, {
+      is_preserved: type === 'preserved' ? 1 : 0,
+      updated_at: new Date().toISOString()
+    });
+    
+    res.json({
+      status: 'success',
+      data: {
+        id: id,
+        hostname: record.hostname,
+        type: type
+      }
+    });
+  } catch (error) {
+    throw new ApiError(
+      `Failed to update hostname: ${error.message}`,
+      500,
+      'HOSTNAME_UPDATE_ERROR'
+    );
+  }
+});
+
+/**
+ * @desc    Delete a hostname
+ * @route   DELETE /api/v1/hostnames/:id
+ * @access  Private/Admin/Operator
+ */
+const deleteHostname = asyncHandler(async (req, res) => {
+  const database = require('../../../database');
+  const { id } = req.params;
+  
+  try {
+    const record = await database.repositories.managedRecords.findById(id);
+    
+    if (!record) {
+      throw new ApiError('Hostname not found', 404, 'HOSTNAME_NOT_FOUND');
+    }
+    
+    // Don't allow deleting managed (non-preserved) hostnames
+    if (!record.is_preserved) {
+      throw new ApiError('Cannot delete managed hostnames', 400, 'CANNOT_DELETE_MANAGED');
+    }
+    
+    await database.repositories.managedRecords.delete(id);
+    
+    res.json({
+      status: 'success',
+      message: 'Hostname deleted successfully'
+    });
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(
+      `Failed to delete hostname: ${error.message}`,
+      500,
+      'HOSTNAME_DELETE_ERROR'
+    );
+  }
+});
+
 module.exports = {
   getManagedHostnames,
   addManagedHostname,
@@ -411,5 +600,6 @@ module.exports = {
   deletePreservedHostname,
   getOrphanedRecords,
   restoreOrphanedRecord,
-  updateOrphanedSettings
+  updateOrphanedSettings,
+  getAllHostnames
 };

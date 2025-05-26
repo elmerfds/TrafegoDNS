@@ -38,6 +38,18 @@ const getContainers = asyncHandler(async (req, res) => {
       const composeProject = labels['com.docker.compose.project'] || null;
       const composeService = labels['com.docker.compose.service'] || null;
       
+      // Get hostnames from labels
+      const hostnames = [];
+      Object.keys(labels).forEach(key => {
+        if (key.startsWith('traefik.http.routers.') && key.endsWith('.rule')) {
+          const rule = labels[key];
+          const hostnameMatch = rule.match(/Host\(`([^`]+)`\)/);
+          if (hostnameMatch) {
+            hostnames.push(hostnameMatch[1]);
+          }
+        }
+      });
+      
       return {
         id: container.Id,
         shortId: container.Id.substring(0, 12),
@@ -46,20 +58,36 @@ const getContainers = asyncHandler(async (req, res) => {
         status: container.Status,
         image: container.Image,
         labels: labels,
+        hostnames: hostnames,
+        dnsRecords: [], // Will be populated if needed
         compose: {
           project: composeProject,
           service: composeService
         },
-        created: container.Created,
+        created: new Date(container.Created * 1000).toISOString(),
+        network: {
+          mode: container.HostConfig?.NetworkMode || 'default'
+        },
         ports: container.Ports || []
       };
     });
     
+    // Get pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const startIndex = (page - 1) * limit;
+    const endIndex = page * limit;
+    
+    // Apply pagination
+    const paginatedContainers = formattedContainers.slice(startIndex, endIndex);
+    
     res.json({
       status: 'success',
       data: {
-        containers: formattedContainers,
-        total: formattedContainers.length
+        containers: paginatedContainers,
+        total: formattedContainers.length,
+        page: page,
+        limit: limit
       }
     });
   } catch (error) {

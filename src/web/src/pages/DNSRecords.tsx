@@ -70,7 +70,7 @@ export function DNSRecordsPage() {
       if (filter !== 'all') params.append('filter', filter)
       params.append('limit', '50')
       
-      const response = await api.get(`/dns?${params}`)
+      const response = await api.get(`/dns/records?${params}`)
       return response.data
     },
   })
@@ -91,7 +91,7 @@ export function DNSRecordsPage() {
   // Create record mutation
   const createMutation = useMutation({
     mutationFn: async (data: CreateDNSRecordInput) => {
-      const response = await api.post('/dns', data)
+      const response = await api.post('/dns/records', data)
       return response.data
     },
     onSuccess: () => {
@@ -104,7 +104,7 @@ export function DNSRecordsPage() {
   // Update record mutation
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: UpdateDNSRecordInput }) => {
-      const response = await api.put(`/dns/${id}`, data)
+      const response = await api.put(`/dns/records/${id}`, data)
       return response.data
     },
     onSuccess: () => {
@@ -116,7 +116,7 @@ export function DNSRecordsPage() {
   // Delete record mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      await api.delete(`/dns/${id}`)
+      await api.delete(`/dns/records/${id}`)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dns-records'] })

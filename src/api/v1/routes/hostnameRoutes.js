@@ -14,8 +14,18 @@ const {
   deletePreservedHostname,
   getOrphanedRecords,
   restoreOrphanedRecord,
-  updateOrphanedSettings
+  updateOrphanedSettings,
+  getAllHostnames,
+  createHostname,
+  updateHostname,
+  deleteHostname
 } = require('../controllers/hostnameController');
+
+// Main hostnames endpoints for UI
+router.get('/', authenticate, getAllHostnames);
+router.post('/', authenticate, authorize(['admin', 'operator']), createHostname);
+router.put('/:id', authenticate, authorize(['admin', 'operator']), updateHostname);
+router.delete('/:id', authenticate, authorize(['admin', 'operator']), deleteHostname);
 
 /**
  * @swagger
