@@ -8,8 +8,9 @@ const logger = require('../../../utils/logger');
 const User = require('../models/User');
 
 // Get JWT secrets from environment or generate secure ones
-let ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_SECRET;
-let REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_SECRET;
+// Support both specific secrets and fallback to JWT_SECRET
+let ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET;
+let REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
 
 // If secrets are not provided in env vars, generate secure ones and warn
 if (!ACCESS_TOKEN_SECRET) {
@@ -61,11 +62,13 @@ const generateTokens = (user) => {
   };
 
   // Generate access token
+  logger.debug(`Generating token for user ${user.username} with secret: ${ACCESS_TOKEN_SECRET?.substring(0, 8)}...`);
   const accessToken = jwt.sign(
     accessPayload,
     ACCESS_TOKEN_SECRET,
     { expiresIn: ACCESS_TOKEN_EXPIRY }
   );
+  logger.debug(`Generated token: ${accessToken?.substring(0, 20)}...`);
 
   // Create payload for refresh token (minimal information)
   const refreshPayload = {
@@ -92,18 +95,25 @@ const generateTokens = (user) => {
  * @param {string} token - Access token to verify
  * @returns {Object|null} - Decoded token or null if invalid
  */
-const verifyAccessToken = (token) => {
+const verifyAccessToken = async (token) => {
   try {
     // Check if token is revoked
-    if (User.isTokenRevoked(token)) {
+    const userInstance = new User();
+    const isRevoked = await userInstance.isTokenRevoked(token);
+    if (isRevoked) {
+      logger.debug('Token is revoked');
       return null;
     }
 
     // Verify token
+    logger.debug(`Attempting to verify token with secret: ${ACCESS_TOKEN_SECRET?.substring(0, 8)}...`);
     const decoded = jwt.verify(token, ACCESS_TOKEN_SECRET);
+    logger.debug(`Token verified successfully for user: ${decoded.username}`);
     return decoded;
   } catch (error) {
-    logger.debug(`Token verification failed: ${error.message}`);
+    logger.warn(`Token verification failed: ${error.message}`);
+    logger.debug(`Token: ${token?.substring(0, 20)}...`);
+    logger.debug(`Secret used: ${ACCESS_TOKEN_SECRET?.substring(0, 8)}...`);
     return null;
   }
 };

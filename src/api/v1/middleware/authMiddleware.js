@@ -9,7 +9,7 @@ const jwtService = require('../services/jwtService');
 /**
  * Middleware to authenticate JWT token
  */
-const authenticate = (req, res, next) => {
+const authenticate = async (req, res, next) => {
   // Get token from header
   const authHeader = req.headers.authorization;
   
@@ -20,8 +20,8 @@ const authenticate = (req, res, next) => {
   const token = authHeader.split(' ')[1];
   
   try {
-    // Verify token
-    const decoded = jwtService.verifyAccessToken(token);
+    // Verify token (now async)
+    const decoded = await jwtService.verifyAccessToken(token);
     
     if (!decoded) {
       return next(new ApiError('Invalid token', 401, 'INVALID_TOKEN'));
