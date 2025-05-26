@@ -27,12 +27,16 @@ const path = require('path');
 const fs = require('fs');
 
 // Determine the web UI path
+const publicPath = path.join(__dirname, 'public');
 const webDistPath = path.join(__dirname, '../web/dist');
 const webUiBuildPath = path.join(__dirname, '../../dist'); // Alternative build location
-const publicPath = path.join(__dirname, 'public');
 
 let webUIPath = null;
-if (fs.existsSync(webDistPath)) {
+// Check the primary location first (where vite builds to)
+if (fs.existsSync(publicPath)) {
+  webUIPath = publicPath;
+  logger.info(`Web UI found at: ${publicPath}`);
+} else if (fs.existsSync(webDistPath)) {
   webUIPath = webDistPath;
   logger.info(`Web UI found at: ${webDistPath}`);
 } else if (fs.existsSync(webUiBuildPath)) {
@@ -91,21 +95,20 @@ app.get('/api-docs', (req, res) => {
 logger.info('API documentation available at /swagger.html (using CDN-based Swagger UI)');
 logger.info('API specification available at /api/v1/swagger.json');
 
-// Serve static files from public directory (for API docs)
-app.use('/swagger.html', express.static(publicPath));
-app.use('/docs.html', express.static(publicPath));
-
-// Serve static assets if web UI is available
+// Serve static files from the public directory (including web UI and API docs)
 if (webUIPath) {
-  // Serve static files (JS, CSS, images) with proper headers
-  app.use('/assets', express.static(path.join(webUIPath, 'assets'), {
-    maxAge: '1d',
-    etag: true
-  }));
-  
-  // Serve other static files (favicon, etc.)
+  logger.info(`Serving static files from: ${webUIPath}`);
+  // Serve all static files from the web UI path
   app.use(express.static(webUIPath, {
-    index: false // Don't serve index.html for directory requests
+    // Don't serve index.html automatically for directory requests
+    // We'll handle that in the catch-all route for SPA support
+    index: false,
+    // Set proper cache headers for assets
+    setHeaders: (res, filePath) => {
+      if (filePath.includes('/assets/')) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    }
   }));
 }
 
