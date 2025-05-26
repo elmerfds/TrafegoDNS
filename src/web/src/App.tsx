@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
-import { useAuthStore } from '@/lib/stores/authStore'
+import { useAuthStore } from '@/store/authStore'
 import { Layout } from '@/components/Layout'
 import { LoginPage } from '@/pages/Login'
 import { DashboardPage } from '@/pages/Dashboard'

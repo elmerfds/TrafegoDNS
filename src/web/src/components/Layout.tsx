@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
-import { useAuthStore } from '@/lib/stores/authStore'
+import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,

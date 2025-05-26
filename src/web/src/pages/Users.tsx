@@ -30,7 +30,7 @@ import {
 } from '@/components/ui/table'
 import { useToast } from '@/components/ui/use-toast'
 import { Loader2, Plus, Pencil, Trash2, Shield } from 'lucide-react'
-import { useAuthStore } from '@/lib/stores/authStore'
+import { useAuthStore } from '@/store/authStore'
 
 interface User {
   id: string

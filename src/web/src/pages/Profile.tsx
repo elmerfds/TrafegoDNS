@@ -12,7 +12,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
-import { useAuthStore } from '@/lib/stores/authStore'
+import { useAuthStore } from '@/store/authStore'
 import { Loader2, User, Lock, Calendar, Shield } from 'lucide-react'
 
 interface UserProfile {
