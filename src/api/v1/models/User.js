@@ -114,11 +114,14 @@ class UserModel {
         } else {
           logger.debug('Users file does not exist, creating with default admin user');
           
-          // Create default admin user
+          // Create default admin user with environment variables
+          const defaultUsername = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
+          const defaultPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'admin123';
+          
           const defaultAdmin = {
             id: '1',
-            username: 'admin',
-            passwordHash: bcrypt.hashSync('admin123', 10),
+            username: defaultUsername,
+            passwordHash: bcrypt.hashSync(defaultPassword, 10),
             role: 'admin',
             createdAt: new Date().toISOString(),
             lastLogin: null
@@ -126,7 +129,7 @@ class UserModel {
           
           // Save to file
           fs.writeFileSync(USERS_FILE, JSON.stringify([defaultAdmin], null, 2));
-          logger.info('Created default admin user in JSON storage');
+          logger.info(`Created default admin user '${defaultUsername}' in JSON storage`);
         }
       }
       
@@ -178,18 +181,21 @@ class UserModel {
         this.userRepository = database.repositories.user;
         this.tokenRepository = database.repositories.revokedToken;
         
-        // Check if admin user exists, create if not
-        this.userRepository.findByUsername('admin')
-          .then(admin => {
-            if (!admin) {
-              // Create default admin user
-              logger.info('Admin user not found, creating default admin user');
+        // Check if any users exist, create default admin if none
+        this.userRepository.findAll()
+          .then(users => {
+            if (!users || users.length === 0) {
+              // Create default admin user with environment variables
+              const defaultUsername = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
+              const defaultPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'admin123';
+              
+              logger.info(`No users found, creating default admin user: ${defaultUsername}`);
               this.userRepository.createUser({
-                username: 'admin',
-                password: 'admin123',
+                username: defaultUsername,
+                password: defaultPassword,
                 role: 'admin'
               }).then(() => {
-                logger.info('Created default admin user in SQLite database');
+                logger.info(`Created default admin user '${defaultUsername}' in SQLite database`);
               }).catch(err => {
                 logger.error(`Failed to create default admin user: ${err.message}`);
               });

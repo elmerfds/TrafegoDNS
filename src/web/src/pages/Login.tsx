@@ -38,8 +38,8 @@ export function LoginPage() {
       const response = await api.post('/auth/login', data)
       return response.data
     },
-    onSuccess: (data) => {
-      login(data.token, data.user)
+    onSuccess: (response) => {
+      login(response.data.accessToken, response.data.user)
       navigate('/')
     },
     onError: (error) => {
