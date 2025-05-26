@@ -52,17 +52,21 @@ const getRecords = asyncHandler(async (req, res) => {
 
     // Transform records to a consistent format
     let formattedRecords = records.map(record => {
+      const isTracked = DNSManager.recordTracker.isTracked(record);
+      const isOrphaned = isTracked && DNSManager.recordTracker.isRecordOrphaned(record);
+      
       return {
         id: record.id,
+        hostname: record.name,
         type: record.type,
-        name: record.name,
         content: record.content || record.data || record.value,
         ttl: record.ttl,
-        proxied: record.proxied === true,
-        managed: DNSManager.recordTracker.isTracked(record),
         priority: record.priority,
-        created: record.created_on || record.created_at || null,
-        modified: record.modified_on || record.updated_at || null
+        provider: DNSManager.config.dnsProvider,
+        isManaged: isTracked,
+        isOrphaned: isOrphaned,
+        createdAt: record.created_on || record.created_at || new Date().toISOString(),
+        updatedAt: record.modified_on || record.updated_at || new Date().toISOString()
       };
     });
 
@@ -74,12 +78,12 @@ const getRecords = asyncHandler(async (req, res) => {
 
     if (name) {
       formattedRecords = formattedRecords.filter(record =>
-        record.name.toLowerCase().includes(name.toLowerCase()));
+        record.hostname.toLowerCase().includes(name.toLowerCase()));
     }
 
     if (managed !== undefined) {
       const isManaged = managed === 'true';
-      formattedRecords = formattedRecords.filter(record => record.managed === isManaged);
+      formattedRecords = formattedRecords.filter(record => record.isManaged === isManaged);
     }
 
     // Get pagination parameters

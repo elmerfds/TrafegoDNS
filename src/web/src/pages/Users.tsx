@@ -58,7 +58,7 @@ export function UsersPage() {
     role: 'operator',
   })
 
-  const { data, isLoading } = useQuery({
+  const { data: users, isLoading } = useQuery({
     queryKey: ['users'],
     queryFn: async () => {
       const response = await api.get('/auth/users')
@@ -193,8 +193,6 @@ export function UsersPage() {
     )
   }
 
-  const users = data || []
-
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -286,7 +284,7 @@ export function UsersPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {users.length === 0 ? (
+            {!users || users.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                   No users found

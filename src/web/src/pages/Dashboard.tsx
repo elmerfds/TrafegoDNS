@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Activity, Globe, Container, Link2 } from 'lucide-react'
 
 export function DashboardPage() {
-  const { data: status } = useQuery({
+  const { data: statusResponse } = useQuery({
     queryKey: ['status'],
     queryFn: async () => {
       const response = await api.get('/status')
@@ -12,6 +12,8 @@ export function DashboardPage() {
     },
     refetchInterval: 5000, // Refresh every 5 seconds
   })
+
+  const status = statusResponse?.data
 
   const stats = [
     {

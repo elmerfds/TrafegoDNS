@@ -51,7 +51,7 @@ export function HostnamesPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
 
   // Fetch hostnames
-  const { data, isLoading, error } = useQuery<HostnamesResponse>({
+  const { data: hostnamesResponse, isLoading, error } = useQuery({
     queryKey: ['hostnames', search, filter],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -63,6 +63,8 @@ export function HostnamesPage() {
       return response.data
     },
   })
+
+  const data = hostnamesResponse?.data
 
   // Create hostname mutation
   const createMutation = useMutation({

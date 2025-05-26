@@ -39,7 +39,7 @@ export function ContainersPage() {
   const [selectedContainer, setSelectedContainer] = useState<Container | null>(null)
 
   // Fetch containers
-  const { data, isLoading, error } = useQuery<ContainersResponse>({
+  const { data: containersResponse, isLoading, error } = useQuery({
     queryKey: ['containers', search],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -50,6 +50,8 @@ export function ContainersPage() {
       return response.data
     },
   })
+
+  const data = containersResponse?.data
 
   // Listen for real-time updates
   useSocketEvent('container:started', () => {

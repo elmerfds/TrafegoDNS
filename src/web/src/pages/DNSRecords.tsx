@@ -62,7 +62,7 @@ export function DNSRecordsPage() {
   const [editingRecord, setEditingRecord] = useState<DNSRecord | null>(null)
 
   // Fetch DNS records
-  const { data, isLoading, error } = useQuery<DNSRecordsResponse>({
+  const { data: dnsResponse, isLoading, error } = useQuery({
     queryKey: ['dns-records', search, filter],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -74,6 +74,8 @@ export function DNSRecordsPage() {
       return response.data
     },
   })
+
+  const data = dnsResponse?.data
 
   // Listen for real-time updates
   useSocketEvent('dns:record:created', () => {
