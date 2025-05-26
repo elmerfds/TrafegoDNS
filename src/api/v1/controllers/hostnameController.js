@@ -5,7 +5,7 @@
 const asyncHandler = require('express-async-handler');
 const { ApiError } = require('../../../utils/apiError');
 const logger = require('../../../utils/logger');
-const { applyPagination } = require('../utils/paginationUtils');
+const { paginateArray, getPaginationParams } = require('../utils/paginationUtils');
 
 /**
  * @desc    Get all hostnames (managed and preserved combined)
@@ -66,7 +66,9 @@ const getAllHostnames = asyncHandler(async (req, res) => {
     
     // Apply pagination
     const total = allHostnames.length;
-    const paginatedHostnames = applyPagination(allHostnames, page, limit);
+    const paginationParams = { page, limit, offset: (page - 1) * limit };
+    const paginatedResult = paginateArray(allHostnames, paginationParams);
+    const paginatedHostnames = paginatedResult.data;
     
     res.json({
       status: 'success',

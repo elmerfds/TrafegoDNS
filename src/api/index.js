@@ -28,8 +28,20 @@ app.use(express.static(__dirname + '/public'));
 
 // Serve the web UI from the built directory
 const path = require('path');
-const webDistPath = path.join(__dirname, '../../web/dist');
-app.use(express.static(webDistPath));
+const fs = require('fs');
+const webDistPath = path.join(__dirname, '../web/dist');
+const webUiBuildPath = path.join(__dirname, '../../dist'); // Alternative build location
+
+// Check different locations for the built web UI
+if (fs.existsSync(webDistPath)) {
+  logger.info(`Serving web UI from: ${webDistPath}`);
+  app.use(express.static(webDistPath));
+} else if (fs.existsSync(webUiBuildPath)) {
+  logger.info(`Serving web UI from: ${webUiBuildPath}`);
+  app.use(express.static(webUiBuildPath));
+} else {
+  logger.warn('Web UI build not found. Web interface will not be available.')
+}
 
 // Middleware
 app.use(helmet({
@@ -108,14 +120,18 @@ app.use('/api/*', (req, res) => {
 
 // Serve the web UI for all other routes (SPA support)
 app.get('*', (req, res) => {
-  // Try both possible locations for the web UI
-  const publicIndexPath = path.join(__dirname, 'public', 'index.html');
+  // Try multiple possible locations for the web UI
   const webDistIndexPath = path.join(webDistPath, 'index.html');
+  const webUiBuildIndexPath = path.join(webUiBuildPath, 'index.html');
+  const publicIndexPath = path.join(__dirname, 'public', 'index.html');
   
-  if (require('fs').existsSync(publicIndexPath)) {
-    res.sendFile(publicIndexPath);
-  } else if (require('fs').existsSync(webDistIndexPath)) {
+  if (fs.existsSync(webDistIndexPath)) {
     res.sendFile(webDistIndexPath);
+  } else if (fs.existsSync(webUiBuildIndexPath)) {
+    res.sendFile(webUiBuildIndexPath);
+  } else if (fs.existsSync(publicIndexPath)) {
+    // Fallback to placeholder if no build found
+    res.sendFile(publicIndexPath);
   } else {
     res.status(404).send('Web UI not found. Please build the web UI first.');
   }

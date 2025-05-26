@@ -554,31 +554,10 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
     }
     
     // Format records
-    const formattedRecords = orphanedRecords.map(record => {
-      // Get when it was marked as orphaned
-      const orphanedTime = record.orphanedSince || DNSManager.recordTracker.getRecordOrphanedTime(record);
-      let formattedTime = null;
-
-      // Handle various formats of orphanedTime
-      if (orphanedTime) {
-        if (typeof orphanedTime === 'string') {
-          formattedTime = orphanedTime; // Already a string
-        } else if (orphanedTime instanceof Date) {
-          formattedTime = orphanedTime.toISOString(); // Date object
-        } else if (typeof orphanedTime === 'object' && orphanedTime.timestamp) {
-          // Handle the object format from orphan manager
-          formattedTime = orphanedTime.timestamp;
-        } else if (typeof orphanedTime === 'object' && orphanedTime.timeMs) {
-          // Handle the object format with timeMs
-          formattedTime = new Date(orphanedTime.timeMs).toISOString();
-        } else {
-          try {
-            formattedTime = new Date(orphanedTime).toISOString(); // Try to convert to Date
-          } catch (e) {
-            logger.warn(`Invalid orphanedTime format: ${JSON.stringify(orphanedTime)}`);
-          }
-        }
-      }
+    const formattedRecords = await Promise.all(orphanedRecords.map(async record => {
+      // Get when it was marked as orphaned - getRecordOrphanedTime returns a string or null
+      const orphanedTime = record.orphanedSince || await DNSManager.recordTracker.getRecordOrphanedTime(record);
+      let formattedTime = orphanedTime; // It's already a string (ISO timestamp) or null
       
       // Get grace period info
       const gracePeriod = DNSManager.config.cleanupGracePeriod || 15; // Default 15 minutes
@@ -605,7 +584,7 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
         remainingMinutes,
         dueForDeletion: elapsedMinutes >= gracePeriod
       };
-    });
+    }));
     
     res.json({
       status: 'success',
