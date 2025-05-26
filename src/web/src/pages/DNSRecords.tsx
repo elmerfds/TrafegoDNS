@@ -235,7 +235,7 @@ export function DNSRecordsPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                data?.records?.map((record) => (
+                data?.records?.map((record: DNSRecord) => (
                   <TableRow key={record.id}>
                     <TableCell>
                       <div title={getRecordTooltip(record)}>

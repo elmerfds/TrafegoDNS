@@ -160,7 +160,7 @@ export function ContainersPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                data?.containers?.map((container) => (
+                data?.containers?.map((container: Container) => (
                   <TableRow key={container.id}>
                     <TableCell className="font-medium">
                       {container.name.replace(/^\//, '')}
@@ -172,7 +172,7 @@ export function ContainersPage() {
                     <TableCell>
                       {container.hostnames.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
-                          {container.hostnames.slice(0, 2).map((hostname) => (
+                          {container.hostnames.slice(0, 2).map((hostname: string) => (
                             <Badge key={hostname} variant="outline" className="text-xs">
                               {hostname}
                             </Badge>
