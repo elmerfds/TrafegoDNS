@@ -186,7 +186,8 @@ const getStatus = asyncHandler(async (req, res) => {
           
           if (managedRecords && Array.isArray(managedRecords)) {
             managedRecords.forEach(record => {
-              if (record.name && !record.isOrphaned) {
+              // Check if record is not orphaned (handle both field names and NULL values)
+              if (record.name && record.is_orphaned !== 1) {
                 uniqueHostnames.add(record.name);
               }
             });

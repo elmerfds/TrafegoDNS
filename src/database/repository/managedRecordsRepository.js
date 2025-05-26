@@ -914,8 +914,13 @@ class ManagedRecordsRepository {
         }
         
         if ('is_orphaned' in where) {
-          conditions.push('is_orphaned = ?');
-          whereParams.push(where.is_orphaned);
+          if (where.is_orphaned === 0) {
+            // When looking for non-orphaned records, include NULL values
+            conditions.push('(is_orphaned = 0 OR is_orphaned IS NULL)');
+          } else {
+            conditions.push('is_orphaned = ?');
+            whereParams.push(where.is_orphaned);
+          }
         }
         
         if ('name' in where) {
@@ -966,8 +971,13 @@ class ManagedRecordsRepository {
         }
         
         if ('is_orphaned' in where) {
-          conditions.push('is_orphaned = ?');
-          whereParams.push(where.is_orphaned);
+          if (where.is_orphaned === 0) {
+            // When looking for non-orphaned records, include NULL values
+            conditions.push('(is_orphaned = 0 OR is_orphaned IS NULL)');
+          } else {
+            conditions.push('is_orphaned = ?');
+            whereParams.push(where.is_orphaned);
+          }
         }
         
         if ('name' in where) {
