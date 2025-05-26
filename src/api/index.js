@@ -30,14 +30,18 @@ const fs = require('fs');
 const webDistPath = path.join(__dirname, '../web/dist');
 const publicPath = path.join(__dirname, 'public');
 
-// Check if web UI exists in the public directory (where vite builds to)
+// Check if web UI exists (look for assets directory to confirm it's the built app)
 let webUIPath = null;
-if (fs.existsSync(publicPath) && fs.existsSync(path.join(publicPath, 'index.html'))) {
+if (fs.existsSync(publicPath) && fs.existsSync(path.join(publicPath, 'assets'))) {
+  // Built React app found in public directory
   webUIPath = publicPath;
-  logger.info(`Web UI found at: ${publicPath}`);
+  logger.info(`Built web UI found at: ${publicPath}`);
 } else if (fs.existsSync(webDistPath) && fs.existsSync(path.join(webDistPath, 'index.html'))) {
   webUIPath = webDistPath;
   logger.info(`Web UI found at: ${webDistPath}`);
+} else if (fs.existsSync(publicPath)) {
+  // Public directory exists but no built app - probably just placeholder
+  logger.info(`Public directory exists at ${publicPath} but no built assets found`);
 } else {
   logger.warn('Web UI build not found. Web interface will not be available.');
 }
@@ -140,13 +144,19 @@ app.get('*', (req, res) => {
       res.status(404).send('index.html not found in web UI build directory.');
     }
   } else {
-    // Fallback to placeholder if no build found
-    const publicIndexPath = path.join(publicPath, 'index.html');
-    if (fs.existsSync(publicIndexPath)) {
-      res.sendFile(publicIndexPath);
-    } else {
-      res.status(404).send('Web UI not found. Please build the web UI first.');
-    }
+    // No built web UI found - show message
+    res.status(404).send(`
+      <!DOCTYPE html>
+      <html>
+      <head><title>TrafegoDNS</title></head>
+      <body>
+        <h1>Web UI Not Found</h1>
+        <p>The web UI has not been built yet. Please build the web UI first.</p>
+        <p>API endpoints are available at <a href="/api/v1">/api/v1</a></p>
+        <p>API documentation: <a href="/swagger.html">/swagger.html</a></p>
+      </body>
+      </html>
+    `);
   }
 });
 
