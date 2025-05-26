@@ -11,12 +11,13 @@ import { UsersPage } from '@/pages/Users'
 import { ProfilePage } from '@/pages/Profile'
 import { OrphanedRecordsPage } from '@/pages/OrphanedRecords'
 import { Toaster } from '@/components/ui/toaster'
+import { ThemeProvider } from '@/components/theme-provider'
 
 function App() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
 
   return (
-    <>
+    <ThemeProvider defaultTheme="system" storageKey="trafegodns-theme">
       <Router>
         <Routes>
           <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/" />} />
@@ -36,7 +37,7 @@ function App() {
         </Routes>
       </Router>
       <Toaster />
-    </>
+    </ThemeProvider>
   )
 }
 
