@@ -246,8 +246,8 @@ const getProfile = asyncHandler(async (req, res) => {
       id: user.id,
       username: user.username,
       role: user.role,
-      createdAt: user.createdAt,
-      lastLogin: user.lastLogin
+      createdAt: user.created_at,
+      lastLogin: user.last_login
     }
   });
 });

@@ -67,7 +67,14 @@ export function UsersPage() {
     },
   })
 
-  const users = Array.isArray(usersResponse?.data?.users) ? usersResponse.data.users : []
+  // Transform snake_case to camelCase for frontend
+  const users = Array.isArray(usersResponse?.data?.users) 
+    ? usersResponse.data.users.map((user: any) => ({
+        ...user,
+        lastLogin: user.last_login || user.lastLogin,
+        createdAt: user.created_at || user.createdAt
+      }))
+    : []
 
   const createMutation = useMutation({
     mutationFn: async (data: UserFormData) => {

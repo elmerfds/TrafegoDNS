@@ -553,20 +553,21 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
   }
   
   try {
-    // Get orphaned records from state store if available
+    // Get orphaned records
     let orphanedRecords = [];
     
-    if (stateStore && stateStore.hasPath('dns.orphaned')) {
-      orphanedRecords = stateStore.getState('dns.orphaned');
-    } else {
-      // Fallback to direct access
-      const records = await DNSManager.dnsProvider.getRecordsFromCache(true);
-      
-      // Filter to only orphaned records
-      orphanedRecords = records.filter(record => 
-        DNSManager.recordTracker.isTracked(record) && 
-        DNSManager.recordTracker.isRecordOrphaned(record)
-      );
+    // Get all records from cache
+    const allRecords = await DNSManager.dnsProvider.getRecordsFromCache(true);
+    
+    // Filter to only orphaned records using the record tracker
+    for (const record of allRecords) {
+      const isTracked = await DNSManager.recordTracker.isTracked(record);
+      if (isTracked) {
+        const isOrphaned = await DNSManager.recordTracker.isRecordOrphaned(record);
+        if (isOrphaned) {
+          orphanedRecords.push(record);
+        }
+      }
     }
     
     // Format records
