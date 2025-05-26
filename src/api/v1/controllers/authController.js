@@ -218,12 +218,12 @@ const logout = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const getUsers = asyncHandler(async (req, res) => {
-  const users = User.getAllUsers();
+  const users = await User.getAllUsers();
   
   res.json({
     status: 'success',
     data: {
-      users
+      users: users || []
     }
   });
 });
