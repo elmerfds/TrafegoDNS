@@ -29,29 +29,71 @@ const getAllHostnames = asyncHandler(async (req, res) => {
     // Get both managed and preserved hostnames from record tracker
     const managedHostnames = DNSManager.recordTracker?.managedHostnames || [];
     const preservedHostnames = DNSManager.recordTracker?.preservedHostnames || [];
+    const activeHostnames = DNSManager.lastActiveHostnames || [];
+    
+    // Get containerMap from DockerMonitor if available
+    const { DockerMonitor } = global.services || {};
+    const containerMap = DockerMonitor?.containerTracker?.containerMap || new Map();
     
     // Combine and format hostnames
     let allHostnames = [];
     
     if (type === 'all' || type === 'managed') {
-      managedHostnames.forEach(hostname => {
-        allHostnames.push({
-          id: `managed-${hostname}`,
-          hostname,
-          type: 'managed',
-          source: 'manual',
-          createdAt: new Date().toISOString() // DNSManager doesn't track creation date
-        });
+      // Add MANAGED_HOSTNAMES from environment
+      managedHostnames.forEach((config, index) => {
+        // Handle both string and object formats
+        const hostnameValue = typeof config === 'string' ? config : config.hostname;
+        if (hostnameValue) {
+          allHostnames.push({
+            id: `managed-${hostnameValue}-${index}`,
+            hostname: hostnameValue,
+            type: 'managed',
+            source: 'manual',
+            recordCount: 1, // Each managed hostname is one record
+            createdAt: new Date().toISOString() // DNSManager doesn't track creation date
+          });
+        }
+      });
+      
+      // Add container-managed hostnames from active containers
+      activeHostnames.forEach((hostname, index) => {
+        // Skip if already in managedHostnames or preservedHostnames
+        const isInManagedHostnames = managedHostnames.some(config => 
+          (typeof config === 'string' ? config : config.hostname) === hostname
+        );
+        const isInPreservedHostnames = preservedHostnames.includes(hostname);
+        
+        if (!isInManagedHostnames && !isInPreservedHostnames) {
+          // Find the container that owns this hostname
+          let containerName = null;
+          for (const [containerId, container] of containerMap) {
+            if (container.hostnames && container.hostnames.includes(hostname)) {
+              containerName = container.name;
+              break;
+            }
+          }
+          
+          allHostnames.push({
+            id: `container-${hostname}-${index}`,
+            hostname: hostname,
+            type: 'managed',
+            source: 'container',
+            containerName: containerName,
+            recordCount: 1,
+            createdAt: new Date().toISOString()
+          });
+        }
       });
     }
     
     if (type === 'all' || type === 'preserved') {
-      preservedHostnames.forEach(hostname => {
+      preservedHostnames.forEach((hostname, index) => {
         allHostnames.push({
-          id: `preserved-${hostname}`,
+          id: `preserved-${hostname}-${index}`,
           hostname,
           type: 'preserved',
           source: 'manual',
+          recordCount: 1, // Each preserved hostname is one record
           createdAt: new Date().toISOString()
         });
       });

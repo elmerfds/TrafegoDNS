@@ -58,13 +58,15 @@ export function UsersPage() {
     role: 'operator',
   })
 
-  const { data: users, isLoading } = useQuery({
+  const { data: usersResponse, isLoading } = useQuery({
     queryKey: ['users'],
     queryFn: async () => {
       const response = await api.get('/auth/users')
-      return response.data.data.users as User[]
+      return response.data
     },
   })
+
+  const users = usersResponse?.data?.users || []
 
   const createMutation = useMutation({
     mutationFn: async (data: UserFormData) => {
@@ -284,7 +286,7 @@ export function UsersPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {!users || users.length === 0 ? (
+            {users.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                   No users found

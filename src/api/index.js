@@ -23,24 +23,23 @@ const User = require('./v1/models/User');
 // Create Express app
 const app = express();
 
-// Serve static files from the 'public' directory
-app.use(express.static(__dirname + '/public'));
-
-// Serve the web UI from the built directory
 const path = require('path');
 const fs = require('fs');
+
+// Determine the web UI path
 const webDistPath = path.join(__dirname, '../web/dist');
 const webUiBuildPath = path.join(__dirname, '../../dist'); // Alternative build location
+const publicPath = path.join(__dirname, 'public');
 
-// Check different locations for the built web UI
+let webUIPath = null;
 if (fs.existsSync(webDistPath)) {
-  logger.info(`Serving web UI from: ${webDistPath}`);
-  app.use(express.static(webDistPath));
+  webUIPath = webDistPath;
+  logger.info(`Web UI found at: ${webDistPath}`);
 } else if (fs.existsSync(webUiBuildPath)) {
-  logger.info(`Serving web UI from: ${webUiBuildPath}`);
-  app.use(express.static(webUiBuildPath));
+  webUIPath = webUiBuildPath;
+  logger.info(`Web UI found at: ${webUiBuildPath}`);
 } else {
-  logger.warn('Web UI build not found. Web interface will not be available.')
+  logger.warn('Web UI build not found. Web interface will not be available.');
 }
 
 // Middleware
@@ -49,17 +48,18 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:"]
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      imgSrc: ["'self'", "data:", "blob:"],
+      connectSrc: ["'self'", "ws:", "wss:"]
     }
   },
   // Disable HTTPS requirement for development environments
   strictTransportSecurity: false,
-  // Don't set origin policies for API - allows HTTP and different origins
-  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+  // Disable cross-origin policies that might interfere with HTTP access
+  crossOriginOpenerPolicy: false,
   crossOriginEmbedderPolicy: false,
   originAgentCluster: false
-})); // Security headers with CSP configured for documentation
+})); // Security headers with CSP configured for SPA
 app.use(configureCors()); // CORS handling with configuration
 app.use(express.json()); // Parse JSON request body
 app.use(express.urlencoded({ extended: false })); // Parse URL-encoded request body
@@ -91,6 +91,24 @@ app.get('/api-docs', (req, res) => {
 logger.info('API documentation available at /swagger.html (using CDN-based Swagger UI)');
 logger.info('API specification available at /api/v1/swagger.json');
 
+// Serve static files from public directory (for API docs)
+app.use('/swagger.html', express.static(publicPath));
+app.use('/docs.html', express.static(publicPath));
+
+// Serve static assets if web UI is available
+if (webUIPath) {
+  // Serve static files (JS, CSS, images) with proper headers
+  app.use('/assets', express.static(path.join(webUIPath, 'assets'), {
+    maxAge: '1d',
+    etag: true
+  }));
+  
+  // Serve other static files (favicon, etc.)
+  app.use(express.static(webUIPath, {
+    index: false // Don't serve index.html for directory requests
+  }));
+}
+
 // API Routes
 app.use('/api/v1', v1Routes);
 
@@ -120,20 +138,21 @@ app.use('/api/*', (req, res) => {
 
 // Serve the web UI for all other routes (SPA support)
 app.get('*', (req, res) => {
-  // Try multiple possible locations for the web UI
-  const webDistIndexPath = path.join(webDistPath, 'index.html');
-  const webUiBuildIndexPath = path.join(webUiBuildPath, 'index.html');
-  const publicIndexPath = path.join(__dirname, 'public', 'index.html');
-  
-  if (fs.existsSync(webDistIndexPath)) {
-    res.sendFile(webDistIndexPath);
-  } else if (fs.existsSync(webUiBuildIndexPath)) {
-    res.sendFile(webUiBuildIndexPath);
-  } else if (fs.existsSync(publicIndexPath)) {
-    // Fallback to placeholder if no build found
-    res.sendFile(publicIndexPath);
+  if (webUIPath) {
+    const indexPath = path.join(webUIPath, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.status(404).send('index.html not found in web UI build directory.');
+    }
   } else {
-    res.status(404).send('Web UI not found. Please build the web UI first.');
+    // Fallback to placeholder if no build found
+    const publicIndexPath = path.join(publicPath, 'index.html');
+    if (fs.existsSync(publicIndexPath)) {
+      res.sendFile(publicIndexPath);
+    } else {
+      res.status(404).send('Web UI not found. Please build the web UI first.');
+    }
   }
 });
 

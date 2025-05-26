@@ -244,6 +244,8 @@ async function cleanupOrphanedRecords(
       }
 
       // Also check if this record is in the managed hostnames list
+      // This is a fallback check - managed hostnames should already be in activeHostnames
+      // but we check here as an extra safety measure
       // Use extra checks to prevent undefined errors
       if (recordTracker && recordTracker.managedHostnames && 
           Array.isArray(recordTracker.managedHostnames) &&

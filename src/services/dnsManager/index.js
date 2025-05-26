@@ -435,7 +435,10 @@ class DNSManager {
         
         // Update last active hostnames even when there are no configs to process
         // This is important for tracking hostnames that may have disappeared
-        this.lastActiveHostnames = hostnames || [];
+        // IMPORTANT: Include managed hostnames to prevent them from being marked as orphaned
+        const containerHostnames = hostnames || [];
+        const managedHostnamesList = this.getManagedHostnamesList();
+        this.lastActiveHostnames = [...new Set([...containerHostnames, ...managedHostnamesList])];
         
         return this.stats;
       }
@@ -444,7 +447,17 @@ class DNSManager {
       this.stats.processedHostnames = processedHostnames ? processedHostnames.length : 0;
       
       // Update last active hostnames
-      this.lastActiveHostnames = hostnames || [];
+      // IMPORTANT: Include managed hostnames to prevent them from being marked as orphaned
+      const containerHostnames = hostnames || [];
+      const managedHostnamesList = this.getManagedHostnamesList();
+      
+      // Combine container hostnames with managed hostnames
+      this.lastActiveHostnames = [...new Set([...containerHostnames, ...managedHostnamesList])];
+      
+      // Log the combined active hostnames for debugging
+      if (managedHostnamesList.length > 0) {
+        logger.debug(`Combined active hostnames: ${containerHostnames.length} from containers + ${managedHostnamesList.length} managed = ${this.lastActiveHostnames.length} total`);
+      }
       
       // Only update existing records on first run or if explicitly needed
       // This prevents re-marking records as app-managed on every restart
@@ -615,6 +628,21 @@ class DNSManager {
     } catch (error) {
       logger.error(`Error during DNS Manager cleanup: ${error.message}`);
     }
+  }
+  
+  /**
+   * Get list of managed hostnames (just the hostnames, not the full config)
+   * @returns {Array<string>} Array of managed hostnames
+   */
+  getManagedHostnamesList() {
+    if (!this.recordTracker || !this.recordTracker.managedHostnames) {
+      return [];
+    }
+    
+    // Extract just the hostname strings from the managed hostname objects
+    return this.recordTracker.managedHostnames
+      .filter(config => config && config.hostname)
+      .map(config => config.hostname);
   }
   
   /**
