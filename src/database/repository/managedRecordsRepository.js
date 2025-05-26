@@ -869,6 +869,53 @@ class ManagedRecordsRepository {
   }
   
   /**
+   * Count managed records
+   * @param {Object} where - Where clause conditions
+   * @returns {Promise<number>} - Record count
+   */
+  async count(where = {}) {
+    try {
+      // Build WHERE clause
+      let whereClause = '';
+      const whereParams = [];
+      
+      if (Object.keys(where).length > 0) {
+        const conditions = [];
+        
+        if ('provider' in where) {
+          conditions.push('provider = ?');
+          whereParams.push(where.provider);
+        }
+        
+        if ('type' in where) {
+          conditions.push('type = ?');
+          whereParams.push(where.type);
+        }
+        
+        if ('is_orphaned' in where) {
+          conditions.push('is_orphaned = ?');
+          whereParams.push(where.is_orphaned);
+        }
+        
+        if ('name' in where) {
+          conditions.push('name = ?');
+          whereParams.push(where.name);
+        }
+        
+        whereClause = 'WHERE ' + conditions.join(' AND ');
+      }
+      
+      const sql = `SELECT COUNT(*) as count FROM ${this.tableName} ${whereClause}`;
+      const result = await this.db.get(sql, whereParams);
+      
+      return result ? result.count : 0;
+    } catch (error) {
+      logger.error(`Failed to count managed records: ${error.message}`);
+      return 0;
+    }
+  }
+  
+  /**
    * Get all managed records for all providers
    * @returns {Promise<Object>} - Object with providers and their records
    */

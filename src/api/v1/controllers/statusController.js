@@ -87,18 +87,21 @@ const getStatus = asyncHandler(async (req, res) => {
     let containerCount = 0;
     let hostnameCount = 0;
     
-    // Try to get DNS record count from provider cache (primary source)
-    if (database && database.repositories && database.repositories.providerCache) {
+    // Try to get DNS record count from managed records (app-managed records)
+    if (database && database.repositories && database.repositories.dnsManager) {
       try {
-        dnsRecordCount = await database.repositories.providerCache.count();
+        // Count non-orphaned, app-managed records
+        if (database.repositories.dnsManager.managedRecords) {
+          dnsRecordCount = await database.repositories.dnsManager.managedRecords.count({ is_orphaned: 0 });
+        }
       } catch (e) {
-        logger.debug(`Failed to get DNS record count from provider cache: ${e.message}`);
-        // Fallback to dnsRecord repository
-        if (database.repositories.dnsRecord) {
+        logger.debug(`Failed to get DNS record count from managed records: ${e.message}`);
+        // Fallback to provider cache (all records)
+        if (database.repositories.dnsManager.providerCache) {
           try {
-            dnsRecordCount = await database.repositories.dnsRecord.count();
+            dnsRecordCount = await database.repositories.dnsManager.providerCache.count();
           } catch (e2) {
-            logger.debug(`Failed to get DNS record count from dnsRecord: ${e2.message}`);
+            logger.debug(`Failed to get DNS record count from provider cache: ${e2.message}`);
           }
         }
       }
@@ -108,8 +111,8 @@ const getStatus = asyncHandler(async (req, res) => {
     if (DockerMonitor) {
       try {
         // Check if containerTracker exists (new architecture)
-        if (DockerMonitor.containerTracker && DockerMonitor.containerTracker.containers) {
-          containerCount = DockerMonitor.containerTracker.containers.size || 0;
+        if (DockerMonitor.containerTracker && DockerMonitor.containerTracker.containerIdToName) {
+          containerCount = DockerMonitor.containerTracker.containerIdToName.size || 0;
         } else if (DockerMonitor.containerIds) {
           // Fallback to containerIds
           containerCount = DockerMonitor.containerIds.size || 0;
@@ -125,31 +128,36 @@ const getStatus = asyncHandler(async (req, res) => {
       }
     }
     
-    // Try to get hostname count
-    if (DNSManager && DNSManager.recordTracker) {
+    // Try to get hostname count from database
+    if (database && database.repositories && database.repositories.dnsManager) {
       try {
-        let managedCount = 0;
-        let preservedCount = 0;
-        
-        // Count managed hostnames
-        if (Array.isArray(DNSManager.recordTracker.managedHostnames)) {
-          managedCount = DNSManager.recordTracker.managedHostnames.length;
-        } else if (DNSManager.recordTracker.managedHostnames && typeof DNSManager.recordTracker.managedHostnames === 'object') {
-          managedCount = Object.keys(DNSManager.recordTracker.managedHostnames).length;
+        // Get unique managed hostnames from database
+        if (database.repositories.dnsManager.managedRecords) {
+          const managedRecords = await database.repositories.dnsManager.managedRecords.findAll();
+          const uniqueHostnames = new Set();
+          
+          if (managedRecords && Array.isArray(managedRecords)) {
+            managedRecords.forEach(record => {
+              if (record.name && !record.is_orphaned) {
+                uniqueHostnames.add(record.name);
+              }
+            });
+          }
+          
+          hostnameCount = uniqueHostnames.size;
+          
+          // Also try to add preserved hostnames if available
+          if (DNSManager && DNSManager.recordTracker && Array.isArray(DNSManager.recordTracker.preservedHostnames)) {
+            hostnameCount += DNSManager.recordTracker.preservedHostnames.length;
+          }
         }
-        
-        // Count preserved hostnames
-        if (Array.isArray(DNSManager.recordTracker.preservedHostnames)) {
-          preservedCount = DNSManager.recordTracker.preservedHostnames.length;
-        }
-        
-        hostnameCount = managedCount + preservedCount;
       } catch (e) {
-        logger.debug(`Failed to get hostname count from recordTracker: ${e.message}`);
-        // Fallback to database
-        if (database && database.repositories && database.repositories.managedRecords) {
+        logger.debug(`Failed to get hostname count from database: ${e.message}`);
+        
+        // Fallback to simple count
+        if (database.repositories.dnsManager.managedRecords) {
           try {
-            hostnameCount = await database.repositories.managedRecords.count();
+            hostnameCount = await database.repositories.dnsManager.managedRecords.count();
           } catch (e2) {
             logger.debug(`Failed to get hostname count from database: ${e2.message}`);
           }

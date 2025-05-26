@@ -553,28 +553,45 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
   }
   
   try {
-    // Get orphaned records
+    // Get orphaned records from database
     let orphanedRecords = [];
     
-    // Get all records from cache
-    const allRecords = await DNSManager.dnsProvider.getRecordsFromCache(true);
-    
-    // Filter to only orphaned records using the record tracker
-    for (const record of allRecords) {
-      const isTracked = await DNSManager.recordTracker.isTracked(record);
-      if (isTracked) {
-        const isOrphaned = await DNSManager.recordTracker.isRecordOrphaned(record);
-        if (isOrphaned) {
-          orphanedRecords.push(record);
+    // Check if database repository is available
+    const database = require('../../../database');
+    if (database && database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.managedRecords) {
+      // Get orphaned records directly from database
+      const provider = DNSManager.config.dnsProvider;
+      orphanedRecords = await database.repositories.dnsManager.managedRecords.getRecords(provider, { isOrphaned: true });
+    } else {
+      // Fallback to old method using cache and tracker
+      const allRecords = await DNSManager.dnsProvider.getRecordsFromCache(true);
+      
+      // Filter to only orphaned records using the record tracker
+      for (const record of allRecords) {
+        const isTracked = await DNSManager.recordTracker.isTracked(record);
+        if (isTracked) {
+          const isOrphaned = await DNSManager.recordTracker.isRecordOrphaned(record);
+          if (isOrphaned) {
+            orphanedRecords.push(record);
+          }
         }
       }
     }
     
     // Format records
     const formattedRecords = await Promise.all(orphanedRecords.map(async record => {
-      // Get when it was marked as orphaned - getRecordOrphanedTime returns a string or null
-      const orphanedTime = record.orphanedSince || await DNSManager.recordTracker.getRecordOrphanedTime(record);
-      let formattedTime = orphanedTime; // It's already a string (ISO timestamp) or null
+      // Get when it was marked as orphaned
+      let formattedTime = null;
+      
+      // If record has orphaned_at from database, use it
+      if (record.orphaned_at) {
+        formattedTime = record.orphaned_at;
+      } else if (record.orphanedSince) {
+        formattedTime = record.orphanedSince;
+      } else if (DNSManager.recordTracker) {
+        // Fallback to tracker
+        formattedTime = await DNSManager.recordTracker.getRecordOrphanedTime(record);
+      }
       
       // Get grace period info
       const gracePeriod = DNSManager.config.cleanupGracePeriod || 15; // Default 15 minutes
@@ -594,12 +611,12 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
       const remainingMinutes = elapsedMinutes !== null ? Math.max(0, gracePeriod - elapsedMinutes) : null;
       
       return {
-        id: record.id,
+        id: record.id || record.record_id || record.providerId,
         type: record.type,
         name: record.name,
         content: record.content || record.data || record.value,
         ttl: record.ttl,
-        proxied: record.proxied === true,
+        proxied: record.proxied === true || record.proxied === 1,
         orphanedSince: formattedTime,
         elapsedMinutes,
         remainingMinutes,
