@@ -58,15 +58,16 @@ export function UsersPage() {
     role: 'operator',
   })
 
-  const { data: usersResponse, isLoading } = useQuery({
+  const { data: usersResponse, isLoading, error } = useQuery({
     queryKey: ['users'],
     queryFn: async () => {
       const response = await api.get('/auth/users')
+      console.log('Users API response:', response.data)
       return response.data
     },
   })
 
-  const users = usersResponse?.data?.users || []
+  const users = Array.isArray(usersResponse?.data?.users) ? usersResponse.data.users : []
 
   const createMutation = useMutation({
     mutationFn: async (data: UserFormData) => {
@@ -191,6 +192,17 @@ export function UsersPage() {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <p className="text-red-600">Error loading users</p>
+          <p className="text-sm text-muted-foreground">{String(error)}</p>
+        </div>
       </div>
     )
   }
