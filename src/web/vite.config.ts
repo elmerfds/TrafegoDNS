@@ -26,7 +26,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist',
+    outDir: '../api/public',
     emptyOutDir: true,
     assetsDir: 'assets',
   },
