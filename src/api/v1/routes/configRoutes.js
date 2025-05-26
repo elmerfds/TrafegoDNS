@@ -10,7 +10,8 @@ const {
   updateConfig,
   getProviderConfig,
   toggleOperationMode,
-  getAppStatus
+  getAppStatus,
+  getAllSettings
 } = require('../controllers/configController');
 
 /**
@@ -253,5 +254,42 @@ router.put('/mode', authenticate, authorize('admin'), toggleOperationMode);
  *         description: Server error
  */
 router.get('/status', authenticate, getAppStatus);
+
+/**
+ * @swagger
+ * /config/settings:
+ *   get:
+ *     summary: Get all settings from database
+ *     tags: [Config]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All settings from database
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     settings:
+ *                       type: object
+ *                       description: Key-value pairs of all settings
+ *                     count:
+ *                       type: number
+ *                       description: Number of settings
+ *       401:
+ *         description: Not authenticated
+ *       403:
+ *         description: Not authorized
+ *       500:
+ *         description: Server error
+ */
+router.get('/settings', authenticate, authorize('admin'), getAllSettings);
 
 module.exports = router;

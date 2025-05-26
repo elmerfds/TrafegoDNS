@@ -262,6 +262,38 @@ const toggleOperationMode = asyncHandler(async (req, res) => {
 });
 
 /**
+ * @desc    Get all settings from database
+ * @route   GET /api/v1/config/settings
+ * @access  Private/Admin
+ */
+const getAllSettings = asyncHandler(async (req, res) => {
+  const database = require('../../../database');
+  
+  if (!database.isInitialized() || !database.repositories?.setting) {
+    throw new ApiError('Database not initialized', 500, 'DATABASE_NOT_INITIALIZED');
+  }
+  
+  try {
+    // Get all settings from database
+    const settings = await database.repositories.setting.getAll();
+    
+    res.json({
+      status: 'success',
+      data: {
+        settings,
+        count: Object.keys(settings).length
+      }
+    });
+  } catch (error) {
+    throw new ApiError(
+      `Failed to get settings: ${error.message}`,
+      500,
+      'SETTINGS_GET_ERROR'
+    );
+  }
+});
+
+/**
  * @desc    Get application status and metrics
  * @route   GET /api/v1/config/status
  * @access  Private
@@ -344,5 +376,6 @@ module.exports = {
   updateConfig,
   getProviderConfig,
   toggleOperationMode,
-  getAppStatus
+  getAppStatus,
+  getAllSettings
 };

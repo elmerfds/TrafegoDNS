@@ -184,6 +184,10 @@ async function start() {
       }
     }
     
+    // Load configuration from database (with environment fallback)
+    logger.info('📋 Loading configuration from database...');
+    await config.loadFromDatabase();
+    
     // Initialize services
     const statusReporter = new StatusReporter(config, eventBus);
     const dnsManager = new DNSManager(config, eventBus);
