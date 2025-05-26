@@ -5,6 +5,7 @@ import path from 'path'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  base: './', // Use relative paths for all assets
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -28,5 +29,13 @@ export default defineConfig({
     outDir: '../api/public',
     emptyOutDir: true,
     assetsDir: 'assets',
+    rollupOptions: {
+      output: {
+        // Ensure assets use relative paths
+        assetFileNames: 'assets/[name]-[hash][extname]',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js',
+      }
+    }
   },
 })
