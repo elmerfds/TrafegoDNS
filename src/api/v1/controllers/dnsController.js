@@ -583,10 +583,14 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
       // Parse orphaned date
       if (formattedTime) {
         orphanedDate = new Date(formattedTime);
+        // Validate the date
+        if (isNaN(orphanedDate.getTime())) {
+          orphanedDate = null;
+        }
       }
       
-      const elapsedMinutes = orphanedDate && !isNaN(orphanedDate) ? Math.floor((now - orphanedDate) / (1000 * 60)) : 0;
-      const remainingMinutes = Math.max(0, gracePeriod - elapsedMinutes);
+      const elapsedMinutes = orphanedDate ? Math.floor((now - orphanedDate) / (1000 * 60)) : null;
+      const remainingMinutes = elapsedMinutes !== null ? Math.max(0, gracePeriod - elapsedMinutes) : null;
       
       return {
         id: record.id,
@@ -598,7 +602,7 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
         orphanedSince: formattedTime,
         elapsedMinutes,
         remainingMinutes,
-        dueForDeletion: elapsedMinutes >= gracePeriod
+        dueForDeletion: elapsedMinutes !== null ? elapsedMinutes >= gracePeriod : false
       };
     }));
     

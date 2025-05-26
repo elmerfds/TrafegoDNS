@@ -61,7 +61,13 @@ export function OrphanedRecordsPage() {
     queryKey: ['orphaned-records'],
     queryFn: async () => {
       const response = await api.get('/dns/orphaned')
-      return response.data.data.records as OrphanedRecord[]
+      // Transform the API response to match the expected format
+      return response.data.data.records.map((record: any) => ({
+        ...record,
+        hostname: record.name,
+        orphanedAt: record.orphanedSince || '',
+        orphanedTime: record.elapsedMinutes ? record.elapsedMinutes * 60 : 0 // Convert minutes to seconds
+      })) as OrphanedRecord[]
     },
   })
 
@@ -150,6 +156,7 @@ export function OrphanedRecordsPage() {
   })
 
   const formatTimeAgo = (seconds: number) => {
+    if (!seconds || seconds === 0) return 'Unknown'
     if (seconds < 60) return `${seconds}s ago`
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
