@@ -108,9 +108,14 @@ app.use('/api/*', (req, res) => {
 
 // Serve the web UI for all other routes (SPA support)
 app.get('*', (req, res) => {
-  const indexPath = path.join(webDistPath, 'index.html');
-  if (require('fs').existsSync(indexPath)) {
-    res.sendFile(indexPath);
+  // Try both possible locations for the web UI
+  const publicIndexPath = path.join(__dirname, 'public', 'index.html');
+  const webDistIndexPath = path.join(webDistPath, 'index.html');
+  
+  if (require('fs').existsSync(publicIndexPath)) {
+    res.sendFile(publicIndexPath);
+  } else if (require('fs').existsSync(webDistIndexPath)) {
+    res.sendFile(webDistIndexPath);
   } else {
     res.status(404).send('Web UI not found. Please build the web UI first.');
   }
