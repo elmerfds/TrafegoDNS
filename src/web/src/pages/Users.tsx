@@ -293,7 +293,7 @@ export function UsersPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              users.map((user) => (
+              users.map((user: User) => (
                 <TableRow key={user.id}>
                   <TableCell className="font-medium">{user.username}</TableCell>
                   <TableCell>{getRoleBadge(user.role)}</TableCell>
