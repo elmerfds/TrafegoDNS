@@ -27,21 +27,17 @@ const path = require('path');
 const fs = require('fs');
 
 // Determine the web UI path
-const publicPath = path.join(__dirname, 'public');
 const webDistPath = path.join(__dirname, '../web/dist');
-const webUiBuildPath = path.join(__dirname, '../../dist'); // Alternative build location
+const publicPath = path.join(__dirname, 'public');
 
+// Check if web UI exists in the public directory (where vite builds to)
 let webUIPath = null;
-// Check the primary location first (where vite builds to)
-if (fs.existsSync(publicPath)) {
+if (fs.existsSync(publicPath) && fs.existsSync(path.join(publicPath, 'index.html'))) {
   webUIPath = publicPath;
   logger.info(`Web UI found at: ${publicPath}`);
-} else if (fs.existsSync(webDistPath)) {
+} else if (fs.existsSync(webDistPath) && fs.existsSync(path.join(webDistPath, 'index.html'))) {
   webUIPath = webDistPath;
   logger.info(`Web UI found at: ${webDistPath}`);
-} else if (fs.existsSync(webUiBuildPath)) {
-  webUIPath = webUiBuildPath;
-  logger.info(`Web UI found at: ${webUiBuildPath}`);
 } else {
   logger.warn('Web UI build not found. Web interface will not be available.');
 }
@@ -52,18 +48,13 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:"],
       connectSrc: ["'self'", "ws:", "wss:"]
     }
   },
-  // Disable HTTPS requirement for development environments
-  strictTransportSecurity: false,
-  // Disable cross-origin policies that might interfere with HTTP access
-  crossOriginOpenerPolicy: false,
-  crossOriginEmbedderPolicy: false,
-  originAgentCluster: false
-})); // Security headers with CSP configured for SPA
+  crossOriginEmbedderPolicy: false
+}))
 app.use(configureCors()); // CORS handling with configuration
 app.use(express.json()); // Parse JSON request body
 app.use(express.urlencoded({ extended: false })); // Parse URL-encoded request body
