@@ -159,7 +159,7 @@ export function HostnamesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {data?.hostnames.filter(h => h.type === 'managed').length || 0}
+              {data?.hostnames?.filter(h => h.type === 'managed').length || 0}
             </div>
           </CardContent>
         </Card>
@@ -171,7 +171,7 @@ export function HostnamesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {data?.hostnames.filter(h => h.type === 'preserved').length || 0}
+              {data?.hostnames?.filter(h => h.type === 'preserved').length || 0}
             </div>
           </CardContent>
         </Card>
@@ -249,14 +249,14 @@ export function HostnamesPage() {
                     Loading...
                   </TableCell>
                 </TableRow>
-              ) : data?.hostnames.length === 0 ? (
+              ) : !data?.hostnames || data.hostnames.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center">
                     No hostnames found
                   </TableCell>
                 </TableRow>
               ) : (
-                data?.hostnames.map((hostname) => (
+                data?.hostnames?.map((hostname) => (
                   <TableRow key={hostname.id}>
                     <TableCell className="font-medium">{hostname.hostname}</TableCell>
                     <TableCell>{getTypeBadge(hostname.type)}</TableCell>

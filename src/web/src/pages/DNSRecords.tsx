@@ -226,14 +226,14 @@ export function DNSRecordsPage() {
                     Loading...
                   </TableCell>
                 </TableRow>
-              ) : data?.records.length === 0 ? (
+              ) : !data?.records || data.records.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center">
                     No records found
                   </TableCell>
                 </TableRow>
               ) : (
-                data?.records.map((record) => (
+                data?.records?.map((record) => (
                   <TableRow key={record.id}>
                     <TableCell>
                       <div title={getRecordTooltip(record)}>

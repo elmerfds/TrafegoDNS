@@ -85,12 +85,24 @@ const getRecords = asyncHandler(async (req, res) => {
     // Get pagination parameters
     const paginationParams = getPaginationParams(req.query);
 
-    // Format paginated response
-    const response = formatPaginatedResponse(req, formattedRecords, paginationParams);
+    // Get pagination parameters and apply pagination
+    const { page, limit, offset } = paginationParams;
+    const total = formattedRecords.length;
+    const paginatedRecords = formattedRecords.slice(offset, offset + limit);
 
-    // Add provider information
-    response.provider = DNSManager.config.dnsProvider;
-    response.domain = DNSManager.config.getProviderDomain();
+    // Return expected structure
+    const response = {
+      status: 'success',
+      data: {
+        records: paginatedRecords,
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      },
+      provider: DNSManager.config.dnsProvider,
+      domain: DNSManager.config.getProviderDomain()
+    };
 
     res.json(response);
   } catch (error) {

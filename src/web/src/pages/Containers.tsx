@@ -151,14 +151,14 @@ export function ContainersPage() {
                     Loading...
                   </TableCell>
                 </TableRow>
-              ) : data?.containers.length === 0 ? (
+              ) : !data?.containers || data.containers.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center">
                     No containers found
                   </TableCell>
                 </TableRow>
               ) : (
-                data?.containers.map((container) => (
+                data?.containers?.map((container) => (
                   <TableRow key={container.id}>
                     <TableCell className="font-medium">
                       {container.name.replace(/^\//, '')}
