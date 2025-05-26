@@ -98,8 +98,7 @@ const generateTokens = (user) => {
 const verifyAccessToken = async (token) => {
   try {
     // Check if token is revoked
-    const userInstance = new User();
-    const isRevoked = await userInstance.isTokenRevoked(token);
+    const isRevoked = await User.isTokenRevoked(token);
     if (isRevoked) {
       logger.debug('Token is revoked');
       return null;
@@ -123,10 +122,11 @@ const verifyAccessToken = async (token) => {
  * @param {string} token - Refresh token to verify
  * @returns {Object|null} - Decoded token or null if invalid
  */
-const verifyRefreshToken = (token) => {
+const verifyRefreshToken = async (token) => {
   try {
     // Check if token is revoked
-    if (User.isTokenRevoked(token)) {
+    const isRevoked = await User.isTokenRevoked(token);
+    if (isRevoked) {
       return null;
     }
 
