@@ -1,9 +1,247 @@
 /**
  * Hostname Controller
- * Handles manual hostname management and preservation rules
+ * Handles hostname management operations
  */
 const asyncHandler = require('express-async-handler');
 const { ApiError } = require('../../../utils/apiError');
+const logger = require('../../../utils/logger');
+const { applyPagination } = require('../utils/paginationUtils');
+
+/**
+ * @desc    Get all hostnames (managed and preserved combined)
+ * @route   GET /api/v1/hostnames
+ * @access  Private
+ */
+const getAllHostnames = asyncHandler(async (req, res) => {
+  const { DNSManager } = global.services || {};
+  
+  if (!DNSManager) {
+    throw new ApiError('DNS manager not initialized', 500, 'DNS_MANAGER_NOT_INITIALIZED');
+  }
+  
+  try {
+    // Get pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const search = req.query.search || '';
+    const type = req.query.type || 'all'; // all, managed, preserved
+    
+    // Get both managed and preserved hostnames
+    const managedHostnames = DNSManager.getManagedHostnames() || [];
+    const preservedHostnames = DNSManager.getPreservedHostnames() || [];
+    
+    // Combine and format hostnames
+    let allHostnames = [];
+    
+    if (type === 'all' || type === 'managed') {
+      managedHostnames.forEach(hostname => {
+        allHostnames.push({
+          id: `managed-${hostname}`,
+          hostname,
+          type: 'managed',
+          source: 'manual',
+          createdAt: new Date().toISOString() // DNSManager doesn't track creation date
+        });
+      });
+    }
+    
+    if (type === 'all' || type === 'preserved') {
+      preservedHostnames.forEach(hostname => {
+        allHostnames.push({
+          id: `preserved-${hostname}`,
+          hostname,
+          type: 'preserved',
+          source: 'manual',
+          createdAt: new Date().toISOString()
+        });
+      });
+    }
+    
+    // Apply search filter
+    if (search) {
+      allHostnames = allHostnames.filter(h => 
+        h.hostname.toLowerCase().includes(search.toLowerCase())
+      );
+    }
+    
+    // Apply pagination
+    const total = allHostnames.length;
+    const paginatedHostnames = applyPagination(allHostnames, page, limit);
+    
+    res.json({
+      status: 'success',
+      data: {
+        hostnames: paginatedHostnames,
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    throw new ApiError(
+      `Failed to get hostnames: ${error.message}`,
+      500,
+      'HOSTNAMES_GET_ERROR'
+    );
+  }
+});
+
+/**
+ * @desc    Create a new hostname (managed)
+ * @route   POST /api/v1/hostnames
+ * @access  Private/Operator
+ */
+const createHostname = asyncHandler(async (req, res) => {
+  const { hostname, type, content, ttl, proxied } = req.body;
+  const { DNSManager } = global.services || {};
+  
+  if (!DNSManager) {
+    throw new ApiError('DNS manager not initialized', 500, 'DNS_MANAGER_NOT_INITIALIZED');
+  }
+  
+  // Validate required fields
+  if (!hostname || !type || !content) {
+    throw new ApiError('Hostname, type, and content are required', 400, 'VALIDATION_ERROR');
+  }
+  
+  try {
+    // Add as managed hostname
+    const record = await DNSManager.addManagedHostname({
+      hostname,
+      type,
+      content,
+      ttl: ttl || 3600,
+      proxied: proxied || false
+    });
+    
+    logger.info(`Created managed hostname: ${hostname}`);
+    
+    res.status(201).json({
+      status: 'success',
+      data: {
+        message: 'Hostname created successfully',
+        hostname: {
+          id: `managed-${hostname}`,
+          hostname,
+          type: 'managed',
+          record
+        }
+      }
+    });
+  } catch (error) {
+    throw new ApiError(
+      `Failed to create hostname: ${error.message}`,
+      500,
+      'HOSTNAME_CREATE_ERROR'
+    );
+  }
+});
+
+/**
+ * @desc    Update a hostname
+ * @route   PUT /api/v1/hostnames/:id
+ * @access  Private/Operator
+ */
+const updateHostname = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { type, content, ttl, proxied } = req.body;
+  const { DNSManager } = global.services || {};
+  
+  if (!DNSManager) {
+    throw new ApiError('DNS manager not initialized', 500, 'DNS_MANAGER_NOT_INITIALIZED');
+  }
+  
+  // Extract hostname from ID (format: "managed-hostname" or "preserved-hostname")
+  const [hostnameType, ...hostnameParts] = id.split('-');
+  const hostname = hostnameParts.join('-');
+  
+  if (!hostname || !['managed', 'preserved'].includes(hostnameType)) {
+    throw new ApiError('Invalid hostname ID', 400, 'INVALID_ID');
+  }
+  
+  try {
+    if (hostnameType === 'managed') {
+      // For managed hostnames, we need to update the DNS record
+      // First remove the old one
+      await DNSManager.removeManagedHostname(hostname);
+      
+      // Then add with new values
+      const record = await DNSManager.addManagedHostname({
+        hostname,
+        type: type || 'A',
+        content: content || '',
+        ttl: ttl || 3600,
+        proxied: proxied || false
+      });
+      
+      res.json({
+        status: 'success',
+        data: {
+          message: 'Hostname updated successfully',
+          hostname: {
+            id,
+            hostname,
+            type: 'managed',
+            record
+          }
+        }
+      });
+    } else {
+      throw new ApiError('Cannot update preserved hostnames', 400, 'OPERATION_NOT_ALLOWED');
+    }
+  } catch (error) {
+    throw new ApiError(
+      `Failed to update hostname: ${error.message}`,
+      500,
+      'HOSTNAME_UPDATE_ERROR'
+    );
+  }
+});
+
+/**
+ * @desc    Delete a hostname
+ * @route   DELETE /api/v1/hostnames/:id
+ * @access  Private/Operator
+ */
+const deleteHostname = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { DNSManager } = global.services || {};
+  
+  if (!DNSManager) {
+    throw new ApiError('DNS manager not initialized', 500, 'DNS_MANAGER_NOT_INITIALIZED');
+  }
+  
+  // Extract hostname from ID
+  const [hostnameType, ...hostnameParts] = id.split('-');
+  const hostname = hostnameParts.join('-');
+  
+  if (!hostname || !['managed', 'preserved'].includes(hostnameType)) {
+    throw new ApiError('Invalid hostname ID', 400, 'INVALID_ID');
+  }
+  
+  try {
+    if (hostnameType === 'managed') {
+      await DNSManager.removeManagedHostname(hostname);
+    } else {
+      await DNSManager.removePreservedHostname(hostname);
+    }
+    
+    res.json({
+      status: 'success',
+      data: {
+        message: `${hostnameType} hostname deleted successfully`,
+        removed: true
+      }
+    });
+  } catch (error) {
+    throw new ApiError(
+      `Failed to delete hostname: ${error.message}`,
+      500,
+      'HOSTNAME_DELETE_ERROR'
+    );
+  }
+});
 
 /**
  * @desc    Get all manually managed hostnames
@@ -18,21 +256,20 @@ const getManagedHostnames = asyncHandler(async (req, res) => {
   }
   
   try {
-    // Get the list of manually managed hostnames
-    const managedHostnames = await DNSManager.getManagedHostnames();
+    const managedHostnames = DNSManager.getManagedHostnames();
     
     res.json({
       status: 'success',
       data: {
-        managedHostnames,
-        count: managedHostnames.length
+        managedHostnames: managedHostnames || [],
+        count: managedHostnames ? managedHostnames.length : 0
       }
     });
   } catch (error) {
     throw new ApiError(
       `Failed to get managed hostnames: ${error.message}`,
       500,
-      'MANAGED_HOSTNAMES_ERROR'
+      'MANAGED_HOSTNAMES_GET_ERROR'
     );
   }
 });
@@ -43,52 +280,41 @@ const getManagedHostnames = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const addManagedHostname = asyncHandler(async (req, res) => {
+  const { hostname, type, content, ttl, proxied } = req.body;
   const { DNSManager } = global.services || {};
   
   if (!DNSManager) {
     throw new ApiError('DNS manager not initialized', 500, 'DNS_MANAGER_NOT_INITIALIZED');
   }
   
-  // Validate request body
-  const { hostname, type, content, ttl, proxied } = req.body;
-  
-  if (!hostname) {
-    throw new ApiError('Hostname is required', 400, 'VALIDATION_ERROR');
-  }
-  
-  if (!type) {
-    throw new ApiError('Record type is required', 400, 'VALIDATION_ERROR');
-  }
-  
-  if (!content) {
-    throw new ApiError('Record content is required', 400, 'VALIDATION_ERROR');
+  // Validate required fields
+  if (!hostname || !type || !content) {
+    throw new ApiError('Hostname, type, and content are required', 400, 'VALIDATION_ERROR');
   }
   
   try {
-    // Add the hostname to the managed list
-    const result = await DNSManager.addManagedHostname(hostname, {
+    const record = await DNSManager.addManagedHostname({
+      hostname,
       type,
       content,
-      ttl: ttl || DNSManager.config.getDefaultTTL(),
-      proxied: proxied !== undefined ? proxied : DNSManager.config.getDefaultProxied()
+      ttl: ttl || 3600,
+      proxied: proxied || false
     });
     
-    if (!result.success) {
-      throw new ApiError(result.error || 'Failed to add managed hostname', 400, 'HOSTNAME_ADD_ERROR');
-    }
+    logger.info(`Added managed hostname: ${hostname}`);
     
     res.status(201).json({
       status: 'success',
       data: {
-        message: `Hostname ${hostname} added to managed hostnames`,
-        record: result.record
+        message: 'Managed hostname added successfully',
+        record
       }
     });
   } catch (error) {
     throw new ApiError(
       `Failed to add managed hostname: ${error.message}`,
-      error.statusCode || 500,
-      error.code || 'MANAGED_HOSTNAME_ADD_ERROR'
+      500,
+      'MANAGED_HOSTNAME_ADD_ERROR'
     );
   }
 });
@@ -107,29 +333,28 @@ const deleteManagedHostname = asyncHandler(async (req, res) => {
   }
   
   try {
-    // Remove the hostname from the managed list
     const result = await DNSManager.removeManagedHostname(hostname);
     
-    if (!result.success) {
-      throw new ApiError(
-        result.error || `Hostname ${hostname} not found in managed hostnames`,
-        404,
-        'HOSTNAME_NOT_FOUND'
-      );
+    if (!result || !result.success) {
+      throw new ApiError('Hostname not found or could not be removed', 404, 'HOSTNAME_NOT_FOUND');
     }
+    
+    logger.info(`Removed managed hostname: ${hostname}`);
     
     res.json({
       status: 'success',
       data: {
-        message: `Hostname ${hostname} removed from managed hostnames`,
+        message: 'Managed hostname removed successfully',
         removed: true
       }
     });
   } catch (error) {
+    if (error instanceof ApiError) throw error;
+    
     throw new ApiError(
       `Failed to remove managed hostname: ${error.message}`,
-      error.statusCode || 500,
-      error.code || 'MANAGED_HOSTNAME_DELETE_ERROR'
+      500,
+      'MANAGED_HOSTNAME_REMOVE_ERROR'
     );
   }
 });
@@ -147,21 +372,20 @@ const getPreservedHostnames = asyncHandler(async (req, res) => {
   }
   
   try {
-    // Get the list of preserved hostnames
-    const preservedHostnames = await DNSManager.getPreservedHostnames();
+    const preservedHostnames = DNSManager.getPreservedHostnames();
     
     res.json({
       status: 'success',
       data: {
-        preservedHostnames,
-        count: preservedHostnames.length
+        preservedHostnames: preservedHostnames || [],
+        count: preservedHostnames ? preservedHostnames.length : 0
       }
     });
   } catch (error) {
     throw new ApiError(
       `Failed to get preserved hostnames: ${error.message}`,
       500,
-      'PRESERVED_HOSTNAMES_ERROR'
+      'PRESERVED_HOSTNAMES_GET_ERROR'
     );
   }
 });
@@ -172,39 +396,35 @@ const getPreservedHostnames = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const addPreservedHostname = asyncHandler(async (req, res) => {
+  const { hostname } = req.body;
   const { DNSManager } = global.services || {};
   
   if (!DNSManager) {
     throw new ApiError('DNS manager not initialized', 500, 'DNS_MANAGER_NOT_INITIALIZED');
   }
   
-  // Validate request body
-  const { hostname } = req.body;
-  
+  // Validate required field
   if (!hostname) {
     throw new ApiError('Hostname is required', 400, 'VALIDATION_ERROR');
   }
   
   try {
-    // Add the hostname to the preserved list
     const result = await DNSManager.addPreservedHostname(hostname);
     
-    if (!result.success) {
-      throw new ApiError(result.error || 'Failed to add preserved hostname', 400, 'HOSTNAME_ADD_ERROR');
-    }
+    logger.info(`Added preserved hostname: ${hostname}`);
     
     res.status(201).json({
       status: 'success',
       data: {
-        message: `Hostname ${hostname} added to preserved hostnames`,
-        preservedHostnames: result.preservedHostnames
+        message: 'Preserved hostname added successfully',
+        preservedHostnames: DNSManager.getPreservedHostnames()
       }
     });
   } catch (error) {
     throw new ApiError(
       `Failed to add preserved hostname: ${error.message}`,
-      error.statusCode || 500,
-      error.code || 'PRESERVED_HOSTNAME_ADD_ERROR'
+      500,
+      'PRESERVED_HOSTNAME_ADD_ERROR'
     );
   }
 });
@@ -223,30 +443,29 @@ const deletePreservedHostname = asyncHandler(async (req, res) => {
   }
   
   try {
-    // Remove the hostname from the preserved list
     const result = await DNSManager.removePreservedHostname(hostname);
     
-    if (!result.success) {
-      throw new ApiError(
-        result.error || `Hostname ${hostname} not found in preserved hostnames`,
-        404,
-        'HOSTNAME_NOT_FOUND'
-      );
+    if (!result || !result.success) {
+      throw new ApiError('Hostname not found in preserved list', 404, 'HOSTNAME_NOT_FOUND');
     }
+    
+    logger.info(`Removed preserved hostname: ${hostname}`);
     
     res.json({
       status: 'success',
       data: {
-        message: `Hostname ${hostname} removed from preserved hostnames`,
+        message: 'Preserved hostname removed successfully',
         removed: true,
-        preservedHostnames: result.preservedHostnames
+        preservedHostnames: DNSManager.getPreservedHostnames()
       }
     });
   } catch (error) {
+    if (error instanceof ApiError) throw error;
+    
     throw new ApiError(
       `Failed to remove preserved hostname: ${error.message}`,
-      error.statusCode || 500,
-      error.code || 'PRESERVED_HOSTNAME_DELETE_ERROR'
+      500,
+      'PRESERVED_HOSTNAME_REMOVE_ERROR'
     );
   }
 });
@@ -264,43 +483,29 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
   }
   
   try {
-    const orphanedRecords = await DNSManager.getOrphanedRecords();
-    
-    // Format the records for API response
-    const formattedRecords = orphanedRecords.map(record => ({
-      id: record.id,
-      name: record.name,
-      type: record.type,
-      content: record.content,
-      ttl: record.ttl,
-      proxied: record.proxied || false,
-      markedAt: record.orphanedSince || null,
-      gracePeriod: DNSManager.config.cleanupGracePeriod || 15, // Minutes
-      remainingTime: record.orphanedSince 
-        ? Math.max(0, (DNSManager.config.cleanupGracePeriod || 15) * 60 * 1000 - (Date.now() - record.orphanedSince)) / (60 * 1000)
-        : null // Remaining time in minutes
-    }));
+    const orphanedRecords = DNSManager.getOrphanedRecords();
+    const config = DNSManager.config;
     
     res.json({
       status: 'success',
       data: {
-        orphanedRecords: formattedRecords,
-        count: formattedRecords.length,
-        cleanupEnabled: DNSManager.config.cleanupOrphaned || false,
-        gracePeriod: DNSManager.config.cleanupGracePeriod || 15 // Minutes
+        orphanedRecords: orphanedRecords || [],
+        count: orphanedRecords ? orphanedRecords.length : 0,
+        cleanupEnabled: config.cleanupOrphaned || false,
+        gracePeriod: config.cleanupGracePeriod || 3600
       }
     });
   } catch (error) {
     throw new ApiError(
       `Failed to get orphaned records: ${error.message}`,
       500,
-      'ORPHANED_RECORDS_ERROR'
+      'ORPHANED_RECORDS_GET_ERROR'
     );
   }
 });
 
 /**
- * @desc    Restore an orphaned record (unmark as orphaned)
+ * @desc    Restore an orphaned record
  * @route   POST /api/v1/hostnames/orphaned/:id/restore
  * @access  Private/Admin
  */
@@ -315,26 +520,59 @@ const restoreOrphanedRecord = asyncHandler(async (req, res) => {
   try {
     const result = await DNSManager.restoreOrphanedRecord(id);
     
-    if (!result.success) {
-      throw new ApiError(
-        result.error || `Record with ID ${id} not found or is not orphaned`,
-        404,
-        'RECORD_NOT_FOUND'
-      );
+    if (!result || !result.success) {
+      throw new ApiError('Orphaned record not found or could not be restored', 404, 'RECORD_NOT_FOUND');
     }
+    
+    logger.info(`Restored orphaned record: ${id}`);
     
     res.json({
       status: 'success',
       data: {
-        message: `Record with ID ${id} has been restored and will no longer be deleted`,
+        message: 'Orphaned record restored successfully',
         record: result.record
       }
     });
   } catch (error) {
+    if (error instanceof ApiError) throw error;
+    
     throw new ApiError(
       `Failed to restore orphaned record: ${error.message}`,
-      error.statusCode || 500,
-      error.code || 'ORPHANED_RECORD_RESTORE_ERROR'
+      500,
+      'ORPHANED_RECORD_RESTORE_ERROR'
+    );
+  }
+});
+
+/**
+ * @desc    Get orphaned record cleanup settings
+ * @route   GET /api/v1/hostnames/orphaned/settings
+ * @access  Private
+ */
+const getOrphanedSettings = asyncHandler(async (req, res) => {
+  const { ConfigManager } = global.services || {};
+  
+  if (!ConfigManager) {
+    throw new ApiError('Config manager not initialized', 500, 'CONFIG_MANAGER_NOT_INITIALIZED');
+  }
+  
+  try {
+    const config = ConfigManager.getConfig();
+    
+    res.json({
+      status: 'success',
+      data: {
+        settings: {
+          cleanupOrphaned: config.cleanupOrphaned || false,
+          cleanupGracePeriod: config.cleanupGracePeriod || 3600
+        }
+      }
+    });
+  } catch (error) {
+    throw new ApiError(
+      `Failed to get orphaned settings: ${error.message}`,
+      500,
+      'ORPHANED_SETTINGS_GET_ERROR'
     );
   }
 });
@@ -346,41 +584,29 @@ const restoreOrphanedRecord = asyncHandler(async (req, res) => {
  */
 const updateOrphanedSettings = asyncHandler(async (req, res) => {
   const { cleanupEnabled, gracePeriod } = req.body;
-  const { DNSManager } = global.services || {};
+  const { ConfigManager } = global.services || {};
   
-  if (!DNSManager) {
-    throw new ApiError('DNS manager not initialized', 500, 'DNS_MANAGER_NOT_INITIALIZED');
+  if (!ConfigManager) {
+    throw new ApiError('Config manager not initialized', 500, 'CONFIG_MANAGER_NOT_INITIALIZED');
+  }
+  
+  const updates = {};
+  if (cleanupEnabled !== undefined) updates.cleanupOrphaned = cleanupEnabled;
+  if (gracePeriod !== undefined) updates.cleanupGracePeriod = gracePeriod;
+  
+  if (Object.keys(updates).length === 0) {
+    throw new ApiError('No valid settings provided', 400, 'VALIDATION_ERROR');
   }
   
   try {
-    // At least one parameter must be provided
-    if (cleanupEnabled === undefined && gracePeriod === undefined) {
-      throw new ApiError(
-        'At least one setting must be provided',
-        400,
-        'VALIDATION_ERROR'
-      );
-    }
-    
-    // Validate grace period if provided
-    if (gracePeriod !== undefined) {
-      if (typeof gracePeriod !== 'number' || gracePeriod < 1) {
-        throw new ApiError(
-          'Grace period must be a positive number (minutes)',
-          400,
-          'VALIDATION_ERROR'
-        );
-      }
-    }
-    
-    // Update settings
-    const result = await DNSManager.updateOrphanedSettings({
-      cleanupEnabled: cleanupEnabled !== undefined ? cleanupEnabled : DNSManager.config.cleanupOrphaned,
-      gracePeriod: gracePeriod !== undefined ? gracePeriod : DNSManager.config.cleanupGracePeriod
-    });
+    const result = await ConfigManager.updateConfig(updates);
     
     if (!result.success) {
-      throw new ApiError(result.error || 'Failed to update orphaned record settings', 400, 'SETTINGS_UPDATE_ERROR');
+      throw new ApiError(
+        result.error || 'Failed to update settings',
+        400,
+        'SETTINGS_UPDATE_ERROR'
+      );
     }
     
     res.json({
@@ -388,210 +614,27 @@ const updateOrphanedSettings = asyncHandler(async (req, res) => {
       data: {
         message: 'Orphaned record settings updated successfully',
         settings: {
-          cleanupEnabled: result.settings.cleanupEnabled,
-          gracePeriod: result.settings.gracePeriod
+          cleanupEnabled: updates.cleanupOrphaned !== undefined ? updates.cleanupOrphaned : undefined,
+          gracePeriod: updates.cleanupGracePeriod
         }
       }
     });
   } catch (error) {
+    if (error instanceof ApiError) throw error;
+    
     throw new ApiError(
-      `Failed to update orphaned record settings: ${error.message}`,
-      error.statusCode || 500,
-      error.code || 'ORPHANED_SETTINGS_UPDATE_ERROR'
-    );
-  }
-});
-
-/**
- * @desc    Get all hostnames (managed and preserved combined)
- * @route   GET /api/v1/hostnames
- * @access  Private
- */
-const getAllHostnames = asyncHandler(async (req, res) => {
-  const database = require('../../../database');
-  
-  try {
-    // Get query parameters
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 50;
-    const search = req.query.search || '';
-    const type = req.query.type || 'all';
-    
-    // Get managed records from database
-    let allHostnames = [];
-    
-    if (database && database.repositories && database.repositories.managedRecords) {
-      const managedRecords = await database.repositories.managedRecords.findAll();
-      
-      // Convert to expected format
-      allHostnames = managedRecords.map(record => ({
-        id: record.id.toString(),
-        hostname: record.hostname,
-        type: record.is_preserved ? 'preserved' : 'managed',
-        source: record.source || 'manual',
-        containerId: record.container_id,
-        containerName: record.container_name,
-        recordCount: 0, // Will be populated if needed
-        createdAt: record.created_at,
-        updatedAt: record.updated_at
-      }));
-    }
-    
-    // Apply filters
-    if (search) {
-      allHostnames = allHostnames.filter(h => 
-        h.hostname.toLowerCase().includes(search.toLowerCase()) ||
-        (h.containerName && h.containerName.toLowerCase().includes(search.toLowerCase()))
-      );
-    }
-    
-    if (type !== 'all') {
-      allHostnames = allHostnames.filter(h => h.type === type);
-    }
-    
-    // Apply pagination
-    const startIndex = (page - 1) * limit;
-    const endIndex = page * limit;
-    const paginatedHostnames = allHostnames.slice(startIndex, endIndex);
-    
-    res.json({
-      status: 'success',
-      data: {
-        hostnames: paginatedHostnames,
-        total: allHostnames.length,
-        page: page,
-        limit: limit
-      }
-    });
-  } catch (error) {
-    throw new ApiError(
-      `Failed to get hostnames: ${error.message}`,
+      `Failed to update orphaned settings: ${error.message}`,
       500,
-      'HOSTNAMES_FETCH_ERROR'
-    );
-  }
-});
-
-/**
- * @desc    Create a new hostname
- * @route   POST /api/v1/hostnames
- * @access  Private/Admin/Operator
- */
-const createHostname = asyncHandler(async (req, res) => {
-  const database = require('../../../database');
-  const { hostname, type = 'preserved' } = req.body;
-  
-  if (!hostname) {
-    throw new ApiError('Hostname is required', 400, 'HOSTNAME_REQUIRED');
-  }
-  
-  try {
-    // Create preserved hostname
-    const record = await database.repositories.managedRecords.create({
-      hostname,
-      is_preserved: type === 'preserved' ? 1 : 0,
-      source: 'manual',
-      created_at: new Date().toISOString()
-    });
-    
-    res.json({
-      status: 'success',
-      data: {
-        id: record.id.toString(),
-        hostname: record.hostname,
-        type: record.is_preserved ? 'preserved' : 'managed',
-        createdAt: record.created_at
-      }
-    });
-  } catch (error) {
-    throw new ApiError(
-      `Failed to create hostname: ${error.message}`,
-      500,
-      'HOSTNAME_CREATE_ERROR'
-    );
-  }
-});
-
-/**
- * @desc    Update a hostname
- * @route   PUT /api/v1/hostnames/:id
- * @access  Private/Admin/Operator
- */
-const updateHostname = asyncHandler(async (req, res) => {
-  const database = require('../../../database');
-  const { id } = req.params;
-  const { type } = req.body;
-  
-  try {
-    const record = await database.repositories.managedRecords.findById(id);
-    
-    if (!record) {
-      throw new ApiError('Hostname not found', 404, 'HOSTNAME_NOT_FOUND');
-    }
-    
-    // Update the type
-    await database.repositories.managedRecords.update(id, {
-      is_preserved: type === 'preserved' ? 1 : 0,
-      updated_at: new Date().toISOString()
-    });
-    
-    res.json({
-      status: 'success',
-      data: {
-        id: id,
-        hostname: record.hostname,
-        type: type
-      }
-    });
-  } catch (error) {
-    throw new ApiError(
-      `Failed to update hostname: ${error.message}`,
-      500,
-      'HOSTNAME_UPDATE_ERROR'
-    );
-  }
-});
-
-/**
- * @desc    Delete a hostname
- * @route   DELETE /api/v1/hostnames/:id
- * @access  Private/Admin/Operator
- */
-const deleteHostname = asyncHandler(async (req, res) => {
-  const database = require('../../../database');
-  const { id } = req.params;
-  
-  try {
-    const record = await database.repositories.managedRecords.findById(id);
-    
-    if (!record) {
-      throw new ApiError('Hostname not found', 404, 'HOSTNAME_NOT_FOUND');
-    }
-    
-    // Don't allow deleting managed (non-preserved) hostnames
-    if (!record.is_preserved) {
-      throw new ApiError('Cannot delete managed hostnames', 400, 'CANNOT_DELETE_MANAGED');
-    }
-    
-    await database.repositories.managedRecords.delete(id);
-    
-    res.json({
-      status: 'success',
-      message: 'Hostname deleted successfully'
-    });
-  } catch (error) {
-    if (error instanceof ApiError) {
-      throw error;
-    }
-    throw new ApiError(
-      `Failed to delete hostname: ${error.message}`,
-      500,
-      'HOSTNAME_DELETE_ERROR'
+      'ORPHANED_SETTINGS_UPDATE_ERROR'
     );
   }
 });
 
 module.exports = {
+  getAllHostnames,
+  createHostname,
+  updateHostname,
+  deleteHostname,
   getManagedHostnames,
   addManagedHostname,
   deleteManagedHostname,
@@ -600,6 +643,6 @@ module.exports = {
   deletePreservedHostname,
   getOrphanedRecords,
   restoreOrphanedRecord,
-  updateOrphanedSettings,
-  getAllHostnames
+  getOrphanedSettings,
+  updateOrphanedSettings
 };

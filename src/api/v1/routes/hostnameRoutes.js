@@ -14,6 +14,7 @@ const {
   deletePreservedHostname,
   getOrphanedRecords,
   restoreOrphanedRecord,
+  getOrphanedSettings,
   updateOrphanedSettings,
   getAllHostnames,
   createHostname,
@@ -425,6 +426,7 @@ router.post('/orphaned/:id/restore', authenticate, authorize('admin'), restoreOr
  *       500:
  *         description: Server error
  */
+router.get('/orphaned/settings', authenticate, getOrphanedSettings);
 router.put('/orphaned/settings', authenticate, authorize('admin'), updateOrphanedSettings);
 
 module.exports = router;
