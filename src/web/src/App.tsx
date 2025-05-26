@@ -8,6 +8,8 @@ import { ContainersPage } from '@/pages/Containers'
 import { HostnamesPage } from '@/pages/Hostnames'
 import { SettingsPage } from '@/pages/Settings'
 import { UsersPage } from '@/pages/Users'
+import { ProfilePage } from '@/pages/Profile'
+import { OrphanedRecordsPage } from '@/pages/OrphanedRecords'
 import { Toaster } from '@/components/ui/toaster'
 
 function App() {
@@ -28,6 +30,8 @@ function App() {
             <Route path="hostnames" element={<HostnamesPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="users" element={<UsersPage />} />
+            <Route path="profile" element={<ProfilePage />} />
+            <Route path="orphaned-records" element={<OrphanedRecordsPage />} />
           </Route>
         </Routes>
       </Router>

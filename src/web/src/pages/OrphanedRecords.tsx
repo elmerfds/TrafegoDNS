@@ -1,0 +1,340 @@
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import { useToast } from '@/components/ui/use-toast'
+import { Loader2, Trash2, RotateCcw, Search, Clock, AlertTriangle } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+
+interface OrphanedRecord {
+  id: string
+  hostname: string
+  name: string
+  type: string
+  content: string
+  ttl: number
+  proxied?: boolean
+  orphanedAt: string
+  orphanedTime: number
+}
+
+interface OrphanedSettings {
+  cleanupOrphaned: boolean
+  cleanupGracePeriod: number
+}
+
+export function OrphanedRecordsPage() {
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
+  const [searchTerm, setSearchTerm] = useState('')
+
+  const { data: records, isLoading } = useQuery({
+    queryKey: ['orphaned-records'],
+    queryFn: async () => {
+      const response = await api.get('/dns/orphaned')
+      return response.data.data.records as OrphanedRecord[]
+    },
+  })
+
+  const { data: settings } = useQuery({
+    queryKey: ['orphaned-settings'],
+    queryFn: async () => {
+      const response = await api.get('/hostnames/orphaned/settings')
+      return response.data.data.settings as OrphanedSettings
+    },
+  })
+
+  const restoreMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await api.post(`/hostnames/orphaned/${id}/restore`)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orphaned-records'] })
+      queryClient.invalidateQueries({ queryKey: ['dns-records'] })
+      toast({
+        title: 'Record restored',
+        description: 'The DNS record has been restored successfully.',
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Restore failed',
+        description: error.response?.data?.error || 'Failed to restore record',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const cleanupMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/dns/cleanup')
+      return response.data
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['orphaned-records'] })
+      queryClient.invalidateQueries({ queryKey: ['dns-records'] })
+      toast({
+        title: 'Cleanup completed',
+        description: `Removed ${data.data.deletedCount || 0} orphaned records.`,
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Cleanup failed',
+        description: error.response?.data?.error || 'Failed to cleanup records',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const updateSettingsMutation = useMutation({
+    mutationFn: async (newSettings: OrphanedSettings) => {
+      const response = await api.put('/hostnames/orphaned/settings', newSettings)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orphaned-settings'] })
+      toast({
+        title: 'Settings updated',
+        description: 'Orphaned record settings have been updated.',
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Update failed',
+        description: error.response?.data?.error || 'Failed to update settings',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const filteredRecords = records?.filter((record) => {
+    if (!searchTerm) return true
+    const term = searchTerm.toLowerCase()
+    return (
+      record.hostname.toLowerCase().includes(term) ||
+      record.name.toLowerCase().includes(term) ||
+      record.type.toLowerCase().includes(term) ||
+      record.content.toLowerCase().includes(term)
+    )
+  })
+
+  const formatTimeAgo = (seconds: number) => {
+    if (seconds < 60) return `${seconds}s ago`
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
+    return `${Math.floor(seconds / 86400)}d ago`
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
+  }
+
+  const orphanedRecords = filteredRecords || []
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Orphaned Records</h1>
+          <p className="text-muted-foreground">
+            DNS records that are no longer associated with active containers
+          </p>
+        </div>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="destructive" disabled={orphanedRecords.length === 0}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              Cleanup All
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Cleanup Orphaned Records</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete all orphaned DNS records that have exceeded
+                the grace period. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => cleanupMutation.mutate()}>
+                Cleanup Records
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+
+      {/* Settings Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Cleanup Settings</CardTitle>
+          <CardDescription>
+            Configure automatic cleanup behavior for orphaned records
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="auto-cleanup">Automatic Cleanup</Label>
+              <p className="text-sm text-muted-foreground">
+                Automatically remove orphaned records after the grace period
+              </p>
+            </div>
+            <Switch
+              id="auto-cleanup"
+              checked={settings?.cleanupOrphaned || false}
+              onCheckedChange={(checked) =>
+                updateSettingsMutation.mutate({
+                  ...settings!,
+                  cleanupOrphaned: checked,
+                })
+              }
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="grace-period">Grace Period (seconds)</Label>
+            <div className="flex items-center space-x-2">
+              <Input
+                id="grace-period"
+                type="number"
+                value={settings?.cleanupGracePeriod || 3600}
+                onChange={(e) =>
+                  updateSettingsMutation.mutate({
+                    ...settings!,
+                    cleanupGracePeriod: parseInt(e.target.value),
+                  })
+                }
+                className="w-32"
+              />
+              <span className="text-sm text-muted-foreground">
+                ({Math.floor((settings?.cleanupGracePeriod || 3600) / 60)} minutes)
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Records Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Orphaned Records</CardTitle>
+          <CardDescription>
+            {orphanedRecords.length} record{orphanedRecords.length !== 1 ? 's' : ''} found
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search records..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+          </div>
+
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Hostname</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Content</TableHead>
+                  <TableHead>TTL</TableHead>
+                  <TableHead>Orphaned</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {orphanedRecords.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      No orphaned records found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  orphanedRecords.map((record) => (
+                    <TableRow key={record.id}>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <span className="font-medium">{record.hostname}</span>
+                          {record.orphanedTime < (settings?.cleanupGracePeriod || 3600) && (
+                            <Badge variant="secondary" className="text-xs">
+                              <Clock className="mr-1 h-3 w-3" />
+                              In Grace Period
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{record.type}</Badge>
+                      </TableCell>
+                      <TableCell className="max-w-xs truncate">{record.content}</TableCell>
+                      <TableCell>{record.ttl}s</TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-1 text-muted-foreground">
+                          <AlertTriangle className="h-4 w-4" />
+                          <span className="text-sm">
+                            {formatTimeAgo(record.orphanedTime)}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => restoreMutation.mutate(record.id)}
+                          disabled={restoreMutation.isPending}
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

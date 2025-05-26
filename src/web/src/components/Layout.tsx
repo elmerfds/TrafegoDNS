@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
-import { useAuthStore } from '@/store/authStore'
+import { useAuthStore } from '@/lib/stores/authStore'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -19,6 +19,7 @@ import {
   LogOut,
   User,
   Menu,
+  AlertTriangle,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -26,6 +27,7 @@ import { cn } from '@/lib/utils'
 const navigation = [
   { name: 'Dashboard', href: '/', icon: Home },
   { name: 'DNS Records', href: '/dns-records', icon: Globe },
+  { name: 'Orphaned Records', href: '/orphaned-records', icon: AlertTriangle },
   { name: 'Containers', href: '/containers', icon: Container },
   { name: 'Hostnames', href: '/hostnames', icon: Link2 },
   { name: 'Settings', href: '/settings', icon: Settings },
@@ -121,6 +123,10 @@ export function Layout() {
                     {user?.username || 'User'}
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate('/profile')}>
+                    <User className="mr-2 h-4 w-4" />
+                    Profile
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleLogout}>
                     <LogOut className="mr-2 h-4 w-4" />
                     Logout
