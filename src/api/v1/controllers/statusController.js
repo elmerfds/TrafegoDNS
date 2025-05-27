@@ -107,7 +107,7 @@ const getStatus = asyncHandler(async (req, res) => {
         logger.debug(`Table dns_provider_cache exists: ${!!cacheTableExists}`);
         
         if (trackedTableExists) {
-          const trackedCount = await database.db.get(`SELECT COUNT(*) as count FROM dns_tracked_records WHERE is_orphaned = 0`);
+          const trackedCount = await database.db.get(`SELECT COUNT(*) as count FROM dns_tracked_records WHERE (is_orphaned = 0 OR is_orphaned IS NULL)`);
           logger.debug(`Direct query - tracked records count: ${trackedCount ? trackedCount.count : 0}`);
           
           // Get some sample records
