@@ -101,6 +101,28 @@ export function OrphanedRecordsPage() {
     },
   })
 
+  const deleteRecordMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await api.delete(`/dns/records/${id}`)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orphaned-records'] })
+      queryClient.invalidateQueries({ queryKey: ['dns-records'] })
+      toast({
+        title: 'Record deleted',
+        description: 'The DNS record has been deleted successfully.',
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Delete failed',
+        description: error.response?.data?.error || 'Failed to delete record',
+        variant: 'destructive',
+      })
+    },
+  })
+
   const cleanupMutation = useMutation({
     mutationFn: async () => {
       const response = await api.post('/dns/cleanup')
@@ -118,6 +140,28 @@ export function OrphanedRecordsPage() {
       toast({
         title: 'Cleanup failed',
         description: error.response?.data?.error || 'Failed to cleanup records',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const forceDeleteMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/dns/orphaned/force-delete')
+      return response.data
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['orphaned-records'] })
+      queryClient.invalidateQueries({ queryKey: ['dns-records'] })
+      toast({
+        title: 'Force delete completed',
+        description: `Forcefully removed ${data.data.totalDeleted || 0} orphaned records.`,
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Force delete failed',
+        description: error.response?.data?.error || 'Failed to force delete records',
         variant: 'destructive',
       })
     },
@@ -182,29 +226,66 @@ export function OrphanedRecordsPage() {
             DNS records that are no longer associated with active containers
           </p>
         </div>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="destructive" disabled={orphanedRecords.length === 0}>
-              <Trash2 className="mr-2 h-4 w-4" />
-              Cleanup All
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Cleanup Orphaned Records</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will permanently delete all orphaned DNS records that have exceeded
-                the grace period. This action cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => cleanupMutation.mutate()}>
-                Cleanup Records
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <div className="flex gap-2">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" disabled={orphanedRecords.length === 0}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Cleanup All
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Cleanup Orphaned Records</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete all orphaned DNS records that have exceeded
+                  the grace period. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => cleanupMutation.mutate()}>
+                  Cleanup Records
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" disabled={orphanedRecords.length === 0}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Force Delete All
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Force Delete All Orphaned Records</AlertDialogTitle>
+                <AlertDialogDescription className="space-y-2">
+                  <p>
+                    This will <strong>forcefully delete ALL orphaned DNS records</strong> regardless 
+                    of grace period or app-managed status.
+                  </p>
+                  <p className="text-destructive font-semibold">
+                    ⚠️ WARNING: This action bypasses all safety checks and cannot be undone!
+                  </p>
+                  <p>
+                    Use this only when records are stuck and won't delete through normal cleanup.
+                  </p>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={() => forceDeleteMutation.mutate()}
+                  className="bg-destructive hover:bg-destructive/90"
+                >
+                  Force Delete All Records
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       </div>
 
       {/* Settings Card */}
@@ -325,14 +406,45 @@ export function OrphanedRecordsPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => restoreMutation.mutate(record.id)}
-                          disabled={restoreMutation.isPending}
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => restoreMutation.mutate(record.id)}
+                            disabled={restoreMutation.isPending}
+                            title="Restore record"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                disabled={deleteRecordMutation.isPending}
+                                title="Delete record"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete DNS Record</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to delete this DNS record? This will remove it from your DNS provider and cannot be undone.
+                                  <br /><br />
+                                  <strong>Record:</strong> {record.hostname} ({record.type})
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => deleteRecordMutation.mutate(record.id)}>
+                                  Delete Record
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))

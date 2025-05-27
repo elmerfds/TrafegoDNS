@@ -802,6 +802,87 @@ const processRecords = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * @desc    Force delete orphaned DNS records
+ * @route   POST /api/v1/dns/orphaned/force-delete
+ * @access  Private (Admin only)
+ */
+const forceDeleteOrphanedRecords = asyncHandler(async (req, res) => {
+  const { DNSManager } = global.services || {};
+  const database = require('../../../database');
+  
+  if (!DNSManager || !DNSManager.dnsProvider) {
+    throw new ApiError('DNS provider not initialized', 500, 'DNS_PROVIDER_NOT_INITIALIZED');
+  }
+  
+  if (!database || !database.isInitialized()) {
+    throw new ApiError('Database not initialized', 500, 'DATABASE_NOT_INITIALIZED');
+  }
+  
+  try {
+    const deletedRecords = [];
+    const errors = [];
+    
+    // Get all orphaned records from the database
+    if (database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.managedRecords) {
+      const orphanedRecords = await database.repositories.dnsManager.managedRecords.findAll({
+        where: { is_orphaned: 1 }
+      });
+      
+      logger.info(`Found ${orphanedRecords.length} orphaned records to force delete`);
+      
+      for (const record of orphanedRecords) {
+        try {
+          // Try to delete from provider
+          if (record.providerId) {
+            try {
+              await DNSManager.dnsProvider.deleteRecord(record.providerId);
+              logger.info(`Deleted orphaned record from provider: ${record.name} (${record.type})`);
+            } catch (providerError) {
+              // Record might already be deleted from provider
+              logger.warn(`Could not delete from provider (may already be gone): ${providerError.message}`);
+            }
+          }
+          
+          // Remove from tracking database
+          await database.repositories.dnsManager.managedRecords.untrackRecord(
+            record.provider || DNSManager.config.dnsProvider,
+            record.providerId
+          );
+          
+          deletedRecords.push({
+            name: record.name,
+            type: record.type,
+            id: record.providerId
+          });
+          
+          logger.info(`Force deleted orphaned record: ${record.name} (${record.type})`);
+        } catch (error) {
+          logger.error(`Failed to force delete record ${record.name}: ${error.message}`);
+          errors.push({
+            record: `${record.name} (${record.type})`,
+            error: error.message
+          });
+        }
+      }
+    }
+    
+    res.json({
+      status: 'success',
+      message: `Force deleted ${deletedRecords.length} orphaned records`,
+      data: {
+        deleted: deletedRecords,
+        errors: errors,
+        totalDeleted: deletedRecords.length,
+        totalErrors: errors.length
+      }
+    });
+  } catch (error) {
+    logger.error(`Error force deleting orphaned records: ${error.message}`);
+    throw new ApiError(`Failed to force delete orphaned records: ${error.message}`, 500, 'FORCE_DELETE_ERROR');
+  }
+});
+
 module.exports = {
   getRecords,
   getRecord,
@@ -811,5 +892,6 @@ module.exports = {
   getOrphanedRecords,
   runCleanup,
   refreshRecords,
-  processRecords
+  processRecords,
+  forceDeleteOrphanedRecords
 };

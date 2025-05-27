@@ -12,7 +12,8 @@ const {
   getOrphanedRecords,
   runCleanup,
   refreshRecords,
-  processRecords
+  processRecords,
+  forceDeleteOrphanedRecords
 } = require('../controllers/dnsController');
 const { authenticate, authorize } = require('../middleware/authMiddleware');
 const { writeLimiter } = require('../middleware/rateLimitMiddleware');
@@ -486,5 +487,63 @@ router.post('/refresh', authenticate, authorize(['admin', 'operator']), refreshR
  *        description: Server error
  */
 router.post('/process', authenticate, authorize(['admin', 'operator']), processRecords);
+
+/**
+ * @swagger
+ * /dns/orphaned/force-delete:
+ *  post:
+ *    summary: Force delete all orphaned records
+ *    description: Forcefully delete all orphaned DNS records from both provider and database, regardless of app-managed status
+ *    tags: [DNS]
+ *    security:
+ *      - BearerAuth: []
+ *    responses:
+ *      200:
+ *        description: Orphaned records force deleted successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                message:
+ *                  type: string
+ *                data:
+ *                  type: object
+ *                  properties:
+ *                    deleted:
+ *                      type: array
+ *                      items:
+ *                        type: object
+ *                        properties:
+ *                          name:
+ *                            type: string
+ *                          type:
+ *                            type: string
+ *                          id:
+ *                            type: string
+ *                    errors:
+ *                      type: array
+ *                      items:
+ *                        type: object
+ *                        properties:
+ *                          record:
+ *                            type: string
+ *                          error:
+ *                            type: string
+ *                    totalDeleted:
+ *                      type: number
+ *                    totalErrors:
+ *                      type: number
+ *      401:
+ *        description: Not authenticated
+ *      403:
+ *        description: Insufficient permissions (admin only)
+ *      500:
+ *        description: Server error
+ */
+router.post('/orphaned/force-delete', authenticate, authorize(['admin']), forceDeleteOrphanedRecords);
 
 module.exports = router;
