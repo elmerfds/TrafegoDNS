@@ -484,16 +484,24 @@ const deleteRecord = asyncHandler(async (req, res) => {
     
     // If still not found, check orphaned records in database
     if (!record) {
+      logger.info(`Record ${recordId} not found in cache, checking database for orphaned records...`);
       const database = require('../../../database');
       if (database && database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.managedRecords) {
         try {
           // Try to find in managed records by provider record ID
           const managedRecords = await database.repositories.dnsManager.managedRecords.findAll();
-          const orphanedRecord = managedRecords.find(r => 
-            (r.providerId === recordId || r.record_id === recordId) && r.is_orphaned === 1
-          );
+          logger.info(`Found ${managedRecords.length} total managed records in database`);
+          
+          const orphanedRecord = managedRecords.find(r => {
+            const matches = (r.providerId === recordId || r.record_id === recordId);
+            if (matches) {
+              logger.info(`Found matching record: ${r.name} (${r.type}) - orphaned: ${r.is_orphaned}, isOrphaned: ${r.isOrphaned}`);
+            }
+            return matches;
+          });
           
           if (orphanedRecord) {
+            logger.info(`Found orphaned record in database: ${orphanedRecord.name}`);
             record = {
               id: orphanedRecord.providerId || orphanedRecord.record_id,
               type: orphanedRecord.type,
@@ -501,10 +509,14 @@ const deleteRecord = asyncHandler(async (req, res) => {
               content: orphanedRecord.content,
               provider: orphanedRecord.provider
             };
+          } else {
+            logger.warn(`No matching record found in database for ID: ${recordId}`);
           }
         } catch (dbError) {
-          logger.warn(`Failed to check orphaned records: ${dbError.message}`);
+          logger.error(`Failed to check orphaned records: ${dbError.message}`);
         }
+      } else {
+        logger.warn('Database repositories not available to check for orphaned records');
       }
     }
     
