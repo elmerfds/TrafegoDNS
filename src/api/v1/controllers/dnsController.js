@@ -482,6 +482,32 @@ const deleteRecord = asyncHandler(async (req, res) => {
       record = records.find(r => r.id === recordId);
     }
     
+    // If still not found, check orphaned records in database
+    if (!record) {
+      const database = require('../../../database');
+      if (database && database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.managedRecords) {
+        try {
+          // Try to find in managed records by provider record ID
+          const managedRecords = await database.repositories.dnsManager.managedRecords.findAll();
+          const orphanedRecord = managedRecords.find(r => 
+            (r.providerId === recordId || r.record_id === recordId) && r.is_orphaned === 1
+          );
+          
+          if (orphanedRecord) {
+            record = {
+              id: orphanedRecord.providerId || orphanedRecord.record_id,
+              type: orphanedRecord.type,
+              name: orphanedRecord.name,
+              content: orphanedRecord.content,
+              provider: orphanedRecord.provider
+            };
+          }
+        } catch (dbError) {
+          logger.warn(`Failed to check orphaned records: ${dbError.message}`);
+        }
+      }
+    }
+    
     if (!record) {
       throw new ApiError(`Record with ID ${recordId} not found`, 404, 'RECORD_NOT_FOUND');
     }
@@ -511,17 +537,41 @@ const deleteRecord = asyncHandler(async (req, res) => {
         logger.warn(`State action failed, falling back to direct provider: ${stateError.message}`);
         
         // Delete directly
-        await DNSManager.dnsProvider.deleteRecord(recordId);
+        try {
+          await DNSManager.dnsProvider.deleteRecord(recordId);
+        } catch (deleteError) {
+          // If the record doesn't exist at provider, that's OK - continue to untrack
+          logger.warn(`Provider delete failed (record may already be gone): ${deleteError.message}`);
+        }
         
-        // Untrack the record
-        DNSManager.recordTracker.untrackRecord(record);
+        // Untrack the record regardless
+        await DNSManager.recordTracker.untrackRecord(record);
       }
     } else {
       // Delete directly
-      await DNSManager.dnsProvider.deleteRecord(recordId);
+      try {
+        await DNSManager.dnsProvider.deleteRecord(recordId);
+      } catch (deleteError) {
+        // If the record doesn't exist at provider, that's OK - continue to untrack
+        logger.warn(`Provider delete failed (record may already be gone): ${deleteError.message}`);
+      }
       
-      // Untrack the record
-      DNSManager.recordTracker.untrackRecord(record);
+      // Untrack the record regardless
+      await DNSManager.recordTracker.untrackRecord(record);
+    }
+    
+    // Also remove from managed records if it exists there
+    const database = require('../../../database');
+    if (database && database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.managedRecords) {
+      try {
+        await database.repositories.dnsManager.managedRecords.untrackRecord(
+          record.provider || DNSManager.config.dnsProvider,
+          recordId
+        );
+        logger.info(`Removed record from managed records database`);
+      } catch (dbError) {
+        logger.warn(`Failed to remove from managed records: ${dbError.message}`);
+      }
     }
     
     res.json({
