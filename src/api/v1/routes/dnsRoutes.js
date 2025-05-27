@@ -13,6 +13,7 @@ const {
   runCleanup,
   refreshRecords,
   processRecords,
+  deleteExpiredOrphanedRecords,
   forceDeleteOrphanedRecords
 } = require('../controllers/dnsController');
 const { authenticate, authorize } = require('../middleware/authMiddleware');
@@ -403,6 +404,39 @@ router.get('/orphaned', authenticate, getOrphanedRecords);
  *        description: Server error
  */
 router.post('/cleanup', authenticate, authorize(['admin', 'operator']), runCleanup);
+
+/**
+ * @swagger
+ * /dns/orphaned/delete-expired:
+ *  post:
+ *    summary: Delete expired orphaned records
+ *    description: Delete orphaned DNS records that have exceeded the grace period (regardless of app-managed status)
+ *    tags: [DNS]
+ *    security:
+ *      - BearerAuth: []
+ *    responses:
+ *      200:
+ *        description: Expired orphaned records deleted successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                message:
+ *                  type: string
+ *                data:
+ *                  type: object
+ *      401:
+ *        description: Not authenticated
+ *      403:
+ *        description: Insufficient permissions
+ *      500:
+ *        description: Server error
+ */
+router.post('/orphaned/delete-expired', authenticate, authorize(['admin', 'operator']), deleteExpiredOrphanedRecords);
 
 /**
  * @swagger

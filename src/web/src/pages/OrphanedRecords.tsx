@@ -125,7 +125,7 @@ export function OrphanedRecordsPage() {
 
   const cleanupMutation = useMutation({
     mutationFn: async () => {
-      const response = await api.post('/dns/cleanup')
+      const response = await api.post('/dns/orphaned/delete-expired')
       return response.data
     },
     onSuccess: (data) => {
@@ -133,7 +133,7 @@ export function OrphanedRecordsPage() {
       queryClient.invalidateQueries({ queryKey: ['dns-records'] })
       toast({
         title: 'Cleanup completed',
-        description: `Removed ${data.data.deletedCount || 0} orphaned records.`,
+        description: `Removed ${data.data.totalDeleted || 0} orphaned records.`,
       })
     },
     onError: (error: any) => {

@@ -611,7 +611,7 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
       const remainingMinutes = elapsedMinutes !== null ? Math.max(0, gracePeriod - elapsedMinutes) : null;
       
       return {
-        id: record.id || record.record_id || record.providerId,
+        id: record.providerId || record.record_id || record.id,
         type: record.type,
         name: record.name,
         content: record.content || record.data || record.value,
@@ -670,18 +670,12 @@ const runCleanup = asyncHandler(async (req, res) => {
       } catch (stateError) {
         logger.warn(`State action failed, falling back to direct method: ${stateError.message}`);
         
-        // Get active hostnames from all containers (simplified for API implementation)
-        const activeHostnames = []; // This should be populated with actual active hostnames
-        
-        // Force immediate cleanup
-        await DNSManager.cleanupOrphanedRecords(activeHostnames);
+        // Force immediate cleanup (true = ignore grace period)
+        await DNSManager.cleanupOrphanedRecords(true);
       }
     } else {
-      // Get active hostnames from all containers (simplified for API implementation)
-      const activeHostnames = []; // This should be populated with actual active hostnames
-      
-      // Force immediate cleanup
-      await DNSManager.cleanupOrphanedRecords(activeHostnames);
+      // Force immediate cleanup (true = ignore grace period)
+      await DNSManager.cleanupOrphanedRecords(true);
     }
     
     res.json({
@@ -803,6 +797,100 @@ const processRecords = asyncHandler(async (req, res) => {
 });
 
 /**
+ * @desc    Delete orphaned DNS records respecting grace period
+ * @route   POST /api/v1/dns/orphaned/delete-expired
+ * @access  Private
+ */
+const deleteExpiredOrphanedRecords = asyncHandler(async (req, res) => {
+  const { DNSManager } = global.services || {};
+  const database = require('../../../database');
+  
+  if (!DNSManager || !DNSManager.dnsProvider) {
+    throw new ApiError('DNS provider not initialized', 500, 'DNS_PROVIDER_NOT_INITIALIZED');
+  }
+  
+  if (!database || !database.isInitialized()) {
+    throw new ApiError('Database not initialized', 500, 'DATABASE_NOT_INITIALIZED');
+  }
+  
+  try {
+    const deletedRecords = [];
+    const errors = [];
+    const gracePeriodMinutes = DNSManager.config.cleanupGracePeriod || 15;
+    const gracePeriodMs = gracePeriodMinutes * 60 * 1000;
+    const now = new Date();
+    
+    // Get all orphaned records from the database
+    if (database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.managedRecords) {
+      const orphanedRecords = await database.repositories.dnsManager.managedRecords.findAll({
+        where: { is_orphaned: 1 }
+      });
+      
+      logger.info(`Found ${orphanedRecords.length} orphaned records to check for deletion`);
+      
+      for (const record of orphanedRecords) {
+        try {
+          // Check if grace period has expired
+          if (record.orphanedAt) {
+            const orphanedDate = new Date(record.orphanedAt);
+            const elapsedMs = now - orphanedDate;
+            
+            if (elapsedMs >= gracePeriodMs) {
+              // Grace period expired, delete the record
+              if (record.providerId) {
+                try {
+                  await DNSManager.dnsProvider.deleteRecord(record.providerId);
+                  logger.info(`Deleted expired orphaned record from provider: ${record.name} (${record.type})`);
+                } catch (providerError) {
+                  // Record might already be deleted from provider
+                  logger.warn(`Could not delete from provider (may already be gone): ${providerError.message}`);
+                }
+              }
+              
+              // Remove from tracking database
+              await database.repositories.dnsManager.managedRecords.untrackRecord(
+                record.provider || DNSManager.config.dnsProvider,
+                record.providerId
+              );
+              
+              deletedRecords.push({
+                name: record.name,
+                type: record.type,
+                id: record.providerId,
+                orphanedMinutes: Math.floor(elapsedMs / 60000)
+              });
+              
+              logger.info(`Deleted expired orphaned record: ${record.name} (${record.type}) - orphaned for ${Math.floor(elapsedMs / 60000)} minutes`);
+            }
+          }
+        } catch (error) {
+          logger.error(`Failed to delete record ${record.name}: ${error.message}`);
+          errors.push({
+            record: `${record.name} (${record.type})`,
+            error: error.message
+          });
+        }
+      }
+    }
+    
+    res.json({
+      status: 'success',
+      message: `Deleted ${deletedRecords.length} expired orphaned records`,
+      data: {
+        deleted: deletedRecords,
+        errors: errors,
+        totalDeleted: deletedRecords.length,
+        totalErrors: errors.length,
+        gracePeriodMinutes: gracePeriodMinutes
+      }
+    });
+  } catch (error) {
+    logger.error(`Error deleting expired orphaned records: ${error.message}`);
+    throw new ApiError(`Failed to delete expired orphaned records: ${error.message}`, 500, 'DELETE_EXPIRED_ERROR');
+  }
+});
+
+/**
  * @desc    Force delete orphaned DNS records
  * @route   POST /api/v1/dns/orphaned/force-delete
  * @access  Private (Admin only)
@@ -893,5 +981,6 @@ module.exports = {
   runCleanup,
   refreshRecords,
   processRecords,
+  deleteExpiredOrphanedRecords,
   forceDeleteOrphanedRecords
 };

@@ -82,7 +82,7 @@ const getStatus = asyncHandler(async (req, res) => {
   
   // Add statistics
   try {
-    const { database } = require('../../../database');
+    const database = require('../../../database');
     let dnsRecordCount = 0;
     let containerCount = 0;
     let hostnameCount = 0;
