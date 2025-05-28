@@ -39,6 +39,10 @@ class ConfigManager {
     // Managed Hostname management
     this.managedHostnames = EnvironmentLoader.getString('MANAGED_HOSTNAMES', '');
     this._envConfig.managedHostnames = this.managedHostnames;
+    
+    // Preserved Hostnames (protected from cleanup)
+    this.preservedHostnames = EnvironmentLoader.getString('PRESERVED_HOSTNAMES', '');
+    this._envConfig.preservedHostnames = this.preservedHostnames;
 
     // DNS Provider configuration
     this.dnsProvider = EnvironmentLoader.getString('DNS_PROVIDER', 'cloudflare');
@@ -81,11 +85,17 @@ class ConfigManager {
     
     // Label prefixes
     this.genericLabelPrefix = EnvironmentLoader.getString('DNS_LABEL_PREFIX', 'dns.');
-    this.dnsLabelPrefix = `${this.genericLabelPrefix}${this.dnsProvider}.`;
+    // If the generic label prefix already contains the provider name, don't duplicate it
+    if (this.genericLabelPrefix.includes(this.dnsProvider)) {
+      this.dnsLabelPrefix = this.genericLabelPrefix;
+    } else {
+      this.dnsLabelPrefix = `${this.genericLabelPrefix}${this.dnsProvider}.`;
+    }
     this.traefikLabelPrefix = EnvironmentLoader.getString('TRAEFIK_LABEL_PREFIX', 'traefik.');
     
     // Global DNS defaults
     this.defaultRecordType = EnvironmentLoader.getString('DNS_DEFAULT_TYPE', 'CNAME');
+    this.defaultType = this.defaultRecordType; // alias for consistency
     // Don't call getProviderDomain() here as it's not ready yet - set it later
     this.defaultContent = EnvironmentLoader.getString('DNS_DEFAULT_CONTENT', '');
     this.defaultProxied = EnvironmentLoader.getBool('DNS_DEFAULT_PROXIED', true);
@@ -162,7 +172,9 @@ class ConfigManager {
     this.cleanupGracePeriod = EnvironmentLoader.getInt('CLEANUP_GRACE_PERIOD', 15); // Default to 60 minutes
     
     // Cache refresh interval in milliseconds (default: 1 hour)
-    this.cacheRefreshInterval = EnvironmentLoader.getInt('DNS_CACHE_REFRESH_INTERVAL', 3600000);
+    this.dnsCacheRefreshInterval = EnvironmentLoader.getInt('DNS_CACHE_REFRESH_INTERVAL', 3600000);
+    // Keep backwards compatibility
+    this.cacheRefreshInterval = this.dnsCacheRefreshInterval;
 
     // API request timeout in milliseconds (default: 1 minute)
     this.apiTimeout = EnvironmentLoader.getInt('API_TIMEOUT', 60000);    
@@ -203,6 +215,8 @@ class ConfigManager {
     this._envConfig.watchDockerEvents = this.watchDockerEvents;
     this._envConfig.cleanupOrphaned = this.cleanupOrphaned;
     this._envConfig.cleanupGracePeriod = this.cleanupGracePeriod;
+    this._envConfig.managedHostnames = this.managedHostnames;
+    this._envConfig.preservedHostnames = this.preservedHostnames;
     
     // DNS settings
     this._envConfig.dnsLabelPrefix = this.dnsLabelPrefix;
@@ -227,7 +241,7 @@ class ConfigManager {
     this._envConfig.dockerSocket = this.dockerSocket;
     
     // Cache settings
-    this._envConfig.dnsCacheRefreshInterval = this.cacheRefreshInterval;
+    this._envConfig.dnsCacheRefreshInterval = this.dnsCacheRefreshInterval;
     this._envConfig.ipRefreshInterval = this.ipRefreshInterval;
     
     // Network settings
@@ -318,7 +332,7 @@ class ConfigManager {
         dockerSocket: this.dockerSocket,
         
         // Cache settings
-        dnsCacheRefreshInterval: this.cacheRefreshInterval,
+        dnsCacheRefreshInterval: this.dnsCacheRefreshInterval,
         ipRefreshInterval: this.ipRefreshInterval,
         
         // Network settings
@@ -330,6 +344,7 @@ class ConfigManager {
         
         // Managed hostnames
         managedHostnames: this.managedHostnames,
+        preservedHostnames: this.preservedHostnames,
         
         // Record type defaults
         recordDefaults: this.recordDefaults
@@ -360,10 +375,20 @@ class ConfigManager {
     // DNS settings
     if (settings.dnsProvider !== undefined) this.dnsProvider = settings.dnsProvider;
     if (settings.dnsLabelPrefix !== undefined) {
-      this.genericLabelPrefix = settings.dnsLabelPrefix;
-      this.dnsLabelPrefix = `${this.genericLabelPrefix}${this.dnsProvider}.`;
+      // If the saved dnsLabelPrefix already contains the provider name, use it as-is
+      if (settings.dnsLabelPrefix.includes(this.dnsProvider)) {
+        this.dnsLabelPrefix = settings.dnsLabelPrefix;
+        // Extract the generic prefix (remove provider part)
+        this.genericLabelPrefix = settings.dnsLabelPrefix.replace(`${this.dnsProvider}.`, '');
+      } else {
+        this.genericLabelPrefix = settings.dnsLabelPrefix;
+        this.dnsLabelPrefix = `${this.genericLabelPrefix}${this.dnsProvider}.`;
+      }
     }
-    if (settings.dnsDefaultType !== undefined) this.defaultRecordType = settings.dnsDefaultType;
+    if (settings.dnsDefaultType !== undefined) {
+      this.defaultRecordType = settings.dnsDefaultType;
+      this.defaultType = this.defaultRecordType; // alias for consistency
+    }
     if (settings.dnsDefaultContent !== undefined) this.defaultContent = settings.dnsDefaultContent;
     if (settings.dnsDefaultProxied !== undefined) this.defaultProxied = settings.dnsDefaultProxied;
     if (settings.dnsDefaultTTL !== undefined) this.defaultTTL = settings.dnsDefaultTTL;
@@ -382,12 +407,16 @@ class ConfigManager {
     
     // Other settings
     if (settings.dockerSocket !== undefined) this.dockerSocket = settings.dockerSocket;
-    if (settings.dnsCacheRefreshInterval !== undefined) this.cacheRefreshInterval = settings.dnsCacheRefreshInterval;
+    if (settings.dnsCacheRefreshInterval !== undefined) {
+      this.dnsCacheRefreshInterval = settings.dnsCacheRefreshInterval;
+      this.cacheRefreshInterval = this.dnsCacheRefreshInterval; // backwards compatibility
+    }
     if (settings.ipRefreshInterval !== undefined) this.ipRefreshInterval = settings.ipRefreshInterval;
     if (settings.apiTimeout !== undefined) this.apiTimeout = settings.apiTimeout;
     if (settings.genericLabelPrefix !== undefined) this.genericLabelPrefix = settings.genericLabelPrefix;
     if (settings.traefikLabelPrefix !== undefined) this.traefikLabelPrefix = settings.traefikLabelPrefix;
     if (settings.managedHostnames !== undefined) this.managedHostnames = settings.managedHostnames;
+    if (settings.preservedHostnames !== undefined) this.preservedHostnames = settings.preservedHostnames;
     
     // Apply record defaults if present
     if (settings.recordDefaults !== undefined && typeof settings.recordDefaults === 'object') {
