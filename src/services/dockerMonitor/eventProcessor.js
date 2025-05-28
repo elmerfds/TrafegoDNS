@@ -5,7 +5,7 @@
 const logger = require('../../utils/logger');
 const EventTypes = require('../../events/EventTypes');
 const { getContainer } = require('./client');
-const { updateContainerMapping } = require('./containerTracker');
+const { updateContainerMapping, removeContainerMapping } = require('./containerTracker');
 const { updateLabelsForContainer } = require('./labelCache');
 
 /**
@@ -52,11 +52,11 @@ function setupEventListeners(events, docker, containerTracker, labelCache, event
         case 'die':
         case 'stop':
         case 'kill':
-          handleContainerStop(containerId, eventData, eventBus);
+          handleContainerStop(containerId, eventData, containerTracker, labelCache, eventBus);
           break;
           
         case 'destroy':
-          handleContainerDestroy(containerId, eventData, eventBus);
+          handleContainerDestroy(containerId, eventData, containerTracker, labelCache, eventBus);
           break;
           
         default:
@@ -131,10 +131,18 @@ async function handleContainerStart(containerId, eventData, docker, containerTra
 /**
  * Handle container stop event
  */
-function handleContainerStop(containerId, eventData, eventBus) {
+function handleContainerStop(containerId, eventData, containerTracker, labelCache, eventBus) {
   // Extract container name from event data
   const containerName = eventData.Actor?.Attributes?.name || containerId.substring(0, 12);
   logger.debug(`Container stopped: ${containerName}`);
+  
+  // Remove container from tracker
+  removeContainerMapping(containerTracker, containerId);
+  
+  // Remove from label cache
+  if (labelCache && labelCache.labels) {
+    labelCache.labels.delete(containerId);
+  }
   
   // Publish container stop event
   if (eventBus) {
@@ -148,10 +156,18 @@ function handleContainerStop(containerId, eventData, eventBus) {
 /**
  * Handle container destroy event
  */
-function handleContainerDestroy(containerId, eventData, eventBus) {
+function handleContainerDestroy(containerId, eventData, containerTracker, labelCache, eventBus) {
   // Extract container name from event data
   const containerName = eventData.Actor?.Attributes?.name || containerId.substring(0, 12);
   logger.debug(`Container destroyed: ${containerName}`);
+  
+  // Remove container from tracker
+  removeContainerMapping(containerTracker, containerId);
+  
+  // Remove from label cache
+  if (labelCache && labelCache.labels) {
+    labelCache.labels.delete(containerId);
+  }
   
   // Publish container destroy event
   if (eventBus) {

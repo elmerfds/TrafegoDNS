@@ -131,8 +131,8 @@ class DockerMonitor {
       // Get running containers
       const containers = await listContainers(this.docker);
       
-      // Update ID to name mapping
-      updateFromContainerList(this.containerTracker, containers);
+      // Update ID to name mapping (clear existing and only add running containers)
+      updateFromContainerList(this.containerTracker, containers, true);
       
       // Update container labels
       await updateLabelCacheFromContainers(

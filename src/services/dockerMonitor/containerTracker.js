@@ -60,14 +60,39 @@ function getContainerName(tracker, id) {
 }
 
 /**
+ * Remove container from tracker
+ * @param {Object} tracker - Container tracker object
+ * @param {string} id - Container ID
+ */
+function removeContainerMapping(tracker, id) {
+  if (!id) {
+    logger.warn('Invalid container ID provided to removeContainerMapping');
+    return;
+  }
+  
+  const name = tracker.containerIdToName.get(id);
+  if (name) {
+    tracker.containerIdToName.delete(id);
+    logger.trace(`Removed container mapping: ${id} → ${name}`);
+  }
+}
+
+/**
  * Update container tracker with data from containers
  * @param {Object} tracker - Container tracker object
  * @param {Array} containers - Array of container objects
+ * @param {boolean} clear - Whether to clear existing mappings first (default: false)
  */
-function updateFromContainerList(tracker, containers) {
+function updateFromContainerList(tracker, containers, clear = false) {
   if (!containers || !Array.isArray(containers)) {
     logger.warn('Invalid container list provided to updateFromContainerList');
     return;
+  }
+  
+  // Clear existing mappings if requested (useful for initialization)
+  if (clear) {
+    tracker.containerIdToName.clear();
+    logger.debug('Cleared existing container mappings');
   }
   
   // Track how many mappings we add
@@ -86,6 +111,7 @@ function updateFromContainerList(tracker, containers) {
 module.exports = {
   createContainerTracker,
   updateContainerMapping,
+  removeContainerMapping,
   getContainerName,
   updateFromContainerList
 };
