@@ -46,6 +46,7 @@ interface Config {
   genericLabelPrefix: string
   traefikLabelPrefix: string
   managedHostnames: string
+  preservedHostnames: string
   domain: string
   publicIP: string
   publicIPv6: string
@@ -500,12 +501,26 @@ export function SettingsPage() {
               <Label htmlFor="managedHostnames">Managed Hostnames (comma-separated)</Label>
               <Input
                 id="managedHostnames"
-                value={formData.managedHostnames ?? config.managedHostnames}
+                value={formData.managedHostnames ?? config.managedHostnames || ''}
                 onChange={(e) =>
                   handleInputChange('managedHostnames', e.target.value)
                 }
                 placeholder="app1.example.com,app2.example.com"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="preservedHostnames">Preserved Hostnames (comma-separated)</Label>
+              <Input
+                id="preservedHostnames"
+                value={formData.preservedHostnames ?? config.preservedHostnames || ''}
+                onChange={(e) =>
+                  handleInputChange('preservedHostnames', e.target.value)
+                }
+                placeholder="static.example.com,api.example.com"
+              />
+              <p className="text-sm text-muted-foreground">
+                These hostnames will be preserved from automatic cleanup even when orphaned
+              </p>
             </div>
           </CardContent>
         </Card>
