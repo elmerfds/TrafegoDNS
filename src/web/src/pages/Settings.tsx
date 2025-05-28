@@ -29,16 +29,30 @@ interface Config {
   cleanupOrphaned: boolean
   cleanupGracePeriod: number
   dnsProvider: string
+  dnsLabelPrefix: string
   dnsDefaultType: string
+  dnsDefaultContent: string
   dnsDefaultProxied: boolean
   dnsDefaultTTL: number
   dnsDefaultManage: boolean
+  cloudflareZone: string
+  route53Zone: string
+  route53ZoneId: string
+  route53Region: string
+  digitalOceanDomain: string
+  traefikApiUrl: string
+  traefikApiUsername: string
+  dockerSocket: string
+  genericLabelPrefix: string
+  traefikLabelPrefix: string
+  managedHostnames: string
   domain: string
   publicIP: string
   publicIPv6: string
   ipRefreshInterval: number
   dnsCacheRefreshInterval: number
   apiTimeout: number
+  recordDefaults: any
 }
 
 export function SettingsPage() {
@@ -164,15 +178,15 @@ export function SettingsPage() {
                 <Input
                   id="pollInterval"
                   type="number"
-                  value={formData.pollInterval ?? config.pollInterval}
+                  value={formData.pollInterval ?? Math.floor(config.pollInterval / 1000)}
                   onChange={(e) =>
-                    handleInputChange('pollInterval', parseInt(e.target.value))
+                    handleInputChange('pollInterval', parseInt(e.target.value) * 1000)
                   }
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cleanupGracePeriod">
-                  Cleanup Grace Period (seconds)
+                  Cleanup Grace Period (minutes)
                 </Label>
                 <Input
                   id="cleanupGracePeriod"
@@ -206,6 +220,110 @@ export function SettingsPage() {
               />
               <Label htmlFor="cleanupOrphaned">Cleanup Orphaned Records</Label>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* DNS Provider Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle>DNS Provider Settings</CardTitle>
+            <CardDescription>
+              Configure DNS provider and zone settings
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="dnsProvider">DNS Provider</Label>
+                <Select
+                  value={formData.dnsProvider ?? config.dnsProvider}
+                  onValueChange={(value) =>
+                    handleInputChange('dnsProvider', value)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cloudflare">Cloudflare</SelectItem>
+                    <SelectItem value="route53">AWS Route53</SelectItem>
+                    <SelectItem value="digitalocean">DigitalOcean</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="dnsLabelPrefix">DNS Label Prefix</Label>
+                <Input
+                  id="dnsLabelPrefix"
+                  value={formData.dnsLabelPrefix ?? config.dnsLabelPrefix}
+                  onChange={(e) =>
+                    handleInputChange('dnsLabelPrefix', e.target.value)
+                  }
+                />
+              </div>
+            </div>
+
+            {/* Provider-specific settings */}
+            {(formData.dnsProvider ?? config.dnsProvider) === 'cloudflare' && (
+              <div className="space-y-2">
+                <Label htmlFor="cloudflareZone">Cloudflare Zone</Label>
+                <Input
+                  id="cloudflareZone"
+                  value={formData.cloudflareZone ?? config.cloudflareZone}
+                  onChange={(e) =>
+                    handleInputChange('cloudflareZone', e.target.value)
+                  }
+                />
+              </div>
+            )}
+
+            {(formData.dnsProvider ?? config.dnsProvider) === 'route53' && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="route53Zone">Route53 Zone</Label>
+                  <Input
+                    id="route53Zone"
+                    value={formData.route53Zone ?? config.route53Zone}
+                    onChange={(e) =>
+                      handleInputChange('route53Zone', e.target.value)
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="route53ZoneId">Route53 Zone ID</Label>
+                  <Input
+                    id="route53ZoneId"
+                    value={formData.route53ZoneId ?? config.route53ZoneId}
+                    onChange={(e) =>
+                      handleInputChange('route53ZoneId', e.target.value)
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="route53Region">Route53 Region</Label>
+                  <Input
+                    id="route53Region"
+                    value={formData.route53Region ?? config.route53Region}
+                    onChange={(e) =>
+                      handleInputChange('route53Region', e.target.value)
+                    }
+                  />
+                </div>
+              </div>
+            )}
+
+            {(formData.dnsProvider ?? config.dnsProvider) === 'digitalocean' && (
+              <div className="space-y-2">
+                <Label htmlFor="digitalOceanDomain">DigitalOcean Domain</Label>
+                <Input
+                  id="digitalOceanDomain"
+                  value={formData.digitalOceanDomain ?? config.digitalOceanDomain}
+                  onChange={(e) =>
+                    handleInputChange('digitalOceanDomain', e.target.value)
+                  }
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -254,6 +372,17 @@ export function SettingsPage() {
               </div>
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="dnsDefaultContent">Default Content</Label>
+              <Input
+                id="dnsDefaultContent"
+                value={formData.dnsDefaultContent ?? config.dnsDefaultContent}
+                onChange={(e) =>
+                  handleInputChange('dnsDefaultContent', e.target.value)
+                }
+              />
+            </div>
+
             <div className="flex items-center space-x-2">
               <Switch
                 id="dnsDefaultProxied"
@@ -278,6 +407,109 @@ export function SettingsPage() {
           </CardContent>
         </Card>
 
+        {/* Traefik Settings */}
+        {(config.operationMode === 'traefik') && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Traefik Settings</CardTitle>
+              <CardDescription>
+                Configure Traefik API connection
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="traefikApiUrl">Traefik API URL</Label>
+                  <Input
+                    id="traefikApiUrl"
+                    value={formData.traefikApiUrl ?? config.traefikApiUrl}
+                    onChange={(e) =>
+                      handleInputChange('traefikApiUrl', e.target.value)
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="traefikApiUsername">Traefik API Username</Label>
+                  <Input
+                    id="traefikApiUsername"
+                    value={formData.traefikApiUsername ?? config.traefikApiUsername}
+                    onChange={(e) =>
+                      handleInputChange('traefikApiUsername', e.target.value)
+                    }
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Docker Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Docker Settings</CardTitle>
+            <CardDescription>
+              Configure Docker connection and label settings
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="dockerSocket">Docker Socket Path</Label>
+              <Input
+                id="dockerSocket"
+                value={formData.dockerSocket ?? config.dockerSocket}
+                onChange={(e) =>
+                  handleInputChange('dockerSocket', e.target.value)
+                }
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="genericLabelPrefix">Generic Label Prefix</Label>
+                <Input
+                  id="genericLabelPrefix"
+                  value={formData.genericLabelPrefix ?? config.genericLabelPrefix}
+                  onChange={(e) =>
+                    handleInputChange('genericLabelPrefix', e.target.value)
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="traefikLabelPrefix">Traefik Label Prefix</Label>
+                <Input
+                  id="traefikLabelPrefix"
+                  value={formData.traefikLabelPrefix ?? config.traefikLabelPrefix}
+                  onChange={(e) =>
+                    handleInputChange('traefikLabelPrefix', e.target.value)
+                  }
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Advanced Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Advanced Settings</CardTitle>
+            <CardDescription>
+              Additional configuration options
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="managedHostnames">Managed Hostnames (comma-separated)</Label>
+              <Input
+                id="managedHostnames"
+                value={formData.managedHostnames ?? config.managedHostnames}
+                onChange={(e) =>
+                  handleInputChange('managedHostnames', e.target.value)
+                }
+                placeholder="app1.example.com,app2.example.com"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Network Settings */}
         <Card>
           <CardHeader>
@@ -293,9 +525,9 @@ export function SettingsPage() {
                 <Input
                   id="apiTimeout"
                   type="number"
-                  value={formData.apiTimeout ?? config.apiTimeout}
+                  value={formData.apiTimeout ?? Math.floor(config.apiTimeout / 1000)}
                   onChange={(e) =>
-                    handleInputChange('apiTimeout', parseInt(e.target.value))
+                    handleInputChange('apiTimeout', parseInt(e.target.value) * 1000)
                   }
                 />
               </div>
@@ -304,9 +536,9 @@ export function SettingsPage() {
                 <Input
                   id="ipRefreshInterval"
                   type="number"
-                  value={formData.ipRefreshInterval ?? config.ipRefreshInterval}
+                  value={formData.ipRefreshInterval ?? Math.floor(config.ipRefreshInterval / 1000)}
                   onChange={(e) =>
-                    handleInputChange('ipRefreshInterval', parseInt(e.target.value))
+                    handleInputChange('ipRefreshInterval', parseInt(e.target.value) * 1000)
                   }
                 />
               </div>
@@ -318,9 +550,9 @@ export function SettingsPage() {
               <Input
                 id="dnsCacheRefreshInterval"
                 type="number"
-                value={formData.dnsCacheRefreshInterval ?? config.dnsCacheRefreshInterval}
+                value={formData.dnsCacheRefreshInterval ?? Math.floor(config.dnsCacheRefreshInterval / 1000)}
                 onChange={(e) =>
-                  handleInputChange('dnsCacheRefreshInterval', parseInt(e.target.value))
+                  handleInputChange('dnsCacheRefreshInterval', parseInt(e.target.value) * 1000)
                 }
               />
             </div>
