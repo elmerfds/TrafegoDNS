@@ -501,7 +501,7 @@ export function SettingsPage() {
               <Label htmlFor="managedHostnames">Managed Hostnames (comma-separated)</Label>
               <Input
                 id="managedHostnames"
-                value={formData.managedHostnames ?? config.managedHostnames || ''}
+                value={formData.managedHostnames ?? (config.managedHostnames || '')}
                 onChange={(e) =>
                   handleInputChange('managedHostnames', e.target.value)
                 }
@@ -512,7 +512,7 @@ export function SettingsPage() {
               <Label htmlFor="preservedHostnames">Preserved Hostnames (comma-separated)</Label>
               <Input
                 id="preservedHostnames"
-                value={formData.preservedHostnames ?? config.preservedHostnames || ''}
+                value={formData.preservedHostnames ?? (config.preservedHostnames || '')}
                 onChange={(e) =>
                   handleInputChange('preservedHostnames', e.target.value)
                 }
