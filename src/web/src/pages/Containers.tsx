@@ -32,9 +32,12 @@ import {
   Globe,
   Tag
 } from 'lucide-react'
+import { usePermissions } from '@/hooks/usePermissions'
+import { cn } from '@/lib/utils'
 
 export function ContainersPage() {
   const queryClient = useQueryClient()
+  const { canPerformAction } = usePermissions()
   const [search, setSearch] = useState('')
   const [selectedContainer, setSelectedContainer] = useState<Container | null>(null)
 
@@ -201,18 +204,20 @@ export function ContainersPage() {
                         >
                           View Details
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => refreshMutation.mutate(container.id)}
-                          disabled={refreshMutation.isPending}
-                          title="Refresh DNS records"
-                        >
-                          <RefreshCw className={cn(
-                            "h-4 w-4",
-                            refreshMutation.isPending && "animate-spin"
-                          )} />
-                        </Button>
+                        {canPerformAction('container.sync') && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => refreshMutation.mutate(container.id)}
+                            disabled={refreshMutation.isPending}
+                            title="Refresh DNS records"
+                          >
+                            <RefreshCw className={cn(
+                              "h-4 w-4",
+                              refreshMutation.isPending && "animate-spin"
+                            )} />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

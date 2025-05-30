@@ -91,9 +91,14 @@ export function UsersPage() {
       setFormData({ username: '', password: '', role: 'operator' })
     },
     onError: (error: any) => {
+      console.error('User creation error:', error.response?.data);
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.error || 
+                          error.message || 
+                          'Failed to create user';
       toast({
         title: 'Creation failed',
-        description: error.response?.data?.message || error.response?.data?.error || 'Failed to create user',
+        description: errorMessage,
         variant: 'destructive',
       })
     },

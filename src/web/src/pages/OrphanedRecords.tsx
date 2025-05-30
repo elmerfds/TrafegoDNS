@@ -34,6 +34,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { Loader2, Trash2, RotateCcw, Search, Clock, AlertTriangle } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
+import { usePermissions } from '@/hooks/usePermissions'
 
 interface OrphanedRecord {
   id: string
@@ -55,6 +56,7 @@ interface OrphanedSettings {
 export function OrphanedRecordsPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
+  const { canPerformAction } = usePermissions()
   const [searchTerm, setSearchTerm] = useState('')
 
   const { data: records, isLoading } = useQuery({
@@ -227,13 +229,14 @@ export function OrphanedRecordsPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" disabled={orphanedRecords.length === 0}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                Cleanup All
-              </Button>
-            </AlertDialogTrigger>
+          {canPerformAction('orphaned.cleanup') && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={orphanedRecords.length === 0}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Cleanup All
+                </Button>
+              </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Cleanup Orphaned Records</AlertDialogTitle>
@@ -249,15 +252,17 @@ export function OrphanedRecordsPage() {
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
-          </AlertDialog>
+            </AlertDialog>
+          )}
           
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" disabled={orphanedRecords.length === 0}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                Force Delete All
-              </Button>
-            </AlertDialogTrigger>
+          {canPerformAction('orphaned.forceDelete') && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={orphanedRecords.length === 0}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Force Delete All
+                </Button>
+              </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Force Delete All Orphaned Records</AlertDialogTitle>
@@ -284,7 +289,8 @@ export function OrphanedRecordsPage() {
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
-          </AlertDialog>
+            </AlertDialog>
+          )}
         </div>
       </div>
 
@@ -368,7 +374,9 @@ export function OrphanedRecordsPage() {
                   <TableHead>Content</TableHead>
                   <TableHead>TTL</TableHead>
                   <TableHead>Orphaned</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  {canPerformAction('orphaned.delete') && (
+                    <TableHead className="text-right">Actions</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -405,28 +413,29 @@ export function OrphanedRecordsPage() {
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => restoreMutation.mutate(record.id)}
-                            disabled={restoreMutation.isPending}
-                            title="Restore record"
-                          >
-                            <RotateCcw className="h-4 w-4" />
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                disabled={deleteRecordMutation.isPending}
-                                title="Delete record"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </AlertDialogTrigger>
+                      {canPerformAction('orphaned.delete') && (
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => restoreMutation.mutate(record.id)}
+                              disabled={restoreMutation.isPending}
+                              title="Restore record"
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  disabled={deleteRecordMutation.isPending}
+                                  title="Delete record"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Delete DNS Record</AlertDialogTitle>
@@ -443,9 +452,10 @@ export function OrphanedRecordsPage() {
                                 </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </TableCell>
+                            </AlertDialog>
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}
