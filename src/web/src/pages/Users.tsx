@@ -93,7 +93,7 @@ export function UsersPage() {
     onError: (error: any) => {
       toast({
         title: 'Creation failed',
-        description: error.response?.data?.error || 'Failed to create user',
+        description: error.response?.data?.message || error.response?.data?.error || 'Failed to create user',
         variant: 'destructive',
       })
     },
@@ -116,7 +116,7 @@ export function UsersPage() {
     onError: (error: any) => {
       toast({
         title: 'Update failed',
-        description: error.response?.data?.error || 'Failed to update user',
+        description: error.response?.data?.message || error.response?.data?.error || 'Failed to update user',
         variant: 'destructive',
       })
     },
@@ -137,7 +137,7 @@ export function UsersPage() {
     onError: (error: any) => {
       toast({
         title: 'Deletion failed',
-        description: error.response?.data?.error || 'Failed to delete user',
+        description: error.response?.data?.message || error.response?.data?.error || 'Failed to delete user',
         variant: 'destructive',
       })
     },

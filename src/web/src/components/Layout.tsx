@@ -24,22 +24,27 @@ import {
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { usePermissions } from '@/hooks/usePermissions'
 
 const navigation = [
-  { name: 'Dashboard', href: '/', icon: Home },
-  { name: 'DNS Records', href: '/dns-records', icon: Globe },
-  { name: 'Orphaned Records', href: '/orphaned-records', icon: AlertTriangle },
-  { name: 'Containers', href: '/containers', icon: Container },
-  { name: 'Hostnames', href: '/hostnames', icon: Link2 },
-  { name: 'Settings', href: '/settings', icon: Settings },
-  { name: 'Users', href: '/users', icon: Users },
+  { name: 'Dashboard', href: '/', icon: Home, path: '/' },
+  { name: 'DNS Records', href: '/dns-records', icon: Globe, path: '/dns' },
+  { name: 'Orphaned Records', href: '/orphaned-records', icon: AlertTriangle, path: '/orphaned' },
+  { name: 'Containers', href: '/containers', icon: Container, path: '/containers' },
+  { name: 'Hostnames', href: '/hostnames', icon: Link2, path: '/hostnames' },
+  { name: 'Settings', href: '/settings', icon: Settings, path: '/settings' },
+  { name: 'Users', href: '/users', icon: Users, path: '/users' },
 ]
 
 export function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
+  const { canAccessPage } = usePermissions()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  
+  // Filter navigation items based on user permissions
+  const filteredNavigation = navigation.filter(item => canAccessPage(item.path))
 
   const handleLogout = () => {
     logout()
@@ -63,7 +68,7 @@ export function Layout() {
             <ul role="list" className="flex flex-1 flex-col gap-y-7">
               <li>
                 <ul role="list" className="-mx-2 space-y-1">
-                  {navigation.map((item) => {
+                  {filteredNavigation.map((item) => {
                     const isActive = location.pathname === item.href
                     return (
                       <li key={item.name}>

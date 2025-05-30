@@ -43,6 +43,7 @@ import {
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
+import { usePermissions } from '@/hooks/usePermissions'
 
 const recordTypes = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA'] as const
 
@@ -56,6 +57,7 @@ const createRecordSchema = z.object({
 
 export function DNSRecordsPage() {
   const queryClient = useQueryClient()
+  const { canPerformAction } = usePermissions()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'managed' | 'orphaned'>('all')
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -192,10 +194,12 @@ export function DNSRecordsPage() {
                   <SelectItem value="orphaned">Orphaned</SelectItem>
                 </SelectContent>
               </Select>
-              <Button onClick={() => setIsCreateOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Record
-              </Button>
+              {canPerformAction('dns.create') && (
+                <Button onClick={() => setIsCreateOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Record
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -218,7 +222,9 @@ export function DNSRecordsPage() {
                 <TableHead>Content</TableHead>
                 <TableHead>TTL</TableHead>
                 <TableHead>Provider</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                {(canPerformAction('dns.edit') || canPerformAction('dns.delete')) && (
+                  <TableHead className="text-right">Actions</TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -253,32 +259,38 @@ export function DNSRecordsPage() {
                     </TableCell>
                     <TableCell>{record.ttl}s</TableCell>
                     <TableCell>{record.provider}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setEditingRecord(record)}
-                          disabled={record.isManaged}
-                          title={record.isManaged ? 'Cannot edit managed records' : 'Edit record'}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            if (confirm('Are you sure you want to delete this record?')) {
-                              deleteMutation.mutate(record.id)
-                            }
-                          }}
-                          disabled={record.isManaged || deleteMutation.isPending}
-                          title={record.isManaged ? 'Cannot delete managed records' : 'Delete record'}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+                    {(canPerformAction('dns.edit') || canPerformAction('dns.delete')) && (
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          {canPerformAction('dns.edit') && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setEditingRecord(record)}
+                              disabled={record.isManaged}
+                              title={record.isManaged ? 'Cannot edit managed records' : 'Edit record'}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {canPerformAction('dns.delete') && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                if (confirm('Are you sure you want to delete this record?')) {
+                                  deleteMutation.mutate(record.id)
+                                }
+                              }}
+                              disabled={record.isManaged || deleteMutation.isPending}
+                              title={record.isManaged ? 'Cannot delete managed records' : 'Delete record'}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))
               )}
