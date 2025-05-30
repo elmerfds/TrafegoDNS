@@ -601,6 +601,102 @@ const deleteRecord = asyncHandler(async (req, res) => {
 });
 
 /**
+ * @desc    Get orphaned DNS records history
+ * @route   GET /api/v1/dns/orphaned/history
+ * @access  Private
+ */
+const getOrphanedRecordsHistory = asyncHandler(async (req, res) => {
+  // Get DNSManager from global services
+  const { DNSManager } = global.services || {};
+  
+  if (!DNSManager || !DNSManager.db) {
+    throw new ApiError('Database not initialized', 500, 'DB_NOT_INITIALIZED');
+  }
+  
+  try {
+    // Get pagination parameters
+    const { page = 1, limit = 50 } = req.query;
+    const offset = (page - 1) * limit;
+    
+    // Query for historical orphaned records (those that were orphaned but deleted)
+    // We look at the audit log or create a history from the current tracked records
+    const historyQuery = `
+      SELECT 
+        provider,
+        record_id,
+        type,
+        name,
+        content,
+        ttl,
+        proxied,
+        orphaned_at,
+        tracked_at,
+        updated_at,
+        metadata
+      FROM dns_tracked_records 
+      WHERE orphaned_at IS NOT NULL
+      ORDER BY orphaned_at DESC
+      LIMIT ? OFFSET ?
+    `;
+    
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM dns_tracked_records 
+      WHERE orphaned_at IS NOT NULL
+    `;
+    
+    const [records, countResult] = await Promise.all([
+      DNSManager.db.all(historyQuery, [limit, offset]),
+      DNSManager.db.get(countQuery)
+    ]);
+    
+    // Format the records
+    const formattedRecords = records.map(record => {
+      let metadata = {};
+      try {
+        metadata = record.metadata ? JSON.parse(record.metadata) : {};
+      } catch (e) {
+        metadata = {};
+      }
+      
+      return {
+        id: record.record_id,
+        hostname: record.name,
+        type: record.type,
+        content: record.content,
+        ttl: record.ttl,
+        proxied: Boolean(record.proxied),
+        provider: record.provider,
+        orphanedAt: record.orphaned_at,
+        trackedAt: record.tracked_at,
+        updatedAt: record.updated_at,
+        isDeleted: !records.some(r => r.record_id === record.record_id && !r.orphaned_at), // If not in current active records
+        metadata: metadata
+      };
+    });
+    
+    const total = countResult ? countResult.total : 0;
+    const totalPages = Math.ceil(total / limit);
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        records: formattedRecords,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          totalPages
+        }
+      }
+    });
+  } catch (error) {
+    logger.error(`Error getting orphaned records history: ${error.message}`);
+    throw new ApiError('Failed to get orphaned records history', 500, 'ORPHANED_HISTORY_ERROR');
+  }
+});
+
+/**
  * @desc    Get orphaned DNS records
  * @route   GET /api/v1/dns/orphaned
  * @access  Private
@@ -1040,6 +1136,7 @@ module.exports = {
   updateRecord,
   deleteRecord,
   getOrphanedRecords,
+  getOrphanedRecordsHistory,
   runCleanup,
   refreshRecords,
   processRecords,

@@ -10,6 +10,7 @@ const {
   updateRecord,
   deleteRecord,
   getOrphanedRecords,
+  getOrphanedRecordsHistory,
   runCleanup,
   refreshRecords,
   processRecords,
@@ -372,6 +373,85 @@ router.delete('/records/:id', authenticate, authorize(['admin', 'operator']), wr
  *        description: Server error
  */
 router.get('/orphaned', authenticate, getOrphanedRecords);
+
+/**
+ * @swagger
+ * /dns/orphaned/history:
+ *  get:
+ *    summary: Get orphaned DNS records history
+ *    tags: [DNS]
+ *    security:
+ *      - BearerAuth: []
+ *    parameters:
+ *      - in: query
+ *        name: page
+ *        schema:
+ *          type: integer
+ *          minimum: 1
+ *          default: 1
+ *        description: Page number for pagination
+ *      - in: query
+ *        name: limit
+ *        schema:
+ *          type: integer
+ *          minimum: 1
+ *          maximum: 100
+ *          default: 50
+ *        description: Number of records per page
+ *    responses:
+ *      200:
+ *        description: Paginated list of historical orphaned DNS records
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                data:
+ *                  type: object
+ *                  properties:
+ *                    records:
+ *                      type: array
+ *                      items:
+ *                        type: object
+ *                        properties:
+ *                          id:
+ *                            type: string
+ *                          hostname:
+ *                            type: string
+ *                          type:
+ *                            type: string
+ *                          content:
+ *                            type: string
+ *                          ttl:
+ *                            type: number
+ *                          proxied:
+ *                            type: boolean
+ *                          provider:
+ *                            type: string
+ *                          orphanedAt:
+ *                            type: string
+ *                          isDeleted:
+ *                            type: boolean
+ *                    pagination:
+ *                      type: object
+ *                      properties:
+ *                        page:
+ *                          type: number
+ *                        limit:
+ *                          type: number
+ *                        total:
+ *                          type: number
+ *                        totalPages:
+ *                          type: number
+ *      401:
+ *        description: Not authenticated
+ *      500:
+ *        description: Server error
+ */
+router.get('/orphaned/history', authenticate, getOrphanedRecordsHistory);
 
 /**
  * @swagger

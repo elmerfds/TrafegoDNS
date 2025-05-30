@@ -35,6 +35,7 @@ import { Loader2, Trash2, RotateCcw, Search, Clock, AlertTriangle } from 'lucide
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { usePermissions } from '@/hooks/usePermissions'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 interface OrphanedRecord {
   id: string
@@ -48,6 +49,21 @@ interface OrphanedRecord {
   orphanedTime: number
 }
 
+interface OrphanedHistoryRecord {
+  id: string
+  hostname: string
+  type: string
+  content: string
+  ttl: number
+  proxied?: boolean
+  provider: string
+  orphanedAt: string
+  trackedAt: string
+  updatedAt: string
+  isDeleted: boolean
+  metadata: any
+}
+
 interface OrphanedSettings {
   cleanupOrphaned: boolean
   cleanupGracePeriod: number
@@ -58,6 +74,8 @@ export function OrphanedRecordsPage() {
   const queryClient = useQueryClient()
   const { canPerformAction } = usePermissions()
   const [searchTerm, setSearchTerm] = useState('')
+  const [historySearchTerm, setHistorySearchTerm] = useState('')
+  const [historyPage, setHistoryPage] = useState(1)
 
   const { data: records, isLoading } = useQuery({
     queryKey: ['orphaned-records'],
@@ -78,6 +96,14 @@ export function OrphanedRecordsPage() {
     queryFn: async () => {
       const response = await api.get('/hostnames/orphaned/settings')
       return response.data.data.settings as OrphanedSettings
+    },
+  })
+
+  const { data: historyData, isLoading: isHistoryLoading } = useQuery({
+    queryKey: ['orphaned-history', historyPage],
+    queryFn: async () => {
+      const response = await api.get(`/dns/orphaned/history?page=${historyPage}&limit=20`)
+      return response.data.data
     },
   })
 
@@ -201,12 +227,31 @@ export function OrphanedRecordsPage() {
     )
   })
 
+  const filteredHistoryRecords = historyData?.records?.filter((record: OrphanedHistoryRecord) => {
+    if (!historySearchTerm) return true
+    const term = historySearchTerm.toLowerCase()
+    return (
+      record.hostname.toLowerCase().includes(term) ||
+      record.type.toLowerCase().includes(term) ||
+      record.content.toLowerCase().includes(term)
+    )
+  })
+
   const formatTimeAgo = (seconds: number) => {
     if (!seconds || seconds === 0) return 'Unknown'
     if (seconds < 60) return `${seconds}s ago`
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
     return `${Math.floor(seconds / 86400)}d ago`
+  }
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'Unknown'
+    try {
+      return new Date(dateString).toLocaleString()
+    } catch {
+      return 'Invalid date'
+    }
   }
 
   if (isLoading) {
@@ -344,14 +389,21 @@ export function OrphanedRecordsPage() {
         </CardContent>
       </Card>
 
-      {/* Records Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Orphaned Records</CardTitle>
-          <CardDescription>
-            {orphanedRecords.length} record{orphanedRecords.length !== 1 ? 's' : ''} found
-          </CardDescription>
-        </CardHeader>
+      {/* Records Tables with Tabs */}
+      <Tabs defaultValue="current" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="current">Current Orphaned Records</TabsTrigger>
+          <TabsTrigger value="history">Orphaned Records History</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="current">
+          <Card>
+            <CardHeader>
+              <CardTitle>Current Orphaned Records</CardTitle>
+              <CardDescription>
+                {orphanedRecords.length} record{orphanedRecords.length !== 1 ? 's' : ''} currently in grace period or ready for cleanup
+              </CardDescription>
+            </CardHeader>
         <CardContent>
           <div className="mb-4">
             <div className="relative">
@@ -462,8 +514,121 @@ export function OrphanedRecordsPage() {
               </TableBody>
             </Table>
           </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="history">
+          <Card>
+            <CardHeader>
+              <CardTitle>Orphaned Records History</CardTitle>
+              <CardDescription>
+                {historyData?.pagination?.total || 0} historical orphaned records (showing page {historyPage} of {historyData?.pagination?.totalPages || 1})
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search history..."
+                    value={historySearchTerm}
+                    onChange={(e) => setHistorySearchTerm(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+
+              {isHistoryLoading ? (
+                <div className="flex items-center justify-center h-32">
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Hostname</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Content</TableHead>
+                        <TableHead>TTL</TableHead>
+                        <TableHead>Provider</TableHead>
+                        <TableHead>Orphaned At</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredHistoryRecords?.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                            No orphaned records history found
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredHistoryRecords?.map((record: OrphanedHistoryRecord) => (
+                          <TableRow key={record.id}>
+                            <TableCell>
+                              <span className="font-medium">{record.hostname}</span>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{record.type}</Badge>
+                            </TableCell>
+                            <TableCell className="max-w-xs truncate">{record.content}</TableCell>
+                            <TableCell>{record.ttl}s</TableCell>
+                            <TableCell>
+                              <Badge variant="secondary">{record.provider}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm text-muted-foreground">
+                                {formatDate(record.orphanedAt)}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={record.isDeleted ? "destructive" : "default"}>
+                                {record.isDeleted ? "Deleted" : "Tracked"}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+
+              {/* Pagination for history */}
+              {historyData?.pagination && historyData.pagination.totalPages > 1 && (
+                <div className="flex items-center justify-between space-x-2 py-4">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {((historyPage - 1) * 20) + 1} to {Math.min(historyPage * 20, historyData.pagination.total)} of {historyData.pagination.total} records
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setHistoryPage(Math.max(1, historyPage - 1))}
+                      disabled={historyPage <= 1}
+                    >
+                      Previous
+                    </Button>
+                    <div className="text-sm font-medium">
+                      Page {historyPage} of {historyData.pagination.totalPages}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setHistoryPage(Math.min(historyData.pagination.totalPages, historyPage + 1))}
+                      disabled={historyPage >= historyData.pagination.totalPages}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
