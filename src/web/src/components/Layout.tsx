@@ -63,7 +63,7 @@ export function Layout() {
         )}
       >
         <div className="flex grow flex-col gap-y-5 overflow-y-auto border-r bg-card px-6 pb-4">
-          <div className="flex h-16 shrink-0 items-center gap-3">
+          <div className="flex h-16 shrink-0 items-center gap-x-3 px-2">
             <img src="/assets/logo.svg" alt="TrafegoDNS Logo" className="h-12 w-12" />
             <img src="/assets/trafegodns-header.svg" alt="TrafegoDNS" className="h-8" />
           </div>
