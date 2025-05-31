@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useNavigate } from 'react-router-dom'
+import { useSocketEvent } from '@/hooks/useSocket'
 
 interface ActivityEvent {
   id: string
@@ -25,6 +26,21 @@ interface ActivityEvent {
 
 export function RecentActivity() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  
+  // Listen for real-time DNS events
+  useSocketEvent('dns:record:created', () => {
+    queryClient.invalidateQueries({ queryKey: ['recent-dns-records'] })
+  })
+  
+  useSocketEvent('dns:record:updated', () => {
+    queryClient.invalidateQueries({ queryKey: ['recent-dns-records'] })
+  })
+  
+  useSocketEvent('dns:record:deleted', () => {
+    queryClient.invalidateQueries({ queryKey: ['recent-dns-records'] })
+    queryClient.invalidateQueries({ queryKey: ['recent-orphaned-history'] })
+  })
   
   // Fetch recent DNS records to generate activity
   const { data: dnsRecordsData } = useQuery({
@@ -33,7 +49,7 @@ export function RecentActivity() {
       const response = await api.get('/dns/records?limit=10')
       return response.data
     },
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 10000, // Refresh every 10 seconds
   })
 
   // Fetch orphaned records history for recent deletions
@@ -43,7 +59,7 @@ export function RecentActivity() {
       const response = await api.get('/dns/orphaned/history?limit=5')
       return response.data
     },
-    refetchInterval: 30000,
+    refetchInterval: 15000,
   })
 
   // Fetch current orphaned records
@@ -53,7 +69,7 @@ export function RecentActivity() {
       const response = await api.get('/dns/orphaned')
       return response.data
     },
-    refetchInterval: 30000,
+    refetchInterval: 15000,
   })
 
   // Generate activities from available data

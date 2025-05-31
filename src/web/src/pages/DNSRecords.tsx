@@ -68,8 +68,9 @@ export function DNSRecordsPage() {
     queryKey: ['dns-records', search, filter],
     queryFn: async () => {
       const params = new URLSearchParams()
-      if (search) params.append('search', search)
-      if (filter !== 'all') params.append('filter', filter)
+      if (search) params.append('name', search)
+      if (filter === 'managed') params.append('managed', 'true')
+      if (filter === 'orphaned') params.append('managed', 'false')
       params.append('limit', '50')
       
       const response = await api.get(`/dns/records?${params}`)

@@ -85,6 +85,13 @@ const getRecords = asyncHandler(async (req, res) => {
       const isManaged = managed === 'true';
       formattedRecords = formattedRecords.filter(record => record.isManaged === isManaged);
     }
+    
+    // Sort by creation date (newest first) by default
+    formattedRecords.sort((a, b) => {
+      const dateA = new Date(a.updatedAt || a.createdAt);
+      const dateB = new Date(b.updatedAt || b.createdAt);
+      return dateB.getTime() - dateA.getTime();
+    });
 
     // Get pagination parameters
     const paginationParams = getPaginationParams(req.query);
