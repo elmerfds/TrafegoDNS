@@ -62,7 +62,7 @@ export function LoginPage() {
       <div className="absolute top-4 right-4">
         <ThemeToggle />
       </div>
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md login-card">
         <CardHeader className="space-y-1">
           <div className="flex justify-center mb-4">
             <img src="/assets/logo.svg" alt="TrafegoDNS Logo" className="h-32 w-32" />

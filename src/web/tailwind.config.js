@@ -53,14 +53,15 @@ export default {
         },
         // TrafegoDNS Custom Theme Colors
         trafego: {
-          'primary': '#0F172A',      // Deep Navy Blue
-          'secondary': '#1E293B',    // Slate Blue
+          'primary': '#0a0f1c',      // Very Dark Navy
+          'secondary': '#111827',    // Dark Blue-Black
           'accent': '#FFD700',       // Gold
+          'accent-blue': '#1e3a5f',  // Dark Blue
           'text': '#F8FAFC',         // Soft White
-          'text-muted': '#E2E8F0',   // Muted White
-          'route-red': '#FF0000',    // Bright Red
-          'route-green': '#00A86B',  // Muted Green
-          'route-blue': '#0066CC',   // Deep Blue
+          'text-muted': '#94a3b8',   // Muted Blue-White
+          'route-red': '#ef4444',    // Softer Red
+          'route-green': '#10b981',  // Emerald Green
+          'route-blue': '#3b82f6',   // Bright Blue
         },
       },
       borderRadius: {
@@ -69,8 +70,8 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       backgroundImage: {
-        'trafego-gradient': 'linear-gradient(to bottom right, #0F172A, #1E293B)',
-        'trafego-card': 'linear-gradient(145deg, #1E293B, #334155)',
+        'trafego-gradient': 'linear-gradient(135deg, #0a0f1c 0%, #111827 50%, #0a0f1c 100%)',
+        'trafego-card': 'linear-gradient(145deg, #111827, #1e3a5f)',
       },
       boxShadow: {
         'trafego-glow': '0 0 10px rgba(255, 215, 0, 0.3)',
