@@ -396,12 +396,12 @@ export function OrphanedRecordsPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="grace-period">Grace Period (seconds)</Label>
+            <Label htmlFor="grace-period">Grace Period (minutes)</Label>
             <div className="flex items-center space-x-2">
               <Input
                 id="grace-period"
                 type="number"
-                value={settings?.cleanupGracePeriod || 3600}
+                value={settings?.cleanupGracePeriod || 15}
                 onChange={(e) =>
                   updateSettingsMutation.mutate({
                     ...settings!,
@@ -411,7 +411,7 @@ export function OrphanedRecordsPage() {
                 className="w-32"
               />
               <span className="text-sm text-muted-foreground">
-                ({Math.floor((settings?.cleanupGracePeriod || 3600) / 60)} minutes)
+                ({(settings?.cleanupGracePeriod || 15) * 60} seconds)
               </span>
             </div>
           </div>
@@ -474,7 +474,7 @@ export function OrphanedRecordsPage() {
                       <TableCell>
                         <div className="flex items-center space-x-2">
                           <span className="font-medium">{record.hostname}</span>
-                          {record.orphanedTime !== null && record.orphanedTime < (settings?.cleanupGracePeriod || 3600) && (
+                          {record.orphanedTime !== null && record.orphanedTime < ((settings?.cleanupGracePeriod || 15) * 60) && (
                             <Badge variant="secondary" className="text-xs">
                               <Clock className="mr-1 h-3 w-3" />
                               In Grace Period
@@ -496,7 +496,7 @@ export function OrphanedRecordsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {formatTimeRemaining(record.orphanedTime, (settings?.cleanupGracePeriod || 3600))}
+                        {formatTimeRemaining(record.orphanedTime, (settings?.cleanupGracePeriod || 15) * 60)}
                       </TableCell>
                       {canPerformAction('orphaned.delete') && (
                         <TableCell className="text-right">
