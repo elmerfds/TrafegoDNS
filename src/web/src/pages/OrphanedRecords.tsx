@@ -449,7 +449,7 @@ export function OrphanedRecordsPage() {
                       <TableCell>
                         <div className="flex items-center space-x-2">
                           <span className="font-medium">{record.hostname}</span>
-                          {record.orphanedTime < (settings?.cleanupGracePeriod || 3600) && (
+                          {record.orphanedTime !== null && record.orphanedTime < (settings?.cleanupGracePeriod || 3600) && (
                             <Badge variant="secondary" className="text-xs">
                               <Clock className="mr-1 h-3 w-3" />
                               In Grace Period
