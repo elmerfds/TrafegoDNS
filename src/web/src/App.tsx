@@ -10,6 +10,7 @@ import { SettingsPage } from '@/pages/Settings'
 import { UsersPage } from '@/pages/Users'
 import { ProfilePage } from '@/pages/Profile'
 import { OrphanedRecordsPage } from '@/pages/OrphanedRecords'
+import { LogsPage } from '@/pages/Logs'
 import { Toaster } from '@/components/ui/toaster'
 import { ThemeProvider } from '@/components/theme-provider'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
@@ -42,6 +43,7 @@ function App() {
             } />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="orphaned-records" element={<OrphanedRecordsPage />} />
+            <Route path="logs" element={<LogsPage />} />
           </Route>
         </Routes>
       </Router>

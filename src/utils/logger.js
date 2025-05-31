@@ -35,7 +35,18 @@ class Logger {
       warning: '⚠️'
     };
     
+    // Socket server reference for streaming logs
+    this.socketServer = null;
+    
     console.log(`Logger initialised with level: ${this.levelNames[this.level]} (${this.level})`);
+  }
+  
+  /**
+   * Set the socket server for streaming logs
+   * @param {Object} socketServer - Socket server instance
+   */
+  setSocketServer(socketServer) {
+    this.socketServer = socketServer;
   }
   
   /**
@@ -71,6 +82,21 @@ class Logger {
     }
     
     console.log(formattedMessage);
+    
+    // Broadcast to socket clients if socket server is available
+    if (this.socketServer) {
+      try {
+        this.socketServer.broadcastLog({
+          level: this.levelNames[level].toLowerCase(),
+          message: message,
+          formattedMessage: formattedMessage,
+          timestamp: this.formatTimestamp(level),
+          symbol: symbol
+        });
+      } catch (error) {
+        // Silently fail to avoid infinite loops if logging the error
+      }
+    }
   }
   
   /**

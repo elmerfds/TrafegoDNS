@@ -20,6 +20,7 @@ import {
   User,
   Menu,
   AlertTriangle,
+  FileText,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -32,6 +33,7 @@ const navigation = [
   { name: 'Orphaned Records', href: '/orphaned-records', icon: AlertTriangle, path: '/orphaned' },
   { name: 'Containers', href: '/containers', icon: Container, path: '/containers' },
   { name: 'Hostnames', href: '/hostnames', icon: Link2, path: '/hostnames' },
+  { name: 'Logs', href: '/logs', icon: FileText, path: '/logs' },
   { name: 'Settings', href: '/settings', icon: Settings, path: '/settings' },
   { name: 'Users', href: '/users', icon: Users, path: '/users' },
 ]
