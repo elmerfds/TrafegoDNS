@@ -92,40 +92,51 @@ const getRecentActivity = asyncHandler(async (req, res) => {
       logger.warn(`Failed to get orphaned history for activity: ${error.message}`);
     }
     
-    // Get recent hostname activities from managed records
+    // Get recent hostname activities from tracked records
     try {
-      const managedQuery = `
+      const trackedQuery = `
         SELECT 
-          hostname,
-          record_type,
+          name as hostname,
+          type as record_type,
           updated_at,
-          created_at,
-          status
-        FROM managed_records 
-        WHERE updated_at IS NOT NULL OR created_at IS NOT NULL
+          tracked_at as created_at,
+          metadata
+        FROM dns_tracked_records 
+        WHERE updated_at IS NOT NULL OR tracked_at IS NOT NULL
         ORDER BY 
-          COALESCE(updated_at, created_at) DESC
+          COALESCE(updated_at, tracked_at) DESC
         LIMIT 10
       `;
       
-      const managedRecords = await database.db.all(managedQuery);
+      const trackedRecords = await database.db.all(trackedQuery);
       
-      managedRecords.forEach(record => {
+      trackedRecords.forEach(record => {
         const timestamp = record.updated_at || record.created_at;
         const isUpdate = record.updated_at && record.created_at && 
                         new Date(record.updated_at).getTime() > new Date(record.created_at).getTime();
+        
+        // Check if record is managed (from metadata if available)
+        let isManaged = false;
+        try {
+          if (record.metadata) {
+            const metadata = JSON.parse(record.metadata);
+            isManaged = metadata.appManaged === true;
+          }
+        } catch (e) {
+          // Ignore JSON parse errors
+        }
         
         activities.push({
           type: isUpdate ? 'managed' : 'tracked',
           recordType: record.record_type || 'DNS',
           hostname: record.hostname,
           timestamp: timestamp,
-          details: `Hostname ${isUpdate ? 'updated' : 'added to tracking'}`,
-          source: 'managed'
+          details: `${isManaged ? 'Managed' : 'Tracked'} hostname ${isUpdate ? 'updated' : 'added'}`,
+          source: isManaged ? 'managed' : 'tracked'
         });
       });
     } catch (error) {
-      logger.warn(`Failed to get managed records for activity: ${error.message}`);
+      logger.warn(`Failed to get tracked records for activity: ${error.message}`);
     }
     
     // Sort all activities by timestamp (newest first)
