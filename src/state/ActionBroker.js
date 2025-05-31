@@ -102,8 +102,9 @@ class ActionBroker {
    * @param {*} value - New value
    * @param {Object} action - Original action that triggered this update
    * @param {string} eventType - Event to emit after update
+   * @param {Object} eventData - Additional data to include in the event
    */
-  updateState(statePath, value, action, eventType) {
+  updateState(statePath, value, action, eventType, eventData = {}) {
     // Get old value for audit logging
     const oldValue = this.stateStore.getState(statePath);
 
@@ -113,6 +114,7 @@ class ActionBroker {
     // Emit specific event if provided
     if (eventType) {
       this.eventBus.emit(eventType, {
+        ...eventData,  // Include any additional event data
         value,
         action: action.type,
         metadata: action.metadata

@@ -35,7 +35,22 @@ class Logger {
       warning: '⚠️'
     };
     
+    // Socket server reference for streaming logs
+    this.socketServer = null;
+    
+    // Log buffer for recent logs (keep last 1000 entries)
+    this.logBuffer = [];
+    this.maxBufferSize = 1000;
+    
     console.log(`Logger initialised with level: ${this.levelNames[this.level]} (${this.level})`);
+  }
+  
+  /**
+   * Set the socket server for streaming logs
+   * @param {Object} socketServer - Socket server instance
+   */
+  setSocketServer(socketServer) {
+    this.socketServer = socketServer;
   }
   
   /**
@@ -71,6 +86,32 @@ class Logger {
     }
     
     console.log(formattedMessage);
+    
+    // Create log entry for buffer and socket
+    const logEntry = {
+      level: this.levelNames[level].toLowerCase(),
+      message: message,
+      formattedMessage: formattedMessage,
+      timestamp: this.formatTimestamp(level),
+      symbol: symbol
+    };
+    
+    // Add to log buffer
+    this.logBuffer.push(logEntry);
+    
+    // Keep buffer size under limit
+    if (this.logBuffer.length > this.maxBufferSize) {
+      this.logBuffer = this.logBuffer.slice(-this.maxBufferSize);
+    }
+    
+    // Broadcast to socket clients if socket server is available
+    if (this.socketServer) {
+      try {
+        this.socketServer.broadcastLog(logEntry);
+      } catch (error) {
+        // Silently fail to avoid infinite loops if logging the error
+      }
+    }
   }
   
   /**
@@ -168,6 +209,43 @@ class Logger {
       return true;
     }
     return false;
+  }
+  
+  /**
+   * Get recent logs from buffer
+   * @param {number} limit - Maximum number of logs to return
+   * @param {string} level - Minimum log level to include
+   * @returns {Array} Array of log entries
+   */
+  getRecentLogs(limit = 100, level = null) {
+    let logs = [...this.logBuffer];
+    
+    // Filter by level if specified
+    if (level) {
+      const levelPriority = {
+        error: 0,
+        warn: 1,
+        info: 2,
+        debug: 3,
+        trace: 4
+      };
+      
+      const minPriority = levelPriority[level.toLowerCase()] || 2;
+      logs = logs.filter(log => {
+        const logPriority = levelPriority[log.level] || 2;
+        return logPriority <= minPriority;
+      });
+    }
+    
+    // Return most recent logs (last N entries)
+    return logs.slice(-limit);
+  }
+  
+  /**
+   * Clear the log buffer
+   */
+  clearLogBuffer() {
+    this.logBuffer = [];
   }
 }
 

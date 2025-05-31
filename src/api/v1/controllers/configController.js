@@ -36,6 +36,13 @@ const getConfig = asyncHandler(async (req, res) => {
       dnsDefaultTTL: ConfigManager.defaultTTL,
       dnsDefaultManage: ConfigManager.defaultManage,
       
+      // Provider-specific zones
+      cloudflareZone: ConfigManager.cloudflareZone || '',
+      route53Zone: ConfigManager.route53Zone || '',
+      route53ZoneId: ConfigManager.route53ZoneId || '',
+      route53Region: ConfigManager.route53Region || '',
+      digitalOceanDomain: ConfigManager.digitalOceanDomain || '',
+      
       // Domain settings
       domain: ConfigManager.getProviderDomain(),
       
@@ -45,17 +52,28 @@ const getConfig = asyncHandler(async (req, res) => {
       ipRefreshInterval: ConfigManager.ipRefreshInterval,
       
       // Traefik settings (if applicable)
-      traefikApiUrl: ConfigManager.traefikApiUrl ? 
-        ConfigManager.traefikApiUrl.replace(/\/\/.*@/, '//***:***@') : null, // Hide auth details
+      traefikApiUrl: ConfigManager.traefikApiUrl || '',
+      traefikApiUsername: ConfigManager.traefikApiUsername || '',
       
       // Docker settings
       dockerSocket: ConfigManager.dockerSocket,
+      
+      // Label prefixes
+      genericLabelPrefix: ConfigManager.genericLabelPrefix || 'dns.',
+      traefikLabelPrefix: ConfigManager.traefikLabelPrefix || 'traefik.',
+      
+      // Advanced settings
+      managedHostnames: ConfigManager.managedHostnames || '',
+      preservedHostnames: ConfigManager.preservedHostnames || '',
       
       // Cache settings
       dnsCacheRefreshInterval: ConfigManager.dnsCacheRefreshInterval,
       
       // Network settings
-      apiTimeout: ConfigManager.apiTimeout
+      apiTimeout: ConfigManager.apiTimeout,
+      
+      // Record defaults
+      recordDefaults: ConfigManager.recordDefaults || {}
     };
     
     res.json({
@@ -93,11 +111,36 @@ const updateConfig = asyncHandler(async (req, res) => {
     cleanupOrphaned,
     cleanupGracePeriod,
     
-    // DNS default settings
+    // DNS provider settings
+    dnsProvider,
+    dnsLabelPrefix,
     dnsDefaultType,
+    dnsDefaultContent,
     dnsDefaultProxied,
     dnsDefaultTTL,
     dnsDefaultManage,
+    
+    // Provider-specific zones
+    cloudflareZone,
+    route53Zone,
+    route53ZoneId,
+    route53Region,
+    digitalOceanDomain,
+    
+    // Traefik settings
+    traefikApiUrl,
+    traefikApiUsername,
+    
+    // Docker settings
+    dockerSocket,
+    
+    // Label prefixes
+    genericLabelPrefix,
+    traefikLabelPrefix,
+    
+    // Advanced settings
+    managedHostnames,
+    preservedHostnames,
     
     // Network settings
     apiTimeout,
@@ -115,10 +158,25 @@ const updateConfig = asyncHandler(async (req, res) => {
   if (watchDockerEvents !== undefined) updatedConfig.watchDockerEvents = watchDockerEvents;
   if (cleanupOrphaned !== undefined) updatedConfig.cleanupOrphaned = cleanupOrphaned;
   if (cleanupGracePeriod !== undefined) updatedConfig.cleanupGracePeriod = cleanupGracePeriod;
+  if (dnsProvider !== undefined) updatedConfig.dnsProvider = dnsProvider;
+  if (dnsLabelPrefix !== undefined) updatedConfig.dnsLabelPrefix = dnsLabelPrefix;
   if (dnsDefaultType !== undefined) updatedConfig.dnsDefaultType = dnsDefaultType;
+  if (dnsDefaultContent !== undefined) updatedConfig.dnsDefaultContent = dnsDefaultContent;
   if (dnsDefaultProxied !== undefined) updatedConfig.dnsDefaultProxied = dnsDefaultProxied;
   if (dnsDefaultTTL !== undefined) updatedConfig.dnsDefaultTTL = dnsDefaultTTL;
   if (dnsDefaultManage !== undefined) updatedConfig.dnsDefaultManage = dnsDefaultManage;
+  if (cloudflareZone !== undefined) updatedConfig.cloudflareZone = cloudflareZone;
+  if (route53Zone !== undefined) updatedConfig.route53Zone = route53Zone;
+  if (route53ZoneId !== undefined) updatedConfig.route53ZoneId = route53ZoneId;
+  if (route53Region !== undefined) updatedConfig.route53Region = route53Region;
+  if (digitalOceanDomain !== undefined) updatedConfig.digitalOceanDomain = digitalOceanDomain;
+  if (traefikApiUrl !== undefined) updatedConfig.traefikApiUrl = traefikApiUrl;
+  if (traefikApiUsername !== undefined) updatedConfig.traefikApiUsername = traefikApiUsername;
+  if (dockerSocket !== undefined) updatedConfig.dockerSocket = dockerSocket;
+  if (genericLabelPrefix !== undefined) updatedConfig.genericLabelPrefix = genericLabelPrefix;
+  if (traefikLabelPrefix !== undefined) updatedConfig.traefikLabelPrefix = traefikLabelPrefix;
+  if (managedHostnames !== undefined) updatedConfig.managedHostnames = managedHostnames;
+  if (preservedHostnames !== undefined) updatedConfig.preservedHostnames = preservedHostnames;
   if (apiTimeout !== undefined) updatedConfig.apiTimeout = apiTimeout;
   if (dnsCacheRefreshInterval !== undefined) updatedConfig.dnsCacheRefreshInterval = dnsCacheRefreshInterval;
   if (ipRefreshInterval !== undefined) updatedConfig.ipRefreshInterval = ipRefreshInterval;
@@ -262,6 +320,38 @@ const toggleOperationMode = asyncHandler(async (req, res) => {
 });
 
 /**
+ * @desc    Get all settings from database
+ * @route   GET /api/v1/config/settings
+ * @access  Private/Admin
+ */
+const getAllSettings = asyncHandler(async (req, res) => {
+  const database = require('../../../database');
+  
+  if (!database.isInitialized() || !database.repositories?.setting) {
+    throw new ApiError('Database not initialized', 500, 'DATABASE_NOT_INITIALIZED');
+  }
+  
+  try {
+    // Get all settings from database
+    const settings = await database.repositories.setting.getAll();
+    
+    res.json({
+      status: 'success',
+      data: {
+        settings,
+        count: Object.keys(settings).length
+      }
+    });
+  } catch (error) {
+    throw new ApiError(
+      `Failed to get settings: ${error.message}`,
+      500,
+      'SETTINGS_GET_ERROR'
+    );
+  }
+});
+
+/**
  * @desc    Get application status and metrics
  * @route   GET /api/v1/config/status
  * @access  Private
@@ -344,5 +434,6 @@ module.exports = {
   updateConfig,
   getProviderConfig,
   toggleOperationMode,
-  getAppStatus
+  getAppStatus,
+  getAllSettings
 };

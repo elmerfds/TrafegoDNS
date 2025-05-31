@@ -5,6 +5,7 @@ const { ApiError } = require('./errorMiddleware');
 const logger = require('../../../utils/logger');
 const User = require('../models/User');
 const jwtService = require('../services/jwtService');
+const { hasPermission, hasAnyPermission, hasAllPermissions } = require('../../../utils/permissions');
 
 /**
  * Middleware to authenticate JWT token
@@ -65,7 +66,57 @@ const authorize = (roles = []) => {
   };
 };
 
+/**
+ * Middleware to require specific permissions
+ * @param {Array|string} permissions - Permission(s) required to access the resource
+ * @param {boolean} requireAll - If true, user must have ALL permissions. If false, user needs ANY permission.
+ */
+const requirePermissions = (permissions = [], requireAll = false) => {
+  // Convert string to array
+  if (typeof permissions === 'string') {
+    permissions = [permissions];
+  }
+  
+  return (req, res, next) => {
+    if (!req.user) {
+      return next(new ApiError('Unauthorized', 401, 'AUTHENTICATION_REQUIRED'));
+    }
+    
+    const hasRequiredPermissions = requireAll 
+      ? hasAllPermissions(req.user.role, permissions)
+      : hasAnyPermission(req.user.role, permissions);
+    
+    if (!hasRequiredPermissions) {
+      logger.warn(`Permission check failed for user ${req.user.username} (${req.user.role}). Required permissions: ${permissions.join(', ')}`);
+      return next(new ApiError('Insufficient permissions', 403, 'INSUFFICIENT_PERMISSIONS'));
+    }
+    
+    next();
+  };
+};
+
+/**
+ * Middleware to check a single permission
+ * @param {string} permission - Permission required to access the resource
+ */
+const requirePermission = (permission) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return next(new ApiError('Unauthorized', 401, 'AUTHENTICATION_REQUIRED'));
+    }
+    
+    if (!hasPermission(req.user.role, permission)) {
+      logger.warn(`Permission check failed for user ${req.user.username} (${req.user.role}). Required permission: ${permission}`);
+      return next(new ApiError('Insufficient permissions', 403, 'INSUFFICIENT_PERMISSIONS'));
+    }
+    
+    next();
+  };
+};
+
 module.exports = {
   authenticate,
-  authorize
+  authorize,
+  requirePermission,
+  requirePermissions
 };

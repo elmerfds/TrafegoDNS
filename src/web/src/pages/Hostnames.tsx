@@ -37,6 +37,7 @@ import {
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
+import { usePermissions } from '@/hooks/usePermissions'
 
 const createHostnameSchema = z.object({
   hostname: z.string()
@@ -46,6 +47,7 @@ const createHostnameSchema = z.object({
 
 export function HostnamesPage() {
   const queryClient = useQueryClient()
+  const { canPerformAction } = usePermissions()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'managed' | 'preserved'>('all')
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -216,10 +218,12 @@ export function HostnamesPage() {
                   Preserved
                 </Button>
               </div>
-              <Button onClick={() => setIsCreateOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Preserved
-              </Button>
+              {canPerformAction('hostname.create') && (
+                <Button onClick={() => setIsCreateOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Preserved
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -241,7 +245,9 @@ export function HostnamesPage() {
                 <TableHead>Source</TableHead>
                 <TableHead>DNS Records</TableHead>
                 <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                {(canPerformAction('hostname.edit') || canPerformAction('hostname.delete')) && (
+                  <TableHead className="text-right">Actions</TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -263,52 +269,71 @@ export function HostnamesPage() {
                     <TableCell className="font-medium">{hostname.hostname}</TableCell>
                     <TableCell>{getTypeBadge(hostname.type)}</TableCell>
                     <TableCell>
-                      {hostname.containerName ? (
+                      {hostname.source ? (
+                        <div className="flex items-center gap-1">
+                          {hostname.source === 'traefik' && <Container className="h-3 w-3" />}
+                          {hostname.source === 'docker' && <Container className="h-3 w-3" />}
+                          {hostname.source === 'manual' && <Shield className="h-3 w-3" />}
+                          <span className="text-sm">
+                            {hostname.source === 'traefik' && 'Traefik'}
+                            {hostname.source === 'docker' && 'Docker Labels'}
+                            {hostname.source === 'manual' && 'Manual'}
+                            {hostname.source === 'preserved' && 'Preserved'}
+                            {!['traefik', 'docker', 'manual', 'preserved'].includes(hostname.source) && hostname.source}
+                          </span>
+                        </div>
+                      ) : hostname.containerName ? (
                         <div className="flex items-center gap-1">
                           <Container className="h-3 w-3" />
                           <span className="text-sm">{hostname.containerName}</span>
                         </div>
                       ) : (
-                        <span className="text-muted-foreground">Manual</span>
+                        <span className="text-muted-foreground">Unknown</span>
                       )}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">{hostname.recordCount} records</Badge>
                     </TableCell>
                     <TableCell>{new Date(hostname.createdAt).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => toggleTypeMutation.mutate({ 
-                            id: hostname.id, 
-                            currentType: hostname.type 
-                          })}
-                          disabled={toggleTypeMutation.isPending}
-                          title={`Switch to ${hostname.type === 'managed' ? 'preserved' : 'managed'}`}
-                        >
-                          {hostname.type === 'managed' ? (
-                            <ToggleLeft className="h-4 w-4" />
-                          ) : (
-                            <ToggleRight className="h-4 w-4" />
+                    {(canPerformAction('hostname.edit') || canPerformAction('hostname.delete')) && (
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          {canPerformAction('hostname.edit') && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => toggleTypeMutation.mutate({ 
+                                id: hostname.id, 
+                                currentType: hostname.type 
+                              })}
+                              disabled={toggleTypeMutation.isPending}
+                              title={`Switch to ${hostname.type === 'managed' ? 'preserved' : 'managed'}`}
+                            >
+                              {hostname.type === 'managed' ? (
+                                <ToggleLeft className="h-4 w-4" />
+                              ) : (
+                                <ToggleRight className="h-4 w-4" />
+                              )}
+                            </Button>
                           )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            if (confirm('Are you sure you want to delete this hostname?')) {
-                              deleteMutation.mutate(hostname.id)
-                            }
-                          }}
-                          disabled={deleteMutation.isPending || hostname.type === 'managed'}
-                          title={hostname.type === 'managed' ? 'Cannot delete managed hostnames' : 'Delete hostname'}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+                          {canPerformAction('hostname.delete') && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                if (confirm('Are you sure you want to delete this hostname?')) {
+                                  deleteMutation.mutate(hostname.id)
+                                }
+                              }}
+                              disabled={deleteMutation.isPending || hostname.type === 'managed'}
+                              title={hostname.type === 'managed' ? 'Cannot delete managed hostnames' : 'Delete hostname'}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))
               )}

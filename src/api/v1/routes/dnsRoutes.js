@@ -10,9 +10,14 @@ const {
   updateRecord,
   deleteRecord,
   getOrphanedRecords,
+  getOrphanedRecordsHistory,
+  deleteOrphanedHistoryRecord,
+  clearOrphanedHistory,
   runCleanup,
   refreshRecords,
-  processRecords
+  processRecords,
+  deleteExpiredOrphanedRecords,
+  forceDeleteOrphanedRecords
 } = require('../controllers/dnsController');
 const { authenticate, authorize } = require('../middleware/authMiddleware');
 const { writeLimiter } = require('../middleware/rateLimitMiddleware');
@@ -373,6 +378,171 @@ router.get('/orphaned', authenticate, getOrphanedRecords);
 
 /**
  * @swagger
+ * /dns/orphaned/history:
+ *  get:
+ *    summary: Get orphaned DNS records history
+ *    tags: [DNS]
+ *    security:
+ *      - BearerAuth: []
+ *    parameters:
+ *      - in: query
+ *        name: page
+ *        schema:
+ *          type: integer
+ *          minimum: 1
+ *          default: 1
+ *        description: Page number for pagination
+ *      - in: query
+ *        name: limit
+ *        schema:
+ *          type: integer
+ *          minimum: 1
+ *          maximum: 100
+ *          default: 50
+ *        description: Number of records per page
+ *    responses:
+ *      200:
+ *        description: Paginated list of historical orphaned DNS records
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                data:
+ *                  type: object
+ *                  properties:
+ *                    records:
+ *                      type: array
+ *                      items:
+ *                        type: object
+ *                        properties:
+ *                          id:
+ *                            type: string
+ *                          hostname:
+ *                            type: string
+ *                          type:
+ *                            type: string
+ *                          content:
+ *                            type: string
+ *                          ttl:
+ *                            type: number
+ *                          proxied:
+ *                            type: boolean
+ *                          provider:
+ *                            type: string
+ *                          orphanedAt:
+ *                            type: string
+ *                          isDeleted:
+ *                            type: boolean
+ *                    pagination:
+ *                      type: object
+ *                      properties:
+ *                        page:
+ *                          type: number
+ *                        limit:
+ *                          type: number
+ *                        total:
+ *                          type: number
+ *                        totalPages:
+ *                          type: number
+ *      401:
+ *        description: Not authenticated
+ *      500:
+ *        description: Server error
+ */
+router.get('/orphaned/history', authenticate, getOrphanedRecordsHistory);
+
+/**
+ * @swagger
+ * /dns/orphaned/history/{id}:
+ *  delete:
+ *    summary: Delete a single orphaned record from history
+ *    tags: [DNS]
+ *    security:
+ *      - BearerAuth: []
+ *    parameters:
+ *      - in: path
+ *        name: id
+ *        schema:
+ *          type: string
+ *        required: true
+ *        description: History record ID
+ *    responses:
+ *      200:
+ *        description: History record deleted successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                message:
+ *                  type: string
+ *                data:
+ *                  type: object
+ *                  properties:
+ *                    deletedRecord:
+ *                      type: object
+ *                      properties:
+ *                        id:
+ *                          type: string
+ *                        name:
+ *                          type: string
+ *                        type:
+ *                          type: string
+ *      401:
+ *        description: Not authenticated
+ *      403:
+ *        description: Insufficient permissions
+ *      404:
+ *        description: History record not found
+ *      500:
+ *        description: Server error
+ */
+router.delete('/orphaned/history/:id', authenticate, authorize(['admin', 'operator']), writeLimiter, deleteOrphanedHistoryRecord);
+
+/**
+ * @swagger
+ * /dns/orphaned/history:
+ *  delete:
+ *    summary: Clear all orphaned records history
+ *    tags: [DNS]
+ *    security:
+ *      - BearerAuth: []
+ *    responses:
+ *      200:
+ *        description: Orphaned records history cleared successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                message:
+ *                  type: string
+ *                data:
+ *                  type: object
+ *                  properties:
+ *                    deletedCount:
+ *                      type: number
+ *      401:
+ *        description: Not authenticated
+ *      403:
+ *        description: Insufficient permissions
+ *      500:
+ *        description: Server error
+ */
+router.delete('/orphaned/history', authenticate, authorize(['admin', 'operator']), writeLimiter, clearOrphanedHistory);
+
+/**
+ * @swagger
  * /dns/cleanup:
  *  post:
  *    summary: Run orphaned records cleanup
@@ -402,6 +572,39 @@ router.get('/orphaned', authenticate, getOrphanedRecords);
  *        description: Server error
  */
 router.post('/cleanup', authenticate, authorize(['admin', 'operator']), runCleanup);
+
+/**
+ * @swagger
+ * /dns/orphaned/delete-expired:
+ *  post:
+ *    summary: Delete expired orphaned records
+ *    description: Delete orphaned DNS records that have exceeded the grace period (regardless of app-managed status)
+ *    tags: [DNS]
+ *    security:
+ *      - BearerAuth: []
+ *    responses:
+ *      200:
+ *        description: Expired orphaned records deleted successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                message:
+ *                  type: string
+ *                data:
+ *                  type: object
+ *      401:
+ *        description: Not authenticated
+ *      403:
+ *        description: Insufficient permissions
+ *      500:
+ *        description: Server error
+ */
+router.post('/orphaned/delete-expired', authenticate, authorize(['admin', 'operator']), deleteExpiredOrphanedRecords);
 
 /**
  * @swagger
@@ -486,5 +689,63 @@ router.post('/refresh', authenticate, authorize(['admin', 'operator']), refreshR
  *        description: Server error
  */
 router.post('/process', authenticate, authorize(['admin', 'operator']), processRecords);
+
+/**
+ * @swagger
+ * /dns/orphaned/force-delete:
+ *  post:
+ *    summary: Force delete all orphaned records
+ *    description: Forcefully delete all orphaned DNS records from both provider and database, regardless of app-managed status
+ *    tags: [DNS]
+ *    security:
+ *      - BearerAuth: []
+ *    responses:
+ *      200:
+ *        description: Orphaned records force deleted successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                message:
+ *                  type: string
+ *                data:
+ *                  type: object
+ *                  properties:
+ *                    deleted:
+ *                      type: array
+ *                      items:
+ *                        type: object
+ *                        properties:
+ *                          name:
+ *                            type: string
+ *                          type:
+ *                            type: string
+ *                          id:
+ *                            type: string
+ *                    errors:
+ *                      type: array
+ *                      items:
+ *                        type: object
+ *                        properties:
+ *                          record:
+ *                            type: string
+ *                          error:
+ *                            type: string
+ *                    totalDeleted:
+ *                      type: number
+ *                    totalErrors:
+ *                      type: number
+ *      401:
+ *        description: Not authenticated
+ *      403:
+ *        description: Insufficient permissions (admin only)
+ *      500:
+ *        description: Server error
+ */
+router.post('/orphaned/force-delete', authenticate, authorize(['admin']), forceDeleteOrphanedRecords);
 
 module.exports = router;

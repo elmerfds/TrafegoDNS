@@ -77,6 +77,14 @@ class ManagedRecordsRepository {
   }
   
   /**
+   * Alias for tableExists() to match expected interface
+   * @returns {Promise<boolean>} - Whether the table exists
+   */
+  async checkTableExists() {
+    return this.tableExists();
+  }
+  
+  /**
    * Track a DNS record (add to managed records)
    * @param {string} provider - DNS provider name
    * @param {Object} record - Record to track
@@ -132,7 +140,20 @@ class ManagedRecordsRepository {
         now
       ]);
       
-      logger.debug(`Tracked record ${record.name} (${record.type}) with ID ${record.id} for provider ${provider}`);
+      logger.info(`💾 ManagedRecordsRepository: Successfully tracked record ${record.name} (${record.type}) with ID ${record.id} for provider ${provider} in SQLite`);
+      
+      // Debug: Verify the record was actually inserted
+      const verifyRecord = await this.db.get(`
+        SELECT * FROM ${this.tableName}
+        WHERE provider = ? AND record_id = ?
+      `, [provider, record.id]);
+      
+      if (verifyRecord) {
+        logger.debug(`✅ Verified record exists in database: ${verifyRecord.name} (orphaned: ${verifyRecord.is_orphaned})`);
+      } else {
+        logger.warn(`⚠️ Record was not found after insert: ${record.name}`);
+      }
+      
       return true;
     } catch (error) {
       logger.error(`Failed to track DNS record: ${error.message}`);
@@ -866,6 +887,141 @@ class ManagedRecordsRepository {
       metadata: metadata,
       isAppManaged: metadata && metadata.appManaged === true
     };
+  }
+  
+  /**
+   * Count managed records
+   * @param {Object} where - Where clause conditions
+   * @returns {Promise<number>} - Record count
+   */
+  async count(where = {}) {
+    try {
+      // Build WHERE clause
+      let whereClause = '';
+      const whereParams = [];
+      
+      if (Object.keys(where).length > 0) {
+        const conditions = [];
+        
+        if ('provider' in where) {
+          conditions.push('provider = ?');
+          whereParams.push(where.provider);
+        }
+        
+        if ('type' in where) {
+          conditions.push('type = ?');
+          whereParams.push(where.type);
+        }
+        
+        if ('is_orphaned' in where) {
+          if (where.is_orphaned === 0) {
+            // When looking for non-orphaned records, include NULL values
+            conditions.push('(is_orphaned = 0 OR is_orphaned IS NULL)');
+          } else {
+            conditions.push('is_orphaned = ?');
+            whereParams.push(where.is_orphaned);
+          }
+        }
+        
+        if ('name' in where) {
+          conditions.push('name = ?');
+          whereParams.push(where.name);
+        }
+        
+        whereClause = 'WHERE ' + conditions.join(' AND ');
+      }
+      
+      const sql = `SELECT COUNT(*) as count FROM ${this.tableName} ${whereClause}`;
+      logger.debug(`Executing count query: ${sql} with params: ${JSON.stringify(whereParams)}`);
+      
+      const result = await this.db.get(sql, whereParams);
+      logger.debug(`Count query result: ${JSON.stringify(result)}`);
+      
+      return result ? result.count : 0;
+    } catch (error) {
+      logger.error(`Failed to count managed records: ${error.message}`);
+      return 0;
+    }
+  }
+
+  /**
+   * Find all managed records
+   * @param {Object} options - Query options
+   * @returns {Promise<Array>} - Array of managed records
+   */
+  async findAll(options = {}) {
+    try {
+      const { where = {}, orderBy, limit, offset } = options;
+      
+      // Build WHERE clause
+      let whereClause = '';
+      const whereParams = [];
+      
+      if (Object.keys(where).length > 0) {
+        const conditions = [];
+        
+        if ('provider' in where) {
+          conditions.push('provider = ?');
+          whereParams.push(where.provider);
+        }
+        
+        if ('type' in where) {
+          conditions.push('type = ?');
+          whereParams.push(where.type);
+        }
+        
+        if ('is_orphaned' in where) {
+          if (where.is_orphaned === 0) {
+            // When looking for non-orphaned records, include NULL values
+            conditions.push('(is_orphaned = 0 OR is_orphaned IS NULL)');
+          } else {
+            conditions.push('is_orphaned = ?');
+            whereParams.push(where.is_orphaned);
+          }
+        }
+        
+        if ('name' in where) {
+          conditions.push('name = ?');
+          whereParams.push(where.name);
+        }
+        
+        whereClause = 'WHERE ' + conditions.join(' AND ');
+      }
+      
+      // Build ORDER BY clause
+      let orderByClause = '';
+      if (orderBy) {
+        orderByClause = `ORDER BY ${orderBy}`;
+      } else {
+        orderByClause = 'ORDER BY name ASC';
+      }
+      
+      // Build LIMIT and OFFSET
+      let limitClause = '';
+      if (limit && !isNaN(limit)) {
+        limitClause = `LIMIT ${parseInt(limit)}`;
+        
+        if (offset && !isNaN(offset)) {
+          limitClause += ` OFFSET ${parseInt(offset)}`;
+        }
+      }
+      
+      // Build the query
+      const sql = `
+        SELECT * FROM ${this.tableName}
+        ${whereClause}
+        ${orderByClause}
+        ${limitClause}
+      `;
+      
+      const records = await this.db.all(sql, whereParams);
+      
+      // Format the records
+      return records.map(record => this._formatRecordFromDb(record));
+    } catch (error) {
+      logger.error(`Failed to find all managed records: ${error.message}`);
+      return [];
+    }
   }
   
   /**

@@ -34,6 +34,8 @@ import { useToast } from '@/components/ui/use-toast'
 import { Loader2, Trash2, RotateCcw, Search, Clock, AlertTriangle } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
+import { usePermissions } from '@/hooks/usePermissions'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 interface OrphanedRecord {
   id: string
@@ -44,7 +46,24 @@ interface OrphanedRecord {
   ttl: number
   proxied?: boolean
   orphanedAt: string
-  orphanedTime: number
+  orphanedTime: number | null
+}
+
+interface OrphanedHistoryRecord {
+  id: string
+  historyId: number
+  hostname: string
+  type: string
+  content: string
+  ttl: number
+  proxied?: boolean
+  provider: string
+  orphanedAt: string
+  deletedAt: string
+  gracePeriodSeconds: number
+  deletionReason: string
+  createdAt: string
+  metadata: any
 }
 
 interface OrphanedSettings {
@@ -55,7 +74,10 @@ interface OrphanedSettings {
 export function OrphanedRecordsPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
+  const { canPerformAction } = usePermissions()
   const [searchTerm, setSearchTerm] = useState('')
+  const [historySearchTerm, setHistorySearchTerm] = useState('')
+  const [historyPage, setHistoryPage] = useState(1)
 
   const { data: records, isLoading } = useQuery({
     queryKey: ['orphaned-records'],
@@ -66,7 +88,9 @@ export function OrphanedRecordsPage() {
         ...record,
         hostname: record.name,
         orphanedAt: record.orphanedSince || '',
-        orphanedTime: record.elapsedMinutes ? record.elapsedMinutes * 60 : 0 // Convert minutes to seconds
+        orphanedTime: record.elapsedMinutes !== null && record.elapsedMinutes !== undefined 
+          ? record.elapsedMinutes * 60  // Convert minutes to seconds
+          : null // Keep null to indicate unknown
       })) as OrphanedRecord[]
     },
   })
@@ -76,6 +100,14 @@ export function OrphanedRecordsPage() {
     queryFn: async () => {
       const response = await api.get('/hostnames/orphaned/settings')
       return response.data.data.settings as OrphanedSettings
+    },
+  })
+
+  const { data: historyData, isLoading: isHistoryLoading } = useQuery({
+    queryKey: ['orphaned-history', historyPage],
+    queryFn: async () => {
+      const response = await api.get(`/dns/orphaned/history?page=${historyPage}&limit=20`)
+      return response.data.data
     },
   })
 
@@ -101,9 +133,31 @@ export function OrphanedRecordsPage() {
     },
   })
 
+  const deleteRecordMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await api.delete(`/dns/records/${id}`)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orphaned-records'] })
+      queryClient.invalidateQueries({ queryKey: ['dns-records'] })
+      toast({
+        title: 'Record deleted',
+        description: 'The DNS record has been deleted successfully.',
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Delete failed',
+        description: error.response?.data?.error || 'Failed to delete record',
+        variant: 'destructive',
+      })
+    },
+  })
+
   const cleanupMutation = useMutation({
     mutationFn: async () => {
-      const response = await api.post('/dns/cleanup')
+      const response = await api.post('/dns/orphaned/delete-expired')
       return response.data
     },
     onSuccess: (data) => {
@@ -111,13 +165,35 @@ export function OrphanedRecordsPage() {
       queryClient.invalidateQueries({ queryKey: ['dns-records'] })
       toast({
         title: 'Cleanup completed',
-        description: `Removed ${data.data.deletedCount || 0} orphaned records.`,
+        description: `Removed ${data.data.totalDeleted || 0} orphaned records.`,
       })
     },
     onError: (error: any) => {
       toast({
         title: 'Cleanup failed',
         description: error.response?.data?.error || 'Failed to cleanup records',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const forceDeleteMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/dns/orphaned/force-delete')
+      return response.data
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['orphaned-records'] })
+      queryClient.invalidateQueries({ queryKey: ['dns-records'] })
+      toast({
+        title: 'Force delete completed',
+        description: `Forcefully removed ${data.data.totalDeleted || 0} orphaned records.`,
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Force delete failed',
+        description: error.response?.data?.error || 'Failed to force delete records',
         variant: 'destructive',
       })
     },
@@ -144,6 +220,48 @@ export function OrphanedRecordsPage() {
     },
   })
 
+  const deleteHistoryRecordMutation = useMutation({
+    mutationFn: async (historyId: number) => {
+      const response = await api.delete(`/dns/orphaned/history/${historyId}`)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orphaned-history'] })
+      toast({
+        title: 'History record deleted',
+        description: 'The orphaned record history entry has been deleted.',
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Delete failed',
+        description: error.response?.data?.error || 'Failed to delete history record',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const clearHistoryMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.delete('/dns/orphaned/history')
+      return response.data
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['orphaned-history'] })
+      toast({
+        title: 'History cleared',
+        description: `Successfully deleted ${data.data.deletedCount} history records.`,
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Clear failed',
+        description: error.response?.data?.error || 'Failed to clear history',
+        variant: 'destructive',
+      })
+    },
+  })
+
   const filteredRecords = records?.filter((record) => {
     if (!searchTerm) return true
     const term = searchTerm.toLowerCase()
@@ -155,12 +273,56 @@ export function OrphanedRecordsPage() {
     )
   })
 
-  const formatTimeAgo = (seconds: number) => {
-    if (!seconds || seconds === 0) return 'Unknown'
+  const filteredHistoryRecords = historyData?.records?.filter((record: OrphanedHistoryRecord) => {
+    if (!historySearchTerm) return true
+    const term = historySearchTerm.toLowerCase()
+    return (
+      record.hostname.toLowerCase().includes(term) ||
+      record.type.toLowerCase().includes(term) ||
+      record.content.toLowerCase().includes(term)
+    )
+  })
+
+  const formatTimeAgo = (seconds: number | null) => {
+    if (seconds === null || seconds === undefined) return 'Unknown'
+    if (seconds === 0) return 'Just now'
     if (seconds < 60) return `${seconds}s ago`
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
     return `${Math.floor(seconds / 86400)}d ago`
+  }
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'Unknown'
+    try {
+      return new Date(dateString).toLocaleString()
+    } catch {
+      return 'Invalid date'
+    }
+  }
+
+  const formatTimeRemaining = (elapsedSeconds: number | null, gracePeriodSeconds: number) => {
+    if (elapsedSeconds === null || elapsedSeconds === undefined) return 'Unknown'
+    
+    const remainingSeconds = gracePeriodSeconds - elapsedSeconds
+    
+    if (remainingSeconds <= 0) {
+      return <Badge variant="destructive">Ready for deletion</Badge>
+    }
+    
+    if (remainingSeconds < 60) {
+      return <Badge variant="destructive">{remainingSeconds}s</Badge>
+    }
+    
+    if (remainingSeconds < 3600) {
+      const minutes = Math.floor(remainingSeconds / 60)
+      const seconds = remainingSeconds % 60
+      return <Badge variant="destructive">{minutes}m {seconds}s</Badge>
+    }
+    
+    const hours = Math.floor(remainingSeconds / 3600)
+    const minutes = Math.floor((remainingSeconds % 3600) / 60)
+    return <Badge variant="secondary">{hours}h {minutes}m</Badge>
   }
 
   if (isLoading) {
@@ -182,29 +344,70 @@ export function OrphanedRecordsPage() {
             DNS records that are no longer associated with active containers
           </p>
         </div>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="destructive" disabled={orphanedRecords.length === 0}>
-              <Trash2 className="mr-2 h-4 w-4" />
-              Cleanup All
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Cleanup Orphaned Records</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will permanently delete all orphaned DNS records that have exceeded
-                the grace period. This action cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => cleanupMutation.mutate()}>
-                Cleanup Records
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <div className="flex gap-2">
+          {canPerformAction('orphaned.cleanup') && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={orphanedRecords.length === 0}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Cleanup All
+                </Button>
+              </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Cleanup Orphaned Records</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete all orphaned DNS records that have exceeded
+                  the grace period. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => cleanupMutation.mutate()}>
+                  Cleanup Records
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+            </AlertDialog>
+          )}
+          
+          {canPerformAction('orphaned.forceDelete') && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={orphanedRecords.length === 0}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Force Delete All
+                </Button>
+              </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Force Delete All Orphaned Records</AlertDialogTitle>
+                <AlertDialogDescription className="space-y-2">
+                  <p>
+                    This will <strong>forcefully delete ALL orphaned DNS records</strong> regardless 
+                    of grace period or app-managed status.
+                  </p>
+                  <p className="text-destructive font-semibold">
+                    ⚠️ WARNING: This action bypasses all safety checks and cannot be undone!
+                  </p>
+                  <p>
+                    Use this only when records are stuck and won't delete through normal cleanup.
+                  </p>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={() => forceDeleteMutation.mutate()}
+                  className="bg-destructive hover:bg-destructive/90"
+                >
+                  Force Delete All Records
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
       </div>
 
       {/* Settings Card */}
@@ -235,12 +438,12 @@ export function OrphanedRecordsPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="grace-period">Grace Period (seconds)</Label>
+            <Label htmlFor="grace-period">Grace Period (minutes)</Label>
             <div className="flex items-center space-x-2">
               <Input
                 id="grace-period"
                 type="number"
-                value={settings?.cleanupGracePeriod || 3600}
+                value={settings?.cleanupGracePeriod || 15}
                 onChange={(e) =>
                   updateSettingsMutation.mutate({
                     ...settings!,
@@ -250,21 +453,28 @@ export function OrphanedRecordsPage() {
                 className="w-32"
               />
               <span className="text-sm text-muted-foreground">
-                ({Math.floor((settings?.cleanupGracePeriod || 3600) / 60)} minutes)
+                ({(settings?.cleanupGracePeriod || 15) * 60} seconds)
               </span>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Records Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Orphaned Records</CardTitle>
-          <CardDescription>
-            {orphanedRecords.length} record{orphanedRecords.length !== 1 ? 's' : ''} found
-          </CardDescription>
-        </CardHeader>
+      {/* Records Tables with Tabs */}
+      <Tabs defaultValue="current" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="current">Current Orphaned Records</TabsTrigger>
+          <TabsTrigger value="history">Orphaned Records History</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="current">
+          <Card>
+            <CardHeader>
+              <CardTitle>Current Orphaned Records</CardTitle>
+              <CardDescription>
+                {orphanedRecords.length} record{orphanedRecords.length !== 1 ? 's' : ''} currently in grace period or ready for cleanup
+              </CardDescription>
+            </CardHeader>
         <CardContent>
           <div className="mb-4">
             <div className="relative">
@@ -287,13 +497,16 @@ export function OrphanedRecordsPage() {
                   <TableHead>Content</TableHead>
                   <TableHead>TTL</TableHead>
                   <TableHead>Orphaned</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>Time Remaining</TableHead>
+                  {canPerformAction('orphaned.delete') && (
+                    <TableHead className="text-right">Actions</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {orphanedRecords.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       No orphaned records found
                     </TableCell>
                   </TableRow>
@@ -303,7 +516,7 @@ export function OrphanedRecordsPage() {
                       <TableCell>
                         <div className="flex items-center space-x-2">
                           <span className="font-medium">{record.hostname}</span>
-                          {record.orphanedTime < (settings?.cleanupGracePeriod || 3600) && (
+                          {record.orphanedTime !== null && record.orphanedTime < ((settings?.cleanupGracePeriod || 15) * 60) && (
                             <Badge variant="secondary" className="text-xs">
                               <Clock className="mr-1 h-3 w-3" />
                               In Grace Period
@@ -324,24 +537,251 @@ export function OrphanedRecordsPage() {
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => restoreMutation.mutate(record.id)}
-                          disabled={restoreMutation.isPending}
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                        </Button>
+                      <TableCell>
+                        {formatTimeRemaining(record.orphanedTime, (settings?.cleanupGracePeriod || 15) * 60)}
                       </TableCell>
+                      {canPerformAction('orphaned.delete') && (
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => restoreMutation.mutate(record.id)}
+                              disabled={restoreMutation.isPending}
+                              title="Restore record"
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  disabled={deleteRecordMutation.isPending}
+                                  title="Delete record"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete DNS Record</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to delete this DNS record? This will remove it from your DNS provider and cannot be undone.
+                                  <br /><br />
+                                  <strong>Record:</strong> {record.hostname} ({record.type})
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => deleteRecordMutation.mutate(record.id)}>
+                                  Delete Record
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}
               </TableBody>
             </Table>
           </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="history">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Orphaned Records History</CardTitle>
+                  <CardDescription>
+                    {historyData?.pagination?.total || 0} historical orphaned records (showing page {historyPage} of {historyData?.pagination?.totalPages || 1})
+                  </CardDescription>
+                </div>
+                {canPerformAction('/dns') && historyData?.pagination?.total > 0 && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm">
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Clear All History
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Clear All History?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will permanently delete all {historyData?.pagination?.total || 0} orphaned records history entries.
+                          This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => clearHistoryMutation.mutate()}
+                          disabled={clearHistoryMutation.isPending}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          {clearHistoryMutation.isPending && (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          )}
+                          Clear All History
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search history..."
+                    value={historySearchTerm}
+                    onChange={(e) => setHistorySearchTerm(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+
+              {isHistoryLoading ? (
+                <div className="flex items-center justify-center h-32">
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Hostname</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Content</TableHead>
+                        <TableHead>TTL</TableHead>
+                        <TableHead>Provider</TableHead>
+                        <TableHead>Orphaned At</TableHead>
+                        <TableHead>Deleted At</TableHead>
+                        <TableHead>Reason</TableHead>
+                        {canPerformAction('/dns') && <TableHead className="w-[100px]">Actions</TableHead>}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredHistoryRecords?.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={canPerformAction('/dns') ? 9 : 8} className="text-center py-8 text-muted-foreground">
+                            No orphaned records history found
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredHistoryRecords?.map((record: OrphanedHistoryRecord) => (
+                          <TableRow key={record.historyId}>
+                            <TableCell>
+                              <span className="font-medium">{record.hostname}</span>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{record.type}</Badge>
+                            </TableCell>
+                            <TableCell className="max-w-xs truncate">{record.content}</TableCell>
+                            <TableCell>{record.ttl}s</TableCell>
+                            <TableCell>
+                              <Badge variant="secondary">{record.provider}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm text-muted-foreground">
+                                {formatDate(record.orphanedAt)}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm text-muted-foreground">
+                                {formatDate(record.deletedAt)}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm">
+                                {record.deletionReason}
+                              </div>
+                            </TableCell>
+                            {canPerformAction('/dns') && (
+                              <TableCell>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      size="sm"
+                                      variant="destructive"
+                                      disabled={deleteHistoryRecordMutation.isPending}
+                                      title="Delete history record"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete History Record</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Are you sure you want to delete this history record? This will permanently remove it from the history.
+                                        <br /><br />
+                                        <strong>Record:</strong> {record.hostname} ({record.type})
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => deleteHistoryRecordMutation.mutate(record.historyId)}
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      >
+                                        Delete History Record
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+
+              {/* Pagination for history */}
+              {historyData?.pagination && historyData.pagination.totalPages > 1 && (
+                <div className="flex items-center justify-between space-x-2 py-4">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {((historyPage - 1) * 20) + 1} to {Math.min(historyPage * 20, historyData.pagination.total)} of {historyData.pagination.total} records
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setHistoryPage(Math.max(1, historyPage - 1))}
+                      disabled={historyPage <= 1}
+                    >
+                      Previous
+                    </Button>
+                    <div className="text-sm font-medium">
+                      Page {historyPage} of {historyData.pagination.totalPages}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setHistoryPage(Math.min(historyData.pagination.totalPages, historyPage + 1))}
+                      disabled={historyPage >= historyData.pagination.totalPages}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

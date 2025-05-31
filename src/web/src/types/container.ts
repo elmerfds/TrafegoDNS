@@ -15,6 +15,10 @@ export interface Container {
     mode: string
     ipAddress?: string
   }
+  compose?: {
+    project?: string | null
+    service?: string | null
+  }
   created: string
   started?: string
 }

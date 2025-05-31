@@ -10,13 +10,16 @@ import { SettingsPage } from '@/pages/Settings'
 import { UsersPage } from '@/pages/Users'
 import { ProfilePage } from '@/pages/Profile'
 import { OrphanedRecordsPage } from '@/pages/OrphanedRecords'
+import { LogsPage } from '@/pages/Logs'
 import { Toaster } from '@/components/ui/toaster'
+import { ThemeProvider } from '@/components/theme-provider'
+import { ProtectedRoute } from '@/components/ProtectedRoute'
 
 function App() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
 
   return (
-    <>
+    <ThemeProvider defaultTheme="dark" storageKey="trafegodns-theme">
       <Router>
         <Routes>
           <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/" />} />
@@ -28,15 +31,24 @@ function App() {
             <Route path="dns-records" element={<DNSRecordsPage />} />
             <Route path="containers" element={<ContainersPage />} />
             <Route path="hostnames" element={<HostnamesPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="users" element={<UsersPage />} />
+            <Route path="settings" element={
+              <ProtectedRoute path="/settings">
+                <SettingsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="users" element={
+              <ProtectedRoute path="/users">
+                <UsersPage />
+              </ProtectedRoute>
+            } />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="orphaned-records" element={<OrphanedRecordsPage />} />
+            <Route path="logs" element={<LogsPage />} />
           </Route>
         </Routes>
       </Router>
       <Toaster />
-    </>
+    </ThemeProvider>
   )
 }
 

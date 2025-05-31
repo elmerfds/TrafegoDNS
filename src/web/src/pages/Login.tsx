@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { AlertCircle } from 'lucide-react'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 const loginSchema = z.object({
   username: z.string().min(1, 'Username is required'),
@@ -58,12 +59,17 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
-      <Card className="w-full max-w-md">
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
+      <Card className="w-full max-w-md login-card">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold">Login to TrafegoDNS</CardTitle>
-          <CardDescription>
-            Enter your credentials to access the dashboard
-          </CardDescription>
+          <div className="flex justify-center mb-4">
+            <img src="/assets/logo.svg" alt="TrafegoDNS Logo" className="h-32 w-32" />
+          </div>
+          <div className="flex justify-center">
+            <img src="/assets/trafegodns-header.svg" alt="TrafegoDNS" className="h-12" />
+          </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

@@ -20,25 +20,33 @@ import {
   User,
   Menu,
   AlertTriangle,
+  FileText,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
+import { ThemeToggle } from '@/components/theme-toggle'
+import { usePermissions } from '@/hooks/usePermissions'
 
 const navigation = [
-  { name: 'Dashboard', href: '/', icon: Home },
-  { name: 'DNS Records', href: '/dns-records', icon: Globe },
-  { name: 'Orphaned Records', href: '/orphaned-records', icon: AlertTriangle },
-  { name: 'Containers', href: '/containers', icon: Container },
-  { name: 'Hostnames', href: '/hostnames', icon: Link2 },
-  { name: 'Settings', href: '/settings', icon: Settings },
-  { name: 'Users', href: '/users', icon: Users },
+  { name: 'Dashboard', href: '/', icon: Home, path: '/' },
+  { name: 'DNS Records', href: '/dns-records', icon: Globe, path: '/dns' },
+  { name: 'Orphaned Records', href: '/orphaned-records', icon: AlertTriangle, path: '/orphaned' },
+  { name: 'Containers', href: '/containers', icon: Container, path: '/containers' },
+  { name: 'Hostnames', href: '/hostnames', icon: Link2, path: '/hostnames' },
+  { name: 'Logs', href: '/logs', icon: FileText, path: '/logs' },
+  { name: 'Settings', href: '/settings', icon: Settings, path: '/settings' },
+  { name: 'Users', href: '/users', icon: Users, path: '/users' },
 ]
 
 export function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
+  const { canAccessPage } = usePermissions()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  
+  // Filter navigation items based on user permissions
+  const filteredNavigation = navigation.filter(item => canAccessPage(item.path))
 
   const handleLogout = () => {
     logout()
@@ -54,38 +62,41 @@ export function Layout() {
           sidebarOpen ? 'left-0' : '-left-72'
         )}
       >
-        <div className="flex grow flex-col gap-y-5 overflow-y-auto border-r bg-card px-6 pb-4">
-          <div className="flex h-16 shrink-0 items-center">
-            <h1 className="text-2xl font-bold text-primary">TrafegoDNS</h1>
+        <div className="flex grow flex-col gap-y-5 overflow-y-auto border-r bg-card pb-4">
+          <div className="flex h-16 shrink-0 items-center justify-between px-6">
+            <div className="flex items-center gap-x-3">
+              <img src="/assets/logo.svg" alt="TrafegoDNS Logo" className="h-12 w-12" />
+              <img src="/assets/trafegodns-header.svg" alt="TrafegoDNS" className="h-8" />
+            </div>
           </div>
-          <nav className="flex flex-1 flex-col">
-            <ul role="list" className="flex flex-1 flex-col gap-y-7">
-              <li>
-                <ul role="list" className="-mx-2 space-y-1">
-                  {navigation.map((item) => {
-                    const isActive = location.pathname === item.href
-                    return (
-                      <li key={item.name}>
-                        <Link
-                          to={item.href}
-                          className={cn(
-                            'group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold',
-                            isActive
-                              ? 'bg-accent text-accent-foreground'
-                              : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                          )}
-                          onClick={() => setSidebarOpen(false)}
-                        >
-                          <item.icon className="h-5 w-5 shrink-0" />
-                          {item.name}
-                        </Link>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </li>
-            </ul>
-          </nav>
+          <div className="px-6">
+            <nav className="flex flex-1 flex-col">
+              <ul role="list" className="flex flex-1 flex-col gap-y-7">
+                <li>
+                  <ul role="list" className="-mx-2 space-y-1">
+                    {filteredNavigation.map((item) => {
+                      const isActive = location.pathname === item.href
+                      return (
+                        <li key={item.name}>
+                          <Link
+                            to={item.href}
+                            className={cn(
+                              'group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold nav-link',
+                              isActive && 'active'
+                            )}
+                            onClick={() => setSidebarOpen(false)}
+                          >
+                            <item.icon className="h-5 w-5 shrink-0" />
+                            {item.name}
+                          </Link>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </li>
+              </ul>
+            </nav>
+          </div>
         </div>
       </div>
 
@@ -112,6 +123,7 @@ export function Layout() {
           <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6">
             <div className="flex flex-1" />
             <div className="flex items-center gap-x-4 lg:gap-x-6">
+              <ThemeToggle />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon">

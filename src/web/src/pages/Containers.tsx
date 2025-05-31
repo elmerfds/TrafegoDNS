@@ -32,26 +32,52 @@ import {
   Globe,
   Tag
 } from 'lucide-react'
+import { usePermissions } from '@/hooks/usePermissions'
+import { cn } from '@/lib/utils'
 
 export function ContainersPage() {
   const queryClient = useQueryClient()
+  const { canPerformAction } = usePermissions()
   const [search, setSearch] = useState('')
   const [selectedContainer, setSelectedContainer] = useState<Container | null>(null)
 
   // Fetch containers
   const { data: containersResponse, isLoading, error } = useQuery({
-    queryKey: ['containers', search],
+    queryKey: ['containers'],
     queryFn: async () => {
       const params = new URLSearchParams()
-      if (search) params.append('search', search)
-      params.append('limit', '50')
+      params.append('limit', '100')
       
       const response = await api.get(`/containers?${params}`)
       return response.data
     },
   })
 
-  const data = containersResponse?.data
+  // Filter containers client-side based on search
+  const filteredContainers = containersResponse?.data?.containers?.filter((container: Container) => {
+    if (!search) return true
+    const searchLower = search.toLowerCase()
+    
+    // Search in container name
+    if (container.name.toLowerCase().includes(searchLower)) return true
+    
+    // Search in image name
+    if (container.image.toLowerCase().includes(searchLower)) return true
+    
+    // Search in hostnames
+    if (container.hostnames?.some(h => h.toLowerCase().includes(searchLower))) return true
+    
+    // Search in compose project/service
+    if (container.compose?.project?.toLowerCase().includes(searchLower)) return true
+    if (container.compose?.service?.toLowerCase().includes(searchLower)) return true
+    
+    return false
+  }) || []
+
+  const data = {
+    ...containersResponse?.data,
+    containers: filteredContainers
+  }
 
   // Listen for real-time updates
   useSocketEvent('container:started', () => {
@@ -201,18 +227,20 @@ export function ContainersPage() {
                         >
                           View Details
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => refreshMutation.mutate(container.id)}
-                          disabled={refreshMutation.isPending}
-                          title="Refresh DNS records"
-                        >
-                          <RefreshCw className={cn(
-                            "h-4 w-4",
-                            refreshMutation.isPending && "animate-spin"
-                          )} />
-                        </Button>
+                        {canPerformAction('container.sync') && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => refreshMutation.mutate(container.id)}
+                            disabled={refreshMutation.isPending}
+                            title="Refresh DNS records"
+                          >
+                            <RefreshCw className={cn(
+                              "h-4 w-4",
+                              refreshMutation.isPending && "animate-spin"
+                            )} />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -359,8 +387,4 @@ export function ContainersPage() {
       )}
     </div>
   )
-}
-
-function cn(...inputs: any[]) {
-  return inputs.filter(Boolean).join(' ')
 }

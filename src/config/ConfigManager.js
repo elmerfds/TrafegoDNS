@@ -17,14 +17,36 @@ class ConfigManager {
       lastCheck: 0
     };
     
+    // Store original environment values
+    this._envConfig = {};
+    
+    // Initialize with environment variables first
+    this._loadFromEnvironment();
+    
+    // Flag to track if we've loaded from database
+    this._dbLoaded = false;
+  }
+  
+  /**
+   * Load configuration from environment variables
+   * This serves as the default/fallback configuration
+   */
+  _loadFromEnvironment() {
     // Operation mode - traefik or direct
     this.operationMode = EnvironmentLoader.getString('OPERATION_MODE', 'traefik');
+    this._envConfig.operationMode = this.operationMode;
 
     // Managed Hostname management
-    this.managedHostnames = EnvironmentLoader.getString('MANAGED_HOSTNAMES', '');    
+    this.managedHostnames = EnvironmentLoader.getString('MANAGED_HOSTNAMES', '');
+    this._envConfig.managedHostnames = this.managedHostnames;
+    
+    // Preserved Hostnames (protected from cleanup)
+    this.preservedHostnames = EnvironmentLoader.getString('PRESERVED_HOSTNAMES', '');
+    this._envConfig.preservedHostnames = this.preservedHostnames;
 
     // DNS Provider configuration
     this.dnsProvider = EnvironmentLoader.getString('DNS_PROVIDER', 'cloudflare');
+    this._envConfig.dnsProvider = this.dnsProvider;
     
     // Provider-specific settings
     // Cloudflare settings
@@ -42,9 +64,20 @@ class ConfigManager {
     this.digitalOceanToken = EnvironmentLoader.getSecret('DO_TOKEN');
     this.digitalOceanDomain = EnvironmentLoader.getString('DO_DOMAIN');
     
+    // Store environment config for all settings
+    this._storeEnvConfig();
+    
     // Validate required settings based on provider
     this.validateProviderConfig();
     
+    // Load all configuration from environment before database override
+    this._loadRemainingEnvironmentConfig();
+  }
+  
+  /**
+   * Load remaining configuration from environment variables
+   */
+  _loadRemainingEnvironmentConfig() {
     // Traefik API settings
     this.traefikApiUrl = EnvironmentLoader.getString('TRAEFIK_API_URL', 'http://traefik:8080/api');
     this.traefikApiUsername = EnvironmentLoader.getString('TRAEFIK_API_USERNAME');
@@ -52,11 +85,17 @@ class ConfigManager {
     
     // Label prefixes
     this.genericLabelPrefix = EnvironmentLoader.getString('DNS_LABEL_PREFIX', 'dns.');
-    this.dnsLabelPrefix = `${this.genericLabelPrefix}${this.dnsProvider}.`;
+    // If the generic label prefix already contains the provider name, don't duplicate it
+    if (this.genericLabelPrefix.includes(this.dnsProvider)) {
+      this.dnsLabelPrefix = this.genericLabelPrefix;
+    } else {
+      this.dnsLabelPrefix = `${this.genericLabelPrefix}${this.dnsProvider}.`;
+    }
     this.traefikLabelPrefix = EnvironmentLoader.getString('TRAEFIK_LABEL_PREFIX', 'traefik.');
     
     // Global DNS defaults
     this.defaultRecordType = EnvironmentLoader.getString('DNS_DEFAULT_TYPE', 'CNAME');
+    this.defaultType = this.defaultRecordType; // alias for consistency
     // Don't call getProviderDomain() here as it's not ready yet - set it later
     this.defaultContent = EnvironmentLoader.getString('DNS_DEFAULT_CONTENT', '');
     this.defaultProxied = EnvironmentLoader.getBool('DNS_DEFAULT_PROXIED', true);
@@ -133,7 +172,9 @@ class ConfigManager {
     this.cleanupGracePeriod = EnvironmentLoader.getInt('CLEANUP_GRACE_PERIOD', 15); // Default to 60 minutes
     
     // Cache refresh interval in milliseconds (default: 1 hour)
-    this.cacheRefreshInterval = EnvironmentLoader.getInt('DNS_CACHE_REFRESH_INTERVAL', 3600000);
+    this.dnsCacheRefreshInterval = EnvironmentLoader.getInt('DNS_CACHE_REFRESH_INTERVAL', 3600000);
+    // Keep backwards compatibility
+    this.cacheRefreshInterval = this.dnsCacheRefreshInterval;
 
     // API request timeout in milliseconds (default: 1 minute)
     this.apiTimeout = EnvironmentLoader.getInt('API_TIMEOUT', 60000);    
@@ -163,6 +204,303 @@ class ConfigManager {
     if (this.ipRefreshInterval > 0) {
       setInterval(() => this.updatePublicIPs(), this.ipRefreshInterval);
     }
+  }
+  
+  /**
+   * Store all configuration values in _envConfig for database persistence
+   */
+  _storeEnvConfig() {
+    // Application settings
+    this._envConfig.pollInterval = this.pollInterval;
+    this._envConfig.watchDockerEvents = this.watchDockerEvents;
+    this._envConfig.cleanupOrphaned = this.cleanupOrphaned;
+    this._envConfig.cleanupGracePeriod = this.cleanupGracePeriod;
+    this._envConfig.managedHostnames = this.managedHostnames;
+    this._envConfig.preservedHostnames = this.preservedHostnames;
+    
+    // DNS settings
+    this._envConfig.dnsLabelPrefix = this.dnsLabelPrefix;
+    this._envConfig.dnsDefaultType = this.defaultRecordType;
+    this._envConfig.dnsDefaultContent = this.defaultContent;
+    this._envConfig.dnsDefaultProxied = this.defaultProxied;
+    this._envConfig.dnsDefaultTTL = this.defaultTTL;
+    this._envConfig.dnsDefaultManage = this.defaultManage;
+    
+    // Provider-specific settings (non-sensitive only)
+    this._envConfig.cloudflareZone = this.cloudflareZone;
+    this._envConfig.route53Zone = this.route53Zone;
+    this._envConfig.route53ZoneId = this.route53ZoneId;
+    this._envConfig.route53Region = this.route53Region;
+    this._envConfig.digitalOceanDomain = this.digitalOceanDomain;
+    
+    // Traefik settings
+    this._envConfig.traefikApiUrl = this.traefikApiUrl;
+    this._envConfig.traefikApiUsername = this.traefikApiUsername;
+    
+    // Docker settings
+    this._envConfig.dockerSocket = this.dockerSocket;
+    
+    // Cache settings
+    this._envConfig.dnsCacheRefreshInterval = this.dnsCacheRefreshInterval;
+    this._envConfig.ipRefreshInterval = this.ipRefreshInterval;
+    
+    // Network settings
+    this._envConfig.apiTimeout = this.apiTimeout;
+    
+    // Label settings
+    this._envConfig.genericLabelPrefix = this.genericLabelPrefix;
+    this._envConfig.traefikLabelPrefix = this.traefikLabelPrefix;
+  }
+  
+  /**
+   * Load configuration from database, using environment as fallback
+   */
+  async loadFromDatabase() {
+    try {
+      const database = require('../database');
+      
+      // Check if database is initialized
+      if (!database.isInitialized() || !database.repositories?.setting) {
+        logger.debug('Database not ready, using environment configuration only');
+        return;
+      }
+      
+      // Get all settings from database
+      const dbSettings = await database.repositories.setting.getAll();
+      
+      // If no settings in database, save current environment config
+      if (Object.keys(dbSettings).length === 0) {
+        logger.info('No settings found in database, saving environment configuration');
+        await this.saveToDatabase();
+        return;
+      }
+      
+      // Apply database settings over environment defaults
+      this._applySettings(dbSettings);
+      this._dbLoaded = true;
+      
+      logger.info('Configuration loaded from database successfully');
+    } catch (error) {
+      logger.error(`Failed to load configuration from database: ${error.message}`);
+      // Continue with environment configuration
+    }
+  }
+  
+  /**
+   * Save current configuration to database
+   */
+  async saveToDatabase() {
+    try {
+      const database = require('../database');
+      
+      // Check if database is initialized
+      if (!database.isInitialized() || !database.repositories?.setting) {
+        logger.warn('Database not ready, cannot save configuration');
+        return { success: false, error: 'Database not initialized' };
+      }
+      
+      // Prepare settings to save (exclude sensitive data)
+      const settingsToSave = {
+        // Application settings
+        operationMode: this.operationMode,
+        pollInterval: this.pollInterval,
+        watchDockerEvents: this.watchDockerEvents,
+        cleanupOrphaned: this.cleanupOrphaned,
+        cleanupGracePeriod: this.cleanupGracePeriod,
+        
+        // DNS settings
+        dnsProvider: this.dnsProvider,
+        dnsLabelPrefix: this.dnsLabelPrefix,
+        dnsDefaultType: this.defaultRecordType,
+        dnsDefaultContent: this.defaultContent,
+        dnsDefaultProxied: this.defaultProxied,
+        dnsDefaultTTL: this.defaultTTL,
+        dnsDefaultManage: this.defaultManage,
+        
+        // Provider domains (non-sensitive)
+        cloudflareZone: this.cloudflareZone,
+        route53Zone: this.route53Zone,
+        route53ZoneId: this.route53ZoneId,
+        route53Region: this.route53Region,
+        digitalOceanDomain: this.digitalOceanDomain,
+        
+        // Traefik settings (without password)
+        traefikApiUrl: this.traefikApiUrl,
+        traefikApiUsername: this.traefikApiUsername,
+        
+        // Docker settings
+        dockerSocket: this.dockerSocket,
+        
+        // Cache settings
+        dnsCacheRefreshInterval: this.dnsCacheRefreshInterval,
+        ipRefreshInterval: this.ipRefreshInterval,
+        
+        // Network settings
+        apiTimeout: this.apiTimeout,
+        
+        // Label settings
+        genericLabelPrefix: this.genericLabelPrefix,
+        traefikLabelPrefix: this.traefikLabelPrefix,
+        
+        // Managed hostnames
+        managedHostnames: this.managedHostnames,
+        preservedHostnames: this.preservedHostnames,
+        
+        // Record type defaults
+        recordDefaults: this.recordDefaults
+      };
+      
+      // Save all settings
+      await database.repositories.setting.setMany(settingsToSave);
+      
+      logger.info('Configuration saved to database successfully');
+      return { success: true };
+    } catch (error) {
+      logger.error(`Failed to save configuration to database: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  /**
+   * Apply settings from database over current configuration
+   */
+  _applySettings(settings) {
+    // Only apply settings that exist in database
+    if (settings.operationMode !== undefined) this.operationMode = settings.operationMode;
+    if (settings.pollInterval !== undefined) this.pollInterval = settings.pollInterval;
+    if (settings.watchDockerEvents !== undefined) this.watchDockerEvents = settings.watchDockerEvents;
+    if (settings.cleanupOrphaned !== undefined) this.cleanupOrphaned = settings.cleanupOrphaned;
+    if (settings.cleanupGracePeriod !== undefined) this.cleanupGracePeriod = settings.cleanupGracePeriod;
+    
+    // DNS settings
+    if (settings.dnsProvider !== undefined) this.dnsProvider = settings.dnsProvider;
+    if (settings.dnsLabelPrefix !== undefined) {
+      // If the saved dnsLabelPrefix already contains the provider name, use it as-is
+      if (settings.dnsLabelPrefix.includes(this.dnsProvider)) {
+        this.dnsLabelPrefix = settings.dnsLabelPrefix;
+        // Extract the generic prefix (remove provider part)
+        this.genericLabelPrefix = settings.dnsLabelPrefix.replace(`${this.dnsProvider}.`, '');
+      } else {
+        this.genericLabelPrefix = settings.dnsLabelPrefix;
+        this.dnsLabelPrefix = `${this.genericLabelPrefix}${this.dnsProvider}.`;
+      }
+    }
+    if (settings.dnsDefaultType !== undefined) {
+      this.defaultRecordType = settings.dnsDefaultType;
+      this.defaultType = this.defaultRecordType; // alias for consistency
+    }
+    if (settings.dnsDefaultContent !== undefined) this.defaultContent = settings.dnsDefaultContent;
+    if (settings.dnsDefaultProxied !== undefined) this.defaultProxied = settings.dnsDefaultProxied;
+    if (settings.dnsDefaultTTL !== undefined) this.defaultTTL = settings.dnsDefaultTTL;
+    if (settings.dnsDefaultManage !== undefined) this.defaultManage = settings.dnsDefaultManage;
+    
+    // Provider domains
+    if (settings.cloudflareZone !== undefined) this.cloudflareZone = settings.cloudflareZone;
+    if (settings.route53Zone !== undefined) this.route53Zone = settings.route53Zone;
+    if (settings.route53ZoneId !== undefined) this.route53ZoneId = settings.route53ZoneId;
+    if (settings.route53Region !== undefined) this.route53Region = settings.route53Region;
+    if (settings.digitalOceanDomain !== undefined) this.digitalOceanDomain = settings.digitalOceanDomain;
+    
+    // Traefik settings
+    if (settings.traefikApiUrl !== undefined) this.traefikApiUrl = settings.traefikApiUrl;
+    if (settings.traefikApiUsername !== undefined) this.traefikApiUsername = settings.traefikApiUsername;
+    
+    // Other settings
+    if (settings.dockerSocket !== undefined) this.dockerSocket = settings.dockerSocket;
+    if (settings.dnsCacheRefreshInterval !== undefined) {
+      this.dnsCacheRefreshInterval = settings.dnsCacheRefreshInterval;
+      this.cacheRefreshInterval = this.dnsCacheRefreshInterval; // backwards compatibility
+    }
+    if (settings.ipRefreshInterval !== undefined) this.ipRefreshInterval = settings.ipRefreshInterval;
+    if (settings.apiTimeout !== undefined) this.apiTimeout = settings.apiTimeout;
+    if (settings.genericLabelPrefix !== undefined) this.genericLabelPrefix = settings.genericLabelPrefix;
+    if (settings.traefikLabelPrefix !== undefined) this.traefikLabelPrefix = settings.traefikLabelPrefix;
+    if (settings.managedHostnames !== undefined) this.managedHostnames = settings.managedHostnames;
+    if (settings.preservedHostnames !== undefined) this.preservedHostnames = settings.preservedHostnames;
+    
+    // Apply record defaults if present
+    if (settings.recordDefaults !== undefined && typeof settings.recordDefaults === 'object') {
+      this.recordDefaults = { ...this.recordDefaults, ...settings.recordDefaults };
+    }
+  }
+  
+  /**
+   * Update configuration and persist to database
+   */
+  async updateConfig(updates) {
+    try {
+      // Store previous config for comparison
+      const previousConfig = {
+        operationMode: this.operationMode,
+        pollInterval: this.pollInterval,
+        watchDockerEvents: this.watchDockerEvents,
+        cleanupOrphaned: this.cleanupOrphaned,
+        cleanupGracePeriod: this.cleanupGracePeriod
+      };
+      
+      // Apply updates
+      this._applySettings(updates);
+      
+      // Save to database
+      const saveResult = await this.saveToDatabase();
+      
+      if (!saveResult.success) {
+        // Revert changes if save failed
+        this._applySettings(previousConfig);
+        return { 
+          success: false, 
+          error: saveResult.error || 'Failed to save configuration' 
+        };
+      }
+      
+      // Determine if restart is required
+      const requiresRestart = (
+        updates.operationMode !== undefined && updates.operationMode !== previousConfig.operationMode ||
+        updates.dockerSocket !== undefined ||
+        updates.traefikApiUrl !== undefined ||
+        updates.dnsProvider !== undefined
+      );
+      
+      return {
+        success: true,
+        previousConfig,
+        requiresRestart
+      };
+    } catch (error) {
+      logger.error(`Failed to update configuration: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  /**
+   * Get all configuration as a plain object (for API responses)
+   */
+  toJSON() {
+    return {
+      operationMode: this.operationMode,
+      pollInterval: this.pollInterval,
+      watchDockerEvents: this.watchDockerEvents,
+      cleanupOrphaned: this.cleanupOrphaned,
+      cleanupGracePeriod: this.cleanupGracePeriod,
+      dnsProvider: this.dnsProvider,
+      dnsLabelPrefix: this.dnsLabelPrefix,
+      dnsDefaultType: this.defaultRecordType,
+      dnsDefaultContent: this.defaultContent,
+      dnsDefaultProxied: this.defaultProxied,
+      dnsDefaultTTL: this.defaultTTL,
+      dnsDefaultManage: this.defaultManage,
+      domain: this.getProviderDomain(),
+      publicIP: this.getPublicIPSync(),
+      publicIPv6: this.getPublicIPv6Sync(),
+      ipRefreshInterval: this.ipRefreshInterval,
+      traefikApiUrl: this.traefikApiUrl,
+      dockerSocket: this.dockerSocket,
+      dnsCacheRefreshInterval: this.cacheRefreshInterval,
+      apiTimeout: this.apiTimeout,
+      managedHostnames: this.managedHostnames,
+      recordDefaults: this.recordDefaults,
+      dbLoaded: this._dbLoaded
+    };
   }
   
   /**

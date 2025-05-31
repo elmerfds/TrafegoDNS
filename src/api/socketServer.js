@@ -111,6 +111,27 @@ class SocketServer {
       clientId: socket.id,
       timestamp: new Date().toISOString()
     });
+    
+    // Handle log subscription
+    socket.on('subscribe:logs', (options = {}) => {
+      const client = this.socketClients.get(socket.id);
+      if (client) {
+        client.subscribedToLogs = true;
+        client.logLevel = options.level || 'info';
+        socket.join('log-subscribers');
+        logger.debug(`Client ${socket.id} subscribed to logs (level: ${client.logLevel})`);
+      }
+    });
+    
+    // Handle log unsubscription
+    socket.on('unsubscribe:logs', () => {
+      const client = this.socketClients.get(socket.id);
+      if (client) {
+        client.subscribedToLogs = false;
+        socket.leave('log-subscribers');
+        logger.debug(`Client ${socket.id} unsubscribed from logs`);
+      }
+    });
   }
   
   /**
@@ -175,6 +196,25 @@ class SocketServer {
     if (recipientCount > 0) {
       logger.debug(`Broadcasted ${eventType} event to ${recipientCount} clients`);
     }
+  }
+  
+  /**
+   * Broadcast a log message to subscribed clients
+   * @param {Object} logData - Log data to broadcast
+   */
+  broadcastLog(logData) {
+    const logLevels = {
+      error: 0,
+      warn: 1,
+      info: 2,
+      debug: 3,
+      trace: 4
+    };
+    
+    this.io.to('log-subscribers').emit('log', {
+      timestamp: new Date().toISOString(),
+      ...logData
+    });
   }
 }
 

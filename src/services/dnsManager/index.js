@@ -1132,7 +1132,9 @@ class DNSManager {
           );
           
           if (trackingSuccessful) {
-            logger.debug(`Tracked record ${record.name} (${record.type}) in repository`);
+            logger.info(`✅ Successfully tracked record ${record.name} (${record.type}) in repository with appManaged=${isAppManaged}`);
+          } else {
+            logger.warn(`⚠️ Failed to track record ${record.name} (${record.type}) in repository`);
           }
         } catch (repoError) {
           logger.debug(`Repository tracking failed, falling back to legacy tracker: ${repoError.message}`);

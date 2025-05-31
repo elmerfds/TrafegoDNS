@@ -1,9 +1,33 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Activity, Globe, Container, Link2 } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { 
+  Activity, 
+  Globe, 
+  Container, 
+  Link2, 
+  Clock,
+  Server,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
+  TrendingUp,
+  TrendingDown,
+  Shield,
+  Cpu,
+  HardDrive
+} from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+import { Button } from '@/components/ui/button'
+import { useNavigate } from 'react-router-dom'
+import { formatDistanceToNow } from 'date-fns'
+import { RecentActivity } from '@/components/RecentActivity'
 
 export function DashboardPage() {
+  const navigate = useNavigate()
+  
   const { data: statusResponse } = useQuery({
     queryKey: ['status'],
     queryFn: async () => {
@@ -13,7 +37,27 @@ export function DashboardPage() {
     refetchInterval: 5000, // Refresh every 5 seconds
   })
 
+  const { data: orphanedResponse } = useQuery({
+    queryKey: ['orphaned-summary'],
+    queryFn: async () => {
+      const response = await api.get('/dns/orphaned?limit=5')
+      return response.data
+    },
+    refetchInterval: 10000, // Refresh every 10 seconds
+  })
+
+  const { data: metricsResponse } = useQuery({
+    queryKey: ['metrics'],
+    queryFn: async () => {
+      const response = await api.get('/status/metrics')
+      return response.data
+    },
+    refetchInterval: 5000,
+  })
+
   const status = statusResponse?.data
+  const orphaned = orphanedResponse?.data
+  const metrics = metricsResponse?.data
 
   const stats = [
     {
@@ -86,10 +130,202 @@ export function DashboardPage() {
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Uptime</span>
-            <span className="font-medium">{status?.uptime || 'N/A'}</span>
+            <span className="font-medium">
+              {status?.uptime ? formatUptime(status.uptime) : 'N/A'}
+            </span>
           </div>
         </CardContent>
       </Card>
+
+      {/* Service Status */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Service Status</CardTitle>
+            <CardDescription>Current status of core services</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {status?.services?.dnsProvider && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-muted-foreground" />
+                  <span>DNS Provider ({status.services.dnsProvider.type})</span>
+                </div>
+                <Badge variant={status.services.dnsProvider.status === 'active' ? 'default' : 'secondary'}>
+                  {status.services.dnsProvider.status}
+                </Badge>
+              </div>
+            )}
+            {status?.services?.dockerMonitor && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Container className="h-4 w-4 text-muted-foreground" />
+                  <span>Docker Monitor</span>
+                </div>
+                <Badge 
+                  variant={status.services.dockerMonitor.status === 'connected' ? 'default' : 'destructive'}
+                >
+                  {status.services.dockerMonitor.status}
+                </Badge>
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Shield className="h-4 w-4 text-muted-foreground" />
+                <span>API Server</span>
+              </div>
+              <Badge variant="default">active</Badge>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* System Resources */}
+        {metrics && (
+          <Card>
+            <CardHeader>
+              <CardTitle>System Resources</CardTitle>
+              <CardDescription>Current resource utilization</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <HardDrive className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">Memory Usage</span>
+                  </div>
+                  <span className="text-sm font-medium">
+                    {formatBytes(metrics.system.memory.used)} / {formatBytes(metrics.system.memory.total)}
+                  </span>
+                </div>
+                <Progress 
+                  value={(metrics.system.memory.used / metrics.system.memory.total) * 100} 
+                  className="h-2"
+                />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Cpu className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">CPU Load (1m avg)</span>
+                  </div>
+                  <span className="text-sm font-medium">
+                    {metrics.system.cpu.load[0].toFixed(2)}
+                  </span>
+                </div>
+                <Progress 
+                  value={Math.min((metrics.system.cpu.load[0] / metrics.system.cpu.cores) * 100, 100)} 
+                  className="h-2"
+                />
+              </div>
+              <div className="text-xs text-muted-foreground pt-2">
+                Process Memory: {formatBytes(metrics.process.memory.heapUsed)} / {formatBytes(metrics.process.memory.heapTotal)}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Orphaned Records Alert */}
+      {orphaned && orphaned.count > 0 && (
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Orphaned Records Detected</AlertTitle>
+          <AlertDescription className="space-y-2">
+            <p>
+              There are {orphaned.count} orphaned DNS records that may need attention.
+            </p>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => navigate('/orphaned-records')}
+            >
+              View Orphaned Records
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Quick Stats and Recent Activity */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Quick Stats</CardTitle>
+            <CardDescription>Overview of your DNS management</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Record Distribution</p>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Active Records</span>
+                    <span className="font-medium">{status?.statistics?.totalRecords || 0}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Orphaned Records</span>
+                    <span className="font-medium text-orange-600">{orphaned?.count || 0}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Container Status</p>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Monitored</span>
+                    <span className="font-medium">{status?.statistics?.totalContainers || 0}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">With DNS Labels</span>
+                    <span className="font-medium">{status?.statistics?.totalHostnames || 0}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Configuration</p>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Mode</span>
+                    <Badge variant="outline">{status?.mode || 'N/A'}</Badge>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Provider</span>
+                    <Badge variant="outline">{status?.provider || 'N/A'}</Badge>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <RecentActivity />
+      </div>
     </div>
   )
+}
+
+// Helper functions
+function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86400)
+  const hours = Math.floor((seconds % 86400) / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  
+  const parts = []
+  if (days > 0) parts.push(`${days}d`)
+  if (hours > 0) parts.push(`${hours}h`)
+  if (minutes > 0) parts.push(`${minutes}m`)
+  
+  return parts.join(' ') || '< 1m'
+}
+
+function formatBytes(bytes: number): string {
+  const units = ['B', 'KB', 'MB', 'GB']
+  let i = 0
+  let value = bytes
+  
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024
+    i++
+  }
+  
+  return `${value.toFixed(1)} ${units[i]}`
 }

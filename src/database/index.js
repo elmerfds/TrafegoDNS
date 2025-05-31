@@ -8,6 +8,8 @@ const { migrateDnsTables } = require('./migrations/dnsTablesMigration');
 const { addLastRefreshedToProviderCache } = require('./migrations/addLastRefreshedToProviderCache');
 const { ensureLastRefreshedColumn } = require('./migrations/ensureLastRefreshedColumn');
 const { fixSqliteConstraints } = require('./migrations/fixSqliteConstraints');
+const { createOrphanedRecordsHistory } = require('./migrations/createOrphanedRecordsHistory');
+const { up: ensureOrphanedAtColumn } = require('./migrations/ensureOrphanedAtColumn');
 
 // Import repositories
 const UserRepository = require('./repository/userRepository');
@@ -168,6 +170,26 @@ async function initialize(migrate = true, options = {}) {
               logger.info('Applied SQLite constraint fixes');
             } catch (constraintError) {
               logger.error(`Failed to fix SQLite constraints: ${constraintError.message}`);
+            }
+          })(),
+          
+          // Create orphaned records history table
+          (async () => {
+            try {
+              await createOrphanedRecordsHistory(db);
+              logger.info('Orphaned records history table ready');
+            } catch (historyError) {
+              logger.error(`Failed to create orphaned records history table: ${historyError.message}`);
+            }
+          })(),
+          
+          // Ensure orphaned_at column exists
+          (async () => {
+            try {
+              await ensureOrphanedAtColumn(db);
+              logger.info('Ensured orphaned_at column exists in dns_tracked_records table');
+            } catch (orphanedAtError) {
+              logger.error(`Failed to ensure orphaned_at column: ${orphanedAtError.message}`);
             }
           })()
         ]);

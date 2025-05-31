@@ -173,6 +173,12 @@ async function startApiServer(port, config, eventBus, callback) {
   if (eventBus) {
     socketServer = new SocketServer(server, eventBus, config);
     logger.info('WebSocket server initialized for real-time updates');
+    
+    // Connect logger to socket server for log streaming
+    if (logger.setSocketServer) {
+      logger.setSocketServer(socketServer);
+      logger.info('Logger connected to WebSocket server for real-time log streaming');
+    }
   }
 
   // Start the server

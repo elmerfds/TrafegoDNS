@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { 
   Plus, 
   Pencil, 
@@ -43,6 +44,7 @@ import {
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
+import { usePermissions } from '@/hooks/usePermissions'
 
 const recordTypes = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA'] as const
 
@@ -56,6 +58,7 @@ const createRecordSchema = z.object({
 
 export function DNSRecordsPage() {
   const queryClient = useQueryClient()
+  const { canPerformAction } = usePermissions()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'managed' | 'orphaned'>('all')
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -66,8 +69,9 @@ export function DNSRecordsPage() {
     queryKey: ['dns-records', search, filter],
     queryFn: async () => {
       const params = new URLSearchParams()
-      if (search) params.append('search', search)
-      if (filter !== 'all') params.append('filter', filter)
+      if (search) params.append('name', search)
+      if (filter === 'managed') params.append('managed', 'true')
+      if (filter === 'orphaned') params.append('managed', 'false')
       params.append('limit', '50')
       
       const response = await api.get(`/dns/records?${params}`)
@@ -192,10 +196,12 @@ export function DNSRecordsPage() {
                   <SelectItem value="orphaned">Orphaned</SelectItem>
                 </SelectContent>
               </Select>
-              <Button onClick={() => setIsCreateOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Record
-              </Button>
+              {canPerformAction('dns.create') && (
+                <Button onClick={() => setIsCreateOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Record
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -218,7 +224,9 @@ export function DNSRecordsPage() {
                 <TableHead>Content</TableHead>
                 <TableHead>TTL</TableHead>
                 <TableHead>Provider</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                {(canPerformAction('dns.edit') || canPerformAction('dns.delete')) && (
+                  <TableHead className="text-right">Actions</TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -244,41 +252,47 @@ export function DNSRecordsPage() {
                     </TableCell>
                     <TableCell className="font-medium">{record.hostname}</TableCell>
                     <TableCell>
-                      <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                      <Badge variant="secondary" className="text-white">
                         {record.type}
-                      </span>
+                      </Badge>
                     </TableCell>
                     <TableCell className="max-w-xs truncate" title={record.content}>
                       {record.content}
                     </TableCell>
                     <TableCell>{record.ttl}s</TableCell>
                     <TableCell>{record.provider}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setEditingRecord(record)}
-                          disabled={record.isManaged}
-                          title={record.isManaged ? 'Cannot edit managed records' : 'Edit record'}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            if (confirm('Are you sure you want to delete this record?')) {
-                              deleteMutation.mutate(record.id)
-                            }
-                          }}
-                          disabled={record.isManaged || deleteMutation.isPending}
-                          title={record.isManaged ? 'Cannot delete managed records' : 'Delete record'}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+                    {(canPerformAction('dns.edit') || canPerformAction('dns.delete')) && (
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          {canPerformAction('dns.edit') && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setEditingRecord(record)}
+                              disabled={record.isManaged}
+                              title={record.isManaged ? 'Cannot edit managed records' : 'Edit record'}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {canPerformAction('dns.delete') && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                if (confirm('Are you sure you want to delete this record?')) {
+                                  deleteMutation.mutate(record.id)
+                                }
+                              }}
+                              disabled={record.isManaged || deleteMutation.isPending}
+                              title={record.isManaged ? 'Cannot delete managed records' : 'Delete record'}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))
               )}

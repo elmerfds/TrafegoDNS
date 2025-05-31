@@ -85,6 +85,13 @@ const getRecords = asyncHandler(async (req, res) => {
       const isManaged = managed === 'true';
       formattedRecords = formattedRecords.filter(record => record.isManaged === isManaged);
     }
+    
+    // Sort by creation date (newest first) by default
+    formattedRecords.sort((a, b) => {
+      const dateA = new Date(a.updatedAt || a.createdAt);
+      const dateB = new Date(b.updatedAt || b.createdAt);
+      return dateB.getTime() - dateA.getTime();
+    });
 
     // Get pagination parameters
     const paginationParams = getPaginationParams(req.query);
@@ -482,6 +489,44 @@ const deleteRecord = asyncHandler(async (req, res) => {
       record = records.find(r => r.id === recordId);
     }
     
+    // If still not found, check orphaned records in database
+    if (!record) {
+      logger.info(`Record ${recordId} not found in cache, checking database for orphaned records...`);
+      const database = require('../../../database');
+      if (database && database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.managedRecords) {
+        try {
+          // Try to find in managed records by provider record ID
+          const managedRecords = await database.repositories.dnsManager.managedRecords.findAll();
+          logger.info(`Found ${managedRecords.length} total managed records in database`);
+          
+          const orphanedRecord = managedRecords.find(r => {
+            const matches = (r.providerId === recordId || r.record_id === recordId);
+            if (matches) {
+              logger.info(`Found matching record: ${r.name} (${r.type}) - orphaned: ${r.is_orphaned}, isOrphaned: ${r.isOrphaned}`);
+            }
+            return matches;
+          });
+          
+          if (orphanedRecord) {
+            logger.info(`Found orphaned record in database: ${orphanedRecord.name}`);
+            record = {
+              id: orphanedRecord.providerId || orphanedRecord.record_id,
+              type: orphanedRecord.type,
+              name: orphanedRecord.name,
+              content: orphanedRecord.content,
+              provider: orphanedRecord.provider
+            };
+          } else {
+            logger.warn(`No matching record found in database for ID: ${recordId}`);
+          }
+        } catch (dbError) {
+          logger.error(`Failed to check orphaned records: ${dbError.message}`);
+        }
+      } else {
+        logger.warn('Database repositories not available to check for orphaned records');
+      }
+    }
+    
     if (!record) {
       throw new ApiError(`Record with ID ${recordId} not found`, 404, 'RECORD_NOT_FOUND');
     }
@@ -511,17 +556,54 @@ const deleteRecord = asyncHandler(async (req, res) => {
         logger.warn(`State action failed, falling back to direct provider: ${stateError.message}`);
         
         // Delete directly
-        await DNSManager.dnsProvider.deleteRecord(recordId);
+        try {
+          await DNSManager.dnsProvider.deleteRecord(recordId);
+        } catch (deleteError) {
+          // If the record doesn't exist at provider, that's OK - continue to untrack
+          logger.warn(`Provider delete failed (record may already be gone): ${deleteError.message}`);
+        }
         
-        // Untrack the record
-        DNSManager.recordTracker.untrackRecord(record);
+        // Untrack the record regardless
+        await DNSManager.recordTracker.untrackRecord(record);
       }
     } else {
       // Delete directly
-      await DNSManager.dnsProvider.deleteRecord(recordId);
+      try {
+        await DNSManager.dnsProvider.deleteRecord(recordId);
+      } catch (deleteError) {
+        // If the record doesn't exist at provider, that's OK - continue to untrack
+        logger.warn(`Provider delete failed (record may already be gone): ${deleteError.message}`);
+      }
       
-      // Untrack the record
-      DNSManager.recordTracker.untrackRecord(record);
+      // Untrack the record regardless
+      await DNSManager.recordTracker.untrackRecord(record);
+    }
+    
+    // Also remove from managed records if it exists there
+    const database = require('../../../database');
+    if (database && database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.managedRecords) {
+      try {
+        await database.repositories.dnsManager.managedRecords.untrackRecord(
+          record.provider || DNSManager.config.dnsProvider,
+          recordId
+        );
+        logger.info(`Removed record from managed records database`);
+      } catch (dbError) {
+        logger.warn(`Failed to remove from managed records: ${dbError.message}`);
+      }
+    }
+    
+    // Also ensure the record is removed from the provider cache
+    if (database && database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.providerCache) {
+      try {
+        await database.repositories.dnsManager.providerCache.deleteRecord(
+          record.provider || DNSManager.config.dnsProvider,
+          recordId
+        );
+        logger.info(`Removed record from provider cache`);
+      } catch (cacheError) {
+        logger.warn(`Failed to remove from provider cache: ${cacheError.message}`);
+      }
     }
     
     res.json({
@@ -535,6 +617,104 @@ const deleteRecord = asyncHandler(async (req, res) => {
   } catch (error) {
     logger.error(`Error deleting DNS record: ${error.message}`);
     throw new ApiError(`Failed to delete DNS record: ${error.message}`, 500, 'DNS_DELETE_ERROR');
+  }
+});
+
+/**
+ * @desc    Get orphaned DNS records history
+ * @route   GET /api/v1/dns/orphaned/history
+ * @access  Private
+ */
+const getOrphanedRecordsHistory = asyncHandler(async (req, res) => {
+  // Get database from the database module
+  const database = require('../../../database');
+  
+  if (!database.isInitialized() || !database.db) {
+    throw new ApiError('Database not initialized', 500, 'DB_NOT_INITIALIZED');
+  }
+  
+  try {
+    // Get pagination parameters
+    const { page = 1, limit = 50 } = req.query;
+    const offset = (page - 1) * limit;
+    
+    // Query for historical orphaned records from the dedicated history table
+    const historyQuery = `
+      SELECT 
+        id,
+        provider,
+        record_id,
+        type,
+        name,
+        content,
+        ttl,
+        proxied,
+        orphaned_at,
+        deleted_at,
+        grace_period_seconds,
+        deletion_reason,
+        metadata,
+        created_at
+      FROM orphaned_records_history 
+      ORDER BY deleted_at DESC
+      LIMIT ? OFFSET ?
+    `;
+    
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM orphaned_records_history
+    `;
+    
+    const [records, countResult] = await Promise.all([
+      database.db.all(historyQuery, [limit, offset]),
+      database.db.get(countQuery)
+    ]);
+    
+    // Format the records
+    const formattedRecords = records.map(record => {
+      let metadata = {};
+      try {
+        metadata = record.metadata ? JSON.parse(record.metadata) : {};
+      } catch (e) {
+        metadata = {};
+      }
+      
+      return {
+        id: record.record_id,
+        historyId: record.id,
+        hostname: record.name,
+        type: record.type,
+        content: record.content,
+        ttl: record.ttl,
+        proxied: Boolean(record.proxied),
+        provider: record.provider,
+        orphanedAt: record.orphaned_at,
+        deletedAt: record.deleted_at,
+        gracePeriodSeconds: record.grace_period_seconds,
+        deletionReason: record.deletion_reason,
+        createdAt: record.created_at,
+        metadata: metadata
+      };
+    });
+    
+    const total = countResult ? countResult.total : 0;
+    const totalPages = Math.ceil(total / limit);
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        records: formattedRecords,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          totalPages
+        }
+      }
+    });
+  } catch (error) {
+    logger.error(`Error getting orphaned records history: ${error.message}`);
+    throw new ApiError('Failed to get orphaned records history', 500, 'ORPHANED_HISTORY_ERROR');
   }
 });
 
@@ -553,28 +733,82 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
   }
   
   try {
-    // Get orphaned records
+    // Get orphaned records from database
     let orphanedRecords = [];
     
-    // Get all records from cache
-    const allRecords = await DNSManager.dnsProvider.getRecordsFromCache(true);
-    
-    // Filter to only orphaned records using the record tracker
-    for (const record of allRecords) {
-      const isTracked = await DNSManager.recordTracker.isTracked(record);
-      if (isTracked) {
-        const isOrphaned = await DNSManager.recordTracker.isRecordOrphaned(record);
-        if (isOrphaned) {
-          orphanedRecords.push(record);
+    // Check if database repository is available
+    const database = require('../../../database');
+    if (database && database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.managedRecords) {
+      // Get orphaned records directly from database
+      const provider = DNSManager.config.dnsProvider;
+      const dbOrphanedRecords = await database.repositories.dnsManager.managedRecords.getRecords(provider, { isOrphaned: true });
+      
+      // Get current records from provider to verify they still exist
+      const providerRecords = await DNSManager.dnsProvider.getRecordsFromCache(true);
+      const providerRecordIds = new Set(providerRecords.map(r => r.id));
+      
+      // Filter out records that no longer exist at the provider
+      orphanedRecords = dbOrphanedRecords.filter(record => {
+        const recordId = record.providerId || record.record_id;
+        if (!providerRecordIds.has(recordId)) {
+          logger.debug(`Orphaned record ${record.name} (ID: ${recordId}) no longer exists at provider, excluding from results`);
+          return false;
+        }
+        return true;
+      });
+      
+      // Update orphaned_at for any records that don't have it
+      for (const record of orphanedRecords) {
+        // Check both camelCase and snake_case versions
+        const hasOrphanedAt = record.orphanedAt || record.orphaned_at;
+        const isOrphaned = record.isOrphaned || record.is_orphaned;
+        
+        if (!hasOrphanedAt && isOrphaned) {
+          logger.warn(`Orphaned record ${record.name} has no orphaned_at timestamp, setting to current time`);
+          const now = new Date().toISOString();
+          await database.repositories.dnsManager.managedRecords.db.run(`
+            UPDATE dns_tracked_records 
+            SET orphaned_at = ? 
+            WHERE provider = ? AND record_id = ?
+          `, [now, provider, record.providerId || record.record_id]);
+          // Update both formats for consistency
+          record.orphanedAt = now;
+          record.orphaned_at = now;
+        }
+      }
+    } else {
+      // Fallback to old method using cache and tracker
+      const allRecords = await DNSManager.dnsProvider.getRecordsFromCache(true);
+      
+      // Filter to only orphaned records using the record tracker
+      for (const record of allRecords) {
+        const isTracked = await DNSManager.recordTracker.isTracked(record);
+        if (isTracked) {
+          const isOrphaned = await DNSManager.recordTracker.isRecordOrphaned(record);
+          if (isOrphaned) {
+            orphanedRecords.push(record);
+          }
         }
       }
     }
     
     // Format records
     const formattedRecords = await Promise.all(orphanedRecords.map(async record => {
-      // Get when it was marked as orphaned - getRecordOrphanedTime returns a string or null
-      const orphanedTime = record.orphanedSince || await DNSManager.recordTracker.getRecordOrphanedTime(record);
-      let formattedTime = orphanedTime; // It's already a string (ISO timestamp) or null
+      // Get when it was marked as orphaned
+      let formattedTime = null;
+      
+      // If record has orphaned_at from database, use it
+      // Note: The database repository returns this as 'orphanedAt' (camelCase)
+      if (record.orphanedAt) {
+        formattedTime = record.orphanedAt;
+      } else if (record.orphaned_at) {
+        formattedTime = record.orphaned_at;
+      } else if (record.orphanedSince) {
+        formattedTime = record.orphanedSince;
+      } else if (DNSManager.recordTracker) {
+        // Fallback to tracker
+        formattedTime = await DNSManager.recordTracker.getRecordOrphanedTime(record);
+      }
       
       // Get grace period info
       const gracePeriod = DNSManager.config.cleanupGracePeriod || 15; // Default 15 minutes
@@ -594,12 +828,12 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
       const remainingMinutes = elapsedMinutes !== null ? Math.max(0, gracePeriod - elapsedMinutes) : null;
       
       return {
-        id: record.id,
+        id: record.providerId || record.record_id || record.id,
         type: record.type,
         name: record.name,
         content: record.content || record.data || record.value,
         ttl: record.ttl,
-        proxied: record.proxied === true,
+        proxied: record.proxied === true || record.proxied === 1,
         orphanedSince: formattedTime,
         elapsedMinutes,
         remainingMinutes,
@@ -653,18 +887,12 @@ const runCleanup = asyncHandler(async (req, res) => {
       } catch (stateError) {
         logger.warn(`State action failed, falling back to direct method: ${stateError.message}`);
         
-        // Get active hostnames from all containers (simplified for API implementation)
-        const activeHostnames = []; // This should be populated with actual active hostnames
-        
-        // Force immediate cleanup
-        await DNSManager.cleanupOrphanedRecords(activeHostnames);
+        // Force immediate cleanup (true = ignore grace period)
+        await DNSManager.cleanupOrphanedRecords(true);
       }
     } else {
-      // Get active hostnames from all containers (simplified for API implementation)
-      const activeHostnames = []; // This should be populated with actual active hostnames
-      
-      // Force immediate cleanup
-      await DNSManager.cleanupOrphanedRecords(activeHostnames);
+      // Force immediate cleanup (true = ignore grace period)
+      await DNSManager.cleanupOrphanedRecords(true);
     }
     
     res.json({
@@ -785,6 +1013,303 @@ const processRecords = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * @desc    Delete orphaned DNS records respecting grace period
+ * @route   POST /api/v1/dns/orphaned/delete-expired
+ * @access  Private
+ */
+const deleteExpiredOrphanedRecords = asyncHandler(async (req, res) => {
+  const { DNSManager } = global.services || {};
+  const database = require('../../../database');
+  
+  if (!DNSManager || !DNSManager.dnsProvider) {
+    throw new ApiError('DNS provider not initialized', 500, 'DNS_PROVIDER_NOT_INITIALIZED');
+  }
+  
+  if (!database || !database.isInitialized()) {
+    throw new ApiError('Database not initialized', 500, 'DATABASE_NOT_INITIALIZED');
+  }
+  
+  try {
+    const deletedRecords = [];
+    const errors = [];
+    const gracePeriodMinutes = DNSManager.config.cleanupGracePeriod || 15;
+    const gracePeriodMs = gracePeriodMinutes * 60 * 1000;
+    const now = new Date();
+    
+    // Get all orphaned records from the database
+    if (database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.managedRecords) {
+      const orphanedRecords = await database.repositories.dnsManager.managedRecords.findAll({
+        where: { is_orphaned: 1 }
+      });
+      
+      logger.info(`Found ${orphanedRecords.length} orphaned records to check for deletion`);
+      
+      for (const record of orphanedRecords) {
+        try {
+          // Check if grace period has expired
+          if (record.orphanedAt) {
+            const orphanedDate = new Date(record.orphanedAt);
+            const elapsedMs = now - orphanedDate;
+            
+            if (elapsedMs >= gracePeriodMs) {
+              // Grace period expired, delete the record
+              if (record.providerId) {
+                try {
+                  await DNSManager.dnsProvider.deleteRecord(record.providerId);
+                  logger.info(`Deleted expired orphaned record from provider: ${record.name} (${record.type})`);
+                } catch (providerError) {
+                  // Record might already be deleted from provider
+                  logger.warn(`Could not delete from provider (may already be gone): ${providerError.message}`);
+                }
+              }
+              
+              // Remove from tracking database
+              await database.repositories.dnsManager.managedRecords.untrackRecord(
+                record.provider || DNSManager.config.dnsProvider,
+                record.providerId
+              );
+              
+              deletedRecords.push({
+                name: record.name,
+                type: record.type,
+                id: record.providerId,
+                orphanedMinutes: Math.floor(elapsedMs / 60000)
+              });
+              
+              logger.info(`Deleted expired orphaned record: ${record.name} (${record.type}) - orphaned for ${Math.floor(elapsedMs / 60000)} minutes`);
+            }
+          }
+        } catch (error) {
+          logger.error(`Failed to delete record ${record.name}: ${error.message}`);
+          errors.push({
+            record: `${record.name} (${record.type})`,
+            error: error.message
+          });
+        }
+      }
+    }
+    
+    res.json({
+      status: 'success',
+      message: `Deleted ${deletedRecords.length} expired orphaned records`,
+      data: {
+        deleted: deletedRecords,
+        errors: errors,
+        totalDeleted: deletedRecords.length,
+        totalErrors: errors.length,
+        gracePeriodMinutes: gracePeriodMinutes
+      }
+    });
+  } catch (error) {
+    logger.error(`Error deleting expired orphaned records: ${error.message}`);
+    throw new ApiError(`Failed to delete expired orphaned records: ${error.message}`, 500, 'DELETE_EXPIRED_ERROR');
+  }
+});
+
+/**
+ * @desc    Force delete orphaned DNS records
+ * @route   POST /api/v1/dns/orphaned/force-delete
+ * @access  Private (Admin only)
+ */
+const forceDeleteOrphanedRecords = asyncHandler(async (req, res) => {
+  const { DNSManager } = global.services || {};
+  const database = require('../../../database');
+  
+  if (!DNSManager || !DNSManager.dnsProvider) {
+    throw new ApiError('DNS provider not initialized', 500, 'DNS_PROVIDER_NOT_INITIALIZED');
+  }
+  
+  if (!database || !database.isInitialized()) {
+    throw new ApiError('Database not initialized', 500, 'DATABASE_NOT_INITIALIZED');
+  }
+  
+  try {
+    const deletedRecords = [];
+    const errors = [];
+    
+    // Get all orphaned records from the database
+    if (database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.managedRecords) {
+      const orphanedRecords = await database.repositories.dnsManager.managedRecords.findAll({
+        where: { is_orphaned: 1 }
+      });
+      
+      logger.info(`Found ${orphanedRecords.length} orphaned records to force delete`);
+      
+      for (const record of orphanedRecords) {
+        try {
+          // Try to delete from provider
+          if (record.providerId) {
+            try {
+              await DNSManager.dnsProvider.deleteRecord(record.providerId);
+              logger.info(`Deleted orphaned record from provider: ${record.name} (${record.type})`);
+            } catch (providerError) {
+              // Record might already be deleted from provider
+              logger.warn(`Could not delete from provider (may already be gone): ${providerError.message}`);
+            }
+          }
+          
+          // Remove from tracking database
+          await database.repositories.dnsManager.managedRecords.untrackRecord(
+            record.provider || DNSManager.config.dnsProvider,
+            record.providerId
+          );
+          
+          deletedRecords.push({
+            name: record.name,
+            type: record.type,
+            id: record.providerId
+          });
+          
+          logger.info(`Force deleted orphaned record: ${record.name} (${record.type})`);
+        } catch (error) {
+          logger.error(`Failed to force delete record ${record.name}: ${error.message}`);
+          errors.push({
+            record: `${record.name} (${record.type})`,
+            error: error.message
+          });
+        }
+      }
+    }
+    
+    res.json({
+      status: 'success',
+      message: `Force deleted ${deletedRecords.length} orphaned records`,
+      data: {
+        deleted: deletedRecords,
+        errors: errors,
+        totalDeleted: deletedRecords.length,
+        totalErrors: errors.length
+      }
+    });
+  } catch (error) {
+    logger.error(`Error force deleting orphaned records: ${error.message}`);
+    throw new ApiError(`Failed to force delete orphaned records: ${error.message}`, 500, 'FORCE_DELETE_ERROR');
+  }
+});
+
+/**
+ * @desc    Delete a single orphaned record from history
+ * @route   DELETE /api/v1/dns/orphaned/history/:id
+ * @access  Private
+ */
+const deleteOrphanedHistoryRecord = asyncHandler(async (req, res) => {
+  const historyId = req.params.id;
+  
+  if (!historyId) {
+    throw new ApiError('History record ID is required', 400, 'MISSING_HISTORY_ID');
+  }
+  
+  // Get database from the database module
+  const database = require('../../../database');
+  
+  if (!database.isInitialized() || !database.db) {
+    throw new ApiError('Database not initialized', 500, 'DB_NOT_INITIALIZED');
+  }
+  
+  try {
+    // First check if the record exists
+    const checkQuery = `
+      SELECT id, name, type
+      FROM orphaned_records_history 
+      WHERE id = ?
+    `;
+    
+    const existingRecord = await database.db.get(checkQuery, [historyId]);
+    
+    if (!existingRecord) {
+      throw new ApiError('History record not found', 404, 'HISTORY_RECORD_NOT_FOUND');
+    }
+    
+    // Delete the record
+    const deleteQuery = `
+      DELETE FROM orphaned_records_history 
+      WHERE id = ?
+    `;
+    
+    const result = await database.db.run(deleteQuery, [historyId]);
+    
+    if (result.changes === 0) {
+      throw new ApiError('Failed to delete history record', 500, 'DELETE_FAILED');
+    }
+    
+    logger.info(`Deleted orphaned history record: ${existingRecord.name} (${existingRecord.type})`);
+    
+    res.status(200).json({
+      status: 'success',
+      message: `Successfully deleted history record for ${existingRecord.name}`,
+      data: {
+        deletedRecord: {
+          id: historyId,
+          name: existingRecord.name,
+          type: existingRecord.type
+        }
+      }
+    });
+  } catch (error) {
+    logger.error(`Error deleting orphaned history record: ${error.message}`);
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError('Failed to delete history record', 500, 'DELETE_HISTORY_ERROR');
+  }
+});
+
+/**
+ * @desc    Clear all orphaned records history
+ * @route   DELETE /api/v1/dns/orphaned/history
+ * @access  Private
+ */
+const clearOrphanedHistory = asyncHandler(async (req, res) => {
+  // Get database from the database module
+  const database = require('../../../database');
+  
+  if (!database.isInitialized() || !database.db) {
+    throw new ApiError('Database not initialized', 500, 'DB_NOT_INITIALIZED');
+  }
+  
+  try {
+    // First get count of records to be deleted
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM orphaned_records_history
+    `;
+    
+    const countResult = await database.db.get(countQuery);
+    const totalRecords = countResult ? countResult.total : 0;
+    
+    if (totalRecords === 0) {
+      return res.status(200).json({
+        status: 'success',
+        message: 'No history records to clear',
+        data: {
+          deletedCount: 0
+        }
+      });
+    }
+    
+    // Delete all records
+    const deleteQuery = `
+      DELETE FROM orphaned_records_history
+    `;
+    
+    const result = await database.db.run(deleteQuery);
+    
+    logger.info(`Cleared orphaned records history: ${result.changes} records deleted`);
+    
+    res.status(200).json({
+      status: 'success',
+      message: `Successfully cleared orphaned records history`,
+      data: {
+        deletedCount: result.changes
+      }
+    });
+  } catch (error) {
+    logger.error(`Error clearing orphaned history: ${error.message}`);
+    throw new ApiError('Failed to clear orphaned records history', 500, 'CLEAR_HISTORY_ERROR');
+  }
+});
+
 module.exports = {
   getRecords,
   getRecord,
@@ -792,7 +1317,12 @@ module.exports = {
   updateRecord,
   deleteRecord,
   getOrphanedRecords,
+  getOrphanedRecordsHistory,
+  deleteOrphanedHistoryRecord,
+  clearOrphanedHistory,
   runCleanup,
   refreshRecords,
-  processRecords
+  processRecords,
+  deleteExpiredOrphanedRecords,
+  forceDeleteOrphanedRecords
 };

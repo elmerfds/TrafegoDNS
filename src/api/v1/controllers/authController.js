@@ -149,7 +149,7 @@ const refreshToken = asyncHandler(async (req, res) => {
     }
     
     // Find user by ID
-    const user = User.findById(decoded.id);
+    const user = await User.findById(decoded.id);
     
     if (!user) {
       throw new ApiError('Invalid refresh token', 401, 'INVALID_REFRESH_TOKEN');
@@ -234,7 +234,7 @@ const getUsers = asyncHandler(async (req, res) => {
  * @access  Private
  */
 const getProfile = asyncHandler(async (req, res) => {
-  const user = User.findById(req.user.id);
+  const user = await User.findById(req.user.id);
   
   if (!user) {
     throw new ApiError('User not found', 404, 'USER_NOT_FOUND');
@@ -262,7 +262,7 @@ const updateUser = asyncHandler(async (req, res) => {
   const { username, password, role } = req.body;
   
   // Check if user exists
-  const user = User.findById(id);
+  const user = await User.findById(id);
   
   if (!user) {
     throw new ApiError('User not found', 404, 'USER_NOT_FOUND');
@@ -317,7 +317,7 @@ const deleteUser = asyncHandler(async (req, res) => {
   const { id } = req.params;
   
   // Check if user exists
-  const user = User.findById(id);
+  const user = await User.findById(id);
   
   if (!user) {
     throw new ApiError('User not found', 404, 'USER_NOT_FOUND');

@@ -73,11 +73,16 @@ const getAllHostnames = asyncHandler(async (req, res) => {
             }
           }
           
+          // Determine source based on operation mode
+          const { ConfigManager } = global.services || {};
+          const operationMode = ConfigManager?.operationMode || 'traefik';
+          const source = operationMode.toLowerCase() === 'traefik' ? 'traefik' : 'docker';
+          
           allHostnames.push({
             id: `container-${hostname}-${index}`,
             hostname: hostname,
             type: 'managed',
-            source: 'container',
+            source: source,
             containerName: containerName,
             recordCount: 1,
             createdAt: new Date().toISOString()

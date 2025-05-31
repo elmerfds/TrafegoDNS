@@ -237,9 +237,17 @@ class DNSRepositoryManager {
         record.provider = provider;
       }
       
-      logger.debug(`Tracking record ${record.name} (${record.type}) with ID ${record.id} for provider ${provider}`);
+      logger.info(`📝 DNSRepositoryManager: Tracking record ${record.name} (${record.type}) with ID ${record.id} for provider ${provider} (appManaged=${isAppManaged})`);
       
-      return await this.managedRecords.trackRecord(provider, record, isAppManaged);
+      const result = await this.managedRecords.trackRecord(provider, record, isAppManaged);
+      
+      if (result) {
+        logger.info(`✅ DNSRepositoryManager: Successfully tracked record ${record.name} in database`);
+      } else {
+        logger.warn(`⚠️ DNSRepositoryManager: Failed to track record ${record.name} in database`);
+      }
+      
+      return result;
     } catch (error) {
       logger.error(`Failed to track record: ${error.message}`);
       return false;

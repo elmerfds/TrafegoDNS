@@ -91,9 +91,14 @@ export function UsersPage() {
       setFormData({ username: '', password: '', role: 'operator' })
     },
     onError: (error: any) => {
+      console.error('User creation error:', error.response?.data);
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.error || 
+                          error.message || 
+                          'Failed to create user';
       toast({
         title: 'Creation failed',
-        description: error.response?.data?.error || 'Failed to create user',
+        description: errorMessage,
         variant: 'destructive',
       })
     },
@@ -116,7 +121,7 @@ export function UsersPage() {
     onError: (error: any) => {
       toast({
         title: 'Update failed',
-        description: error.response?.data?.error || 'Failed to update user',
+        description: error.response?.data?.message || error.response?.data?.error || 'Failed to update user',
         variant: 'destructive',
       })
     },
@@ -137,7 +142,7 @@ export function UsersPage() {
     onError: (error: any) => {
       toast({
         title: 'Deletion failed',
-        description: error.response?.data?.error || 'Failed to delete user',
+        description: error.response?.data?.message || error.response?.data?.error || 'Failed to delete user',
         variant: 'destructive',
       })
     },

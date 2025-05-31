@@ -14,6 +14,8 @@ RUN npm install --omit=dev --build-from-source better-sqlite3
 FROM node:18-alpine AS web-build
 WORKDIR /app/src/web
 COPY src/web/package*.json ./
+# Remove node_modules and package-lock to force fresh install with correct platform
+RUN rm -rf node_modules package-lock.json
 RUN npm install
 COPY src/web ./
 RUN npm run build
