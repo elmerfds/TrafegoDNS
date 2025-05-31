@@ -269,13 +269,13 @@ export function OrphanedRecordsPage() {
     }
     
     if (remainingSeconds < 60) {
-      return <Badge variant="warning">{remainingSeconds}s</Badge>
+      return <Badge variant="destructive">{remainingSeconds}s</Badge>
     }
     
     if (remainingSeconds < 3600) {
       const minutes = Math.floor(remainingSeconds / 60)
       const seconds = remainingSeconds % 60
-      return <Badge variant="warning">{minutes}m {seconds}s</Badge>
+      return <Badge variant="destructive">{minutes}m {seconds}s</Badge>
     }
     
     const hours = Math.floor(remainingSeconds / 3600)
