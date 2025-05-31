@@ -196,20 +196,23 @@
     @apply focus:ring-2 focus:ring-trafego-accent focus:ring-opacity-50 focus:border-trafego-accent;
   }
   
-  /* Navigation Menu Styling - Subtle Blue */
+  /* Navigation Menu Styling - Subtle Blue with Rounded Borders */
   .dark .nav-link {
-    @apply text-muted-foreground hover:text-foreground;
+    @apply text-muted-foreground hover:text-foreground rounded-lg;
     transition: all 0.2s ease;
+    border: 1px solid transparent;
   }
   
   .dark .nav-link:hover {
     @apply bg-slate-800/50;
-    box-shadow: inset 0 0 0 1px rgba(100, 116, 139, 0.3);
+    border: 1px solid rgba(100, 116, 139, 0.3);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   }
   
   .dark .nav-link.active {
     @apply bg-slate-800/70 text-foreground;
-    box-shadow: inset 0 0 0 1px rgba(100, 116, 139, 0.4),
-                0 0 10px -3px rgba(100, 116, 139, 0.2);
+    border: 1px solid rgba(100, 116, 139, 0.5);
+    box-shadow: 0 2px 8px rgba(100, 116, 139, 0.15),
+                0 1px 3px rgba(0, 0, 0, 0.2);
   }
 }

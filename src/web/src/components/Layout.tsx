@@ -62,37 +62,41 @@ export function Layout() {
           sidebarOpen ? 'left-0' : '-left-72'
         )}
       >
-        <div className="flex grow flex-col gap-y-5 overflow-y-auto border-r bg-card px-6 pb-4">
-          <div className="flex h-16 shrink-0 items-center gap-x-3 pl-2 pr-6">
-            <img src="/assets/logo.svg" alt="TrafegoDNS Logo" className="h-12 w-12" />
-            <img src="/assets/trafegodns-header.svg" alt="TrafegoDNS" className="h-8" />
+        <div className="flex grow flex-col gap-y-5 overflow-y-auto border-r bg-card pb-4">
+          <div className="flex h-16 shrink-0 items-center justify-between px-6">
+            <div className="flex items-center gap-x-3">
+              <img src="/assets/logo.svg" alt="TrafegoDNS Logo" className="h-12 w-12" />
+              <img src="/assets/trafegodns-header.svg" alt="TrafegoDNS" className="h-8" />
+            </div>
           </div>
-          <nav className="flex flex-1 flex-col">
-            <ul role="list" className="flex flex-1 flex-col gap-y-7">
-              <li>
-                <ul role="list" className="-mx-2 space-y-1">
-                  {filteredNavigation.map((item) => {
-                    const isActive = location.pathname === item.href
-                    return (
-                      <li key={item.name}>
-                        <Link
-                          to={item.href}
-                          className={cn(
-                            'group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold nav-link',
-                            isActive && 'active'
-                          )}
-                          onClick={() => setSidebarOpen(false)}
-                        >
-                          <item.icon className="h-5 w-5 shrink-0" />
-                          {item.name}
-                        </Link>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </li>
-            </ul>
-          </nav>
+          <div className="px-6">
+            <nav className="flex flex-1 flex-col">
+              <ul role="list" className="flex flex-1 flex-col gap-y-7">
+                <li>
+                  <ul role="list" className="-mx-2 space-y-1">
+                    {filteredNavigation.map((item) => {
+                      const isActive = location.pathname === item.href
+                      return (
+                        <li key={item.name}>
+                          <Link
+                            to={item.href}
+                            className={cn(
+                              'group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold nav-link',
+                              isActive && 'active'
+                            )}
+                            onClick={() => setSidebarOpen(false)}
+                          >
+                            <item.icon className="h-5 w-5 shrink-0" />
+                            {item.name}
+                          </Link>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </li>
+              </ul>
+            </nav>
+          </div>
         </div>
       </div>
 
