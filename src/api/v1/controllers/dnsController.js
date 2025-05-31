@@ -618,10 +618,10 @@ const getOrphanedRecordsHistory = asyncHandler(async (req, res) => {
     const { page = 1, limit = 50 } = req.query;
     const offset = (page - 1) * limit;
     
-    // Query for historical orphaned records (those that were orphaned but deleted)
-    // We look at the audit log or create a history from the current tracked records
+    // Query for historical orphaned records from the dedicated history table
     const historyQuery = `
       SELECT 
+        id,
         provider,
         record_id,
         type,
@@ -630,19 +630,19 @@ const getOrphanedRecordsHistory = asyncHandler(async (req, res) => {
         ttl,
         proxied,
         orphaned_at,
-        tracked_at,
-        updated_at,
-        metadata
-      FROM dns_tracked_records 
-      WHERE orphaned_at IS NOT NULL
-      ORDER BY orphaned_at DESC
+        deleted_at,
+        grace_period_seconds,
+        deletion_reason,
+        metadata,
+        created_at
+      FROM orphaned_records_history 
+      ORDER BY deleted_at DESC
       LIMIT ? OFFSET ?
     `;
     
     const countQuery = `
       SELECT COUNT(*) as total
-      FROM dns_tracked_records 
-      WHERE orphaned_at IS NOT NULL
+      FROM orphaned_records_history
     `;
     
     const [records, countResult] = await Promise.all([
@@ -661,6 +661,7 @@ const getOrphanedRecordsHistory = asyncHandler(async (req, res) => {
       
       return {
         id: record.record_id,
+        historyId: record.id,
         hostname: record.name,
         type: record.type,
         content: record.content,
@@ -668,9 +669,10 @@ const getOrphanedRecordsHistory = asyncHandler(async (req, res) => {
         proxied: Boolean(record.proxied),
         provider: record.provider,
         orphanedAt: record.orphaned_at,
-        trackedAt: record.tracked_at,
-        updatedAt: record.updated_at,
-        isDeleted: !records.some(r => r.record_id === record.record_id && !r.orphaned_at), // If not in current active records
+        deletedAt: record.deleted_at,
+        gracePeriodSeconds: record.grace_period_seconds,
+        deletionReason: record.deletion_reason,
+        createdAt: record.created_at,
         metadata: metadata
       };
     });

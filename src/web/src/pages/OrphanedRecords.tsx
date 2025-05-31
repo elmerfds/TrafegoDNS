@@ -51,6 +51,7 @@ interface OrphanedRecord {
 
 interface OrphanedHistoryRecord {
   id: string
+  historyId: number
   hostname: string
   type: string
   content: string
@@ -58,9 +59,10 @@ interface OrphanedHistoryRecord {
   proxied?: boolean
   provider: string
   orphanedAt: string
-  trackedAt: string
-  updatedAt: string
-  isDeleted: boolean
+  deletedAt: string
+  gracePeriodSeconds: number
+  deletionReason: string
+  createdAt: string
   metadata: any
 }
 
@@ -554,19 +556,20 @@ export function OrphanedRecordsPage() {
                         <TableHead>TTL</TableHead>
                         <TableHead>Provider</TableHead>
                         <TableHead>Orphaned At</TableHead>
-                        <TableHead>Status</TableHead>
+                        <TableHead>Deleted At</TableHead>
+                        <TableHead>Reason</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredHistoryRecords?.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                             No orphaned records history found
                           </TableCell>
                         </TableRow>
                       ) : (
                         filteredHistoryRecords?.map((record: OrphanedHistoryRecord) => (
-                          <TableRow key={record.id}>
+                          <TableRow key={record.historyId}>
                             <TableCell>
                               <span className="font-medium">{record.hostname}</span>
                             </TableCell>
@@ -584,9 +587,14 @@ export function OrphanedRecordsPage() {
                               </div>
                             </TableCell>
                             <TableCell>
-                              <Badge variant={record.isDeleted ? "destructive" : "default"}>
-                                {record.isDeleted ? "Deleted" : "Tracked"}
-                              </Badge>
+                              <div className="text-sm text-muted-foreground">
+                                {formatDate(record.deletedAt)}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm">
+                                {record.deletionReason}
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))

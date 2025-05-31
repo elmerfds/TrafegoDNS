@@ -58,6 +58,39 @@ async function performDatabaseOnlyCleanup(recordTracker, config, forceImmediate 
                   if (forceImmediate || timeSinceOrphaned >= gracePeriodMs) {
                     logger.info(`🗑️ Database-only cleanup: Removing expired orphaned record ${record.name} (${record.type}) - orphaned for ${minutesSinceOrphaned} minutes`);
                     
+                    // Archive to history before removal
+                    try {
+                      const metadata = {
+                        appManaged: true,
+                        forceImmediate: forceImmediate,
+                        elapsedMinutes: minutesSinceOrphaned,
+                        databaseOnlyCleanup: true
+                      };
+                      
+                      await database.db.run(`
+                        INSERT INTO orphaned_records_history 
+                        (provider, record_id, type, name, content, ttl, proxied, 
+                         orphaned_at, deleted_at, grace_period_seconds, deletion_reason, metadata)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      `, [
+                        provider,
+                        recordId,
+                        record.type || 'A',
+                        record.name,
+                        record.content || '',
+                        record.ttl || 3600,
+                        record.proxied ? 1 : 0,
+                        orphanedTime,
+                        new Date().toISOString(),
+                        gracePeriodMinutes * 60,
+                        forceImmediate ? 'Database-only force cleanup' : 'Database-only grace period elapsed',
+                        JSON.stringify(metadata)
+                      ]);
+                      logger.debug(`Archived orphaned record ${record.name} to history (database-only cleanup)`);
+                    } catch (archiveError) {
+                      logger.error(`Failed to archive record to history: ${archiveError.message}`);
+                    }
+                    
                     // Remove from tracking database
                     try {
                       await recordTracker.sqliteManager.untrackRecord(provider, recordId);
@@ -351,6 +384,43 @@ async function cleanupOrphanedRecords(
                 - Reason: Orphaned for ${Math.floor(elapsedMinutes)} minutes (grace period elapsed)
                 - App-managed: Yes (created by TrafegoDNS)
                 - Orphaned since: ${new Date(parsedOrphanedTime).toISOString()}`);
+                
+                // Archive to history before deletion
+                try {
+                  const database = require('../../database');
+                  if (database && database.isInitialized() && database.db) {
+                    const metadata = {
+                      appManaged: true,
+                      forceImmediate: forceImmediate,
+                      elapsedMinutes: Math.floor(elapsedMinutes),
+                      firstSeenInfo: firstSeenInfo
+                    };
+                    
+                    await database.db.run(`
+                      INSERT INTO orphaned_records_history 
+                      (provider, record_id, type, name, content, ttl, proxied, 
+                       orphaned_at, deleted_at, grace_period_seconds, deletion_reason, metadata)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    `, [
+                      config.dnsProvider,
+                      record.id,
+                      record.type,
+                      record.name,
+                      record.content || record.data || record.value,
+                      record.ttl || 3600,
+                      record.proxied ? 1 : 0,
+                      parsedOrphanedTime.toISOString(),
+                      new Date().toISOString(),
+                      config.cleanupGracePeriod * 60, // Convert minutes to seconds
+                      forceImmediate ? 'Force immediate cleanup' : 'Grace period elapsed',
+                      JSON.stringify(metadata)
+                    ]);
+                    logger.debug(`Archived orphaned record ${displayName} to history`);
+                  }
+                } catch (archiveError) {
+                  logger.error(`Failed to archive record to history: ${archiveError.message}`);
+                  // Don't fail the deletion if archiving fails
+                }
                 
                 await dnsProvider.deleteRecord(record.id);
 
