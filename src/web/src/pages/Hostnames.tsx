@@ -269,13 +269,26 @@ export function HostnamesPage() {
                     <TableCell className="font-medium">{hostname.hostname}</TableCell>
                     <TableCell>{getTypeBadge(hostname.type)}</TableCell>
                     <TableCell>
-                      {hostname.containerName ? (
+                      {hostname.source ? (
+                        <div className="flex items-center gap-1">
+                          {hostname.source === 'traefik' && <Container className="h-3 w-3" />}
+                          {hostname.source === 'docker' && <Container className="h-3 w-3" />}
+                          {hostname.source === 'manual' && <Shield className="h-3 w-3" />}
+                          <span className="text-sm">
+                            {hostname.source === 'traefik' && 'Traefik'}
+                            {hostname.source === 'docker' && 'Docker Labels'}
+                            {hostname.source === 'manual' && 'Manual'}
+                            {hostname.source === 'preserved' && 'Preserved'}
+                            {!['traefik', 'docker', 'manual', 'preserved'].includes(hostname.source) && hostname.source}
+                          </span>
+                        </div>
+                      ) : hostname.containerName ? (
                         <div className="flex items-center gap-1">
                           <Container className="h-3 w-3" />
                           <span className="text-sm">{hostname.containerName}</span>
                         </div>
                       ) : (
-                        <span className="text-muted-foreground">Manual</span>
+                        <span className="text-muted-foreground">Unknown</span>
                       )}
                     </TableCell>
                     <TableCell>
