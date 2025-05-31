@@ -11,6 +11,8 @@ const {
   deleteRecord,
   getOrphanedRecords,
   getOrphanedRecordsHistory,
+  deleteOrphanedHistoryRecord,
+  clearOrphanedHistory,
   runCleanup,
   refreshRecords,
   processRecords,
@@ -452,6 +454,92 @@ router.get('/orphaned', authenticate, getOrphanedRecords);
  *        description: Server error
  */
 router.get('/orphaned/history', authenticate, getOrphanedRecordsHistory);
+
+/**
+ * @swagger
+ * /dns/orphaned/history/{id}:
+ *  delete:
+ *    summary: Delete a single orphaned record from history
+ *    tags: [DNS]
+ *    security:
+ *      - BearerAuth: []
+ *    parameters:
+ *      - in: path
+ *        name: id
+ *        schema:
+ *          type: string
+ *        required: true
+ *        description: History record ID
+ *    responses:
+ *      200:
+ *        description: History record deleted successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                message:
+ *                  type: string
+ *                data:
+ *                  type: object
+ *                  properties:
+ *                    deletedRecord:
+ *                      type: object
+ *                      properties:
+ *                        id:
+ *                          type: string
+ *                        name:
+ *                          type: string
+ *                        type:
+ *                          type: string
+ *      401:
+ *        description: Not authenticated
+ *      403:
+ *        description: Insufficient permissions
+ *      404:
+ *        description: History record not found
+ *      500:
+ *        description: Server error
+ */
+router.delete('/orphaned/history/:id', authenticate, authorize(['admin', 'operator']), writeLimiter, deleteOrphanedHistoryRecord);
+
+/**
+ * @swagger
+ * /dns/orphaned/history:
+ *  delete:
+ *    summary: Clear all orphaned records history
+ *    tags: [DNS]
+ *    security:
+ *      - BearerAuth: []
+ *    responses:
+ *      200:
+ *        description: Orphaned records history cleared successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                message:
+ *                  type: string
+ *                data:
+ *                  type: object
+ *                  properties:
+ *                    deletedCount:
+ *                      type: number
+ *      401:
+ *        description: Not authenticated
+ *      403:
+ *        description: Insufficient permissions
+ *      500:
+ *        description: Server error
+ */
+router.delete('/orphaned/history', authenticate, authorize(['admin', 'operator']), writeLimiter, clearOrphanedHistory);
 
 /**
  * @swagger

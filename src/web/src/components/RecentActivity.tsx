@@ -36,7 +36,7 @@ const EVENT_EXPIRY_MS = 30 * 60 * 1000
 export function RecentActivity() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const socket = useSocket()
+  const { socket, isConnected } = useSocket()
   
   // In-memory event store for real-time events
   const [realtimeEvents, setRealtimeEvents] = useState<ActivityEvent[]>([])
@@ -44,7 +44,7 @@ export function RecentActivity() {
   
   // Subscribe to all events when component mounts
   useEffect(() => {
-    if (socket && socket.connected) {
+    if (socket && isConnected) {
       // Subscribe to DNS events
       socket.emit('subscribe', 'dns:record:created')
       socket.emit('subscribe', 'dns:record:updated')
@@ -67,7 +67,7 @@ export function RecentActivity() {
         socket.emit('unsubscribe', 'DNS_RECORD_DELETED')
       }
     }
-  }, [socket])
+  }, [socket, isConnected])
   
   // Helper to add a real-time event
   const addRealtimeEvent = useCallback((event: Omit<ActivityEvent, 'id'>) => {

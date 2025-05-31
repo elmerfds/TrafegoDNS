@@ -220,6 +220,48 @@ export function OrphanedRecordsPage() {
     },
   })
 
+  const deleteHistoryRecordMutation = useMutation({
+    mutationFn: async (historyId: number) => {
+      const response = await api.delete(`/dns/orphaned/history/${historyId}`)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orphaned-history'] })
+      toast({
+        title: 'History record deleted',
+        description: 'The orphaned record history entry has been deleted.',
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Delete failed',
+        description: error.response?.data?.error || 'Failed to delete history record',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const clearHistoryMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.delete('/dns/orphaned/history')
+      return response.data
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['orphaned-history'] })
+      toast({
+        title: 'History cleared',
+        description: `Successfully deleted ${data.data.deletedCount} history records.`,
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Clear failed',
+        description: error.response?.data?.error || 'Failed to clear history',
+        variant: 'destructive',
+      })
+    },
+  })
+
   const filteredRecords = records?.filter((record) => {
     if (!searchTerm) return true
     const term = searchTerm.toLowerCase()
@@ -554,10 +596,46 @@ export function OrphanedRecordsPage() {
         <TabsContent value="history">
           <Card>
             <CardHeader>
-              <CardTitle>Orphaned Records History</CardTitle>
-              <CardDescription>
-                {historyData?.pagination?.total || 0} historical orphaned records (showing page {historyPage} of {historyData?.pagination?.totalPages || 1})
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Orphaned Records History</CardTitle>
+                  <CardDescription>
+                    {historyData?.pagination?.total || 0} historical orphaned records (showing page {historyPage} of {historyData?.pagination?.totalPages || 1})
+                  </CardDescription>
+                </div>
+                {canPerformAction('/dns') && historyData?.pagination?.total > 0 && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm">
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Clear All History
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Clear All History?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will permanently delete all {historyData?.pagination?.total || 0} orphaned records history entries.
+                          This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => clearHistoryMutation.mutate()}
+                          disabled={clearHistoryMutation.isPending}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          {clearHistoryMutation.isPending && (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          )}
+                          Clear All History
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               <div className="mb-4">
@@ -589,12 +667,13 @@ export function OrphanedRecordsPage() {
                         <TableHead>Orphaned At</TableHead>
                         <TableHead>Deleted At</TableHead>
                         <TableHead>Reason</TableHead>
+                        {canPerformAction('/dns') && <TableHead className="w-[100px]">Actions</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredHistoryRecords?.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={canPerformAction('/dns') ? 9 : 8} className="text-center py-8 text-muted-foreground">
                             No orphaned records history found
                           </TableCell>
                         </TableRow>
@@ -627,6 +706,41 @@ export function OrphanedRecordsPage() {
                                 {record.deletionReason}
                               </div>
                             </TableCell>
+                            {canPerformAction('/dns') && (
+                              <TableCell>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      size="sm"
+                                      variant="destructive"
+                                      disabled={deleteHistoryRecordMutation.isPending}
+                                      title="Delete history record"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete History Record</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Are you sure you want to delete this history record? This will permanently remove it from the history.
+                                        <br /><br />
+                                        <strong>Record:</strong> {record.hostname} ({record.type})
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => deleteHistoryRecordMutation.mutate(record.historyId)}
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      >
+                                        Delete History Record
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </TableCell>
+                            )}
                           </TableRow>
                         ))
                       )}

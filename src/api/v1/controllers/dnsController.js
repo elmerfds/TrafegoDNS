@@ -1188,6 +1188,128 @@ const forceDeleteOrphanedRecords = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * @desc    Delete a single orphaned record from history
+ * @route   DELETE /api/v1/dns/orphaned/history/:id
+ * @access  Private
+ */
+const deleteOrphanedHistoryRecord = asyncHandler(async (req, res) => {
+  const historyId = req.params.id;
+  
+  if (!historyId) {
+    throw new ApiError('History record ID is required', 400, 'MISSING_HISTORY_ID');
+  }
+  
+  // Get database from the database module
+  const database = require('../../../database');
+  
+  if (!database.isInitialized() || !database.db) {
+    throw new ApiError('Database not initialized', 500, 'DB_NOT_INITIALIZED');
+  }
+  
+  try {
+    // First check if the record exists
+    const checkQuery = `
+      SELECT id, name, type
+      FROM orphaned_records_history 
+      WHERE id = ?
+    `;
+    
+    const existingRecord = await database.db.get(checkQuery, [historyId]);
+    
+    if (!existingRecord) {
+      throw new ApiError('History record not found', 404, 'HISTORY_RECORD_NOT_FOUND');
+    }
+    
+    // Delete the record
+    const deleteQuery = `
+      DELETE FROM orphaned_records_history 
+      WHERE id = ?
+    `;
+    
+    const result = await database.db.run(deleteQuery, [historyId]);
+    
+    if (result.changes === 0) {
+      throw new ApiError('Failed to delete history record', 500, 'DELETE_FAILED');
+    }
+    
+    logger.info(`Deleted orphaned history record: ${existingRecord.name} (${existingRecord.type})`);
+    
+    res.status(200).json({
+      status: 'success',
+      message: `Successfully deleted history record for ${existingRecord.name}`,
+      data: {
+        deletedRecord: {
+          id: historyId,
+          name: existingRecord.name,
+          type: existingRecord.type
+        }
+      }
+    });
+  } catch (error) {
+    logger.error(`Error deleting orphaned history record: ${error.message}`);
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError('Failed to delete history record', 500, 'DELETE_HISTORY_ERROR');
+  }
+});
+
+/**
+ * @desc    Clear all orphaned records history
+ * @route   DELETE /api/v1/dns/orphaned/history
+ * @access  Private
+ */
+const clearOrphanedHistory = asyncHandler(async (req, res) => {
+  // Get database from the database module
+  const database = require('../../../database');
+  
+  if (!database.isInitialized() || !database.db) {
+    throw new ApiError('Database not initialized', 500, 'DB_NOT_INITIALIZED');
+  }
+  
+  try {
+    // First get count of records to be deleted
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM orphaned_records_history
+    `;
+    
+    const countResult = await database.db.get(countQuery);
+    const totalRecords = countResult ? countResult.total : 0;
+    
+    if (totalRecords === 0) {
+      return res.status(200).json({
+        status: 'success',
+        message: 'No history records to clear',
+        data: {
+          deletedCount: 0
+        }
+      });
+    }
+    
+    // Delete all records
+    const deleteQuery = `
+      DELETE FROM orphaned_records_history
+    `;
+    
+    const result = await database.db.run(deleteQuery);
+    
+    logger.info(`Cleared orphaned records history: ${result.changes} records deleted`);
+    
+    res.status(200).json({
+      status: 'success',
+      message: `Successfully cleared orphaned records history`,
+      data: {
+        deletedCount: result.changes
+      }
+    });
+  } catch (error) {
+    logger.error(`Error clearing orphaned history: ${error.message}`);
+    throw new ApiError('Failed to clear orphaned records history', 500, 'CLEAR_HISTORY_ERROR');
+  }
+});
+
 module.exports = {
   getRecords,
   getRecord,
@@ -1196,6 +1318,8 @@ module.exports = {
   deleteRecord,
   getOrphanedRecords,
   getOrphanedRecordsHistory,
+  deleteOrphanedHistoryRecord,
+  clearOrphanedHistory,
   runCleanup,
   refreshRecords,
   processRecords,
