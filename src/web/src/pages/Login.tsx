@@ -67,13 +67,9 @@ export function LoginPage() {
           <div className="flex justify-center mb-4">
             <img src="/assets/logo.svg" alt="TrafegoDNS Logo" className="h-32 w-32" />
           </div>
-          <div className="flex justify-center mb-2">
+          <div className="flex justify-center">
             <img src="/assets/trafegodns-header.svg" alt="TrafegoDNS" className="h-12" />
           </div>
-          <CardTitle className="text-xl font-bold text-center">Login</CardTitle>
-          <CardDescription className="text-center">
-            Enter your credentials to access the dashboard
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

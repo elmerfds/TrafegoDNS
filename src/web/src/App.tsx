@@ -19,7 +19,7 @@ function App() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
 
   return (
-    <ThemeProvider defaultTheme="system" storageKey="trafegodns-theme">
+    <ThemeProvider defaultTheme="dark" storageKey="trafegodns-theme">
       <Router>
         <Routes>
           <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/" />} />

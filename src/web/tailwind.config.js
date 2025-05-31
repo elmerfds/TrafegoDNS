@@ -51,11 +51,31 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // TrafegoDNS Custom Theme Colors
+        trafego: {
+          'primary': '#0F172A',      // Deep Navy Blue
+          'secondary': '#1E293B',    // Slate Blue
+          'accent': '#FFD700',       // Gold
+          'text': '#F8FAFC',         // Soft White
+          'text-muted': '#E2E8F0',   // Muted White
+          'route-red': '#FF0000',    // Bright Red
+          'route-green': '#00A86B',  // Muted Green
+          'route-blue': '#0066CC',   // Deep Blue
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+      },
+      backgroundImage: {
+        'trafego-gradient': 'linear-gradient(to bottom right, #0F172A, #1E293B)',
+        'trafego-card': 'linear-gradient(145deg, #1E293B, #334155)',
+      },
+      boxShadow: {
+        'trafego-glow': '0 0 10px rgba(255, 215, 0, 0.3)',
+        'trafego-glow-lg': '0 0 20px rgba(255, 215, 0, 0.4)',
+        'trafego-card': '0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2)',
       },
       keyframes: {
         "accordion-down": {
