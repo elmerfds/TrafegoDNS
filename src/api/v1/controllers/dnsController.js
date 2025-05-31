@@ -586,6 +586,19 @@ const deleteRecord = asyncHandler(async (req, res) => {
       }
     }
     
+    // Also ensure the record is removed from the provider cache
+    if (database && database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.providerCache) {
+      try {
+        await database.repositories.dnsManager.providerCache.deleteRecord(
+          record.provider || DNSManager.config.dnsProvider,
+          recordId
+        );
+        logger.info(`Removed record from provider cache`);
+      } catch (cacheError) {
+        logger.warn(`Failed to remove from provider cache: ${cacheError.message}`);
+      }
+    }
+    
     res.json({
       status: 'success',
       message: `Successfully deleted ${recordDetails.type} record for ${recordDetails.name}`,
@@ -721,7 +734,35 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
     if (database && database.repositories && database.repositories.dnsManager && database.repositories.dnsManager.managedRecords) {
       // Get orphaned records directly from database
       const provider = DNSManager.config.dnsProvider;
-      orphanedRecords = await database.repositories.dnsManager.managedRecords.getRecords(provider, { isOrphaned: true });
+      const dbOrphanedRecords = await database.repositories.dnsManager.managedRecords.getRecords(provider, { isOrphaned: true });
+      
+      // Get current records from provider to verify they still exist
+      const providerRecords = await DNSManager.dnsProvider.getRecordsFromCache(true);
+      const providerRecordIds = new Set(providerRecords.map(r => r.id));
+      
+      // Filter out records that no longer exist at the provider
+      orphanedRecords = dbOrphanedRecords.filter(record => {
+        const recordId = record.providerId || record.record_id;
+        if (!providerRecordIds.has(recordId)) {
+          logger.debug(`Orphaned record ${record.name} (ID: ${recordId}) no longer exists at provider, excluding from results`);
+          return false;
+        }
+        return true;
+      });
+      
+      // Update orphaned_at for any records that don't have it
+      for (const record of orphanedRecords) {
+        if (!record.orphaned_at && record.is_orphaned) {
+          logger.warn(`Orphaned record ${record.name} has no orphaned_at timestamp, setting to current time`);
+          const now = new Date().toISOString();
+          await database.repositories.dnsManager.managedRecords.db.run(`
+            UPDATE dns_tracked_records 
+            SET orphaned_at = ? 
+            WHERE provider = ? AND record_id = ?
+          `, [now, provider, record.providerId || record.record_id]);
+          record.orphaned_at = now;
+        }
+      }
     } else {
       // Fallback to old method using cache and tracker
       const allRecords = await DNSManager.dnsProvider.getRecordsFromCache(true);
