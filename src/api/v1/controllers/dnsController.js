@@ -759,7 +759,11 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
       
       // Update orphaned_at for any records that don't have it
       for (const record of orphanedRecords) {
-        if (!record.orphaned_at && record.is_orphaned) {
+        // Check both camelCase and snake_case versions
+        const hasOrphanedAt = record.orphanedAt || record.orphaned_at;
+        const isOrphaned = record.isOrphaned || record.is_orphaned;
+        
+        if (!hasOrphanedAt && isOrphaned) {
           logger.warn(`Orphaned record ${record.name} has no orphaned_at timestamp, setting to current time`);
           const now = new Date().toISOString();
           await database.repositories.dnsManager.managedRecords.db.run(`
@@ -767,6 +771,8 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
             SET orphaned_at = ? 
             WHERE provider = ? AND record_id = ?
           `, [now, provider, record.providerId || record.record_id]);
+          // Update both formats for consistency
+          record.orphanedAt = now;
           record.orphaned_at = now;
         }
       }
@@ -792,7 +798,10 @@ const getOrphanedRecords = asyncHandler(async (req, res) => {
       let formattedTime = null;
       
       // If record has orphaned_at from database, use it
-      if (record.orphaned_at) {
+      // Note: The database repository returns this as 'orphanedAt' (camelCase)
+      if (record.orphanedAt) {
+        formattedTime = record.orphanedAt;
+      } else if (record.orphaned_at) {
         formattedTime = record.orphaned_at;
       } else if (record.orphanedSince) {
         formattedTime = record.orphanedSince;

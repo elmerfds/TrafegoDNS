@@ -259,6 +259,30 @@ export function OrphanedRecordsPage() {
     }
   }
 
+  const formatTimeRemaining = (elapsedSeconds: number | null, gracePeriodSeconds: number) => {
+    if (elapsedSeconds === null || elapsedSeconds === undefined) return 'Unknown'
+    
+    const remainingSeconds = gracePeriodSeconds - elapsedSeconds
+    
+    if (remainingSeconds <= 0) {
+      return <Badge variant="destructive">Ready for deletion</Badge>
+    }
+    
+    if (remainingSeconds < 60) {
+      return <Badge variant="warning">{remainingSeconds}s</Badge>
+    }
+    
+    if (remainingSeconds < 3600) {
+      const minutes = Math.floor(remainingSeconds / 60)
+      const seconds = remainingSeconds % 60
+      return <Badge variant="warning">{minutes}m {seconds}s</Badge>
+    }
+    
+    const hours = Math.floor(remainingSeconds / 3600)
+    const minutes = Math.floor((remainingSeconds % 3600) / 60)
+    return <Badge variant="secondary">{hours}h {minutes}m</Badge>
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -431,6 +455,7 @@ export function OrphanedRecordsPage() {
                   <TableHead>Content</TableHead>
                   <TableHead>TTL</TableHead>
                   <TableHead>Orphaned</TableHead>
+                  <TableHead>Time Remaining</TableHead>
                   {canPerformAction('orphaned.delete') && (
                     <TableHead className="text-right">Actions</TableHead>
                   )}
@@ -439,7 +464,7 @@ export function OrphanedRecordsPage() {
               <TableBody>
                 {orphanedRecords.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       No orphaned records found
                     </TableCell>
                   </TableRow>
@@ -469,6 +494,9 @@ export function OrphanedRecordsPage() {
                             {formatTimeAgo(record.orphanedTime)}
                           </span>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {formatTimeRemaining(record.orphanedTime, (settings?.cleanupGracePeriod || 3600))}
                       </TableCell>
                       {canPerformAction('orphaned.delete') && (
                         <TableCell className="text-right">
