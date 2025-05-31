@@ -606,10 +606,10 @@ const deleteRecord = asyncHandler(async (req, res) => {
  * @access  Private
  */
 const getOrphanedRecordsHistory = asyncHandler(async (req, res) => {
-  // Get DNSManager from global services
-  const { DNSManager } = global.services || {};
+  // Get database from the database module
+  const database = require('../../../database');
   
-  if (!DNSManager || !DNSManager.db) {
+  if (!database.isInitialized() || !database.db) {
     throw new ApiError('Database not initialized', 500, 'DB_NOT_INITIALIZED');
   }
   
@@ -646,8 +646,8 @@ const getOrphanedRecordsHistory = asyncHandler(async (req, res) => {
     `;
     
     const [records, countResult] = await Promise.all([
-      DNSManager.db.all(historyQuery, [limit, offset]),
-      DNSManager.db.get(countQuery)
+      database.db.all(historyQuery, [limit, offset]),
+      database.db.get(countQuery)
     ]);
     
     // Format the records
