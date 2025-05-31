@@ -67,7 +67,10 @@ export function LoginPage() {
           <div className="flex justify-center mb-4">
             <img src="/assets/logo.svg" alt="TrafegoDNS Logo" className="h-32 w-32" />
           </div>
-          <CardTitle className="text-2xl font-bold text-center">Login to TrafegoDNS</CardTitle>
+          <div className="flex justify-center mb-2">
+            <img src="/assets/trafegodns-header.svg" alt="TrafegoDNS" className="h-12" />
+          </div>
+          <CardTitle className="text-xl font-bold text-center">Login</CardTitle>
           <CardDescription className="text-center">
             Enter your credentials to access the dashboard
           </CardDescription>

@@ -1,0 +1,20 @@
+<svg preserveAspectRatio="xMinYMin meet" viewBox="8.529160000000001 37.86668 262 43.6" xmlns="http://www.w3.org/2000/svg" style="max-height: 500px" width="262" height="43.6">
+  
+  <defs>
+    <filter height="140%" width="140%" y="-20%" x="-20%" id="textEffect">
+      <feGaussianBlur stdDeviation="3" in="SourceAlpha"/>
+      <feOffset result="offsetblur" dy="2" dx="2"/>
+      <feFlood flood-opacity="0.3" flood-color="#000000"/>
+      <feComposite operator="in" in2="offsetblur"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  
+  <text filter="url(#textEffect)" fill="#F8FAFC" letter-spacing="-3" font-size="48" font-weight="bold" font-family="'Courier New', monospace" y="70" x="10">
+    Trafego<tspan font-size="48" fill="#FFD700">DNS</tspan>
+  </text>
+</svg>
