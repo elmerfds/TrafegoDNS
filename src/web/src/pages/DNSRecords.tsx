@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { 
   Plus, 
   Pencil, 
@@ -251,9 +252,9 @@ export function DNSRecordsPage() {
                     </TableCell>
                     <TableCell className="font-medium">{record.hostname}</TableCell>
                     <TableCell>
-                      <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                      <Badge variant="secondary" className="text-white">
                         {record.type}
-                      </span>
+                      </Badge>
                     </TableCell>
                     <TableCell className="max-w-xs truncate" title={record.content}>
                       {record.content}
