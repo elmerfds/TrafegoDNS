@@ -71,8 +71,10 @@ function registerDnsActions(broker, services) {
       const currentRecords = broker.stateStore.getState('dns.records') || [];
       const updatedRecords = [...currentRecords, createdRecord];
 
-      // Update state
-      broker.updateState('dns.records', updatedRecords, action, 'dns:record:created');
+      // Update state with enhanced event data
+      broker.updateState('dns.records', updatedRecords, action, 'dns:record:created', {
+        record: createdRecord
+      });
       return createdRecord;
     } catch (error) {
       logger.error(`Failed to create DNS record: ${error.message}`);
@@ -133,7 +135,10 @@ function registerDnsActions(broker, services) {
         r.id === id ? updatedRecord : r
       );
 
-      broker.updateState('dns.records', updatedRecords, action, 'dns:record:updated');
+      // Update state with enhanced event data
+      broker.updateState('dns.records', updatedRecords, action, 'dns:record:updated', {
+        record: updatedRecord
+      });
       return updatedRecord;
     } catch (error) {
       logger.error(`Failed to update DNS record: ${error.message}`);
@@ -168,7 +173,11 @@ function registerDnsActions(broker, services) {
       // Remove record from state
       const updatedRecords = records.filter(r => r.id !== id);
 
-      broker.updateState('dns.records', updatedRecords, action, 'dns:record:deleted');
+      // Update state with enhanced event data
+      broker.updateState('dns.records', updatedRecords, action, 'dns:record:deleted', {
+        record: recordToDelete,
+        reason: 'Deleted via API'
+      });
       return { id, success: true };
     } catch (error) {
       logger.error(`Failed to delete DNS record: ${error.message}`);

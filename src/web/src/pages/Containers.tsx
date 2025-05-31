@@ -43,18 +43,41 @@ export function ContainersPage() {
 
   // Fetch containers
   const { data: containersResponse, isLoading, error } = useQuery({
-    queryKey: ['containers', search],
+    queryKey: ['containers'],
     queryFn: async () => {
       const params = new URLSearchParams()
-      if (search) params.append('search', search)
-      params.append('limit', '50')
+      params.append('limit', '100')
       
       const response = await api.get(`/containers?${params}`)
       return response.data
     },
   })
 
-  const data = containersResponse?.data
+  // Filter containers client-side based on search
+  const filteredContainers = containersResponse?.data?.containers?.filter((container: Container) => {
+    if (!search) return true
+    const searchLower = search.toLowerCase()
+    
+    // Search in container name
+    if (container.name.toLowerCase().includes(searchLower)) return true
+    
+    // Search in image name
+    if (container.image.toLowerCase().includes(searchLower)) return true
+    
+    // Search in hostnames
+    if (container.hostnames?.some(h => h.toLowerCase().includes(searchLower))) return true
+    
+    // Search in compose project/service
+    if (container.compose?.project?.toLowerCase().includes(searchLower)) return true
+    if (container.compose?.service?.toLowerCase().includes(searchLower)) return true
+    
+    return false
+  }) || []
+
+  const data = {
+    ...containersResponse?.data,
+    containers: filteredContainers
+  }
 
   // Listen for real-time updates
   useSocketEvent('container:started', () => {
