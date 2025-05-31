@@ -46,7 +46,7 @@ interface OrphanedRecord {
   ttl: number
   proxied?: boolean
   orphanedAt: string
-  orphanedTime: number
+  orphanedTime: number | null
 }
 
 interface OrphanedHistoryRecord {
@@ -88,7 +88,9 @@ export function OrphanedRecordsPage() {
         ...record,
         hostname: record.name,
         orphanedAt: record.orphanedSince || '',
-        orphanedTime: record.elapsedMinutes ? record.elapsedMinutes * 60 : 0 // Convert minutes to seconds
+        orphanedTime: record.elapsedMinutes !== null && record.elapsedMinutes !== undefined 
+          ? record.elapsedMinutes * 60  // Convert minutes to seconds
+          : null // Keep null to indicate unknown
       })) as OrphanedRecord[]
     },
   })
@@ -239,8 +241,9 @@ export function OrphanedRecordsPage() {
     )
   })
 
-  const formatTimeAgo = (seconds: number) => {
-    if (!seconds || seconds === 0) return 'Unknown'
+  const formatTimeAgo = (seconds: number | null) => {
+    if (seconds === null || seconds === undefined) return 'Unknown'
+    if (seconds === 0) return 'Just now'
     if (seconds < 60) return `${seconds}s ago`
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
