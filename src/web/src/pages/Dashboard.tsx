@@ -226,13 +226,13 @@ export function DashboardPage() {
       </div>
 
       {/* Orphaned Records Alert */}
-      {orphaned && orphaned.total > 0 && (
+      {orphaned && orphaned.count > 0 && (
         <Alert>
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Orphaned Records Detected</AlertTitle>
           <AlertDescription className="space-y-2">
             <p>
-              There are {orphaned.total} orphaned DNS records that may need attention.
+              There are {orphaned.count} orphaned DNS records that may need attention.
             </p>
             <Button 
               variant="outline" 
@@ -263,7 +263,7 @@ export function DashboardPage() {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Orphaned Records</span>
-                    <span className="font-medium text-orange-600">{orphaned?.total || 0}</span>
+                    <span className="font-medium text-orange-600">{orphaned?.count || 0}</span>
                   </div>
                 </div>
               </div>

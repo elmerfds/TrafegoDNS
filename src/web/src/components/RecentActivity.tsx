@@ -26,24 +26,93 @@ interface ActivityEvent {
 export function RecentActivity() {
   const navigate = useNavigate()
   
-  // For now, we'll use the audit logs endpoint when it's available
-  // This is a placeholder implementation
-  const { data: activityData } = useQuery({
-    queryKey: ['recent-activity'],
+  // Fetch recent DNS records to generate activity
+  const { data: dnsRecordsData } = useQuery({
+    queryKey: ['recent-dns-records'],
     queryFn: async () => {
-      try {
-        // Try to get audit logs if endpoint exists
-        const response = await api.get('/audit/logs?limit=5')
-        return response.data
-      } catch (error) {
-        // Fallback to empty data if endpoint doesn't exist yet
-        return { data: [] }
-      }
+      const response = await api.get('/dns/records?limit=10')
+      return response.data
     },
     refetchInterval: 30000, // Refresh every 30 seconds
   })
 
-  const activities = activityData?.data || []
+  // Fetch orphaned records history for recent deletions
+  const { data: orphanedHistoryData } = useQuery({
+    queryKey: ['recent-orphaned-history'],
+    queryFn: async () => {
+      const response = await api.get('/dns/orphaned/history?limit=5')
+      return response.data
+    },
+    refetchInterval: 30000,
+  })
+
+  // Fetch current orphaned records
+  const { data: orphanedData } = useQuery({
+    queryKey: ['current-orphaned'],
+    queryFn: async () => {
+      const response = await api.get('/dns/orphaned')
+      return response.data
+    },
+    refetchInterval: 30000,
+  })
+
+  // Generate activities from available data
+  const activities: ActivityEvent[] = []
+  
+  // Add recent DNS records as created/updated activities
+  if (dnsRecordsData?.data?.records) {
+    dnsRecordsData.data.records.slice(0, 5).forEach((record: any) => {
+      // Use createdAt or updatedAt to determine activity type
+      const createdAt = new Date(record.createdAt || record.created_at || Date.now())
+      const updatedAt = new Date(record.updatedAt || record.updated_at || createdAt)
+      
+      // If updated is significantly after created, it's an update
+      const isUpdate = updatedAt.getTime() - createdAt.getTime() > 60000 // 1 minute difference
+      
+      activities.push({
+        id: `dns-${record.id}`,
+        type: isUpdate ? 'updated' : 'created',
+        recordType: record.type,
+        hostname: record.hostname || record.name,
+        timestamp: (isUpdate ? updatedAt : createdAt).toISOString(),
+        details: record.isManaged ? 'Managed by TrafegoDNS' : 'External record'
+      })
+    })
+  }
+  
+  // Add current orphaned records
+  if (orphanedData?.data?.records) {
+    orphanedData.data.records.slice(0, 3).forEach((record: any) => {
+      activities.push({
+        id: `orphaned-current-${record.id}`,
+        type: 'orphaned',
+        recordType: record.type,
+        hostname: record.hostname || record.name,
+        timestamp: record.orphanedAt || new Date().toISOString(),
+        details: `In grace period (${record.elapsedMinutes || 0} minutes)`
+      })
+    })
+  }
+  
+  // Add orphaned history as deleted activities
+  if (orphanedHistoryData?.data?.records) {
+    orphanedHistoryData.data.records.slice(0, 3).forEach((record: any) => {
+      activities.push({
+        id: `orphaned-${record.historyId}`,
+        type: 'deleted',
+        recordType: record.type,
+        hostname: record.hostname || record.name,
+        timestamp: record.deletedAt,
+        details: record.deletionReason
+      })
+    })
+  }
+  
+  // Sort activities by timestamp (most recent first)
+  activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+  
+  // Limit to 5 most recent activities
+  const recentActivities = activities.slice(0, 5)
 
   const getActivityIcon = (type: string) => {
     switch (type) {
@@ -92,14 +161,14 @@ export function RecentActivity() {
         </Button>
       </CardHeader>
       <CardContent>
-        {activities.length === 0 ? (
+        {recentActivities.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <Activity className="h-8 w-8 mx-auto mb-2 opacity-50" />
             <p className="text-sm">No recent activity</p>
           </div>
         ) : (
           <div className="space-y-4">
-            {activities.map((activity: ActivityEvent) => (
+            {recentActivities.map((activity: ActivityEvent) => (
               <div key={activity.id} className="flex items-start gap-3">
                 <div className="mt-0.5">
                   {getActivityIcon(activity.type)}
