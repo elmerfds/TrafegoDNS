@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useSocket } from '@/hooks/useSocket'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '@/lib/api'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -7,8 +9,9 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
-import { Search, Trash2, Download } from 'lucide-react'
+import { Search, Trash2, Download, RefreshCw, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useToast } from '@/components/ui/use-toast'
 
 interface LogEntry {
   level: string
@@ -40,6 +43,7 @@ const logLevelBadgeVariants: Record<string, 'default' | 'secondary' | 'destructi
 
 export function LogsPage() {
   const { socket, isConnected } = useSocket()
+  const { toast } = useToast()
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [logLevel, setLogLevel] = useState<string>('info')
   const [searchQuery, setSearchQuery] = useState('')
@@ -48,6 +52,30 @@ export function LogsPage() {
   const logContainerRef = useRef<HTMLDivElement>(null)
   const maxLogs = 1000 // Maximum number of logs to keep in memory
 
+  // Query to fetch existing logs
+  const { data: existingLogs, isLoading: isLoadingLogs, refetch: refetchLogs } = useQuery({
+    queryKey: ['logs', logLevel],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      params.append('limit', '500') // Get more initial logs
+      if (logLevel !== 'silly') { // Don't filter if showing all levels
+        params.append('level', logLevel)
+      }
+      
+      const response = await api.get(`/logs?${params}`)
+      return response.data.data.logs as LogEntry[]
+    },
+    staleTime: 0, // Always consider stale so refresh button works
+  })
+
+  // Initialize logs from API data
+  useEffect(() => {
+    if (existingLogs && existingLogs.length > 0) {
+      setLogs(existingLogs)
+    }
+  }, [existingLogs])
+
+  // WebSocket subscription for real-time logs
   useEffect(() => {
     if (!socket || !isConnected) return
 
@@ -93,6 +121,23 @@ export function LogsPage() {
   // Clear logs
   const clearLogs = () => {
     setLogs([])
+  }
+
+  // Refresh logs
+  const refreshLogs = async () => {
+    try {
+      await refetchLogs()
+      toast({
+        title: 'Logs refreshed',
+        description: 'Successfully loaded recent logs from server.',
+      })
+    } catch (error) {
+      toast({
+        title: 'Refresh failed',
+        description: 'Failed to refresh logs. Please try again.',
+        variant: 'destructive',
+      })
+    }
   }
 
   // Export logs
@@ -209,6 +254,15 @@ export function LogsPage() {
                   <SelectItem value="silly">Silly</SelectItem>
                 </SelectContent>
               </Select>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={refreshLogs}
+                disabled={isLoadingLogs}
+              >
+                <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingLogs && "animate-spin")} />
+                Refresh
+              </Button>
               <Button variant="outline" size="sm" onClick={clearLogs}>
                 <Trash2 className="h-4 w-4 mr-2" />
                 Clear
@@ -224,7 +278,12 @@ export function LogsPage() {
               ref={logContainerRef}
               className="bg-gray-900 rounded-lg p-4 h-[600px] overflow-y-auto font-mono text-sm"
             >
-              {levelFilteredLogs.length === 0 ? (
+              {isLoadingLogs ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="h-6 w-6 animate-spin text-gray-500 mr-2" />
+                  <span className="text-gray-500">Loading logs...</span>
+                </div>
+              ) : levelFilteredLogs.length === 0 ? (
                 <div className="text-gray-500 text-center py-8">
                   {isPaused ? 'Log streaming is paused' : 'No logs to display'}
                 </div>
@@ -255,9 +314,15 @@ export function LogsPage() {
               <div>
                 Showing {levelFilteredLogs.length} of {logs.length} logs
                 {logs.length >= maxLogs && ' (max reached)'}
+                {existingLogs && existingLogs.length > 0 && (
+                  <span className="ml-2 text-xs text-gray-500">
+                    ({existingLogs.length} loaded from server)
+                  </span>
+                )}
               </div>
-              <div>
+              <div className="flex items-center gap-2">
                 {isPaused && <Badge variant="secondary">Paused</Badge>}
+                {isLoadingLogs && <Badge variant="outline">Refreshing...</Badge>}
               </div>
             </div>
           </div>
