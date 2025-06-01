@@ -278,8 +278,8 @@ class ConfigManager {
       // Apply database settings over environment defaults
       this._applySettings(dbSettings);
       
-      // Load secrets from database (if any)
-      await this.loadSecrets();
+      // Load secrets from database (if any) and apply them
+      await this._loadAndApplySecrets();
       
       this._dbLoaded = true;
       
@@ -837,6 +837,47 @@ class ConfigManager {
     } catch (error) {
       logger.error(`Failed to load secrets: ${error.message}`);
       return {};
+    }
+  }
+  
+  /**
+   * Load secrets from database and apply them to ConfigManager properties
+   * @private
+   */
+  async _loadAndApplySecrets() {
+    try {
+      const secrets = await this.loadSecrets();
+      
+      // Apply loaded secrets to ConfigManager properties, overriding environment values
+      if (secrets.cloudflareToken) {
+        this.cloudflareToken = secrets.cloudflareToken;
+        logger.debug('Loaded Cloudflare token from database');
+      }
+      
+      if (secrets.route53AccessKey) {
+        this.route53AccessKey = secrets.route53AccessKey;
+        logger.debug('Loaded Route53 access key from database');
+      }
+      
+      if (secrets.route53SecretKey) {
+        this.route53SecretKey = secrets.route53SecretKey;
+        logger.debug('Loaded Route53 secret key from database');
+      }
+      
+      if (secrets.digitalOceanToken) {
+        this.digitalOceanToken = secrets.digitalOceanToken;
+        logger.debug('Loaded DigitalOcean token from database');
+      }
+      
+      if (secrets.traefikApiPassword) {
+        this.traefikApiPassword = secrets.traefikApiPassword;
+        logger.debug('Loaded Traefik API password from database');
+      }
+      
+      logger.info(`Loaded ${Object.keys(secrets).length} secrets from database`);
+    } catch (error) {
+      logger.error(`Failed to load secrets from database: ${error.message}`);
+      // Continue with environment-only secrets
     }
   }
   
