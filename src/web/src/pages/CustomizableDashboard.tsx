@@ -713,18 +713,18 @@ export function CustomizableDashboard() {
         rowHeight={60}
         margin={[16, 16]}
       >
-        {Object.keys(defaultLayouts.lg).map(item => {
-          const widget = renderWidget(item.i)
-          if (!widget && item.i === 'alerts') return <div key={item.i} />
+        {defaultLayouts.lg.map(layoutItem => {
+          const widget = renderWidget(layoutItem.i)
+          if (!widget && layoutItem.i === 'alerts') return <div key={layoutItem.i} />
           if (!widget) return null
           
           return (
-            <div key={item.i} className={isEditMode ? 'dashboard-item-edit' : ''}>
+            <div key={layoutItem.i} className={isEditMode ? 'dashboard-item-edit' : ''}>
               {isEditMode && (
                 <div className="absolute top-0 left-0 right-0 bg-muted/50 p-1 flex items-center gap-2 cursor-move z-10">
                   <GripVertical className="h-4 w-4" />
                   <span className="text-xs font-medium capitalize">
-                    {item.i.replace('-', ' ')}
+                    {layoutItem.i.replace('-', ' ')}
                   </span>
                 </div>
               )}
@@ -733,29 +733,6 @@ export function CustomizableDashboard() {
           )
         })}
       </ResponsiveGridLayout>
-
-      <style jsx>{`
-        .dashboard-item-edit {
-          position: relative;
-          border: 2px dashed var(--border);
-          border-radius: var(--radius);
-          padding: 2px;
-        }
-        
-        .react-grid-item.react-grid-placeholder {
-          background: hsl(var(--primary) / 0.1);
-          border: 2px dashed hsl(var(--primary));
-          border-radius: var(--radius);
-        }
-        
-        .react-resizable-handle {
-          background-image: none;
-          background-color: hsl(var(--primary));
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-        }
-      `}</style>
     </div>
   )
 }

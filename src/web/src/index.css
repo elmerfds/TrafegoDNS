@@ -342,3 +342,25 @@
 .react-resizable-hide > .react-resizable-handle {
   display: none;
 }
+
+/* Dashboard customization styles */
+.dashboard-item-edit {
+  position: relative;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 2px;
+}
+
+.react-grid-item.react-grid-placeholder {
+  background: hsl(var(--primary) / 0.1);
+  border: 2px dashed hsl(var(--primary));
+  border-radius: var(--radius);
+}
+
+.react-resizable-handle {
+  background-image: none;
+  background-color: hsl(var(--primary));
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
