@@ -76,9 +76,9 @@ export function Layout() {
                 alt="TrafegoDNS" 
                 className="h-6 w-auto"
                 style={{ 
-                  imageRendering: 'optimizeQuality',
-                  shapeRendering: 'geometricPrecision',
-                  textRendering: 'geometricPrecision'
+                  imageRendering: 'auto' as any,
+                  shapeRendering: 'geometricPrecision' as any,
+                  textRendering: 'geometricPrecision' as any
                 }}
               />
             </div>
