@@ -386,42 +386,47 @@
 .react-resizable-handle {
   background-image: none;
   background-color: hsl(var(--primary) / 0.8);
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
-  cursor: se-resize;
+  border: 1px solid hsl(var(--primary));
   transition: all 0.2s ease;
-  z-index: 20;
+  z-index: 100;
+  opacity: 0.7;
+}
+
+.react-resizable-handle:hover {
+  background-color: hsl(var(--primary));
+  opacity: 1;
+  transform: scale(1.1);
 }
 
 .react-resizable-handle-se {
-  right: 2px;
-  bottom: 2px;
+  right: 4px;
+  bottom: 4px;
+  width: 12px;
+  height: 12px;
   cursor: se-resize;
+  border-radius: 50%;
 }
 
 .react-resizable-handle-s {
-  bottom: 2px;
+  bottom: 4px;
   left: 50%;
   transform: translateX(-50%);
   cursor: s-resize;
   width: 40px;
   height: 8px;
+  border-radius: 4px;
 }
 
 .react-resizable-handle-e {
-  right: 2px;
+  right: 4px;
   top: 50%;
   transform: translateY(-50%);
   cursor: e-resize;
   width: 8px;
   height: 40px;
+  border-radius: 4px;
 }
 
-.react-resizable-handle:hover {
-  background-color: hsl(var(--primary));
-  transform: scale(1.1);
-}
 
 .react-resizable-handle-s:hover {
   transform: translateX(-50%) scale(1.1);

@@ -46,46 +46,46 @@ const ResponsiveGridLayout = WidthProvider(Responsive)
 // Default layouts for different breakpoints with minimal gaps
 const defaultLayouts = {
   lg: [
-    { i: 'stats', x: 0, y: 0, w: 12, h: 3, minH: 3, minW: 6 },
-    { i: 'alerts', x: 0, y: 3, w: 12, h: 2, minH: 2, minW: 6 },
-    { i: 'system-overview', x: 0, y: 5, w: 4, h: 6, minH: 4, minW: 3 },
-    { i: 'service-health', x: 4, y: 5, w: 4, h: 6, minH: 4, minW: 3 },
-    { i: 'system-resources', x: 8, y: 5, w: 4, h: 6, minH: 4, minW: 3 },
-    { i: 'dns-health', x: 0, y: 11, w: 4, h: 6, minH: 4, minW: 3 },
-    { i: 'container-monitoring', x: 4, y: 11, w: 4, h: 6, minH: 4, minW: 3 },
-    { i: 'quick-actions', x: 8, y: 11, w: 4, h: 6, minH: 4, minW: 3 },
-    { i: 'pause-controls', x: 0, y: 17, w: 4, h: 5, minH: 4, minW: 3 },
-    { i: 'recent-activity', x: 4, y: 17, w: 8, h: 5, minH: 4, minW: 4 },
-    { i: 'provider-status', x: 0, y: 22, w: 6, h: 6, minH: 4, minW: 3 },
-    { i: 'issues-monitoring', x: 6, y: 22, w: 6, h: 6, minH: 4, minW: 3 },
+    { i: 'stats', x: 0, y: 0, w: 12, h: 4, minH: 3, minW: 6 },
+    { i: 'alerts', x: 0, y: 4, w: 12, h: 2, minH: 2, minW: 6 },
+    { i: 'system-overview', x: 0, y: 6, w: 4, h: 6, minH: 4, minW: 3 },
+    { i: 'service-health', x: 4, y: 6, w: 4, h: 6, minH: 4, minW: 3 },
+    { i: 'system-resources', x: 8, y: 6, w: 4, h: 6, minH: 4, minW: 3 },
+    { i: 'dns-health', x: 0, y: 12, w: 4, h: 6, minH: 4, minW: 3 },
+    { i: 'container-monitoring', x: 4, y: 12, w: 4, h: 6, minH: 4, minW: 3 },
+    { i: 'quick-actions', x: 8, y: 12, w: 4, h: 6, minH: 4, minW: 3 },
+    { i: 'pause-controls', x: 0, y: 18, w: 4, h: 7, minH: 6, minW: 3 },
+    { i: 'recent-activity', x: 4, y: 18, w: 8, h: 5, minH: 4, minW: 4 },
+    { i: 'provider-status', x: 0, y: 25, w: 6, h: 6, minH: 4, minW: 3 },
+    { i: 'issues-monitoring', x: 6, y: 25, w: 6, h: 6, minH: 4, minW: 3 },
   ],
   md: [
-    { i: 'stats', x: 0, y: 0, w: 10, h: 5, minH: 4, minW: 5 },
-    { i: 'alerts', x: 0, y: 5, w: 10, h: 3, minH: 2, minW: 5 },
-    { i: 'system-overview', x: 0, y: 8, w: 5, h: 6, minH: 4, minW: 3 },
-    { i: 'service-health', x: 5, y: 8, w: 5, h: 6, minH: 4, minW: 3 },
-    { i: 'system-resources', x: 0, y: 14, w: 10, h: 6, minH: 4, minW: 5 },
-    { i: 'dns-health', x: 0, y: 20, w: 5, h: 6, minH: 4, minW: 3 },
-    { i: 'container-monitoring', x: 5, y: 20, w: 5, h: 6, minH: 4, minW: 3 },
-    { i: 'quick-actions', x: 0, y: 26, w: 10, h: 6, minH: 4, minW: 5 },
-    { i: 'pause-controls', x: 0, y: 32, w: 10, h: 5, minH: 4, minW: 5 },
-    { i: 'recent-activity', x: 0, y: 37, w: 10, h: 5, minH: 4, minW: 5 },
-    { i: 'provider-status', x: 0, y: 42, w: 5, h: 6, minH: 4, minW: 3 },
-    { i: 'issues-monitoring', x: 5, y: 42, w: 5, h: 6, minH: 4, minW: 3 },
+    { i: 'stats', x: 0, y: 0, w: 10, h: 6, minH: 4, minW: 5 },
+    { i: 'alerts', x: 0, y: 6, w: 10, h: 3, minH: 2, minW: 5 },
+    { i: 'system-overview', x: 0, y: 9, w: 5, h: 6, minH: 4, minW: 3 },
+    { i: 'service-health', x: 5, y: 9, w: 5, h: 6, minH: 4, minW: 3 },
+    { i: 'system-resources', x: 0, y: 15, w: 10, h: 6, minH: 4, minW: 5 },
+    { i: 'dns-health', x: 0, y: 21, w: 5, h: 6, minH: 4, minW: 3 },
+    { i: 'container-monitoring', x: 5, y: 21, w: 5, h: 6, minH: 4, minW: 3 },
+    { i: 'quick-actions', x: 0, y: 27, w: 10, h: 6, minH: 4, minW: 5 },
+    { i: 'pause-controls', x: 0, y: 33, w: 10, h: 7, minH: 6, minW: 5 },
+    { i: 'recent-activity', x: 0, y: 40, w: 10, h: 5, minH: 4, minW: 5 },
+    { i: 'provider-status', x: 0, y: 45, w: 5, h: 6, minH: 4, minW: 3 },
+    { i: 'issues-monitoring', x: 5, y: 45, w: 5, h: 6, minH: 4, minW: 3 },
   ],
   sm: [
-    { i: 'stats', x: 0, y: 0, w: 6, h: 10, minH: 8, minW: 6 },
-    { i: 'alerts', x: 0, y: 10, w: 6, h: 3, minH: 2, minW: 6 },
-    { i: 'system-overview', x: 0, y: 13, w: 6, h: 6, minH: 5, minW: 6 },
-    { i: 'service-health', x: 0, y: 19, w: 6, h: 6, minH: 5, minW: 6 },
-    { i: 'system-resources', x: 0, y: 25, w: 6, h: 6, minH: 5, minW: 6 },
-    { i: 'dns-health', x: 0, y: 31, w: 6, h: 6, minH: 5, minW: 6 },
-    { i: 'container-monitoring', x: 0, y: 37, w: 6, h: 6, minH: 5, minW: 6 },
-    { i: 'quick-actions', x: 0, y: 43, w: 6, h: 6, minH: 5, minW: 6 },
-    { i: 'pause-controls', x: 0, y: 49, w: 6, h: 5, minH: 4, minW: 6 },
-    { i: 'recent-activity', x: 0, y: 54, w: 6, h: 5, minH: 4, minW: 6 },
-    { i: 'provider-status', x: 0, y: 59, w: 6, h: 6, minH: 5, minW: 6 },
-    { i: 'issues-monitoring', x: 0, y: 65, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'stats', x: 0, y: 0, w: 6, h: 12, minH: 8, minW: 6 },
+    { i: 'alerts', x: 0, y: 12, w: 6, h: 3, minH: 2, minW: 6 },
+    { i: 'system-overview', x: 0, y: 15, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'service-health', x: 0, y: 21, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'system-resources', x: 0, y: 27, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'dns-health', x: 0, y: 33, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'container-monitoring', x: 0, y: 39, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'quick-actions', x: 0, y: 45, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'pause-controls', x: 0, y: 51, w: 6, h: 8, minH: 7, minW: 6 },
+    { i: 'recent-activity', x: 0, y: 59, w: 6, h: 5, minH: 4, minW: 6 },
+    { i: 'provider-status', x: 0, y: 64, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'issues-monitoring', x: 0, y: 70, w: 6, h: 6, minH: 5, minW: 6 },
   ]
 }
 
@@ -167,18 +167,13 @@ export function CustomizableDashboard() {
   ]
 
   const handleLayoutChange = (currentLayout: Layout[], allLayouts: any) => {
-    // Ensure layouts are compacted to remove gaps
-    const compactedLayouts = { ...allLayouts }
-    Object.keys(compactedLayouts).forEach(breakpoint => {
-      if (compactedLayouts[breakpoint]) {
-        // Sort by Y position then X position
-        compactedLayouts[breakpoint].sort((a: any, b: any) => {
-          if (a.y === b.y) return a.x - b.x
-          return a.y - b.y
-        })
-      }
-    })
-    setLayouts(compactedLayouts)
+    // Always update layouts to maintain state
+    setLayouts(allLayouts)
+    
+    // Auto-save layouts when in edit mode
+    if (isEditMode) {
+      localStorage.setItem('dashboardLayouts', JSON.stringify(allLayouts))
+    }
   }
 
   const saveLayouts = () => {
@@ -191,7 +186,8 @@ export function CustomizableDashboard() {
   }
 
   const resetLayouts = () => {
-    setLayouts(defaultLayouts)
+    const newLayouts = { ...defaultLayouts }
+    setLayouts(newLayouts)
     localStorage.removeItem('dashboardLayouts')
     toast({
       title: 'Layout reset',
@@ -617,10 +613,20 @@ export function CustomizableDashboard() {
         )
 
       case 'pause-controls':
-        return <PauseControls />
+        return (
+          <div className="h-full flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto">
+              <PauseControls />
+            </div>
+          </div>
+        )
 
       case 'recent-activity':
-        return <RecentActivity />
+        return (
+          <div className="h-full overflow-hidden">
+            <RecentActivity />
+          </div>
+        )
 
       case 'provider-status':
         return (
@@ -789,32 +795,33 @@ export function CustomizableDashboard() {
         cols={{ lg: 12, md: 10, sm: 6 }}
         isDraggable={isEditMode}
         isResizable={isEditMode}
-        rowHeight={50}
-        margin={[16, 16]}
+        rowHeight={40}
+        margin={[12, 8]}
         containerPadding={[0, 0]}
-        compactType="vertical"
-        preventCollision={true}
-        draggableHandle=".drag-handle"
-        verticalCompact={true}
+        compactType={isEditMode ? null : "vertical"}
+        preventCollision={false}
+        draggableHandle={isEditMode ? ".drag-handle" : ""}
+        verticalCompact={!isEditMode}
         transformScale={1}
         resizeHandles={['se', 's', 'e']}
+        useCSSTransforms={true}
       >
-        {defaultLayouts.lg.map(layoutItem => {
-          const widget = renderWidget(layoutItem.i)
-          if (!widget && layoutItem.i === 'alerts') return <div key={layoutItem.i} />
+        {['stats', 'alerts', 'system-overview', 'service-health', 'system-resources', 'dns-health', 'container-monitoring', 'quick-actions', 'pause-controls', 'recent-activity', 'provider-status', 'issues-monitoring'].map(widgetId => {
+          const widget = renderWidget(widgetId)
+          if (!widget && widgetId === 'alerts') return <div key={widgetId} />
           if (!widget) return null
           
           return (
-            <div key={layoutItem.i} className={isEditMode ? 'dashboard-item-edit h-full' : 'h-full'}>
+            <div key={widgetId} className={isEditMode ? 'dashboard-item-edit h-full' : 'h-full'}>
               {isEditMode && (
-                <div className="drag-handle absolute top-0 left-0 right-0 bg-muted/50 backdrop-blur-sm p-2 flex items-center gap-2 cursor-move z-10 border-b border-border">
+                <div className="drag-handle absolute top-0 left-0 right-0 bg-muted/50 backdrop-blur-sm p-2 flex items-center gap-2 cursor-move z-10 border-b border-border rounded-t">
                   <GripVertical className="h-4 w-4 text-muted-foreground" />
                   <span className="text-xs font-medium capitalize text-foreground">
-                    {layoutItem.i.replace(/-/g, ' ')}
+                    {widgetId.replace(/-/g, ' ')}
                   </span>
                 </div>
               )}
-              <div className={isEditMode ? 'pt-8 h-full' : 'h-full'}>
+              <div className={isEditMode ? 'pt-10 h-full overflow-hidden' : 'h-full overflow-hidden'}>
                 {widget}
               </div>
             </div>

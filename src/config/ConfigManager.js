@@ -702,146 +702,7 @@ class ConfigManager {
     }
   }
   
-  /**
-   * Save secrets to database (encrypted)
-   * @param {Object} secrets - Object containing secret values
-   * @param {string} userId - ID of user making the change (for audit log)
-   * @returns {Promise<Object>} - Success/error result
-   */
-  async saveSecrets(secrets, userId = null) {
-    try {
-      const database = require('../database');
-      
-      if (!database.isInitialized() || !database.repositories?.setting) {
-        return { success: false, error: 'Database not initialized' };
-      }
-      
-      // Encrypt secrets before storage
-      const encryptedSecrets = {};
-      const crypto = require('crypto');
-      
-      // Simple encryption key derived from environment
-      const key = crypto.createHash('sha256').update(process.env.ENCRYPTION_KEY || 'trafegodns-default-key').digest();
-      
-      for (const [secretName, secretValue] of Object.entries(secrets)) {
-        if (secretValue && secretValue.trim() !== '') {
-          const iv = crypto.randomBytes(16);
-          const cipher = crypto.createCipherGCM('aes-256-gcm', key);
-          cipher.setAAD(Buffer.from(secretName));
-          
-          let encrypted = cipher.update(secretValue, 'utf8', 'hex');
-          encrypted += cipher.final('hex');
-          
-          const authTag = cipher.getAuthTag();
-          
-          encryptedSecrets[`secret_${secretName}`] = JSON.stringify({
-            data: encrypted,
-            iv: iv.toString('hex'),
-            authTag: authTag.toString('hex')
-          });
-        }
-      }
-      
-      // Save encrypted secrets to database
-      await database.repositories.setting.setMany(encryptedSecrets);
-      
-      // Update in-memory values
-      if (secrets.cloudflareToken) this.cloudflareToken = secrets.cloudflareToken;
-      if (secrets.route53AccessKey) this.route53AccessKey = secrets.route53AccessKey;
-      if (secrets.route53SecretKey) this.route53SecretKey = secrets.route53SecretKey;
-      if (secrets.digitalOceanToken) this.digitalOceanToken = secrets.digitalOceanToken;
-      if (secrets.traefikApiPassword) this.traefikApiPassword = secrets.traefikApiPassword;
-      
-      // Log audit entry
-      if (database.repositories.activityLog && userId) {
-        try {
-          await database.repositories.activityLog.logActivity({
-            type: 'updated',
-            recordType: 'secrets',
-            hostname: 'system',
-            details: `Updated secrets: ${Object.keys(secrets).join(', ')}`,
-            source: 'config',
-            metadata: {
-              userId: userId,
-              secretsUpdated: Object.keys(secrets),
-              timestamp: new Date().toISOString()
-            }
-          });
-        } catch (auditError) {
-          logger.warn(`Failed to log secret update audit: ${auditError.message}`);
-        }
-      }
-      
-      logger.info(`Successfully saved ${Object.keys(secrets).length} secrets to database`);
-      return { success: true };
-    } catch (error) {
-      logger.error(`Failed to save secrets: ${error.message}`);
-      return { success: false, error: error.message };
-    }
-  }
   
-  /**
-   * Load secrets from database (decrypted)
-   * @returns {Promise<Object>} - Decrypted secrets
-   */
-  async loadSecrets() {
-    try {
-      const database = require('../database');
-      
-      if (!database.isInitialized() || !database.repositories?.setting) {
-        return {};
-      }
-      
-      // Get all secret settings from database
-      const allSettings = await database.repositories.setting.getAll();
-      const secretSettings = {};
-      
-      for (const [key, value] of Object.entries(allSettings)) {
-        if (key.startsWith('secret_')) {
-          secretSettings[key] = value;
-        }
-      }
-      
-      if (Object.keys(secretSettings).length === 0) {
-        return {};
-      }
-      
-      // Decrypt secrets
-      const decryptedSecrets = {};
-      const crypto = require('crypto');
-      const key = crypto.createHash('sha256').update(process.env.ENCRYPTION_KEY || 'trafegodns-default-key').digest();
-      
-      for (const [secretKey, encryptedValue] of Object.entries(secretSettings)) {
-        try {
-          const secretName = secretKey.replace('secret_', '');
-          const encryptedData = JSON.parse(encryptedValue);
-          
-          const decipher = crypto.createDecipherGCM('aes-256-gcm', key);
-          decipher.setAAD(Buffer.from(secretName));
-          decipher.setAuthTag(Buffer.from(encryptedData.authTag, 'hex'));
-          
-          let decrypted = decipher.update(encryptedData.data, 'hex', 'utf8');
-          decrypted += decipher.final('utf8');
-          
-          decryptedSecrets[secretName] = decrypted;
-        } catch (decryptError) {
-          logger.warn(`Failed to decrypt secret ${secretKey}: ${decryptError.message}`);
-        }
-      }
-      
-      // Update in-memory values if they exist in database
-      if (decryptedSecrets.cloudflareToken) this.cloudflareToken = decryptedSecrets.cloudflareToken;
-      if (decryptedSecrets.route53AccessKey) this.route53AccessKey = decryptedSecrets.route53AccessKey;
-      if (decryptedSecrets.route53SecretKey) this.route53SecretKey = decryptedSecrets.route53SecretKey;
-      if (decryptedSecrets.digitalOceanToken) this.digitalOceanToken = decryptedSecrets.digitalOceanToken;
-      if (decryptedSecrets.traefikApiPassword) this.traefikApiPassword = decryptedSecrets.traefikApiPassword;
-      
-      return decryptedSecrets;
-    } catch (error) {
-      logger.error(`Failed to load secrets: ${error.message}`);
-      return {};
-    }
-  }
   
   /**
    * Sync environment secrets to database if they don't exist there
@@ -852,21 +713,47 @@ class ConfigManager {
       const database = require('../database');
       
       if (!database.isInitialized() || !database.repositories?.setting) {
+        logger.debug('Database not initialized, skipping environment secret sync');
         return;
       }
       
+      logger.debug('Starting environment secrets sync to database');
+      
+      // Debug: Log which environment secrets are loaded
+      const envSecretNames = [];
+      if (this.cloudflareToken) envSecretNames.push('cloudflareToken');
+      if (this.route53AccessKey) envSecretNames.push('route53AccessKey');
+      if (this.route53SecretKey) envSecretNames.push('route53SecretKey');
+      if (this.digitalOceanToken) envSecretNames.push('digitalOceanToken');
+      if (this.traefikApiPassword) envSecretNames.push('traefikApiPassword');
+      logger.debug(`Environment secrets detected: ${envSecretNames.join(', ') || 'none'}`);
+      
       // Get current database settings
       const allSettings = await database.repositories.setting.getAll();
+      logger.debug(`Found ${Object.keys(allSettings).length} settings in database`);
+      
+      // Log which secret keys exist in database
+      const existingSecrets = Object.keys(allSettings).filter(key => key.startsWith('secret_'));
+      logger.debug(`Existing secret keys in database: ${existingSecrets.join(', ') || 'none'}`);
       
       // Collect environment secrets that aren't in database
       const envSecrets = {};
       let hasNewSecrets = false;
       
       // Check Cloudflare token
-      if (this.cloudflareToken && !allSettings.secret_cloudflareToken) {
+      const hasCloudflareInDb = Boolean(allSettings.secret_cloudflareToken);
+      const hasCloudflareInEnv = Boolean(this.cloudflareToken);
+      
+      logger.debug(`Cloudflare token - Environment: ${hasCloudflareInEnv}, Database: ${hasCloudflareInDb}`);
+      
+      if (hasCloudflareInEnv && !hasCloudflareInDb) {
         envSecrets.cloudflareToken = this.cloudflareToken;
         hasNewSecrets = true;
         logger.info('Found Cloudflare token in environment but not in database');
+      } else if (hasCloudflareInEnv && hasCloudflareInDb) {
+        logger.debug('Cloudflare token exists in both environment and database, skipping sync');
+      } else if (!hasCloudflareInEnv) {
+        logger.debug('No Cloudflare token in environment');
       }
       
       // Check Route53 credentials
@@ -898,14 +785,16 @@ class ConfigManager {
       
       // Save any new secrets to database
       if (hasNewSecrets) {
-        logger.info('Saving environment secrets to database for persistence');
+        logger.info(`Saving ${Object.keys(envSecrets).length} environment secrets to database for persistence: ${Object.keys(envSecrets).join(', ')}`);
         const result = await this.saveSecrets(envSecrets, 'system-init');
         
         if (result.success) {
-          logger.info(`Successfully saved ${result.updatedSecrets.length} environment secrets to database`);
+          logger.info(`Successfully saved ${result.updatedSecrets.length} environment secrets to database: ${result.updatedSecrets.join(', ')}`);
         } else {
           logger.warn(`Failed to save environment secrets to database: ${result.error}`);
         }
+      } else {
+        logger.debug('No new environment secrets to sync to database');
       }
     } catch (error) {
       logger.error(`Failed to sync environment secrets to database: ${error.message}`);
