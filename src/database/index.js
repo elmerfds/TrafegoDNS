@@ -145,6 +145,17 @@ async function initialize(migrate = true, options = {}) {
       }
     }
     
+    // Run essential table migrations first (before repository initialization)
+    if (migrate) {
+      try {
+        // Create activity log table - this should always run
+        await createActivityLogTable(db);
+        logger.info('Activity log table ready');
+      } catch (activityLogError) {
+        logger.error(`Failed to create activity log table: ${activityLogError.message}`);
+      }
+    }
+    
     // Special DNS tables synchronization if migrations are requested and dnsManager exists
     if (migrate && repositories.dnsManager) {
       try {
@@ -197,16 +208,6 @@ async function initialize(migrate = true, options = {}) {
               logger.info('Ensured orphaned_at column exists in dns_tracked_records table');
             } catch (orphanedAtError) {
               logger.error(`Failed to ensure orphaned_at column: ${orphanedAtError.message}`);
-            }
-          })(),
-          
-          // Create activity log table
-          (async () => {
-            try {
-              await createActivityLogTable(db);
-              logger.info('Activity log table ready');
-            } catch (activityLogError) {
-              logger.error(`Failed to create activity log table: ${activityLogError.message}`);
             }
           })()
         ]);

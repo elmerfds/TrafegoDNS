@@ -27,7 +27,9 @@ const getRecentActivity = asyncHandler(async (req, res) => {
     if (database.repositories && database.repositories.activityLog) {
       // Use the persistent activity log
       try {
+        logger.debug('Attempting to get activities from activity log repository');
         const activities = await database.repositories.activityLog.getRecentActivities(parsedLimit);
+        logger.debug(`Retrieved ${activities.length} activities from activity log`);
         
         // Format activities with IDs
         const formattedActivities = activities.map((activity, index) => ({
@@ -54,6 +56,8 @@ const getRecentActivity = asyncHandler(async (req, res) => {
         logger.warn(`Failed to get activities from activity log: ${activityError.message}`);
         // Fall back to the old method
       }
+    } else {
+      logger.warn(`Activity log repository not available: database.repositories=${!!database.repositories}, activityLog=${!!(database.repositories && database.repositories.activityLog)}`);
     }
     
     const activities = [];

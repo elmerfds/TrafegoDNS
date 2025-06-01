@@ -530,6 +530,7 @@ class DNSManager {
         
         // Log activities for created records
         if (database.repositories && database.repositories.activityLog) {
+          logger.debug(`Logging activities for ${batchResult.created.length} created records`);
           for (const record of batchResult.created) {
             try {
               await database.repositories.activityLog.logActivity({
@@ -546,33 +547,40 @@ class DNSManager {
                   proxied: record.proxied
                 }
               });
+              logger.debug(`Successfully logged creation activity for ${record.name} (${record.type})`);
             } catch (activityError) {
               logger.error(`Failed to log activity for created record: ${activityError.message}`);
             }
           }
+        } else {
+          logger.warn(`Activity log repository not available: database.repositories=${!!database.repositories}, activityLog=${!!(database.repositories && database.repositories.activityLog)}`);
+        }
           
           // Log activities for updated records
-          for (const record of batchResult.updated) {
-            try {
-              await database.repositories.activityLog.logActivity({
-                type: 'updated',
-                recordType: record.type,
-                hostname: record.name,
-                details: `Updated ${record.type} record`,
-                source: 'dns',
-                provider: this.config.dnsProvider,
-                record_id: record.id,
-                metadata: {
-                  content: record.content || record.value || record.data,
-                  ttl: record.ttl,
-                  proxied: record.proxied
-                }
-              });
-            } catch (activityError) {
-              logger.error(`Failed to log activity for updated record: ${activityError.message}`);
+          if (database.repositories && database.repositories.activityLog) {
+            logger.debug(`Logging activities for ${batchResult.updated.length} updated records`);
+            for (const record of batchResult.updated) {
+              try {
+                await database.repositories.activityLog.logActivity({
+                  type: 'updated',
+                  recordType: record.type,
+                  hostname: record.name,
+                  details: `Updated ${record.type} record`,
+                  source: 'dns',
+                  provider: this.config.dnsProvider,
+                  record_id: record.id,
+                  metadata: {
+                    content: record.content || record.value || record.data,
+                    ttl: record.ttl,
+                    proxied: record.proxied
+                  }
+                });
+                logger.debug(`Successfully logged update activity for ${record.name} (${record.type})`);
+              } catch (activityError) {
+                logger.error(`Failed to log activity for updated record: ${activityError.message}`);
+              }
             }
           }
-        }
         
         // Track each record
         for (const record of recordsToTrack) {
