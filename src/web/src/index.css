@@ -346,21 +346,61 @@
 /* Dashboard customization styles */
 .dashboard-item-edit {
   position: relative;
-  border: 2px dashed var(--border);
+  border: 2px dashed hsl(var(--primary) / 0.3);
   border-radius: var(--radius);
-  padding: 2px;
+  overflow: hidden;
+  background: hsl(var(--card) / 0.5);
+  transition: all 0.2s ease;
+}
+
+.dashboard-item-edit:hover {
+  border-color: hsl(var(--primary) / 0.5);
+  box-shadow: 0 4px 12px hsl(var(--primary) / 0.1);
 }
 
 .react-grid-item.react-grid-placeholder {
   background: hsl(var(--primary) / 0.1);
-  border: 2px dashed hsl(var(--primary));
+  border: 2px dashed hsl(var(--primary) / 0.5);
   border-radius: var(--radius);
+  opacity: 0.7;
+}
+
+.react-grid-item.react-draggable-dragging {
+  opacity: 0.8;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  cursor: grabbing !important;
+}
+
+.react-grid-item.react-draggable-dragging .dashboard-item-edit {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--card));
 }
 
 .react-resizable-handle {
   background-image: none;
-  background-color: hsl(var(--primary));
-  width: 8px;
-  height: 8px;
+  background-color: hsl(var(--primary) / 0.6);
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
+  right: 4px;
+  bottom: 4px;
+  cursor: se-resize;
+  transition: all 0.2s ease;
+}
+
+.react-resizable-handle:hover {
+  background-color: hsl(var(--primary));
+  transform: scale(1.2);
+}
+
+.drag-handle {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+.drag-handle:hover {
+  background: hsl(var(--muted) / 0.9);
 }

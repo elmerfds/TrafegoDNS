@@ -42,49 +42,49 @@ import 'react-resizable/css/styles.css'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
-// Default layouts for different breakpoints
+// Default layouts for different breakpoints with proper spacing
 const defaultLayouts = {
   lg: [
-    { i: 'stats', x: 0, y: 0, w: 12, h: 2 },
-    { i: 'alerts', x: 0, y: 2, w: 12, h: 2 },
-    { i: 'system-overview', x: 0, y: 4, w: 4, h: 4 },
-    { i: 'service-health', x: 4, y: 4, w: 4, h: 4 },
-    { i: 'system-resources', x: 8, y: 4, w: 4, h: 4 },
-    { i: 'dns-health', x: 0, y: 8, w: 4, h: 4 },
-    { i: 'container-monitoring', x: 4, y: 8, w: 4, h: 4 },
-    { i: 'quick-actions', x: 8, y: 8, w: 4, h: 4 },
-    { i: 'pause-controls', x: 0, y: 12, w: 4, h: 3 },
-    { i: 'recent-activity', x: 4, y: 12, w: 8, h: 3 },
-    { i: 'provider-status', x: 0, y: 15, w: 6, h: 4 },
-    { i: 'issues-monitoring', x: 6, y: 15, w: 6, h: 4 },
+    { i: 'stats', x: 0, y: 0, w: 12, h: 3 },
+    { i: 'alerts', x: 0, y: 3, w: 12, h: 2 },
+    { i: 'system-overview', x: 0, y: 5, w: 4, h: 5 },
+    { i: 'service-health', x: 4, y: 5, w: 4, h: 5 },
+    { i: 'system-resources', x: 8, y: 5, w: 4, h: 5 },
+    { i: 'dns-health', x: 0, y: 10, w: 4, h: 5 },
+    { i: 'container-monitoring', x: 4, y: 10, w: 4, h: 5 },
+    { i: 'quick-actions', x: 8, y: 10, w: 4, h: 5 },
+    { i: 'pause-controls', x: 0, y: 15, w: 4, h: 4 },
+    { i: 'recent-activity', x: 4, y: 15, w: 8, h: 4 },
+    { i: 'provider-status', x: 0, y: 19, w: 6, h: 5 },
+    { i: 'issues-monitoring', x: 6, y: 19, w: 6, h: 5 },
   ],
   md: [
-    { i: 'stats', x: 0, y: 0, w: 10, h: 4 },
-    { i: 'alerts', x: 0, y: 4, w: 10, h: 2 },
-    { i: 'system-overview', x: 0, y: 6, w: 5, h: 4 },
-    { i: 'service-health', x: 5, y: 6, w: 5, h: 4 },
-    { i: 'system-resources', x: 0, y: 10, w: 10, h: 4 },
-    { i: 'dns-health', x: 0, y: 14, w: 5, h: 4 },
-    { i: 'container-monitoring', x: 5, y: 14, w: 5, h: 4 },
-    { i: 'quick-actions', x: 0, y: 18, w: 10, h: 4 },
-    { i: 'pause-controls', x: 0, y: 22, w: 10, h: 3 },
-    { i: 'recent-activity', x: 0, y: 25, w: 10, h: 3 },
-    { i: 'provider-status', x: 0, y: 28, w: 5, h: 4 },
-    { i: 'issues-monitoring', x: 5, y: 28, w: 5, h: 4 },
+    { i: 'stats', x: 0, y: 0, w: 10, h: 6 },
+    { i: 'alerts', x: 0, y: 6, w: 10, h: 3 },
+    { i: 'system-overview', x: 0, y: 9, w: 5, h: 5 },
+    { i: 'service-health', x: 5, y: 9, w: 5, h: 5 },
+    { i: 'system-resources', x: 0, y: 14, w: 10, h: 5 },
+    { i: 'dns-health', x: 0, y: 19, w: 5, h: 5 },
+    { i: 'container-monitoring', x: 5, y: 19, w: 5, h: 5 },
+    { i: 'quick-actions', x: 0, y: 24, w: 10, h: 5 },
+    { i: 'pause-controls', x: 0, y: 29, w: 10, h: 4 },
+    { i: 'recent-activity', x: 0, y: 33, w: 10, h: 4 },
+    { i: 'provider-status', x: 0, y: 37, w: 5, h: 5 },
+    { i: 'issues-monitoring', x: 5, y: 37, w: 5, h: 5 },
   ],
   sm: [
-    { i: 'stats', x: 0, y: 0, w: 6, h: 8 },
-    { i: 'alerts', x: 0, y: 8, w: 6, h: 2 },
-    { i: 'system-overview', x: 0, y: 10, w: 6, h: 4 },
-    { i: 'service-health', x: 0, y: 14, w: 6, h: 4 },
-    { i: 'system-resources', x: 0, y: 18, w: 6, h: 4 },
-    { i: 'dns-health', x: 0, y: 22, w: 6, h: 4 },
-    { i: 'container-monitoring', x: 0, y: 26, w: 6, h: 4 },
-    { i: 'quick-actions', x: 0, y: 30, w: 6, h: 4 },
-    { i: 'pause-controls', x: 0, y: 34, w: 6, h: 3 },
-    { i: 'recent-activity', x: 0, y: 37, w: 6, h: 3 },
-    { i: 'provider-status', x: 0, y: 40, w: 6, h: 4 },
-    { i: 'issues-monitoring', x: 0, y: 44, w: 6, h: 4 },
+    { i: 'stats', x: 0, y: 0, w: 6, h: 12 },
+    { i: 'alerts', x: 0, y: 12, w: 6, h: 3 },
+    { i: 'system-overview', x: 0, y: 15, w: 6, h: 5 },
+    { i: 'service-health', x: 0, y: 20, w: 6, h: 5 },
+    { i: 'system-resources', x: 0, y: 25, w: 6, h: 5 },
+    { i: 'dns-health', x: 0, y: 30, w: 6, h: 5 },
+    { i: 'container-monitoring', x: 0, y: 35, w: 6, h: 5 },
+    { i: 'quick-actions', x: 0, y: 40, w: 6, h: 5 },
+    { i: 'pause-controls', x: 0, y: 45, w: 6, h: 4 },
+    { i: 'recent-activity', x: 0, y: 49, w: 6, h: 4 },
+    { i: 'provider-status', x: 0, y: 53, w: 6, h: 5 },
+    { i: 'issues-monitoring', x: 0, y: 58, w: 6, h: 5 },
   ]
 }
 
@@ -712,6 +712,10 @@ export function CustomizableDashboard() {
         isResizable={isEditMode}
         rowHeight={60}
         margin={[16, 16]}
+        containerPadding={[0, 0]}
+        compactType="vertical"
+        preventCollision={false}
+        draggableHandle=".drag-handle"
       >
         {defaultLayouts.lg.map(layoutItem => {
           const widget = renderWidget(layoutItem.i)
@@ -721,14 +725,16 @@ export function CustomizableDashboard() {
           return (
             <div key={layoutItem.i} className={isEditMode ? 'dashboard-item-edit' : ''}>
               {isEditMode && (
-                <div className="absolute top-0 left-0 right-0 bg-muted/50 p-1 flex items-center gap-2 cursor-move z-10">
-                  <GripVertical className="h-4 w-4" />
-                  <span className="text-xs font-medium capitalize">
-                    {layoutItem.i.replace('-', ' ')}
+                <div className="drag-handle absolute top-0 left-0 right-0 bg-muted/80 backdrop-blur-sm p-2 flex items-center gap-2 cursor-move z-10 border-b border-border">
+                  <GripVertical className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-xs font-medium capitalize text-foreground">
+                    {layoutItem.i.replace(/-/g, ' ')}
                   </span>
                 </div>
               )}
-              {widget}
+              <div className={isEditMode ? 'pt-8' : ''}>
+                {widget}
+              </div>
             </div>
           )
         })}
