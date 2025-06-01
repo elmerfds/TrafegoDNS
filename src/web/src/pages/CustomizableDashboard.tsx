@@ -216,7 +216,8 @@ export function CustomizableDashboard() {
         })
         
         // Compact each column
-        Object.keys(columns).forEach(col => {
+        Object.keys(columns).forEach(colKey => {
+          const col = parseInt(colKey)
           const colWidgets = columns[col].sort((a: any, b: any) => a.y - b.y)
           let currentY = 0
           
