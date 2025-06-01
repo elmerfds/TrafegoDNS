@@ -66,7 +66,7 @@ export function Layout() {
           <div className="flex h-16 shrink-0 items-center justify-between px-6">
             <div className="flex items-center gap-x-3">
               <img src="/assets/logo.svg" alt="TrafegoDNS Logo" className="h-12 w-12" />
-              <img src="/assets/trafegodns-header.svg" alt="TrafegoDNS" className="h-8" />
+              <img src="/assets/trafegodns-header.svg" alt="TrafegoDNS" className="h-6" />
             </div>
           </div>
           <div className="px-6">
