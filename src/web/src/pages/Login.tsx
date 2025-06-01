@@ -68,7 +68,16 @@ export function LoginPage() {
             <img src="/assets/logo.svg" alt="TrafegoDNS Logo" className="h-32 w-32" />
           </div>
           <div className="flex justify-center">
-            <img src="/assets/trafegodns-header.svg" alt="TrafegoDNS" className="h-12" />
+            <img 
+              src="/assets/trafegodns-header-optimized.svg" 
+              alt="TrafegoDNS" 
+              className="h-12 w-auto"
+              style={{ 
+                imageRendering: 'optimizeQuality',
+                shapeRendering: 'geometricPrecision',
+                textRendering: 'geometricPrecision'
+              }}
+            />
           </div>
         </CardHeader>
         <CardContent>
