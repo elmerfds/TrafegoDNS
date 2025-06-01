@@ -404,3 +404,30 @@
 .drag-handle:hover {
   background: hsl(var(--muted) / 0.9);
 }
+
+/* Ensure widgets fill their grid containers */
+.react-grid-item > div {
+  height: 100%;
+}
+
+.react-grid-item .card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.react-grid-item .card-content {
+  flex: 1;
+  overflow: auto;
+}
+
+/* Mobile layout improvements */
+@media (max-width: 768px) {
+  .react-grid-layout {
+    margin: -8px;
+  }
+  
+  .react-grid-item {
+    margin: 8px;
+  }
+}

@@ -19,7 +19,8 @@ import {
   GripVertical,
   Save,
   RotateCcw,
-  Settings
+  Settings,
+  Minimize2
 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -42,49 +43,49 @@ import 'react-resizable/css/styles.css'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
-// Default layouts for different breakpoints with proper spacing
+// Default layouts for different breakpoints with minimal gaps
 const defaultLayouts = {
   lg: [
-    { i: 'stats', x: 0, y: 0, w: 12, h: 3 },
-    { i: 'alerts', x: 0, y: 3, w: 12, h: 2 },
-    { i: 'system-overview', x: 0, y: 5, w: 4, h: 5 },
-    { i: 'service-health', x: 4, y: 5, w: 4, h: 5 },
-    { i: 'system-resources', x: 8, y: 5, w: 4, h: 5 },
-    { i: 'dns-health', x: 0, y: 10, w: 4, h: 5 },
-    { i: 'container-monitoring', x: 4, y: 10, w: 4, h: 5 },
-    { i: 'quick-actions', x: 8, y: 10, w: 4, h: 5 },
-    { i: 'pause-controls', x: 0, y: 15, w: 4, h: 4 },
-    { i: 'recent-activity', x: 4, y: 15, w: 8, h: 4 },
-    { i: 'provider-status', x: 0, y: 19, w: 6, h: 5 },
-    { i: 'issues-monitoring', x: 6, y: 19, w: 6, h: 5 },
+    { i: 'stats', x: 0, y: 0, w: 12, h: 3, minH: 3, minW: 6 },
+    { i: 'alerts', x: 0, y: 3, w: 12, h: 2, minH: 2, minW: 6 },
+    { i: 'system-overview', x: 0, y: 5, w: 4, h: 6, minH: 4, minW: 3 },
+    { i: 'service-health', x: 4, y: 5, w: 4, h: 6, minH: 4, minW: 3 },
+    { i: 'system-resources', x: 8, y: 5, w: 4, h: 6, minH: 4, minW: 3 },
+    { i: 'dns-health', x: 0, y: 11, w: 4, h: 6, minH: 4, minW: 3 },
+    { i: 'container-monitoring', x: 4, y: 11, w: 4, h: 6, minH: 4, minW: 3 },
+    { i: 'quick-actions', x: 8, y: 11, w: 4, h: 6, minH: 4, minW: 3 },
+    { i: 'pause-controls', x: 0, y: 17, w: 4, h: 5, minH: 4, minW: 3 },
+    { i: 'recent-activity', x: 4, y: 17, w: 8, h: 5, minH: 4, minW: 4 },
+    { i: 'provider-status', x: 0, y: 22, w: 6, h: 6, minH: 4, minW: 3 },
+    { i: 'issues-monitoring', x: 6, y: 22, w: 6, h: 6, minH: 4, minW: 3 },
   ],
   md: [
-    { i: 'stats', x: 0, y: 0, w: 10, h: 6 },
-    { i: 'alerts', x: 0, y: 6, w: 10, h: 3 },
-    { i: 'system-overview', x: 0, y: 9, w: 5, h: 5 },
-    { i: 'service-health', x: 5, y: 9, w: 5, h: 5 },
-    { i: 'system-resources', x: 0, y: 14, w: 10, h: 5 },
-    { i: 'dns-health', x: 0, y: 19, w: 5, h: 5 },
-    { i: 'container-monitoring', x: 5, y: 19, w: 5, h: 5 },
-    { i: 'quick-actions', x: 0, y: 24, w: 10, h: 5 },
-    { i: 'pause-controls', x: 0, y: 29, w: 10, h: 4 },
-    { i: 'recent-activity', x: 0, y: 33, w: 10, h: 4 },
-    { i: 'provider-status', x: 0, y: 37, w: 5, h: 5 },
-    { i: 'issues-monitoring', x: 5, y: 37, w: 5, h: 5 },
+    { i: 'stats', x: 0, y: 0, w: 10, h: 5, minH: 4, minW: 5 },
+    { i: 'alerts', x: 0, y: 5, w: 10, h: 3, minH: 2, minW: 5 },
+    { i: 'system-overview', x: 0, y: 8, w: 5, h: 6, minH: 4, minW: 3 },
+    { i: 'service-health', x: 5, y: 8, w: 5, h: 6, minH: 4, minW: 3 },
+    { i: 'system-resources', x: 0, y: 14, w: 10, h: 6, minH: 4, minW: 5 },
+    { i: 'dns-health', x: 0, y: 20, w: 5, h: 6, minH: 4, minW: 3 },
+    { i: 'container-monitoring', x: 5, y: 20, w: 5, h: 6, minH: 4, minW: 3 },
+    { i: 'quick-actions', x: 0, y: 26, w: 10, h: 6, minH: 4, minW: 5 },
+    { i: 'pause-controls', x: 0, y: 32, w: 10, h: 5, minH: 4, minW: 5 },
+    { i: 'recent-activity', x: 0, y: 37, w: 10, h: 5, minH: 4, minW: 5 },
+    { i: 'provider-status', x: 0, y: 42, w: 5, h: 6, minH: 4, minW: 3 },
+    { i: 'issues-monitoring', x: 5, y: 42, w: 5, h: 6, minH: 4, minW: 3 },
   ],
   sm: [
-    { i: 'stats', x: 0, y: 0, w: 6, h: 12 },
-    { i: 'alerts', x: 0, y: 12, w: 6, h: 3 },
-    { i: 'system-overview', x: 0, y: 15, w: 6, h: 5 },
-    { i: 'service-health', x: 0, y: 20, w: 6, h: 5 },
-    { i: 'system-resources', x: 0, y: 25, w: 6, h: 5 },
-    { i: 'dns-health', x: 0, y: 30, w: 6, h: 5 },
-    { i: 'container-monitoring', x: 0, y: 35, w: 6, h: 5 },
-    { i: 'quick-actions', x: 0, y: 40, w: 6, h: 5 },
-    { i: 'pause-controls', x: 0, y: 45, w: 6, h: 4 },
-    { i: 'recent-activity', x: 0, y: 49, w: 6, h: 4 },
-    { i: 'provider-status', x: 0, y: 53, w: 6, h: 5 },
-    { i: 'issues-monitoring', x: 0, y: 58, w: 6, h: 5 },
+    { i: 'stats', x: 0, y: 0, w: 6, h: 10, minH: 8, minW: 6 },
+    { i: 'alerts', x: 0, y: 10, w: 6, h: 3, minH: 2, minW: 6 },
+    { i: 'system-overview', x: 0, y: 13, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'service-health', x: 0, y: 19, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'system-resources', x: 0, y: 25, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'dns-health', x: 0, y: 31, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'container-monitoring', x: 0, y: 37, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'quick-actions', x: 0, y: 43, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'pause-controls', x: 0, y: 49, w: 6, h: 5, minH: 4, minW: 6 },
+    { i: 'recent-activity', x: 0, y: 54, w: 6, h: 5, minH: 4, minW: 6 },
+    { i: 'provider-status', x: 0, y: 59, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'issues-monitoring', x: 0, y: 65, w: 6, h: 6, minH: 5, minW: 6 },
   ]
 }
 
@@ -166,7 +167,18 @@ export function CustomizableDashboard() {
   ]
 
   const handleLayoutChange = (currentLayout: Layout[], allLayouts: any) => {
-    setLayouts(allLayouts)
+    // Ensure layouts are compacted to remove gaps
+    const compactedLayouts = { ...allLayouts }
+    Object.keys(compactedLayouts).forEach(breakpoint => {
+      if (compactedLayouts[breakpoint]) {
+        // Sort by Y position then X position
+        compactedLayouts[breakpoint].sort((a: any, b: any) => {
+          if (a.y === b.y) return a.x - b.x
+          return a.y - b.y
+        })
+      }
+    })
+    setLayouts(compactedLayouts)
   }
 
   const saveLayouts = () => {
@@ -186,6 +198,41 @@ export function CustomizableDashboard() {
       description: 'Dashboard layout has been reset to default.',
     })
     setIsEditMode(false)
+  }
+
+  const compactLayout = () => {
+    const compactedLayouts = { ...layouts }
+    
+    // Compact each breakpoint layout
+    Object.keys(compactedLayouts).forEach(breakpoint => {
+      if (compactedLayouts[breakpoint] && Array.isArray(compactedLayouts[breakpoint])) {
+        // Group widgets by columns
+        const columns: { [key: number]: any[] } = {}
+        
+        compactedLayouts[breakpoint].forEach((widget: any) => {
+          const col = widget.x
+          if (!columns[col]) columns[col] = []
+          columns[col].push(widget)
+        })
+        
+        // Compact each column
+        Object.keys(columns).forEach(col => {
+          const colWidgets = columns[col].sort((a: any, b: any) => a.y - b.y)
+          let currentY = 0
+          
+          colWidgets.forEach((widget: any) => {
+            widget.y = currentY
+            currentY += widget.h
+          })
+        })
+      }
+    })
+    
+    setLayouts(compactedLayouts)
+    toast({
+      title: 'Layout compacted',
+      description: 'Removed gaps between widgets.',
+    })
   }
 
   // Widget components wrapped in a card with drag handle
@@ -679,6 +726,10 @@ export function CustomizableDashboard() {
             </DropdownMenuItem>
             {isEditMode && (
               <>
+                <DropdownMenuItem onClick={compactLayout}>
+                  <Minimize2 className="h-4 w-4 mr-2" />
+                  Compact Layout
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={saveLayouts}>
                   <Save className="h-4 w-4 mr-2" />
                   Save Layout
@@ -710,12 +761,14 @@ export function CustomizableDashboard() {
         cols={{ lg: 12, md: 10, sm: 6 }}
         isDraggable={isEditMode}
         isResizable={isEditMode}
-        rowHeight={60}
-        margin={[16, 16]}
+        rowHeight={50}
+        margin={[12, 12]}
         containerPadding={[0, 0]}
         compactType="vertical"
         preventCollision={false}
         draggableHandle=".drag-handle"
+        verticalCompact={true}
+        transformScale={1}
       >
         {defaultLayouts.lg.map(layoutItem => {
           const widget = renderWidget(layoutItem.i)
