@@ -10,12 +10,14 @@ const { ensureLastRefreshedColumn } = require('./migrations/ensureLastRefreshedC
 const { fixSqliteConstraints } = require('./migrations/fixSqliteConstraints');
 const { createOrphanedRecordsHistory } = require('./migrations/createOrphanedRecordsHistory');
 const { up: ensureOrphanedAtColumn } = require('./migrations/ensureOrphanedAtColumn');
+const { createActivityLogTable } = require('./migrations/createActivityLogTable');
 
 // Import repositories
 const UserRepository = require('./repository/userRepository');
 const RevokedTokenRepository = require('./repository/revokedTokenRepository');
 const SettingRepository = require('./repository/settingRepository');
 const AuditLogRepository = require('./repository/auditLogRepository');
+const ActivityLogRepository = require('./repository/activityLogRepository');
 const DNSRepositoryManager = require('./repository/dnsRepositoryManager');
 
 // Database singleton
@@ -74,6 +76,10 @@ async function initialize(migrate = true, options = {}) {
         repositories.auditLog = new AuditLogRepository(db);
       }
       
+      if (shouldInitializeRepo('activityLog') && (!repositories.activityLog || options.force)) {
+        repositories.activityLog = new ActivityLogRepository(db);
+      }
+      
       // DNS Manager repository
       if (shouldInitializeRepo('dnsManager') && (!repositories.dnsManager || options.force)) {
         repositories.dnsManager = new DNSRepositoryManager(db);
@@ -91,7 +97,8 @@ async function initialize(migrate = true, options = {}) {
       setting: 5,       // Medium priority
       user: 3,          // Medium-low priority
       revokedToken: 2,  // Low priority
-      auditLog: 1       // Lowest priority
+      auditLog: 1,      // Lowest priority
+      activityLog: 1    // Lowest priority
     };
     
     // Sort repository entries by priority
@@ -135,6 +142,17 @@ async function initialize(migrate = true, options = {}) {
       
       if (failedRepos.length > 0) {
         logger.warn(`Some repositories failed to initialize: ${failedRepos.join(', ')}`);
+      }
+    }
+    
+    // Run essential table migrations first (before repository initialization)
+    if (migrate) {
+      try {
+        // Create activity log table - this should always run
+        await createActivityLogTable(db);
+        logger.info('Activity log table ready');
+      } catch (activityLogError) {
+        logger.error(`Failed to create activity log table: ${activityLogError.message}`);
       }
     }
     

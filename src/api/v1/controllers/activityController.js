@@ -23,6 +23,43 @@ const getRecentActivity = asyncHandler(async (req, res) => {
       throw new ApiError('Database not initialized', 500, 'DB_NOT_INITIALIZED');
     }
     
+    // Check if activity log repository is available
+    if (database.repositories && database.repositories.activityLog) {
+      // Use the persistent activity log
+      try {
+        logger.debug('Attempting to get activities from activity log repository');
+        const activities = await database.repositories.activityLog.getRecentActivities(parsedLimit);
+        logger.debug(`Retrieved ${activities.length} activities from activity log`);
+        
+        // Format activities with IDs
+        const formattedActivities = activities.map((activity, index) => ({
+          id: activity.id || `activity-${Date.now()}-${index}`,
+          type: activity.type,
+          recordType: activity.recordType,
+          hostname: activity.hostname,
+          timestamp: activity.timestamp,
+          details: activity.details,
+          source: activity.source
+        }));
+        
+        res.status(200).json({
+          status: 'success',
+          data: {
+            activities: formattedActivities,
+            totalReturned: formattedActivities.length,
+            limit: parsedLimit
+          }
+        });
+        
+        return;
+      } catch (activityError) {
+        logger.warn(`Failed to get activities from activity log: ${activityError.message}`);
+        // Fall back to the old method
+      }
+    } else {
+      logger.warn(`Activity log repository not available: database.repositories=${!!database.repositories}, activityLog=${!!(database.repositories && database.repositories.activityLog)}`);
+    }
+    
     const activities = [];
     
     // Get recent DNS record activities (created/updated)

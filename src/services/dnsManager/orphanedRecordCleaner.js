@@ -416,6 +416,24 @@ async function cleanupOrphanedRecords(
                       JSON.stringify(metadata)
                     ]);
                     logger.debug(`Archived orphaned record ${displayName} to history`);
+                    
+                    // Log activity for deletion
+                    if (database.repositories && database.repositories.activityLog) {
+                      try {
+                        await database.repositories.activityLog.logActivity({
+                          type: 'deleted',
+                          recordType: record.type,
+                          hostname: record.name,
+                          details: `Deleted ${record.type} record - ${forceImmediate ? 'Force immediate cleanup' : 'Grace period elapsed'}`,
+                          source: 'orphaned',
+                          provider: config.dnsProvider,
+                          record_id: record.id,
+                          metadata: metadata
+                        });
+                      } catch (activityError) {
+                        logger.error(`Failed to log deletion activity: ${activityError.message}`);
+                      }
+                    }
                   }
                 } catch (archiveError) {
                   logger.error(`Failed to archive record to history: ${archiveError.message}`);
@@ -505,6 +523,28 @@ async function cleanupOrphanedRecords(
             await recordTracker.markRecordOrphaned(record);
             newlyOrphanedCount++;
             newlyOrphanedRecords.push(`${recordFqdn} (${record.type})`);
+            
+            // Log activity for orphaned detection
+            try {
+              const database = require('../../database');
+              if (database.repositories && database.repositories.activityLog) {
+                await database.repositories.activityLog.logActivity({
+                  type: 'tracked',
+                  recordType: record.type,
+                  hostname: record.name,
+                  details: `Orphaned ${record.type} record detected - will be deleted after ${config.cleanupGracePeriod} minutes`,
+                  source: 'orphaned',
+                  provider: config.dnsProvider,
+                  record_id: record.id,
+                  metadata: {
+                    orphanedAt: new Date().toISOString(),
+                    gracePeriodMinutes: config.cleanupGracePeriod
+                  }
+                });
+              }
+            } catch (activityError) {
+              logger.error(`Failed to log orphaned activity: ${activityError.message}`);
+            }
           } else {
             logger.debug(`Skipping orphan marking for non-app-managed record: ${recordFqdn} (${record.type})
             - Reason: Record was not created by TrafegoDNS
