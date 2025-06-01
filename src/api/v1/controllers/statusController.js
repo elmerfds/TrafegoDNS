@@ -29,29 +29,75 @@ const getStatus = asyncHandler(async (req, res) => {
     services: {}
   };
   
+  // Helper function to get domain based on provider type
+  const getDomainForProvider = (providerType, configManager) => {
+    if (!providerType) return null;
+    
+    const provider = providerType.toLowerCase();
+    
+    // Check ConfigManager first, then environment variables
+    if (provider.includes('cloudflare')) {
+      return configManager?.cloudflareZone || process.env.CLOUDFLARE_ZONE;
+    } else if (provider.includes('digitalocean') || provider.includes('do')) {
+      return configManager?.digitalOceanDomain || process.env.DO_DOMAIN;
+    } else if (provider.includes('route53') || provider.includes('aws')) {
+      return configManager?.route53Zone || process.env.ROUTE53_ZONE;
+    }
+    
+    // Generic fallbacks
+    return configManager?.domain || configManager?.zoneName || process.env.DOMAIN;
+  };
+
   // Add DNS provider status if available
   if (DNSManager && DNSManager.dnsProvider) {
+    const providerType = DNSManager.config?.dnsProvider || ConfigManager?.dnsProvider || DNSManager.dnsProvider.constructor.name;
+    const domain = getDomainForProvider(providerType, ConfigManager);
+    
     status.services.dnsProvider = {
-      type: DNSManager.config?.dnsProvider || ConfigManager?.dnsProvider || DNSManager.dnsProvider.constructor.name,
-      domain: DNSManager.config?.domain || 
-              DNSManager.config?.zoneName || 
-              ConfigManager?.domain || 
-              ConfigManager?.zoneName ||
-              process.env.DOMAIN ||
-              process.env.ZONE_NAME,
+      type: providerType,
+      domain: domain,
       status: 'active'
     };
   } else if (ConfigManager) {
+    const providerType = ConfigManager.dnsProvider;
+    const domain = getDomainForProvider(providerType, ConfigManager);
+    
     status.services.dnsProvider = {
-      type: ConfigManager.dnsProvider,
-      domain: ConfigManager.domain || 
-              ConfigManager.zoneName ||
-              process.env.DOMAIN ||
-              process.env.ZONE_NAME,
+      type: providerType,
+      domain: domain,
       status: 'inactive'
     };
   }
   
+  // If we still don't have a domain, try to extract it from existing DNS records
+  if (!status.services?.dnsProvider?.domain) {
+    try {
+      const database = require('../../../database');
+      if (database && database.isInitialized() && database.db) {
+        // Try to get a sample DNS record to extract domain from
+        const sampleRecord = await database.db.get(`
+          SELECT name FROM dns_tracked_records 
+          WHERE name IS NOT NULL AND name != '' 
+          LIMIT 1
+        `);
+        
+        if (sampleRecord && sampleRecord.name) {
+          // Extract domain from hostname (e.g., "app.example.com" -> "example.com")
+          const parts = sampleRecord.name.split('.');
+          if (parts.length >= 2) {
+            const extractedDomain = parts.slice(-2).join('.');
+            if (status.services?.dnsProvider) {
+              status.services.dnsProvider.domain = extractedDomain;
+            }
+            logger.info(`Extracted domain from DNS records: ${extractedDomain}`);
+          }
+        }
+      }
+    } catch (error) {
+      logger.debug(`Failed to extract domain from DNS records: ${error.message}`);
+    }
+  }
+
   // Also add domain at top level for easier access
   status.domain = status.services?.dnsProvider?.domain;
   

@@ -404,9 +404,7 @@ export function DashboardPage() {
                 <div>
                   <p className="text-xs text-muted-foreground mb-2">Managed Domain</p>
                   <Badge variant="outline" className="px-3 py-1">
-                    {status?.services?.dnsProvider?.domain || 
-                     status?.domain || 
-                     (typeof window !== 'undefined' ? window.location.hostname.split('.').slice(-2).join('.') : 'N/A')}
+                    {status?.services?.dnsProvider?.domain || status?.domain || 'N/A'}
                   </Badge>
                 </div>
                 <div>
@@ -446,9 +444,7 @@ export function DashboardPage() {
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Managed Domain</span>
                 <span className="text-sm font-medium">
-                  {status?.services?.dnsProvider?.domain || 
-                   status?.domain || 
-                   (typeof window !== 'undefined' ? window.location.hostname.split('.').slice(-2).join('.') : 'N/A')}
+                  {status?.services?.dnsProvider?.domain || status?.domain || 'N/A'}
                 </span>
               </div>
             </div>
