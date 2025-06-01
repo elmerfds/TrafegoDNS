@@ -9,7 +9,7 @@ interface PauseStatus {
   pausedAt?: string
   pauseReason?: string
   pauseDuration?: number
-  timeRemaining?: number
+  timeRemaining?: number | null
   autoResumeScheduled: boolean
 }
 
@@ -29,8 +29,8 @@ export function PauseStatusIndicator() {
     return null // Don't show anything when system is active
   }
 
-  const formatTimeRemaining = (seconds: number) => {
-    if (seconds < 60) return `${seconds}s`
+  const formatTimeRemaining = (seconds: number | null | undefined) => {
+    if (!seconds || seconds < 60) return `${seconds || 0}s`
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
     const hours = Math.floor(seconds / 3600)
     const minutes = Math.floor((seconds % 3600) / 60)
@@ -47,7 +47,7 @@ export function PauseStatusIndicator() {
       {status.autoResumeScheduled && status.timeRemaining !== null && (
         <>
           <Clock className="h-3 w-3 ml-1" />
-          <span>{status.timeRemaining !== null ? formatTimeRemaining(status.timeRemaining) : '0s'}</span>
+          <span>{formatTimeRemaining(status.timeRemaining)}</span>
         </>
       )}
     </Badge>

@@ -24,7 +24,7 @@ interface PauseStatus {
   pauseReason?: string
   pauseDuration?: number
   pausedBy?: string
-  timeRemaining?: number
+  timeRemaining?: number | null
   autoResumeScheduled: boolean
 }
 
@@ -124,8 +124,8 @@ export function PauseControls() {
     schedulePauseMutation.mutate(duration)
   }
 
-  const formatTimeRemaining = (seconds: number) => {
-    if (seconds < 60) return `${seconds}s`
+  const formatTimeRemaining = (seconds: number | null | undefined) => {
+    if (!seconds || seconds < 60) return `${seconds || 0}s`
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
     const hours = Math.floor(seconds / 3600)
     const minutes = Math.floor((seconds % 3600) / 60)
@@ -210,10 +210,10 @@ export function PauseControls() {
                   <div className="space-y-2 pt-2">
                     <div className="flex justify-between text-sm">
                       <span>Auto-resume in:</span>
-                      <span className="font-mono">{status.timeRemaining !== null ? formatTimeRemaining(status.timeRemaining) : '0s'}</span>
+                      <span className="font-mono">{formatTimeRemaining(status.timeRemaining)}</span>
                     </div>
                     <Progress 
-                      value={status.pauseDuration && status.timeRemaining !== null ? 
+                      value={status.pauseDuration && status.timeRemaining ? 
                         ((status.pauseDuration * 60 - status.timeRemaining) / (status.pauseDuration * 60)) * 100 : 0
                       } 
                       className="h-2"
