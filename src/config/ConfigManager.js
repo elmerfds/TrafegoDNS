@@ -841,6 +841,166 @@ class ConfigManager {
   }
   
   /**
+   * Save encrypted secrets to database
+   * @param {Object} secrets - Object containing secret values
+   * @param {string} userId - User ID for audit purposes
+   * @returns {Object} - Result object with success status
+   */
+  async saveSecrets(secrets, userId = null) {
+    try {
+      const database = require('../database');
+      
+      if (!database.isInitialized() || !database.repositories?.setting) {
+        return {
+          success: false,
+          error: 'Database not initialized'
+        };
+      }
+      
+      const crypto = require('crypto');
+      
+      // Generate encryption key from environment or default
+      const encryptionKey = process.env.ENCRYPTION_KEY || 'trafegodns-default-key';
+      const key = crypto.createHash('sha256').update(encryptionKey).digest();
+      
+      // Encrypt and save each secret
+      const updatedSecrets = [];
+      
+      for (const [secretName, secretValue] of Object.entries(secrets)) {
+        if (!secretValue || secretValue.trim() === '') {
+          continue;
+        }
+        
+        try {
+          // Encrypt the secret value
+          const iv = crypto.randomBytes(16);
+          const cipher = crypto.createCipherGCM('aes-256-gcm', key, iv);
+          cipher.setAAD(Buffer.from(secretName, 'utf8'));
+          
+          let encrypted = cipher.update(secretValue.trim(), 'utf8', 'hex');
+          encrypted += cipher.final('hex');
+          
+          const authTag = cipher.getAuthTag();
+          
+          // Combine iv, authTag, and encrypted data
+          const encryptedData = {
+            iv: iv.toString('hex'),
+            authTag: authTag.toString('hex'),
+            data: encrypted
+          };
+          
+          // Save to database with secret_ prefix
+          const dbKey = `secret_${secretName}`;
+          await database.repositories.setting.set(dbKey, JSON.stringify(encryptedData));
+          
+          updatedSecrets.push(secretName);
+          
+          logger.info(`Secret ${secretName} saved successfully`);
+        } catch (encryptError) {
+          logger.error(`Failed to encrypt secret ${secretName}: ${encryptError.message}`);
+          return {
+            success: false,
+            error: `Failed to encrypt secret ${secretName}`
+          };
+        }
+      }
+      
+      // Log audit trail
+      if (database.repositories?.activityLog && userId) {
+        try {
+          await database.repositories.activityLog.logActivity({
+            type: 'tracked',
+            recordType: 'secrets',
+            hostname: 'system',
+            details: `Admin updated secrets: ${updatedSecrets.join(', ')}`,
+            source: 'config',
+            metadata: {
+              userId: userId,
+              action: 'update_secrets',
+              secretsUpdated: updatedSecrets,
+              timestamp: new Date().toISOString()
+            }
+          });
+        } catch (auditError) {
+          logger.warn(`Failed to log secret update audit: ${auditError.message}`);
+        }
+      }
+      
+      return {
+        success: true,
+        updatedSecrets: updatedSecrets
+      };
+    } catch (error) {
+      logger.error(`Failed to save secrets: ${error.message}`);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+  
+  /**
+   * Load and decrypt secrets from database
+   * @returns {Object} - Object containing decrypted secret values
+   */
+  async loadSecrets() {
+    try {
+      const database = require('../database');
+      
+      if (!database.isInitialized() || !database.repositories?.setting) {
+        logger.warn('Database not initialized, returning empty secrets');
+        return {};
+      }
+      
+      const crypto = require('crypto');
+      const allSettings = await database.repositories.setting.getAll();
+      const secrets = {};
+      
+      // Generate decryption key from environment or default
+      const encryptionKey = process.env.ENCRYPTION_KEY || 'trafegodns-default-key';
+      const key = crypto.createHash('sha256').update(encryptionKey).digest();
+      
+      // Find and decrypt all secret entries
+      for (const [dbKey, encryptedValue] of Object.entries(allSettings)) {
+        if (!dbKey.startsWith('secret_') || !encryptedValue) {
+          continue;
+        }
+        
+        const secretName = dbKey.replace('secret_', '');
+        
+        try {
+          const encryptedData = JSON.parse(encryptedValue);
+          
+          if (!encryptedData.iv || !encryptedData.authTag || !encryptedData.data) {
+            logger.warn(`Invalid encrypted data format for secret ${secretName}`);
+            continue;
+          }
+          
+          // Decrypt the secret value
+          const iv = Buffer.from(encryptedData.iv, 'hex');
+          const decipher = crypto.createDecipherGCM('aes-256-gcm', key, iv);
+          decipher.setAAD(Buffer.from(secretName, 'utf8'));
+          decipher.setAuthTag(Buffer.from(encryptedData.authTag, 'hex'));
+          
+          let decrypted = decipher.update(encryptedData.data, 'hex', 'utf8');
+          decrypted += decipher.final('utf8');
+          
+          secrets[secretName] = decrypted;
+          
+        } catch (decryptError) {
+          logger.error(`Failed to decrypt secret ${secretName}: ${decryptError.message}`);
+          // Continue with other secrets even if one fails
+        }
+      }
+      
+      return secrets;
+    } catch (error) {
+      logger.error(`Failed to load secrets: ${error.message}`);
+      return {};
+    }
+  }
+  
+  /**
    * Check which secrets are available (without revealing values)
    * @returns {Object} - Object indicating which secrets are set
    */
