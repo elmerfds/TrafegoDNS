@@ -1,0 +1,23 @@
+<svg viewBox="0 0 262 44" xmlns="http://www.w3.org/2000/svg" width="262" height="44">
+  <!-- Optimized for mobile with Courier New font -->
+  <style>
+    @media (max-width: 768px) {
+      text { font-size: 44px; }
+    }
+    text {
+      font-feature-settings: "kern" 1;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+  </style>
+  
+  <!-- Simple shadow for better mobile rendering -->
+  <text fill="#00000020" font-size="48" font-weight="bold" font-family="'Courier New', Courier, monospace" y="33" x="10.5" letter-spacing="-3">
+    TrafegoDNS
+  </text>
+  
+  <!-- Main text with Courier New monospace font -->
+  <text fill="#F8FAFC" font-size="48" font-weight="bold" font-family="'Courier New', Courier, monospace" y="32" x="10" letter-spacing="-3">
+    Trafego<tspan fill="#FFD700">DNS</tspan>
+  </text>
+</svg>

@@ -1,0 +1,23 @@
+<svg viewBox="0 0 262 44" xmlns="http://www.w3.org/2000/svg" width="262" height="44">
+  <!-- Dark version for light theme -->
+  <style>
+    @media (max-width: 768px) {
+      text { font-size: 44px; }
+    }
+    text {
+      font-feature-settings: "kern" 1;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+  </style>
+  
+  <!-- Subtle shadow for depth -->
+  <text fill="#00000015" font-size="48" font-weight="bold" font-family="'Courier New', Courier, monospace" y="33" x="10.5" letter-spacing="-3">
+    TrafegoDNS
+  </text>
+  
+  <!-- Main text in dark navy -->
+  <text fill="#1B2A4E" font-size="48" font-weight="bold" font-family="'Courier New', Courier, monospace" y="32" x="10" letter-spacing="-3">
+    Trafego<tspan fill="#E6C200">DNS</tspan>
+  </text>
+</svg>

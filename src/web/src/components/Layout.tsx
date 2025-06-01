@@ -26,6 +26,7 @@ import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { usePermissions } from '@/hooks/usePermissions'
+import { useTheme } from '@/components/theme-provider'
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: Home, path: '/' },
@@ -44,6 +45,7 @@ export function Layout() {
   const { user, logout } = useAuthStore()
   const { canAccessPage } = usePermissions()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { theme } = useTheme()
   
   // Filter navigation items based on user permissions
   const filteredNavigation = navigation.filter(item => canAccessPage(item.path))
@@ -66,7 +68,19 @@ export function Layout() {
           <div className="flex h-16 shrink-0 items-center justify-between px-6">
             <div className="flex items-center gap-x-3">
               <img src="/assets/logo.svg" alt="TrafegoDNS Logo" className="h-12 w-12" />
-              <img src="/assets/trafegodns-header.svg" alt="TrafegoDNS" className="h-8" />
+              <img 
+                src={theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches) 
+                  ? "/assets/trafegodns-header-optimized.svg" 
+                  : "/assets/trafegodns-header-dark.svg"
+                } 
+                alt="TrafegoDNS" 
+                className="h-6 w-auto"
+                style={{ 
+                  imageRendering: 'auto' as any,
+                  shapeRendering: 'geometricPrecision' as any,
+                  textRendering: 'geometricPrecision' as any
+                }}
+              />
             </div>
           </div>
           <div className="px-6">

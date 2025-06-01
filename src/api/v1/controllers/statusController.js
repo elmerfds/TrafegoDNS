@@ -29,20 +29,111 @@ const getStatus = asyncHandler(async (req, res) => {
     services: {}
   };
   
-  // Add DNS provider status if available
+  // Helper function to get domain from environment based on provider type
+  const getDomainFromEnv = (providerType, configManager) => {
+    if (!providerType) return null;
+    
+    const provider = providerType.toLowerCase();
+    
+    // Check ConfigManager first, then environment variables
+    if (provider.includes('cloudflare')) {
+      return configManager?.cloudflareZone || process.env.CLOUDFLARE_ZONE;
+    } else if (provider.includes('digitalocean') || provider.includes('do')) {
+      return configManager?.digitalOceanDomain || process.env.DO_DOMAIN;
+    } else if (provider.includes('route53') || provider.includes('aws')) {
+      return configManager?.route53Zone || process.env.ROUTE53_ZONE;
+    }
+    
+    // Generic fallbacks
+    return configManager?.domain || configManager?.zoneName || process.env.DOMAIN;
+  };
+
+  // Initialize provider info
+  let providerType = null;
+  let domain = null;
+  let providerStatus = 'inactive';
+
   if (DNSManager && DNSManager.dnsProvider) {
-    status.services.dnsProvider = {
-      type: DNSManager.config.dnsProvider || ConfigManager?.dnsProvider,
-      domain: DNSManager.config.domain || ConfigManager?.domain,
-      status: 'active'
-    };
+    providerType = DNSManager.config?.dnsProvider || ConfigManager?.dnsProvider || DNSManager.dnsProvider.constructor.name;
+    providerStatus = 'active';
   } else if (ConfigManager) {
+    providerType = ConfigManager.dnsProvider;
+  }
+
+  // PRIORITY 1: Get domain from database (source of truth)
+  try {
+    const database = require('../../../database');
+    if (database && database.isInitialized() && database.db) {
+      // Get multiple DNS records to find the most common domain
+      const dnsRecords = await database.db.all(`
+        SELECT name FROM dns_tracked_records 
+        WHERE name IS NOT NULL AND name != '' 
+        AND (is_orphaned = 0 OR is_orphaned IS NULL)
+        LIMIT 10
+      `);
+      
+      if (dnsRecords && dnsRecords.length > 0) {
+        // Extract domains and find the most common one
+        const domainCounts = {};
+        const twoLevelTLDs = ['.co.uk', '.com.au', '.co.nz', '.co.jp', '.com.br', '.co.za'];
+        
+        dnsRecords.forEach(record => {
+          const hostname = record.name.toLowerCase();
+          let baseDomain = null;
+          
+          // Check for two-level TLDs first
+          const hasTwoLevelTLD = twoLevelTLDs.some(tld => hostname.endsWith(tld));
+          
+          if (hasTwoLevelTLD) {
+            // For two-level TLDs, take last 3 parts
+            const parts = hostname.split('.');
+            if (parts.length >= 3) {
+              baseDomain = parts.slice(-3).join('.');
+            }
+          } else {
+            // For regular TLDs, take last 2 parts
+            const parts = hostname.split('.');
+            if (parts.length >= 2) {
+              baseDomain = parts.slice(-2).join('.');
+            }
+          }
+          
+          if (baseDomain) {
+            domainCounts[baseDomain] = (domainCounts[baseDomain] || 0) + 1;
+          }
+        });
+        
+        // Get the most frequent domain
+        const sortedDomains = Object.entries(domainCounts).sort((a, b) => b[1] - a[1]);
+        if (sortedDomains.length > 0) {
+          domain = sortedDomains[0][0];
+          logger.info(`Domain from database (source of truth): ${domain}`);
+        }
+      }
+    }
+  } catch (error) {
+    logger.debug(`Failed to get domain from database: ${error.message}`);
+  }
+
+  // PRIORITY 2: If no domain in DB, fallback to environment variables
+  if (!domain) {
+    domain = getDomainFromEnv(providerType, ConfigManager);
+    if (domain) {
+      logger.info(`Domain from environment variables (fallback): ${domain}`);
+    }
+  }
+
+  // Set the DNS provider status
+  if (providerType) {
     status.services.dnsProvider = {
-      type: ConfigManager.dnsProvider,
-      domain: ConfigManager.domain,
-      status: 'inactive'
+      type: providerType,
+      domain: domain,
+      status: providerStatus
     };
   }
+
+  // Also add domain at top level for easier access
+  status.domain = status.services?.dnsProvider?.domain;
   
   // Add Docker monitor status if available
   if (DockerMonitor) {

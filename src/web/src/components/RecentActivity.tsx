@@ -130,7 +130,7 @@ export function RecentActivity() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate('/logs')}
+            onClick={() => navigate('/logs?tab=activity')}
             className="text-muted-foreground hover:text-foreground"
           >
             View All

@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { AlertCircle } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { useTheme } from '@/components/theme-provider'
 
 const loginSchema = z.object({
   username: z.string().min(1, 'Username is required'),
@@ -25,6 +26,7 @@ export function LoginPage() {
   const navigate = useNavigate()
   const login = useAuthStore((state) => state.login)
   const [error, setError] = useState('')
+  const { theme } = useTheme()
 
   const {
     register,
@@ -68,7 +70,19 @@ export function LoginPage() {
             <img src="/assets/logo.svg" alt="TrafegoDNS Logo" className="h-32 w-32" />
           </div>
           <div className="flex justify-center">
-            <img src="/assets/trafegodns-header.svg" alt="TrafegoDNS" className="h-12" />
+            <img 
+              src={theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches) 
+                ? "/assets/trafegodns-header-optimized.svg" 
+                : "/assets/trafegodns-header-dark.svg"
+              } 
+              alt="TrafegoDNS" 
+              className="h-12 w-auto"
+              style={{ 
+                imageRendering: 'auto' as any,
+                shapeRendering: 'geometricPrecision' as any,
+                textRendering: 'geometricPrecision' as any
+              }}
+            />
           </div>
         </CardHeader>
         <CardContent>
