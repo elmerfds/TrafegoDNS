@@ -277,6 +277,13 @@ class ConfigManager {
       
       // Apply database settings over environment defaults
       this._applySettings(dbSettings);
+      
+      // Load secrets from database (if any) and apply them
+      await this._loadAndApplySecrets();
+      
+      // Check if we should save environment secrets to database
+      await this._syncEnvironmentSecretsToDatabase();
+      
       this._dbLoaded = true;
       
       logger.info('Configuration loaded from database successfully');
@@ -692,6 +699,476 @@ class ConfigManager {
       return this.ipCache;
     } finally {
       ipUpdateInProgress = false;
+    }
+  }
+  
+  /**
+   * Save secrets to database (encrypted)
+   * @param {Object} secrets - Object containing secret values
+   * @param {string} userId - ID of user making the change (for audit log)
+   * @returns {Promise<Object>} - Success/error result
+   */
+  async saveSecrets(secrets, userId = null) {
+    try {
+      const database = require('../database');
+      
+      if (!database.isInitialized() || !database.repositories?.setting) {
+        return { success: false, error: 'Database not initialized' };
+      }
+      
+      // Encrypt secrets before storage
+      const encryptedSecrets = {};
+      const crypto = require('crypto');
+      
+      // Simple encryption key derived from environment
+      const key = crypto.createHash('sha256').update(process.env.ENCRYPTION_KEY || 'trafegodns-default-key').digest();
+      
+      for (const [secretName, secretValue] of Object.entries(secrets)) {
+        if (secretValue && secretValue.trim() !== '') {
+          const iv = crypto.randomBytes(16);
+          const cipher = crypto.createCipherGCM('aes-256-gcm', key);
+          cipher.setAAD(Buffer.from(secretName));
+          
+          let encrypted = cipher.update(secretValue, 'utf8', 'hex');
+          encrypted += cipher.final('hex');
+          
+          const authTag = cipher.getAuthTag();
+          
+          encryptedSecrets[`secret_${secretName}`] = JSON.stringify({
+            data: encrypted,
+            iv: iv.toString('hex'),
+            authTag: authTag.toString('hex')
+          });
+        }
+      }
+      
+      // Save encrypted secrets to database
+      await database.repositories.setting.setMany(encryptedSecrets);
+      
+      // Update in-memory values
+      if (secrets.cloudflareToken) this.cloudflareToken = secrets.cloudflareToken;
+      if (secrets.route53AccessKey) this.route53AccessKey = secrets.route53AccessKey;
+      if (secrets.route53SecretKey) this.route53SecretKey = secrets.route53SecretKey;
+      if (secrets.digitalOceanToken) this.digitalOceanToken = secrets.digitalOceanToken;
+      if (secrets.traefikApiPassword) this.traefikApiPassword = secrets.traefikApiPassword;
+      
+      // Log audit entry
+      if (database.repositories.activityLog && userId) {
+        try {
+          await database.repositories.activityLog.logActivity({
+            type: 'updated',
+            recordType: 'secrets',
+            hostname: 'system',
+            details: `Updated secrets: ${Object.keys(secrets).join(', ')}`,
+            source: 'config',
+            metadata: {
+              userId: userId,
+              secretsUpdated: Object.keys(secrets),
+              timestamp: new Date().toISOString()
+            }
+          });
+        } catch (auditError) {
+          logger.warn(`Failed to log secret update audit: ${auditError.message}`);
+        }
+      }
+      
+      logger.info(`Successfully saved ${Object.keys(secrets).length} secrets to database`);
+      return { success: true };
+    } catch (error) {
+      logger.error(`Failed to save secrets: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  /**
+   * Load secrets from database (decrypted)
+   * @returns {Promise<Object>} - Decrypted secrets
+   */
+  async loadSecrets() {
+    try {
+      const database = require('../database');
+      
+      if (!database.isInitialized() || !database.repositories?.setting) {
+        return {};
+      }
+      
+      // Get all secret settings from database
+      const allSettings = await database.repositories.setting.getAll();
+      const secretSettings = {};
+      
+      for (const [key, value] of Object.entries(allSettings)) {
+        if (key.startsWith('secret_')) {
+          secretSettings[key] = value;
+        }
+      }
+      
+      if (Object.keys(secretSettings).length === 0) {
+        return {};
+      }
+      
+      // Decrypt secrets
+      const decryptedSecrets = {};
+      const crypto = require('crypto');
+      const key = crypto.createHash('sha256').update(process.env.ENCRYPTION_KEY || 'trafegodns-default-key').digest();
+      
+      for (const [secretKey, encryptedValue] of Object.entries(secretSettings)) {
+        try {
+          const secretName = secretKey.replace('secret_', '');
+          const encryptedData = JSON.parse(encryptedValue);
+          
+          const decipher = crypto.createDecipherGCM('aes-256-gcm', key);
+          decipher.setAAD(Buffer.from(secretName));
+          decipher.setAuthTag(Buffer.from(encryptedData.authTag, 'hex'));
+          
+          let decrypted = decipher.update(encryptedData.data, 'hex', 'utf8');
+          decrypted += decipher.final('utf8');
+          
+          decryptedSecrets[secretName] = decrypted;
+        } catch (decryptError) {
+          logger.warn(`Failed to decrypt secret ${secretKey}: ${decryptError.message}`);
+        }
+      }
+      
+      // Update in-memory values if they exist in database
+      if (decryptedSecrets.cloudflareToken) this.cloudflareToken = decryptedSecrets.cloudflareToken;
+      if (decryptedSecrets.route53AccessKey) this.route53AccessKey = decryptedSecrets.route53AccessKey;
+      if (decryptedSecrets.route53SecretKey) this.route53SecretKey = decryptedSecrets.route53SecretKey;
+      if (decryptedSecrets.digitalOceanToken) this.digitalOceanToken = decryptedSecrets.digitalOceanToken;
+      if (decryptedSecrets.traefikApiPassword) this.traefikApiPassword = decryptedSecrets.traefikApiPassword;
+      
+      return decryptedSecrets;
+    } catch (error) {
+      logger.error(`Failed to load secrets: ${error.message}`);
+      return {};
+    }
+  }
+  
+  /**
+   * Sync environment secrets to database if they don't exist there
+   * @private
+   */
+  async _syncEnvironmentSecretsToDatabase() {
+    try {
+      const database = require('../database');
+      
+      if (!database.isInitialized() || !database.repositories?.setting) {
+        return;
+      }
+      
+      // Get current database settings
+      const allSettings = await database.repositories.setting.getAll();
+      
+      // Collect environment secrets that aren't in database
+      const envSecrets = {};
+      let hasNewSecrets = false;
+      
+      // Check Cloudflare token
+      if (this.cloudflareToken && !allSettings.secret_cloudflareToken) {
+        envSecrets.cloudflareToken = this.cloudflareToken;
+        hasNewSecrets = true;
+        logger.info('Found Cloudflare token in environment but not in database');
+      }
+      
+      // Check Route53 credentials
+      if (this.route53AccessKey && !allSettings.secret_route53AccessKey) {
+        envSecrets.route53AccessKey = this.route53AccessKey;
+        hasNewSecrets = true;
+        logger.info('Found Route53 access key in environment but not in database');
+      }
+      
+      if (this.route53SecretKey && !allSettings.secret_route53SecretKey) {
+        envSecrets.route53SecretKey = this.route53SecretKey;
+        hasNewSecrets = true;
+        logger.info('Found Route53 secret key in environment but not in database');
+      }
+      
+      // Check DigitalOcean token
+      if (this.digitalOceanToken && !allSettings.secret_digitalOceanToken) {
+        envSecrets.digitalOceanToken = this.digitalOceanToken;
+        hasNewSecrets = true;
+        logger.info('Found DigitalOcean token in environment but not in database');
+      }
+      
+      // Check Traefik API password
+      if (this.traefikApiPassword && !allSettings.secret_traefikApiPassword) {
+        envSecrets.traefikApiPassword = this.traefikApiPassword;
+        hasNewSecrets = true;
+        logger.info('Found Traefik API password in environment but not in database');
+      }
+      
+      // Save any new secrets to database
+      if (hasNewSecrets) {
+        logger.info('Saving environment secrets to database for persistence');
+        const result = await this.saveSecrets(envSecrets, 'system-init');
+        
+        if (result.success) {
+          logger.info(`Successfully saved ${result.updatedSecrets.length} environment secrets to database`);
+        } else {
+          logger.warn(`Failed to save environment secrets to database: ${result.error}`);
+        }
+      }
+    } catch (error) {
+      logger.error(`Failed to sync environment secrets to database: ${error.message}`);
+      // Continue without syncing - not a critical error
+    }
+  }
+  
+  /**
+   * Load secrets from database and apply them to ConfigManager properties
+   * @private
+   */
+  async _loadAndApplySecrets() {
+    try {
+      const secrets = await this.loadSecrets();
+      
+      // Apply loaded secrets to ConfigManager properties, overriding environment values
+      if (secrets.cloudflareToken) {
+        this.cloudflareToken = secrets.cloudflareToken;
+        logger.debug('Loaded Cloudflare token from database');
+      }
+      
+      if (secrets.route53AccessKey) {
+        this.route53AccessKey = secrets.route53AccessKey;
+        logger.debug('Loaded Route53 access key from database');
+      }
+      
+      if (secrets.route53SecretKey) {
+        this.route53SecretKey = secrets.route53SecretKey;
+        logger.debug('Loaded Route53 secret key from database');
+      }
+      
+      if (secrets.digitalOceanToken) {
+        this.digitalOceanToken = secrets.digitalOceanToken;
+        logger.debug('Loaded DigitalOcean token from database');
+      }
+      
+      if (secrets.traefikApiPassword) {
+        this.traefikApiPassword = secrets.traefikApiPassword;
+        logger.debug('Loaded Traefik API password from database');
+      }
+      
+      logger.info(`Loaded ${Object.keys(secrets).length} secrets from database`);
+    } catch (error) {
+      logger.error(`Failed to load secrets from database: ${error.message}`);
+      // Continue with environment-only secrets
+    }
+  }
+  
+  /**
+   * Save encrypted secrets to database
+   * @param {Object} secrets - Object containing secret values
+   * @param {string} userId - User ID for audit purposes
+   * @returns {Object} - Result object with success status
+   */
+  async saveSecrets(secrets, userId = null) {
+    try {
+      const database = require('../database');
+      
+      if (!database.isInitialized() || !database.repositories?.setting) {
+        return {
+          success: false,
+          error: 'Database not initialized'
+        };
+      }
+      
+      const crypto = require('crypto');
+      
+      // Generate encryption key from environment or default
+      const encryptionKey = process.env.ENCRYPTION_KEY || 'trafegodns-default-key';
+      const key = crypto.createHash('sha256').update(encryptionKey).digest();
+      
+      // Encrypt and save each secret
+      const updatedSecrets = [];
+      
+      for (const [secretName, secretValue] of Object.entries(secrets)) {
+        if (!secretValue || secretValue.trim() === '') {
+          continue;
+        }
+        
+        try {
+          // Encrypt the secret value
+          const iv = crypto.randomBytes(16);
+          const cipher = crypto.createCipherGCM('aes-256-gcm', key, iv);
+          cipher.setAAD(Buffer.from(secretName, 'utf8'));
+          
+          let encrypted = cipher.update(secretValue.trim(), 'utf8', 'hex');
+          encrypted += cipher.final('hex');
+          
+          const authTag = cipher.getAuthTag();
+          
+          // Combine iv, authTag, and encrypted data
+          const encryptedData = {
+            iv: iv.toString('hex'),
+            authTag: authTag.toString('hex'),
+            data: encrypted
+          };
+          
+          // Save to database with secret_ prefix
+          const dbKey = `secret_${secretName}`;
+          await database.repositories.setting.set(dbKey, JSON.stringify(encryptedData));
+          
+          updatedSecrets.push(secretName);
+          
+          logger.info(`Secret ${secretName} saved successfully`);
+        } catch (encryptError) {
+          logger.error(`Failed to encrypt secret ${secretName}: ${encryptError.message}`);
+          return {
+            success: false,
+            error: `Failed to encrypt secret ${secretName}`
+          };
+        }
+      }
+      
+      // Log audit trail
+      if (database.repositories?.activityLog && userId) {
+        try {
+          await database.repositories.activityLog.logActivity({
+            type: 'tracked',
+            recordType: 'secrets',
+            hostname: 'system',
+            details: `Admin updated secrets: ${updatedSecrets.join(', ')}`,
+            source: 'config',
+            metadata: {
+              userId: userId,
+              action: 'update_secrets',
+              secretsUpdated: updatedSecrets,
+              timestamp: new Date().toISOString()
+            }
+          });
+        } catch (auditError) {
+          logger.warn(`Failed to log secret update audit: ${auditError.message}`);
+        }
+      }
+      
+      return {
+        success: true,
+        updatedSecrets: updatedSecrets
+      };
+    } catch (error) {
+      logger.error(`Failed to save secrets: ${error.message}`);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+  
+  /**
+   * Load and decrypt secrets from database and environment variables
+   * @returns {Object} - Object containing decrypted secret values
+   */
+  async loadSecrets() {
+    try {
+      const database = require('../database');
+      const secrets = {};
+      
+      // First, add any secrets from environment variables
+      if (this.cloudflareToken) {
+        secrets.cloudflareToken = this.cloudflareToken;
+      }
+      if (this.route53AccessKey) {
+        secrets.route53AccessKey = this.route53AccessKey;
+      }
+      if (this.route53SecretKey) {
+        secrets.route53SecretKey = this.route53SecretKey;
+      }
+      if (this.digitalOceanToken) {
+        secrets.digitalOceanToken = this.digitalOceanToken;
+      }
+      if (this.traefikApiPassword) {
+        secrets.traefikApiPassword = this.traefikApiPassword;
+      }
+      
+      if (!database.isInitialized() || !database.repositories?.setting) {
+        logger.warn('Database not initialized, returning environment secrets only');
+        return secrets;
+      }
+      
+      const crypto = require('crypto');
+      const allSettings = await database.repositories.setting.getAll();
+      
+      // Generate decryption key from environment or default
+      const encryptionKey = process.env.ENCRYPTION_KEY || 'trafegodns-default-key';
+      const key = crypto.createHash('sha256').update(encryptionKey).digest();
+      
+      // Find and decrypt all secret entries from database
+      for (const [dbKey, encryptedValue] of Object.entries(allSettings)) {
+        if (!dbKey.startsWith('secret_') || !encryptedValue) {
+          continue;
+        }
+        
+        const secretName = dbKey.replace('secret_', '');
+        
+        try {
+          const encryptedData = JSON.parse(encryptedValue);
+          
+          if (!encryptedData.iv || !encryptedData.authTag || !encryptedData.data) {
+            logger.warn(`Invalid encrypted data format for secret ${secretName}`);
+            continue;
+          }
+          
+          // Decrypt the secret value
+          const iv = Buffer.from(encryptedData.iv, 'hex');
+          const decipher = crypto.createDecipherGCM('aes-256-gcm', key, iv);
+          decipher.setAAD(Buffer.from(secretName, 'utf8'));
+          decipher.setAuthTag(Buffer.from(encryptedData.authTag, 'hex'));
+          
+          let decrypted = decipher.update(encryptedData.data, 'hex', 'utf8');
+          decrypted += decipher.final('utf8');
+          
+          // Database secrets override environment variables
+          secrets[secretName] = decrypted;
+          
+        } catch (decryptError) {
+          logger.error(`Failed to decrypt secret ${secretName}: ${decryptError.message}`);
+          // Continue with other secrets even if one fails
+        }
+      }
+      
+      return secrets;
+    } catch (error) {
+      logger.error(`Failed to load secrets: ${error.message}`);
+      return {};
+    }
+  }
+  
+  /**
+   * Check which secrets are available (without revealing values)
+   * @returns {Object} - Object indicating which secrets are set
+   */
+  async getSecretStatus() {
+    try {
+      const database = require('../database');
+      
+      if (!database.isInitialized() || !database.repositories?.setting) {
+        // Fallback to environment variables
+        return {
+          hasCloudflareToken: !!this.cloudflareToken,
+          hasRoute53AccessKey: !!this.route53AccessKey,
+          hasRoute53SecretKey: !!this.route53SecretKey,
+          hasDigitalOceanToken: !!this.digitalOceanToken,
+          hasTraefikApiPassword: !!this.traefikApiPassword
+        };
+      }
+      
+      const allSettings = await database.repositories.setting.getAll();
+      
+      return {
+        hasCloudflareToken: !!allSettings.secret_cloudflareToken || !!this.cloudflareToken,
+        hasRoute53AccessKey: !!allSettings.secret_route53AccessKey || !!this.route53AccessKey,
+        hasRoute53SecretKey: !!allSettings.secret_route53SecretKey || !!this.route53SecretKey,
+        hasDigitalOceanToken: !!allSettings.secret_digitalOceanToken || !!this.digitalOceanToken,
+        hasTraefikApiPassword: !!allSettings.secret_traefikApiPassword || !!this.traefikApiPassword
+      };
+    } catch (error) {
+      logger.error(`Failed to get secret status: ${error.message}`);
+      return {
+        hasCloudflareToken: false,
+        hasRoute53AccessKey: false,
+        hasRoute53SecretKey: false,
+        hasDigitalOceanToken: false,
+        hasTraefikApiPassword: false
+      };
     }
   }
 }

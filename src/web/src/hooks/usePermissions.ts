@@ -36,6 +36,7 @@ export const PERMISSIONS = {
   // Configuration
   CONFIG_VIEW: 'config:view',
   CONFIG_UPDATE: 'config:update',
+  CONFIG_SECRETS: 'config:secrets',
   
   // System Status
   STATUS_VIEW: 'status:view',
@@ -129,7 +130,8 @@ const UI_ACTIONS: Record<string, string[]> = {
   'user.delete': ['admin'],
   
   // Settings page
-  'settings.update': ['admin']
+  'settings.update': ['admin'],
+  'settings.secrets': ['admin']
 }
 
 export function usePermissions() {

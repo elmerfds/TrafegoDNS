@@ -76,6 +76,10 @@ const getConfig = asyncHandler(async (req, res) => {
       recordDefaults: ConfigManager.recordDefaults || {}
     };
     
+    // Add secret status (which secrets are set, but not the values)
+    const secretStatus = await ConfigManager.getSecretStatus();
+    Object.assign(safeConfig, secretStatus);
+    
     res.json({
       status: 'success',
       data: {
@@ -429,11 +433,256 @@ const getAppStatus = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * @desc    Update secrets (admin only)
+ * @route   PUT /api/v1/config/secrets
+ * @access  Private/Admin
+ */
+const updateSecrets = asyncHandler(async (req, res) => {
+  const { ConfigManager } = global.services || {};
+  
+  if (!ConfigManager) {
+    throw new ApiError('Config manager not initialized', 500, 'CONFIG_MANAGER_NOT_INITIALIZED');
+  }
+  
+  // Check if user has admin role
+  if (req.user.role !== 'admin') {
+    throw new ApiError('Insufficient permissions to manage secrets', 403, 'INSUFFICIENT_PERMISSIONS');
+  }
+  
+  const {
+    cloudflareToken,
+    route53AccessKey,
+    route53SecretKey,
+    digitalOceanToken,
+    traefikApiPassword
+  } = req.body;
+  
+  // Build secrets object with only provided values
+  const secrets = {};
+  if (cloudflareToken !== undefined && cloudflareToken.trim() !== '') {
+    secrets.cloudflareToken = cloudflareToken.trim();
+  }
+  if (route53AccessKey !== undefined && route53AccessKey.trim() !== '') {
+    secrets.route53AccessKey = route53AccessKey.trim();
+  }
+  if (route53SecretKey !== undefined && route53SecretKey.trim() !== '') {
+    secrets.route53SecretKey = route53SecretKey.trim();
+  }
+  if (digitalOceanToken !== undefined && digitalOceanToken.trim() !== '') {
+    secrets.digitalOceanToken = digitalOceanToken.trim();
+  }
+  if (traefikApiPassword !== undefined && traefikApiPassword.trim() !== '') {
+    secrets.traefikApiPassword = traefikApiPassword.trim();
+  }
+  
+  if (Object.keys(secrets).length === 0) {
+    throw new ApiError('No secrets provided for update', 400, 'NO_SECRETS_PROVIDED');
+  }
+  
+  try {
+    // Save secrets with user ID for audit
+    const result = await ConfigManager.saveSecrets(secrets, req.user.id);
+    
+    if (!result.success) {
+      throw new ApiError(
+        result.error || 'Failed to save secrets',
+        500,
+        'SECRETS_SAVE_ERROR'
+      );
+    }
+    
+    res.json({
+      status: 'success',
+      data: {
+        message: 'Secrets updated successfully',
+        updatedSecrets: Object.keys(secrets),
+        requiresRestart: true // Secrets changes typically require restart
+      }
+    });
+  } catch (error) {
+    throw new ApiError(
+      `Failed to update secrets: ${error.message}`,
+      error.statusCode || 500,
+      error.code || 'SECRETS_UPDATE_ERROR'
+    );
+  }
+});
+
+/**
+ * @desc    Test secret validation
+ * @route   POST /api/v1/config/secrets/test
+ * @access  Private/Admin
+ */
+const testSecrets = asyncHandler(async (req, res) => {
+  const { ConfigManager } = global.services || {};
+  
+  if (!ConfigManager) {
+    throw new ApiError('Config manager not initialized', 500, 'CONFIG_MANAGER_NOT_INITIALIZED');
+  }
+  
+  // Check if user has admin role
+  if (req.user.role !== 'admin') {
+    throw new ApiError('Insufficient permissions to test secrets', 403, 'INSUFFICIENT_PERMISSIONS');
+  }
+  
+  const { provider, secrets } = req.body;
+  
+  if (!provider || !secrets) {
+    throw new ApiError('Provider and secrets are required for testing', 400, 'VALIDATION_ERROR');
+  }
+  
+  try {
+    // Create temporary provider instance for testing
+    const { DNSProviderFactory } = require('../../../providers');
+    
+    // Build test config
+    const testConfig = {
+      dnsProvider: provider,
+      ...ConfigManager._envConfig // Use existing config as base
+    };
+    
+    // Override with test secrets
+    if (secrets.cloudflareToken) testConfig.cloudflareToken = secrets.cloudflareToken;
+    if (secrets.route53AccessKey) testConfig.route53AccessKey = secrets.route53AccessKey;
+    if (secrets.route53SecretKey) testConfig.route53SecretKey = secrets.route53SecretKey;
+    if (secrets.digitalOceanToken) testConfig.digitalOceanToken = secrets.digitalOceanToken;
+    
+    // Test provider connection
+    const testProvider = DNSProviderFactory.createProvider(testConfig);
+    
+    // Attempt to list records (basic connectivity test)
+    await testProvider.getRecordsFromCache(true); // Force refresh to test API
+    
+    res.json({
+      status: 'success',
+      data: {
+        message: 'Secret validation successful',
+        provider: provider,
+        testResults: {
+          connectivity: true,
+          apiAccess: true
+        }
+      }
+    });
+  } catch (error) {
+    // Return validation failure without exposing sensitive details
+    res.json({
+      status: 'error',
+      data: {
+        message: 'Secret validation failed',
+        provider: provider,
+        testResults: {
+          connectivity: false,
+          apiAccess: false,
+          error: 'Authentication or API access failed'
+        }
+      }
+    });
+  }
+});
+
+/**
+ * @desc    Get decrypted secrets for viewing (admin only)
+ * @route   GET /api/v1/config/secrets
+ * @access  Private/Admin
+ */
+const getSecrets = asyncHandler(async (req, res) => {
+  const { ConfigManager } = global.services || {};
+  
+  if (!ConfigManager) {
+    throw new ApiError('Config manager not initialized', 500, 'CONFIG_MANAGER_NOT_INITIALIZED');
+  }
+  
+  // Check if user has admin role
+  if (req.user.role !== 'admin') {
+    throw new ApiError('Insufficient permissions to view secrets', 403, 'INSUFFICIENT_PERMISSIONS');
+  }
+  
+  try {
+    const secrets = await ConfigManager.loadSecrets();
+    
+    // Log the access for security audit
+    const database = require('../../../database');
+    if (database.repositories && database.repositories.activityLog) {
+      try {
+        await database.repositories.activityLog.logActivity({
+          type: 'tracked',
+          recordType: 'secrets',
+          hostname: 'system',
+          details: `Admin ${req.user.username} viewed secrets`,
+          source: 'config',
+          metadata: {
+            userId: req.user.id,
+            username: req.user.username,
+            action: 'view_secrets',
+            timestamp: new Date().toISOString()
+          }
+        });
+      } catch (auditError) {
+        logger.warn(`Failed to log secret view audit: ${auditError.message}`);
+      }
+    }
+    
+    res.json({
+      status: 'success',
+      data: {
+        secrets: secrets
+      }
+    });
+  } catch (error) {
+    throw new ApiError(
+      `Failed to get secrets: ${error.message}`,
+      500,
+      'SECRETS_GET_ERROR'
+    );
+  }
+});
+
+/**
+ * @desc    Get secret status (which secrets are set)
+ * @route   GET /api/v1/config/secrets/status
+ * @access  Private/Admin
+ */
+const getSecretStatus = asyncHandler(async (req, res) => {
+  const { ConfigManager } = global.services || {};
+  
+  if (!ConfigManager) {
+    throw new ApiError('Config manager not initialized', 500, 'CONFIG_MANAGER_NOT_INITIALIZED');
+  }
+  
+  // Check if user has admin role
+  if (req.user.role !== 'admin') {
+    throw new ApiError('Insufficient permissions to view secret status', 403, 'INSUFFICIENT_PERMISSIONS');
+  }
+  
+  try {
+    const secretStatus = await ConfigManager.getSecretStatus();
+    
+    res.json({
+      status: 'success',
+      data: {
+        secrets: secretStatus
+      }
+    });
+  } catch (error) {
+    throw new ApiError(
+      `Failed to get secret status: ${error.message}`,
+      500,
+      'SECRET_STATUS_ERROR'
+    );
+  }
+});
+
 module.exports = {
   getConfig,
   updateConfig,
   getProviderConfig,
   toggleOperationMode,
   getAppStatus,
-  getAllSettings
+  getAllSettings,
+  updateSecrets,
+  testSecrets,
+  getSecrets,
+  getSecretStatus
 };

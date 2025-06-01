@@ -20,7 +20,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
-import { Loader2, Save } from 'lucide-react'
+import { SecretInput } from '@/components/ui/secret-input'
+import { usePermissions } from '@/hooks/usePermissions'
+import { Loader2, Save, AlertTriangle } from 'lucide-react'
 
 interface Config {
   operationMode: string
@@ -54,12 +56,27 @@ interface Config {
   dnsCacheRefreshInterval: number
   apiTimeout: number
   recordDefaults: any
+  // Secret fields
+  cloudflareToken?: string
+  route53AccessKey?: string
+  route53SecretKey?: string
+  digitalOceanToken?: string
+  traefikApiPassword?: string
+  // Secret flags to indicate if values are set
+  hasCloudflareToken?: boolean
+  hasRoute53AccessKey?: boolean
+  hasRoute53SecretKey?: boolean
+  hasDigitalOceanToken?: boolean
+  hasTraefikApiPassword?: boolean
 }
 
 export function SettingsPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [formData, setFormData] = useState<Partial<Config>>({})
+  const [secrets, setSecrets] = useState<Record<string, string>>({})
+  const { canPerformAction } = usePermissions()
+  const canManageSecrets = canPerformAction('settings.secrets')
 
   const { data, isLoading } = useQuery({
     queryKey: ['config'],
@@ -91,6 +108,28 @@ export function SettingsPage() {
     },
   })
 
+  const secretsMutation = useMutation({
+    mutationFn: async (secrets: any) => {
+      const response = await api.put('/config/secrets', secrets)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config'] })
+      toast({
+        title: 'Secrets updated',
+        description: 'Your secrets have been saved successfully and encrypted.',
+      })
+      setFormData({})
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Secrets update failed',
+        description: error.response?.data?.error || 'Failed to update secrets',
+        variant: 'destructive',
+      })
+    },
+  })
+
   const toggleModeMutation = useMutation({
     mutationFn: async (mode: string) => {
       const response = await api.put('/config/mode', { mode })
@@ -114,12 +153,79 @@ export function SettingsPage() {
     },
   })
 
+  const fetchSecrets = async () => {
+    try {
+      const response = await api.get('/config/secrets')
+      return response.data.data.secrets
+    } catch (error) {
+      console.error('Failed to fetch secrets:', error)
+      toast({
+        title: 'Failed to fetch secrets',
+        description: 'Could not retrieve secret values for viewing.',
+        variant: 'destructive',
+      })
+      return {}
+    }
+  }
+
+  const getSecretValue = async (secretName: string): Promise<string | null> => {
+    // If we already have the secrets cached, return from cache
+    if (secrets[secretName]) {
+      return secrets[secretName]
+    }
+
+    // Fetch all secrets and cache them
+    const fetchedSecrets = await fetchSecrets()
+    setSecrets(fetchedSecrets)
+    return fetchedSecrets[secretName] || null
+  }
+
   const handleInputChange = (field: keyof Config, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
   const handleSave = () => {
-    updateMutation.mutate(formData)
+    // Separate secrets from regular config
+    const {
+      cloudflareToken,
+      route53AccessKey,
+      route53SecretKey,
+      digitalOceanToken,
+      traefikApiPassword,
+      ...regularConfig
+    } = formData
+
+    const secrets = {
+      cloudflareToken,
+      route53AccessKey,
+      route53SecretKey,
+      digitalOceanToken,
+      traefikApiPassword
+    }
+
+    // Filter out undefined secrets
+    const secretsToUpdate = Object.fromEntries(
+      Object.entries(secrets).filter(([_, value]) => value !== undefined)
+    )
+
+    // Update secrets if any are provided
+    if (Object.keys(secretsToUpdate).length > 0) {
+      secretsMutation.mutate(secretsToUpdate)
+    }
+
+    // Update regular config if any changes
+    if (Object.keys(regularConfig).length > 0) {
+      updateMutation.mutate(regularConfig)
+    }
+
+    // If only secrets or only config, and no changes, show message
+    if (Object.keys(secretsToUpdate).length === 0 && Object.keys(regularConfig).length === 0) {
+      toast({
+        title: 'No changes',
+        description: 'No changes were detected to save.',
+        variant: 'default',
+      })
+    }
   }
 
   if (isLoading) {
@@ -327,6 +433,98 @@ export function SettingsPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Secret Management */}
+        {canManageSecrets && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-orange-500" />
+                Secret Management
+              </CardTitle>
+              <CardDescription>
+                Configure sensitive API credentials and tokens securely
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Cloudflare Secrets */}
+              {(formData.dnsProvider ?? config.dnsProvider) === 'cloudflare' && (
+                <div className="space-y-2">
+                  <Label htmlFor="cloudflareToken">Cloudflare API Token</Label>
+                  <SecretInput
+                    id="cloudflareToken"
+                    hasValue={config.hasCloudflareToken}
+                    placeholder="Enter Cloudflare API token..."
+                    onChange={(value) => handleInputChange('cloudflareToken', value)}
+                    onReveal={() => getSecretValue('cloudflareToken')}
+                  />
+                </div>
+              )}
+
+              {/* Route53 Secrets */}
+              {(formData.dnsProvider ?? config.dnsProvider) === 'route53' && (
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="route53AccessKey">AWS Access Key ID</Label>
+                    <SecretInput
+                      id="route53AccessKey"
+                      hasValue={config.hasRoute53AccessKey}
+                      placeholder="Enter AWS Access Key ID..."
+                      onChange={(value) => handleInputChange('route53AccessKey', value)}
+                      onReveal={() => getSecretValue('route53AccessKey')}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="route53SecretKey">AWS Secret Access Key</Label>
+                    <SecretInput
+                      id="route53SecretKey"
+                      hasValue={config.hasRoute53SecretKey}
+                      placeholder="Enter AWS Secret Access Key..."
+                      onChange={(value) => handleInputChange('route53SecretKey', value)}
+                      onReveal={() => getSecretValue('route53SecretKey')}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* DigitalOcean Secrets */}
+              {(formData.dnsProvider ?? config.dnsProvider) === 'digitalocean' && (
+                <div className="space-y-2">
+                  <Label htmlFor="digitalOceanToken">DigitalOcean API Token</Label>
+                  <SecretInput
+                    id="digitalOceanToken"
+                    hasValue={config.hasDigitalOceanToken}
+                    placeholder="Enter DigitalOcean API token..."
+                    onChange={(value) => handleInputChange('digitalOceanToken', value)}
+                    onReveal={() => getSecretValue('digitalOceanToken')}
+                  />
+                </div>
+              )}
+
+              {/* Traefik API Password (only in Traefik mode) */}
+              {config.operationMode === 'traefik' && config.traefikApiUsername && (
+                <div className="space-y-2">
+                  <Label htmlFor="traefikApiPassword">Traefik API Password</Label>
+                  <SecretInput
+                    id="traefikApiPassword"
+                    hasValue={config.hasTraefikApiPassword}
+                    placeholder="Enter Traefik API password..."
+                    onChange={(value) => handleInputChange('traefikApiPassword', value)}
+                    onReveal={() => getSecretValue('traefikApiPassword')}
+                  />
+                </div>
+              )}
+
+              <div className="rounded-md bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-950 dark:text-blue-200">
+                <p className="font-medium">Security Notice:</p>
+                <p>
+                  Secrets are encrypted before storage and only admin users can manage them.
+                  Changes to secrets are logged for security audit purposes.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* DNS Settings */}
         <Card>
@@ -578,9 +776,9 @@ export function SettingsPage() {
         <div className="flex justify-end">
           <Button
             onClick={handleSave}
-            disabled={updateMutation.isPending || Object.keys(formData).length === 0}
+            disabled={updateMutation.isPending || secretsMutation.isPending || Object.keys(formData).length === 0}
           >
-            {updateMutation.isPending && (
+            {(updateMutation.isPending || secretsMutation.isPending) && (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             )}
             <Save className="mr-2 h-4 w-4" />
