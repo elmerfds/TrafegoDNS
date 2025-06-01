@@ -11,7 +11,10 @@ const {
   getProviderConfig,
   toggleOperationMode,
   getAppStatus,
-  getAllSettings
+  getAllSettings,
+  updateSecrets,
+  testSecrets,
+  getSecretStatus
 } = require('../controllers/configController');
 
 /**
@@ -291,5 +294,132 @@ router.get('/status', authenticate, getAppStatus);
  *         description: Server error
  */
 router.get('/settings', authenticate, authorize('admin'), getAllSettings);
+
+/**
+ * @swagger
+ * /config/secrets:
+ *   put:
+ *     summary: Update secrets (admin only)
+ *     tags: [Config]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               cloudflareToken:
+ *                 type: string
+ *                 description: Cloudflare API token
+ *               route53AccessKey:
+ *                 type: string
+ *                 description: AWS Access Key ID for Route53
+ *               route53SecretKey:
+ *                 type: string
+ *                 description: AWS Secret Access Key for Route53
+ *               digitalOceanToken:
+ *                 type: string
+ *                 description: DigitalOcean API token
+ *               traefikApiPassword:
+ *                 type: string
+ *                 description: Traefik API password
+ *     responses:
+ *       200:
+ *         description: Secrets updated successfully
+ *       400:
+ *         description: Invalid secrets data
+ *       401:
+ *         description: Not authenticated
+ *       403:
+ *         description: Not authorized (admin only)
+ *       500:
+ *         description: Server error
+ */
+router.put('/secrets', authenticate, authorize('admin'), updateSecrets);
+
+/**
+ * @swagger
+ * /config/secrets/test:
+ *   post:
+ *     summary: Test secret validation (admin only)
+ *     tags: [Config]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - provider
+ *               - secrets
+ *             properties:
+ *               provider:
+ *                 type: string
+ *                 enum: [cloudflare, route53, digitalocean]
+ *                 description: DNS provider to test
+ *               secrets:
+ *                 type: object
+ *                 description: Secrets to test
+ *     responses:
+ *       200:
+ *         description: Test results (success or failure)
+ *       400:
+ *         description: Invalid test data
+ *       401:
+ *         description: Not authenticated
+ *       403:
+ *         description: Not authorized (admin only)
+ *       500:
+ *         description: Server error
+ */
+router.post('/secrets/test', authenticate, authorize('admin'), testSecrets);
+
+/**
+ * @swagger
+ * /config/secrets/status:
+ *   get:
+ *     summary: Get secret status (which secrets are set)
+ *     tags: [Config]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Secret status information
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     secrets:
+ *                       type: object
+ *                       properties:
+ *                         hasCloudflareToken:
+ *                           type: boolean
+ *                         hasRoute53AccessKey:
+ *                           type: boolean
+ *                         hasRoute53SecretKey:
+ *                           type: boolean
+ *                         hasDigitalOceanToken:
+ *                           type: boolean
+ *                         hasTraefikApiPassword:
+ *                           type: boolean
+ *       401:
+ *         description: Not authenticated
+ *       403:
+ *         description: Not authorized (admin only)
+ *       500:
+ *         description: Server error
+ */
+router.get('/secrets/status', authenticate, authorize('admin'), getSecretStatus);
 
 module.exports = router;
