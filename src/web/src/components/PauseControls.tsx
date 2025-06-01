@@ -210,10 +210,10 @@ export function PauseControls() {
                   <div className="space-y-2 pt-2">
                     <div className="flex justify-between text-sm">
                       <span>Auto-resume in:</span>
-                      <span className="font-mono">{formatTimeRemaining(status.timeRemaining)}</span>
+                      <span className="font-mono">{status.timeRemaining !== null ? formatTimeRemaining(status.timeRemaining) : '0s'}</span>
                     </div>
                     <Progress 
-                      value={status.pauseDuration ? 
+                      value={status.pauseDuration && status.timeRemaining !== null ? 
                         ((status.pauseDuration * 60 - status.timeRemaining) / (status.pauseDuration * 60)) * 100 : 0
                       } 
                       className="h-2"

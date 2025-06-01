@@ -47,7 +47,7 @@ export function PauseStatusIndicator() {
       {status.autoResumeScheduled && status.timeRemaining !== null && (
         <>
           <Clock className="h-3 w-3 ml-1" />
-          <span>{formatTimeRemaining(status.timeRemaining)}</span>
+          <span>{status.timeRemaining !== null ? formatTimeRemaining(status.timeRemaining) : '0s'}</span>
         </>
       )}
     </Badge>
