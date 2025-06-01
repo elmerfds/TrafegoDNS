@@ -281,6 +281,9 @@ class ConfigManager {
       // Load secrets from database (if any) and apply them
       await this._loadAndApplySecrets();
       
+      // Check if we should save environment secrets to database
+      await this._syncEnvironmentSecretsToDatabase();
+      
       this._dbLoaded = true;
       
       logger.info('Configuration loaded from database successfully');
@@ -841,6 +844,76 @@ class ConfigManager {
   }
   
   /**
+   * Sync environment secrets to database if they don't exist there
+   * @private
+   */
+  async _syncEnvironmentSecretsToDatabase() {
+    try {
+      const database = require('../database');
+      
+      if (!database.isInitialized() || !database.repositories?.setting) {
+        return;
+      }
+      
+      // Get current database settings
+      const allSettings = await database.repositories.setting.getAll();
+      
+      // Collect environment secrets that aren't in database
+      const envSecrets = {};
+      let hasNewSecrets = false;
+      
+      // Check Cloudflare token
+      if (this.cloudflareToken && !allSettings.secret_cloudflareToken) {
+        envSecrets.cloudflareToken = this.cloudflareToken;
+        hasNewSecrets = true;
+        logger.info('Found Cloudflare token in environment but not in database');
+      }
+      
+      // Check Route53 credentials
+      if (this.route53AccessKey && !allSettings.secret_route53AccessKey) {
+        envSecrets.route53AccessKey = this.route53AccessKey;
+        hasNewSecrets = true;
+        logger.info('Found Route53 access key in environment but not in database');
+      }
+      
+      if (this.route53SecretKey && !allSettings.secret_route53SecretKey) {
+        envSecrets.route53SecretKey = this.route53SecretKey;
+        hasNewSecrets = true;
+        logger.info('Found Route53 secret key in environment but not in database');
+      }
+      
+      // Check DigitalOcean token
+      if (this.digitalOceanToken && !allSettings.secret_digitalOceanToken) {
+        envSecrets.digitalOceanToken = this.digitalOceanToken;
+        hasNewSecrets = true;
+        logger.info('Found DigitalOcean token in environment but not in database');
+      }
+      
+      // Check Traefik API password
+      if (this.traefikApiPassword && !allSettings.secret_traefikApiPassword) {
+        envSecrets.traefikApiPassword = this.traefikApiPassword;
+        hasNewSecrets = true;
+        logger.info('Found Traefik API password in environment but not in database');
+      }
+      
+      // Save any new secrets to database
+      if (hasNewSecrets) {
+        logger.info('Saving environment secrets to database for persistence');
+        const result = await this.saveSecrets(envSecrets, 'system-init');
+        
+        if (result.success) {
+          logger.info(`Successfully saved ${result.updatedSecrets.length} environment secrets to database`);
+        } else {
+          logger.warn(`Failed to save environment secrets to database: ${result.error}`);
+        }
+      }
+    } catch (error) {
+      logger.error(`Failed to sync environment secrets to database: ${error.message}`);
+      // Continue without syncing - not a critical error
+    }
+  }
+  
+  /**
    * Load secrets from database and apply them to ConfigManager properties
    * @private
    */
@@ -981,27 +1054,44 @@ class ConfigManager {
   }
   
   /**
-   * Load and decrypt secrets from database
+   * Load and decrypt secrets from database and environment variables
    * @returns {Object} - Object containing decrypted secret values
    */
   async loadSecrets() {
     try {
       const database = require('../database');
+      const secrets = {};
+      
+      // First, add any secrets from environment variables
+      if (this.cloudflareToken) {
+        secrets.cloudflareToken = this.cloudflareToken;
+      }
+      if (this.route53AccessKey) {
+        secrets.route53AccessKey = this.route53AccessKey;
+      }
+      if (this.route53SecretKey) {
+        secrets.route53SecretKey = this.route53SecretKey;
+      }
+      if (this.digitalOceanToken) {
+        secrets.digitalOceanToken = this.digitalOceanToken;
+      }
+      if (this.traefikApiPassword) {
+        secrets.traefikApiPassword = this.traefikApiPassword;
+      }
       
       if (!database.isInitialized() || !database.repositories?.setting) {
-        logger.warn('Database not initialized, returning empty secrets');
-        return {};
+        logger.warn('Database not initialized, returning environment secrets only');
+        return secrets;
       }
       
       const crypto = require('crypto');
       const allSettings = await database.repositories.setting.getAll();
-      const secrets = {};
       
       // Generate decryption key from environment or default
       const encryptionKey = process.env.ENCRYPTION_KEY || 'trafegodns-default-key';
       const key = crypto.createHash('sha256').update(encryptionKey).digest();
       
-      // Find and decrypt all secret entries
+      // Find and decrypt all secret entries from database
       for (const [dbKey, encryptedValue] of Object.entries(allSettings)) {
         if (!dbKey.startsWith('secret_') || !encryptedValue) {
           continue;
@@ -1026,6 +1116,7 @@ class ConfigManager {
           let decrypted = decipher.update(encryptedData.data, 'hex', 'utf8');
           decrypted += decipher.final('utf8');
           
+          // Database secrets override environment variables
           secrets[secretName] = decrypted;
           
         } catch (decryptError) {
