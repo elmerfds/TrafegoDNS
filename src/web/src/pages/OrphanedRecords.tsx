@@ -603,7 +603,7 @@ export function OrphanedRecordsPage() {
                     {historyData?.pagination?.total || 0} historical orphaned records (showing page {historyPage} of {historyData?.pagination?.totalPages || 1})
                   </CardDescription>
                 </div>
-                {canPerformAction('/dns') && historyData?.pagination?.total > 0 && (
+                {canPerformAction('orphaned.cleanup') && historyData?.pagination?.total > 0 && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button variant="destructive" size="sm">
@@ -667,13 +667,13 @@ export function OrphanedRecordsPage() {
                         <TableHead>Orphaned At</TableHead>
                         <TableHead>Deleted At</TableHead>
                         <TableHead>Reason</TableHead>
-                        {canPerformAction('/dns') && <TableHead className="w-[100px]">Actions</TableHead>}
+                        {canPerformAction('orphaned.cleanup') && <TableHead className="w-[100px]">Actions</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredHistoryRecords?.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={canPerformAction('/dns') ? 9 : 8} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={canPerformAction('orphaned.cleanup') ? 9 : 8} className="text-center py-8 text-muted-foreground">
                             No orphaned records history found
                           </TableCell>
                         </TableRow>
@@ -706,7 +706,7 @@ export function OrphanedRecordsPage() {
                                 {record.deletionReason}
                               </div>
                             </TableCell>
-                            {canPerformAction('/dns') && (
+                            {canPerformAction('orphaned.cleanup') && (
                               <TableCell>
                                 <AlertDialog>
                                   <AlertDialogTrigger asChild>

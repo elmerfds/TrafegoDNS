@@ -383,7 +383,7 @@ export function LogsPage() {
             {/* Log display */}
             <div 
               ref={logContainerRef}
-              className="bg-gray-900 rounded-lg p-4 h-[600px] overflow-y-auto font-mono text-sm"
+              className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 h-[600px] overflow-y-auto font-mono text-sm"
             >
               {isLoadingLogs ? (
                 <div className="flex items-center justify-center py-8">
