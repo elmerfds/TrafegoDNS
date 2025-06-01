@@ -348,14 +348,20 @@
   position: relative;
   border: 2px dashed hsl(var(--primary) / 0.3);
   border-radius: var(--radius);
-  overflow: hidden;
-  background: hsl(var(--card) / 0.5);
+  overflow: visible;
+  background: hsl(var(--card) / 0.95);
   transition: all 0.2s ease;
+  height: 100%;
 }
 
 .dashboard-item-edit:hover {
   border-color: hsl(var(--primary) / 0.5);
   box-shadow: 0 4px 12px hsl(var(--primary) / 0.1);
+}
+
+/* Ensure edit mode doesn't dim content too much */
+.dashboard-item-edit > div {
+  opacity: 0.9;
 }
 
 .react-grid-item.react-grid-placeholder {
@@ -379,19 +385,50 @@
 
 .react-resizable-handle {
   background-image: none;
-  background-color: hsl(var(--primary) / 0.6);
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  right: 4px;
-  bottom: 4px;
+  background-color: hsl(var(--primary) / 0.8);
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
   cursor: se-resize;
   transition: all 0.2s ease;
+  z-index: 20;
+}
+
+.react-resizable-handle-se {
+  right: 2px;
+  bottom: 2px;
+  cursor: se-resize;
+}
+
+.react-resizable-handle-s {
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: s-resize;
+  width: 40px;
+  height: 8px;
+}
+
+.react-resizable-handle-e {
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: e-resize;
+  width: 8px;
+  height: 40px;
 }
 
 .react-resizable-handle:hover {
   background-color: hsl(var(--primary));
-  transform: scale(1.2);
+  transform: scale(1.1);
+}
+
+.react-resizable-handle-s:hover {
+  transform: translateX(-50%) scale(1.1);
+}
+
+.react-resizable-handle-e:hover {
+  transform: translateY(-50%) scale(1.1);
 }
 
 .drag-handle {
@@ -399,26 +436,63 @@
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .drag-handle:hover {
-  background: hsl(var(--muted) / 0.9);
+  background: hsl(var(--muted) / 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 /* Ensure widgets fill their grid containers */
 .react-grid-item > div {
   height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .react-grid-item .card {
   height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.react-grid-item .card-header {
+  flex-shrink: 0;
 }
 
 .react-grid-item .card-content {
   flex: 1;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Prevent content overflow in grid items */
+.react-grid-item {
+  overflow: hidden;
+}
+
+/* Fix spacing issues in compact mode */
+.react-grid-layout {
+  min-height: 100%;
+}
+
+/* Text truncation utilities */
+.line-clamp-1 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.line-clamp-2 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 /* Mobile layout improvements */
@@ -429,5 +503,10 @@
   
   .react-grid-item {
     margin: 8px;
+  }
+  
+  /* Adjust grid for mobile to prevent overlaps */
+  .react-grid-item.react-grid-placeholder {
+    margin: 4px;
   }
 }

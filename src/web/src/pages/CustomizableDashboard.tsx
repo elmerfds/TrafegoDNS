@@ -206,26 +206,53 @@ export function CustomizableDashboard() {
     // Compact each breakpoint layout
     Object.keys(compactedLayouts).forEach(breakpoint => {
       if (compactedLayouts[breakpoint] && Array.isArray(compactedLayouts[breakpoint])) {
-        // Group widgets by columns
-        const columns: { [key: number]: any[] } = {}
-        
-        compactedLayouts[breakpoint].forEach((widget: any) => {
-          const col = widget.x
-          if (!columns[col]) columns[col] = []
-          columns[col].push(widget)
+        // Sort all widgets by Y position then X position
+        const sortedWidgets = [...compactedLayouts[breakpoint]].sort((a: any, b: any) => {
+          if (a.y === b.y) return a.x - b.x
+          return a.y - b.y
         })
         
-        // Compact each column
-        Object.keys(columns).forEach(colKey => {
-          const col = parseInt(colKey)
-          const colWidgets = columns[col].sort((a: any, b: any) => a.y - b.y)
-          let currentY = 0
+        // Track occupied spaces
+        const occupiedSpaces = new Map<string, boolean>()
+        
+        // Place each widget in the first available position
+        sortedWidgets.forEach((widget: any) => {
+          let placed = false
+          let testY = 0
           
-          colWidgets.forEach((widget: any) => {
-            widget.y = currentY
-            currentY += widget.h
-          })
+          while (!placed) {
+            let canPlace = true
+            
+            // Check if space is available
+            for (let x = widget.x; x < widget.x + widget.w; x++) {
+              for (let y = testY; y < testY + widget.h; y++) {
+                if (occupiedSpaces.get(`${x},${y}`)) {
+                  canPlace = false
+                  break
+                }
+              }
+              if (!canPlace) break
+            }
+            
+            if (canPlace) {
+              // Place widget
+              widget.y = testY
+              
+              // Mark space as occupied
+              for (let x = widget.x; x < widget.x + widget.w; x++) {
+                for (let y = testY; y < testY + widget.h; y++) {
+                  occupiedSpaces.set(`${x},${y}`, true)
+                }
+              }
+              
+              placed = true
+            } else {
+              testY++
+            }
+          }
         })
+        
+        compactedLayouts[breakpoint] = sortedWidgets
       }
     })
     
@@ -241,20 +268,20 @@ export function CustomizableDashboard() {
     switch (key) {
       case 'stats':
         return (
-          <div className="h-full">
+          <div className="h-full overflow-hidden">
             <div className="grid gap-4 grid-cols-2 md:grid-cols-4 h-full">
               {stats.map((stat) => (
-                <Card key={stat.name} className="h-full">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-xs sm:text-sm font-medium leading-tight">
+                <Card key={stat.name} className="h-full flex flex-col overflow-hidden">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 flex-shrink-0">
+                    <CardTitle className="text-xs sm:text-sm font-medium leading-tight line-clamp-2">
                       {stat.name}
                     </CardTitle>
                     <stat.icon className={`h-4 w-4 ${stat.color} flex-shrink-0`} />
                   </CardHeader>
-                  <CardContent>
-                    <div className="text-xl sm:text-2xl font-bold">{stat.value}</div>
+                  <CardContent className="flex-1">
+                    <div className="text-xl sm:text-2xl font-bold truncate">{stat.value}</div>
                     <div className="flex items-center gap-1 mt-1">
-                      <TrendingUp className="h-3 w-3 text-green-500" />
+                      <TrendingUp className="h-3 w-3 text-green-500 flex-shrink-0" />
                       <span className="text-xs text-muted-foreground">Stable</span>
                     </div>
                   </CardContent>
@@ -288,15 +315,15 @@ export function CustomizableDashboard() {
 
       case 'system-overview':
         return (
-          <Card className="h-full">
-            <CardHeader>
+          <Card className="h-full flex flex-col overflow-hidden">
+            <CardHeader className="flex-shrink-0">
               <CardTitle className="flex items-center gap-2">
                 <Shield className="h-5 w-5" />
                 System Overview
               </CardTitle>
               <CardDescription>Core system information and configuration</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="flex-1 space-y-3 overflow-y-auto">
               <div className="grid gap-3">
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Version</span>
@@ -329,15 +356,15 @@ export function CustomizableDashboard() {
 
       case 'service-health':
         return (
-          <Card className="h-full">
-            <CardHeader>
+          <Card className="h-full flex flex-col overflow-hidden">
+            <CardHeader className="flex-shrink-0">
               <CardTitle className="flex items-center gap-2">
                 <Activity className="h-5 w-5" />
                 Service Health
               </CardTitle>
               <CardDescription>Real-time status of core services</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="flex-1 space-y-4 overflow-y-auto">
               {status?.services?.dnsProvider && (
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -387,15 +414,15 @@ export function CustomizableDashboard() {
 
       case 'system-resources':
         return metrics ? (
-          <Card className="h-full">
-            <CardHeader>
+          <Card className="h-full flex flex-col overflow-hidden">
+            <CardHeader className="flex-shrink-0">
               <CardTitle className="flex items-center gap-2">
                 <Cpu className="h-5 w-5" />
                 System Resources
               </CardTitle>
               <CardDescription>Current resource utilization</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="flex-1 space-y-4 overflow-y-auto">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
@@ -443,15 +470,15 @@ export function CustomizableDashboard() {
 
       case 'dns-health':
         return (
-          <Card className="h-full">
-            <CardHeader>
+          <Card className="h-full flex flex-col overflow-hidden">
+            <CardHeader className="flex-shrink-0">
               <CardTitle className="flex items-center gap-2">
                 <Globe className="h-5 w-5" />
                 DNS Records Health
               </CardTitle>
               <CardDescription>Distribution and health of DNS records</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="flex-1 space-y-4 overflow-y-auto">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Active Records</span>
                 <div className="flex items-center gap-2">
@@ -493,15 +520,15 @@ export function CustomizableDashboard() {
 
       case 'container-monitoring':
         return (
-          <Card className="h-full">
-            <CardHeader>
+          <Card className="h-full flex flex-col overflow-hidden">
+            <CardHeader className="flex-shrink-0">
               <CardTitle className="flex items-center gap-2">
                 <Container className="h-5 w-5" />
                 Container Monitoring
               </CardTitle>
               <CardDescription>Docker container DNS management status</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="flex-1 space-y-4 overflow-y-auto">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Total Containers</span>
                 <div className="flex items-center gap-2">
@@ -538,15 +565,15 @@ export function CustomizableDashboard() {
 
       case 'quick-actions':
         return (
-          <Card className="h-full">
-            <CardHeader>
+          <Card className="h-full flex flex-col overflow-hidden">
+            <CardHeader className="flex-shrink-0">
               <CardTitle className="flex items-center gap-2">
                 <Activity className="h-5 w-5" />
                 Quick Actions
               </CardTitle>
               <CardDescription>Frequently used management actions</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="flex-1 space-y-3 overflow-y-auto">
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -597,15 +624,15 @@ export function CustomizableDashboard() {
 
       case 'provider-status':
         return (
-          <Card className="h-full">
-            <CardHeader>
+          <Card className="h-full flex flex-col overflow-hidden">
+            <CardHeader className="flex-shrink-0">
               <CardTitle className="flex items-center gap-2">
                 <Server className="h-5 w-5" />
                 Provider Status
               </CardTitle>
               <CardDescription>DNS provider connection and health</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="flex-1 space-y-4 overflow-y-auto">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Provider</span>
                 <div className="flex items-center gap-2">
@@ -647,15 +674,15 @@ export function CustomizableDashboard() {
 
       case 'issues-monitoring':
         return (
-          <Card className="h-full">
-            <CardHeader>
+          <Card className="h-full flex flex-col overflow-hidden">
+            <CardHeader className="flex-shrink-0">
               <CardTitle className="flex items-center gap-2">
                 <AlertTriangle className="h-5 w-5" />
                 Issues & Monitoring
               </CardTitle>
               <CardDescription>Current system issues and monitoring status</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="flex-1 space-y-4 overflow-y-auto">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Active Issues</span>
                 <div className="flex items-center gap-2">
@@ -763,13 +790,14 @@ export function CustomizableDashboard() {
         isDraggable={isEditMode}
         isResizable={isEditMode}
         rowHeight={50}
-        margin={[12, 12]}
+        margin={[16, 16]}
         containerPadding={[0, 0]}
         compactType="vertical"
-        preventCollision={false}
+        preventCollision={true}
         draggableHandle=".drag-handle"
         verticalCompact={true}
         transformScale={1}
+        resizeHandles={['se', 's', 'e']}
       >
         {defaultLayouts.lg.map(layoutItem => {
           const widget = renderWidget(layoutItem.i)
@@ -777,16 +805,16 @@ export function CustomizableDashboard() {
           if (!widget) return null
           
           return (
-            <div key={layoutItem.i} className={isEditMode ? 'dashboard-item-edit' : ''}>
+            <div key={layoutItem.i} className={isEditMode ? 'dashboard-item-edit h-full' : 'h-full'}>
               {isEditMode && (
-                <div className="drag-handle absolute top-0 left-0 right-0 bg-muted/80 backdrop-blur-sm p-2 flex items-center gap-2 cursor-move z-10 border-b border-border">
+                <div className="drag-handle absolute top-0 left-0 right-0 bg-muted/50 backdrop-blur-sm p-2 flex items-center gap-2 cursor-move z-10 border-b border-border">
                   <GripVertical className="h-4 w-4 text-muted-foreground" />
                   <span className="text-xs font-medium capitalize text-foreground">
                     {layoutItem.i.replace(/-/g, ' ')}
                   </span>
                 </div>
               )}
-              <div className={isEditMode ? 'pt-8' : ''}>
+              <div className={isEditMode ? 'pt-8 h-full' : 'h-full'}>
                 {widget}
               </div>
             </div>
