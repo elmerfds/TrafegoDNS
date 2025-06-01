@@ -29,8 +29,8 @@ const getStatus = asyncHandler(async (req, res) => {
     services: {}
   };
   
-  // Helper function to get domain based on provider type
-  const getDomainForProvider = (providerType, configManager) => {
+  // Helper function to get domain from environment based on provider type
+  const getDomainFromEnv = (providerType, configManager) => {
     if (!providerType) return null;
     
     const provider = providerType.toLowerCase();
@@ -48,54 +48,88 @@ const getStatus = asyncHandler(async (req, res) => {
     return configManager?.domain || configManager?.zoneName || process.env.DOMAIN;
   };
 
-  // Add DNS provider status if available
+  // Initialize provider info
+  let providerType = null;
+  let domain = null;
+  let providerStatus = 'inactive';
+
   if (DNSManager && DNSManager.dnsProvider) {
-    const providerType = DNSManager.config?.dnsProvider || ConfigManager?.dnsProvider || DNSManager.dnsProvider.constructor.name;
-    const domain = getDomainForProvider(providerType, ConfigManager);
-    
-    status.services.dnsProvider = {
-      type: providerType,
-      domain: domain,
-      status: 'active'
-    };
+    providerType = DNSManager.config?.dnsProvider || ConfigManager?.dnsProvider || DNSManager.dnsProvider.constructor.name;
+    providerStatus = 'active';
   } else if (ConfigManager) {
-    const providerType = ConfigManager.dnsProvider;
-    const domain = getDomainForProvider(providerType, ConfigManager);
-    
-    status.services.dnsProvider = {
-      type: providerType,
-      domain: domain,
-      status: 'inactive'
-    };
+    providerType = ConfigManager.dnsProvider;
   }
-  
-  // If we still don't have a domain, try to extract it from existing DNS records
-  if (!status.services?.dnsProvider?.domain) {
-    try {
-      const database = require('../../../database');
-      if (database && database.isInitialized() && database.db) {
-        // Try to get a sample DNS record to extract domain from
-        const sampleRecord = await database.db.get(`
-          SELECT name FROM dns_tracked_records 
-          WHERE name IS NOT NULL AND name != '' 
-          LIMIT 1
-        `);
+
+  // PRIORITY 1: Get domain from database (source of truth)
+  try {
+    const database = require('../../../database');
+    if (database && database.isInitialized() && database.db) {
+      // Get multiple DNS records to find the most common domain
+      const dnsRecords = await database.db.all(`
+        SELECT name FROM dns_tracked_records 
+        WHERE name IS NOT NULL AND name != '' 
+        AND (is_orphaned = 0 OR is_orphaned IS NULL)
+        LIMIT 10
+      `);
+      
+      if (dnsRecords && dnsRecords.length > 0) {
+        // Extract domains and find the most common one
+        const domainCounts = {};
+        const twoLevelTLDs = ['.co.uk', '.com.au', '.co.nz', '.co.jp', '.com.br', '.co.za'];
         
-        if (sampleRecord && sampleRecord.name) {
-          // Extract domain from hostname (e.g., "app.example.com" -> "example.com")
-          const parts = sampleRecord.name.split('.');
-          if (parts.length >= 2) {
-            const extractedDomain = parts.slice(-2).join('.');
-            if (status.services?.dnsProvider) {
-              status.services.dnsProvider.domain = extractedDomain;
+        dnsRecords.forEach(record => {
+          const hostname = record.name.toLowerCase();
+          let baseDomain = null;
+          
+          // Check for two-level TLDs first
+          const hasTwoLevelTLD = twoLevelTLDs.some(tld => hostname.endsWith(tld));
+          
+          if (hasTwoLevelTLD) {
+            // For two-level TLDs, take last 3 parts
+            const parts = hostname.split('.');
+            if (parts.length >= 3) {
+              baseDomain = parts.slice(-3).join('.');
             }
-            logger.info(`Extracted domain from DNS records: ${extractedDomain}`);
+          } else {
+            // For regular TLDs, take last 2 parts
+            const parts = hostname.split('.');
+            if (parts.length >= 2) {
+              baseDomain = parts.slice(-2).join('.');
+            }
           }
+          
+          if (baseDomain) {
+            domainCounts[baseDomain] = (domainCounts[baseDomain] || 0) + 1;
+          }
+        });
+        
+        // Get the most frequent domain
+        const sortedDomains = Object.entries(domainCounts).sort((a, b) => b[1] - a[1]);
+        if (sortedDomains.length > 0) {
+          domain = sortedDomains[0][0];
+          logger.info(`Domain from database (source of truth): ${domain}`);
         }
       }
-    } catch (error) {
-      logger.debug(`Failed to extract domain from DNS records: ${error.message}`);
     }
+  } catch (error) {
+    logger.debug(`Failed to get domain from database: ${error.message}`);
+  }
+
+  // PRIORITY 2: If no domain in DB, fallback to environment variables
+  if (!domain) {
+    domain = getDomainFromEnv(providerType, ConfigManager);
+    if (domain) {
+      logger.info(`Domain from environment variables (fallback): ${domain}`);
+    }
+  }
+
+  // Set the DNS provider status
+  if (providerType) {
+    status.services.dnsProvider = {
+      type: providerType,
+      domain: domain,
+      status: providerStatus
+    };
   }
 
   // Also add domain at top level for easier access
