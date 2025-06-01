@@ -74,6 +74,7 @@ export function SettingsPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [formData, setFormData] = useState<Partial<Config>>({})
+  const [secrets, setSecrets] = useState<Record<string, string>>({})
   const { canPerformAction } = usePermissions()
   const canManageSecrets = canPerformAction('settings.secrets')
 
@@ -151,6 +152,33 @@ export function SettingsPage() {
       })
     },
   })
+
+  const fetchSecrets = async () => {
+    try {
+      const response = await api.get('/config/secrets')
+      return response.data.data.secrets
+    } catch (error) {
+      console.error('Failed to fetch secrets:', error)
+      toast({
+        title: 'Failed to fetch secrets',
+        description: 'Could not retrieve secret values for viewing.',
+        variant: 'destructive',
+      })
+      return {}
+    }
+  }
+
+  const getSecretValue = async (secretName: string): Promise<string | null> => {
+    // If we already have the secrets cached, return from cache
+    if (secrets[secretName]) {
+      return secrets[secretName]
+    }
+
+    // Fetch all secrets and cache them
+    const fetchedSecrets = await fetchSecrets()
+    setSecrets(fetchedSecrets)
+    return fetchedSecrets[secretName] || null
+  }
 
   const handleInputChange = (field: keyof Config, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -428,6 +456,7 @@ export function SettingsPage() {
                     hasValue={config.hasCloudflareToken}
                     placeholder="Enter Cloudflare API token..."
                     onChange={(value) => handleInputChange('cloudflareToken', value)}
+                    onReveal={() => getSecretValue('cloudflareToken')}
                   />
                 </div>
               )}
@@ -442,6 +471,7 @@ export function SettingsPage() {
                       hasValue={config.hasRoute53AccessKey}
                       placeholder="Enter AWS Access Key ID..."
                       onChange={(value) => handleInputChange('route53AccessKey', value)}
+                      onReveal={() => getSecretValue('route53AccessKey')}
                     />
                   </div>
                   <div className="space-y-2">
@@ -451,6 +481,7 @@ export function SettingsPage() {
                       hasValue={config.hasRoute53SecretKey}
                       placeholder="Enter AWS Secret Access Key..."
                       onChange={(value) => handleInputChange('route53SecretKey', value)}
+                      onReveal={() => getSecretValue('route53SecretKey')}
                     />
                   </div>
                 </div>
@@ -465,6 +496,7 @@ export function SettingsPage() {
                     hasValue={config.hasDigitalOceanToken}
                     placeholder="Enter DigitalOcean API token..."
                     onChange={(value) => handleInputChange('digitalOceanToken', value)}
+                    onReveal={() => getSecretValue('digitalOceanToken')}
                   />
                 </div>
               )}
@@ -478,6 +510,7 @@ export function SettingsPage() {
                     hasValue={config.hasTraefikApiPassword}
                     placeholder="Enter Traefik API password..."
                     onChange={(value) => handleInputChange('traefikApiPassword', value)}
+                    onReveal={() => getSecretValue('traefikApiPassword')}
                   />
                 </div>
               )}

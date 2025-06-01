@@ -583,6 +583,63 @@ const testSecrets = asyncHandler(async (req, res) => {
 });
 
 /**
+ * @desc    Get decrypted secrets for viewing (admin only)
+ * @route   GET /api/v1/config/secrets
+ * @access  Private/Admin
+ */
+const getSecrets = asyncHandler(async (req, res) => {
+  const { ConfigManager } = global.services || {};
+  
+  if (!ConfigManager) {
+    throw new ApiError('Config manager not initialized', 500, 'CONFIG_MANAGER_NOT_INITIALIZED');
+  }
+  
+  // Check if user has admin role
+  if (req.user.role !== 'admin') {
+    throw new ApiError('Insufficient permissions to view secrets', 403, 'INSUFFICIENT_PERMISSIONS');
+  }
+  
+  try {
+    const secrets = await ConfigManager.loadSecrets();
+    
+    // Log the access for security audit
+    const database = require('../../../database');
+    if (database.repositories && database.repositories.activityLog) {
+      try {
+        await database.repositories.activityLog.logActivity({
+          type: 'tracked',
+          recordType: 'secrets',
+          hostname: 'system',
+          details: `Admin ${req.user.username} viewed secrets`,
+          source: 'config',
+          metadata: {
+            userId: req.user.id,
+            username: req.user.username,
+            action: 'view_secrets',
+            timestamp: new Date().toISOString()
+          }
+        });
+      } catch (auditError) {
+        logger.warn(`Failed to log secret view audit: ${auditError.message}`);
+      }
+    }
+    
+    res.json({
+      status: 'success',
+      data: {
+        secrets: secrets
+      }
+    });
+  } catch (error) {
+    throw new ApiError(
+      `Failed to get secrets: ${error.message}`,
+      500,
+      'SECRETS_GET_ERROR'
+    );
+  }
+});
+
+/**
  * @desc    Get secret status (which secrets are set)
  * @route   GET /api/v1/config/secrets/status
  * @access  Private/Admin
@@ -626,5 +683,6 @@ module.exports = {
   getAllSettings,
   updateSecrets,
   testSecrets,
+  getSecrets,
   getSecretStatus
 };

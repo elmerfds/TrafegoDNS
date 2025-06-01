@@ -12,6 +12,7 @@ interface SecretInputProps {
   onChange?: (value: string) => void
   disabled?: boolean
   hasValue?: boolean
+  onReveal?: () => Promise<string | null>
 }
 
 export function SecretInput({
@@ -21,14 +22,33 @@ export function SecretInput({
   className,
   onChange,
   disabled = false,
-  hasValue = false
+  hasValue = false,
+  onReveal
 }: SecretInputProps) {
   const [isVisible, setIsVisible] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [localValue, setLocalValue] = useState('')
+  const [revealedValue, setRevealedValue] = useState<string | null>(null)
+  const [isRevealing, setIsRevealing] = useState(false)
 
-  const handleToggleVisibility = () => {
-    setIsVisible(!isVisible)
+  const handleToggleVisibility = async () => {
+    if (!isVisible && hasValue && !revealedValue && onReveal) {
+      // Need to fetch the secret value first
+      setIsRevealing(true)
+      try {
+        const secret = await onReveal()
+        setRevealedValue(secret)
+        setIsVisible(true)
+      } catch (error) {
+        console.error('Failed to reveal secret:', error)
+        // Still toggle visibility but show placeholder
+        setIsVisible(true)
+      } finally {
+        setIsRevealing(false)
+      }
+    } else {
+      setIsVisible(!isVisible)
+    }
   }
 
   const handleStartEdit = () => {
@@ -55,6 +75,9 @@ export function SecretInput({
     }
     if (hasValue && !isVisible) {
       return '••••••••••••••••'
+    }
+    if (hasValue && isVisible && revealedValue) {
+      return revealedValue
     }
     return value
   }
@@ -118,7 +141,9 @@ export function SecretInput({
             <span className="sr-only">
               {isVisible ? 'Hide secret' : 'Show secret'}
             </span>
-            {isVisible ? (
+            {isRevealing ? (
+              <div className="h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
+            ) : isVisible ? (
               <EyeOff className="h-3 w-3" />
             ) : (
               <Eye className="h-3 w-3" />

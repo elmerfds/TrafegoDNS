@@ -14,6 +14,7 @@ const {
   getAllSettings,
   updateSecrets,
   testSecrets,
+  getSecrets,
   getSecretStatus
 } = require('../controllers/configController');
 
@@ -298,6 +299,44 @@ router.get('/settings', authenticate, authorize('admin'), getAllSettings);
 /**
  * @swagger
  * /config/secrets:
+ *   get:
+ *     summary: Get decrypted secrets for viewing (admin only)
+ *     tags: [Config]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Decrypted secrets
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     secrets:
+ *                       type: object
+ *                       properties:
+ *                         cloudflareToken:
+ *                           type: string
+ *                         route53AccessKey:
+ *                           type: string
+ *                         route53SecretKey:
+ *                           type: string
+ *                         digitalOceanToken:
+ *                           type: string
+ *                         traefikApiPassword:
+ *                           type: string
+ *       401:
+ *         description: Not authenticated
+ *       403:
+ *         description: Not authorized (admin only)
+ *       500:
+ *         description: Server error
  *   put:
  *     summary: Update secrets (admin only)
  *     tags: [Config]
@@ -337,6 +376,7 @@ router.get('/settings', authenticate, authorize('admin'), getAllSettings);
  *       500:
  *         description: Server error
  */
+router.get('/secrets', authenticate, authorize('admin'), getSecrets);
 router.put('/secrets', authenticate, authorize('admin'), updateSecrets);
 
 /**
