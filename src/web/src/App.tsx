@@ -2,7 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { useAuthStore } from '@/store/authStore'
 import { Layout } from '@/components/Layout'
 import { LoginPage } from '@/pages/Login'
-import { DashboardPage } from '@/pages/Dashboard'
+import { CustomizableDashboard } from '@/pages/CustomizableDashboard'
 import { DNSRecordsPage } from '@/pages/DNSRecords'
 import { ContainersPage } from '@/pages/Containers'
 import { HostnamesPage } from '@/pages/Hostnames'
@@ -27,7 +27,7 @@ function App() {
             path="/"
             element={isAuthenticated ? <Layout /> : <Navigate to="/login" />}
           >
-            <Route index element={<DashboardPage />} />
+            <Route index element={<CustomizableDashboard />} />
             <Route path="dns-records" element={<DNSRecordsPage />} />
             <Route path="containers" element={<ContainersPage />} />
             <Route path="hostnames" element={<HostnamesPage />} />
