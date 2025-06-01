@@ -32,17 +32,28 @@ const getStatus = asyncHandler(async (req, res) => {
   // Add DNS provider status if available
   if (DNSManager && DNSManager.dnsProvider) {
     status.services.dnsProvider = {
-      type: DNSManager.config.dnsProvider || ConfigManager?.dnsProvider,
-      domain: DNSManager.config.domain || ConfigManager?.domain,
+      type: DNSManager.config?.dnsProvider || ConfigManager?.dnsProvider || DNSManager.dnsProvider.constructor.name,
+      domain: DNSManager.config?.domain || 
+              DNSManager.config?.zoneName || 
+              ConfigManager?.domain || 
+              ConfigManager?.zoneName ||
+              process.env.DOMAIN ||
+              process.env.ZONE_NAME,
       status: 'active'
     };
   } else if (ConfigManager) {
     status.services.dnsProvider = {
       type: ConfigManager.dnsProvider,
-      domain: ConfigManager.domain,
+      domain: ConfigManager.domain || 
+              ConfigManager.zoneName ||
+              process.env.DOMAIN ||
+              process.env.ZONE_NAME,
       status: 'inactive'
     };
   }
+  
+  // Also add domain at top level for easier access
+  status.domain = status.services?.dnsProvider?.domain;
   
   // Add Docker monitor status if available
   if (DockerMonitor) {

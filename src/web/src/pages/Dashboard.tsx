@@ -256,153 +256,162 @@ export function DashboardPage() {
             <CardDescription>Overview of your DNS management with quick actions</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-              <div className="space-y-3">
-                <p className="text-sm font-medium flex items-center gap-2">
-                  <Globe className="h-4 w-4" />
-                  Record Distribution
-                </p>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Active Records</span>
-                    <span className="font-medium">{status?.statistics?.totalRecords || 0}</span>
+            <div className="grid gap-8 lg:grid-cols-2">
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div className="space-y-4">
+                  <p className="text-sm font-medium flex items-center gap-2">
+                    <Globe className="h-4 w-4" />
+                    Record Distribution
+                  </p>
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Active Records</span>
+                      <span className="font-medium">{status?.statistics?.totalRecords || 0}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Orphaned Records</span>
+                      <span className={`font-medium ${(orphaned?.count || 0) > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                        {orphaned?.count || 0}
+                      </span>
+                    </div>
+                    <div className="pt-2">
+                      <Progress 
+                        value={status?.statistics?.totalRecords ? 
+                          ((status.statistics.totalRecords / (status.statistics.totalRecords + (orphaned?.count || 0))) * 100) : 0
+                        } 
+                        className="h-2"
+                      />
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {status?.statistics?.totalRecords ? 
+                          Math.round((status.statistics.totalRecords / (status.statistics.totalRecords + (orphaned?.count || 0))) * 100) : 0
+                        }% healthy records
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Orphaned Records</span>
-                    <span className={`font-medium ${(orphaned?.count || 0) > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                      {orphaned?.count || 0}
-                    </span>
-                  </div>
-                  <div className="pt-1">
-                    <Progress 
-                      value={status?.statistics?.totalRecords ? 
-                        ((status.statistics.totalRecords / (status.statistics.totalRecords + (orphaned?.count || 0))) * 100) : 0
-                      } 
-                      className="h-1"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {status?.statistics?.totalRecords ? 
-                        Math.round((status.statistics.totalRecords / (status.statistics.totalRecords + (orphaned?.count || 0))) * 100) : 0
-                      }% healthy
-                    </p>
+                </div>
+                
+                <div className="space-y-4">
+                  <p className="text-sm font-medium flex items-center gap-2">
+                    <Container className="h-4 w-4" />
+                    Container Status
+                  </p>
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Monitored</span>
+                      <span className="font-medium">{status?.statistics?.totalContainers || 0}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">With DNS Labels</span>
+                      <span className="font-medium">{status?.statistics?.totalHostnames || 0}</span>
+                    </div>
+                    <div className="pt-2">
+                      <Progress 
+                        value={status?.statistics?.totalContainers ? 
+                          ((status.statistics.totalHostnames / status.statistics.totalContainers) * 100) : 0
+                        } 
+                        className="h-2"
+                      />
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {status?.statistics?.totalContainers ? 
+                          Math.round((status.statistics.totalHostnames / status.statistics.totalContainers) * 100) : 0
+                        }% containers with DNS
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
               
-              <div className="space-y-3">
-                <p className="text-sm font-medium flex items-center gap-2">
-                  <Container className="h-4 w-4" />
-                  Container Status
-                </p>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Monitored</span>
-                    <span className="font-medium">{status?.statistics?.totalContainers || 0}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">With DNS Labels</span>
-                    <span className="font-medium">{status?.statistics?.totalHostnames || 0}</span>
-                  </div>
-                  <div className="pt-1">
-                    <Progress 
-                      value={status?.statistics?.totalContainers ? 
-                        ((status.statistics.totalHostnames / status.statistics.totalContainers) * 100) : 0
-                      } 
-                      className="h-1"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {status?.statistics?.totalContainers ? 
-                        Math.round((status.statistics.totalHostnames / status.statistics.totalContainers) * 100) : 0
-                      }% with DNS
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="space-y-3">
-                <p className="text-sm font-medium flex items-center gap-2">
-                  <Shield className="h-4 w-4" />
-                  System Health
-                </p>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">DNS Provider</span>
-                    <Badge variant={status?.services?.dnsProvider?.status === 'active' ? 'default' : 'destructive'}>
-                      {status?.services?.dnsProvider?.status || 'Unknown'}
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Docker</span>
-                    <Badge variant={status?.services?.dockerMonitor?.status === 'connected' ? 'default' : 'destructive'}>
-                      {status?.services?.dockerMonitor?.status || 'Unknown'}
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Uptime</span>
-                    <span className="font-medium text-xs">
-                      {status?.uptime ? formatUptime(status.uptime) : 'N/A'}
-                    </span>
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div className="space-y-4">
+                  <p className="text-sm font-medium flex items-center gap-2">
+                    <Shield className="h-4 w-4" />
+                    System Health
+                  </p>
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">DNS Provider</span>
+                      <Badge variant={status?.services?.dnsProvider?.status === 'active' ? 'default' : 'destructive'}>
+                        {status?.services?.dnsProvider?.status || 'Unknown'}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Docker</span>
+                      <Badge variant={status?.services?.dockerMonitor?.status === 'connected' ? 'default' : 'destructive'}>
+                        {status?.services?.dockerMonitor?.status || 'Unknown'}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Uptime</span>
+                      <span className="font-medium text-xs">
+                        {status?.uptime ? formatUptime(status.uptime) : 'N/A'}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-              
-              <div className="space-y-3">
-                <p className="text-sm font-medium flex items-center gap-2">
-                  <Activity className="h-4 w-4" />
-                  Quick Actions
-                </p>
-                <div className="space-y-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="w-full justify-start text-xs"
-                    onClick={() => navigate('/dns-records')}
-                  >
-                    <Globe className="h-3 w-3 mr-2" />
-                    Manage DNS
-                  </Button>
-                  {(orphaned?.count || 0) > 0 && (
+                
+                <div className="space-y-4">
+                  <p className="text-sm font-medium flex items-center gap-2">
+                    <Activity className="h-4 w-4" />
+                    Quick Actions
+                  </p>
+                  <div className="space-y-2">
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      className="w-full justify-start text-xs text-orange-600 border-orange-200 hover:bg-orange-50"
-                      onClick={() => navigate('/orphaned-records')}
+                      className="w-full justify-start text-xs"
+                      onClick={() => navigate('/dns-records')}
                     >
-                      <AlertTriangle className="h-3 w-3 mr-2" />
-                      Fix Orphaned ({orphaned.count})
+                      <Globe className="h-3 w-3 mr-2" />
+                      Manage DNS
                     </Button>
-                  )}
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="w-full justify-start text-xs"
-                    onClick={() => navigate('/containers')}
-                  >
-                    <Container className="h-3 w-3 mr-2" />
-                    View Containers
-                  </Button>
+                    {(orphaned?.count || 0) > 0 && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="w-full justify-start text-xs text-orange-600 border-orange-200 hover:bg-orange-50"
+                        onClick={() => navigate('/orphaned-records')}
+                      >
+                        <AlertTriangle className="h-3 w-3 mr-2" />
+                        Fix Orphaned ({orphaned.count})
+                      </Button>
+                    )}
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full justify-start text-xs"
+                      onClick={() => navigate('/containers')}
+                    >
+                      <Container className="h-3 w-3 mr-2" />
+                      View Containers
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
             
             {/* Configuration Summary */}
-            <div className="mt-6 pt-4 border-t">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+            <div className="mt-8 pt-6 border-t">
+              <h4 className="text-sm font-medium mb-4">System Configuration</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
                 <div>
-                  <p className="text-xs text-muted-foreground">Mode</p>
-                  <Badge variant="outline" className="mt-1">{status?.mode || 'N/A'}</Badge>
+                  <p className="text-xs text-muted-foreground mb-2">Operation Mode</p>
+                  <Badge variant="outline" className="px-3 py-1">{status?.mode || status?.operationMode || 'N/A'}</Badge>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Provider</p>
-                  <Badge variant="outline" className="mt-1">{status?.provider || 'N/A'}</Badge>
+                  <p className="text-xs text-muted-foreground mb-2">DNS Provider</p>
+                  <Badge variant="outline" className="px-3 py-1">{status?.provider || 'N/A'}</Badge>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Domain</p>
-                  <Badge variant="outline" className="mt-1">{status?.services?.dnsProvider?.domain || 'N/A'}</Badge>
+                  <p className="text-xs text-muted-foreground mb-2">Managed Domain</p>
+                  <Badge variant="outline" className="px-3 py-1">
+                    {status?.services?.dnsProvider?.domain || 
+                     status?.domain || 
+                     (typeof window !== 'undefined' ? window.location.hostname.split('.').slice(-2).join('.') : 'N/A')}
+                  </Badge>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Version</p>
-                  <Badge variant="outline" className="mt-1">v{status?.version || '1.0.0'}</Badge>
+                  <p className="text-xs text-muted-foreground mb-2">App Version</p>
+                  <Badge variant="outline" className="px-3 py-1">v{status?.version || '1.0.0'}</Badge>
                 </div>
               </div>
             </div>
@@ -435,8 +444,12 @@ export function DashboardPage() {
                 <span className="text-sm font-medium">{status?.provider || 'Unknown'}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Domain</span>
-                <span className="text-sm font-medium">{status?.services?.dnsProvider?.domain || 'N/A'}</span>
+                <span className="text-sm text-muted-foreground">Managed Domain</span>
+                <span className="text-sm font-medium">
+                  {status?.services?.dnsProvider?.domain || 
+                   status?.domain || 
+                   (typeof window !== 'undefined' ? window.location.hostname.split('.').slice(-2).join('.') : 'N/A')}
+                </span>
               </div>
             </div>
             
