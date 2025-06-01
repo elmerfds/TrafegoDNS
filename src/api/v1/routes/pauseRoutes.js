@@ -1,6 +1,6 @@
 const express = require('express')
 const router = express.Router()
-const { authMiddleware } = require('../middleware/authMiddleware')
+const { authenticate } = require('../middleware/authMiddleware')
 const { logger } = require('../../../utils/logger')
 
 /**
@@ -34,7 +34,7 @@ const { logger } = require('../../../utils/logger')
  *       401:
  *         description: Unauthorized
  */
-router.post('/pause', authMiddleware, async (req, res) => {
+router.post('/pause', authenticate, async (req, res) => {
   try {
     const { reason = 'manual', duration } = req.body
     const pausedBy = req.user?.username || 'unknown'
@@ -89,7 +89,7 @@ router.post('/pause', authMiddleware, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.post('/resume', authMiddleware, async (req, res) => {
+router.post('/resume', authenticate, async (req, res) => {
   try {
     const resumedBy = req.user?.username || 'unknown'
 
@@ -166,7 +166,7 @@ router.post('/resume', authMiddleware, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/pause-status', authMiddleware, async (req, res) => {
+router.get('/pause-status', authenticate, async (req, res) => {
   try {
     const pauseManager = req.app.get('pauseManager')
     if (!pauseManager) {
@@ -224,7 +224,7 @@ router.get('/pause-status', authMiddleware, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.post('/pause-schedule', authMiddleware, async (req, res) => {
+router.post('/pause-schedule', authenticate, async (req, res) => {
   try {
     const { duration, reason = 'scheduled' } = req.body
     const pausedBy = req.user?.username || 'unknown'
