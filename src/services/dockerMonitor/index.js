@@ -34,9 +34,10 @@ const {
 } = require('./eventProcessor');
 
 class DockerMonitor {
-  constructor(config, eventBus) {
+  constructor(config, eventBus, pauseManager = null) {
     this.config = config;
     this.eventBus = eventBus;
+    this.pauseManager = pauseManager;
     
     // Initialize Docker client
     this.docker = createClient(config.dockerSocket);
@@ -73,7 +74,8 @@ class DockerMonitor {
         this.docker, 
         this.containerTracker, 
         this.containerLabelsCache, 
-        this.eventBus
+        this.eventBus,
+        this.pauseManager
       );
       
       logger.success('Docker event monitoring started successfully');

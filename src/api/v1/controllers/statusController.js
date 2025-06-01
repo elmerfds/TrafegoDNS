@@ -330,6 +330,16 @@ const getStatus = asyncHandler(async (req, res) => {
     };
   }
   
+  // Add pause status if pause manager is available
+  try {
+    const pauseManager = req.app.get('pauseManager');
+    if (pauseManager) {
+      status.pauseStatus = pauseManager.getStatus();
+    }
+  } catch (error) {
+    logger.debug(`Failed to get pause status: ${error.message}`);
+  }
+
   // Add basic health status
   status.healthy = true;
   status.mode = status.operationMode;

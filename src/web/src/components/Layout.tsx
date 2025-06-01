@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useTheme } from '@/components/theme-provider'
+import { PauseStatusIndicator } from '@/components/PauseStatusIndicator'
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: Home, path: '/' },
@@ -135,7 +136,9 @@ export function Layout() {
           </Button>
 
           <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6">
-            <div className="flex flex-1" />
+            <div className="flex flex-1 items-center">
+              <PauseStatusIndicator />
+            </div>
             <div className="flex items-center gap-x-4 lg:gap-x-6">
               <ThemeToggle />
               <DropdownMenu>

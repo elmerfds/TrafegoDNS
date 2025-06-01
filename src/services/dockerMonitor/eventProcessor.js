@@ -15,8 +15,9 @@ const { updateLabelsForContainer } = require('./labelCache');
  * @param {Object} containerTracker - Container tracker object
  * @param {Object} labelCache - Label cache object
  * @param {Object} eventBus - Application event bus
+ * @param {Object} pauseManager - Pause manager instance
  */
-function setupEventListeners(events, docker, containerTracker, labelCache, eventBus) {
+function setupEventListeners(events, docker, containerTracker, labelCache, eventBus, pauseManager = null) {
   if (!events) {
     logger.error('Cannot setup event listeners: No event stream provided');
     return;
@@ -27,6 +28,12 @@ function setupEventListeners(events, docker, containerTracker, labelCache, event
   // Handle stream data events
   events.on('data', async (buffer) => {
     try {
+      // Check if operations are paused
+      if (pauseManager && pauseManager.shouldPause('docker-monitoring')) {
+        logger.trace('Docker monitoring paused, skipping event processing')
+        return
+      }
+
       // Parse the event data
       const eventData = JSON.parse(buffer.toString());
       logger.trace(`Docker event received: ${eventData.Action} ${eventData.Type} ${eventData.Actor?.Attributes?.name || eventData.id}`);

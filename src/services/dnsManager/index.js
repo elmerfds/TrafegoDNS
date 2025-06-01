@@ -26,9 +26,10 @@ const { safeArrayLength, safeConcatArrays, safeGetProperty, safeForEach } = requ
 const database = require('../../database');
 
 class DNSManager {
-  constructor(config, eventBus) {
+  constructor(config, eventBus, pauseManager = null) {
     this.config = config;
     this.eventBus = eventBus;
+    this.pauseManager = pauseManager;
     
     // Initialize DNS provider with defensive error handling
     try {
@@ -314,6 +315,12 @@ class DNSManager {
     
     this.orphanedCleanupDebounceTimer = setTimeout(async () => {
       try {
+        // Check if operations are paused
+        if (this.pauseManager && this.pauseManager.shouldPause('dns-cleanup')) {
+          logger.debug('DNS cleanup paused, skipping orphaned record cleanup')
+          return
+        }
+
         logger.debug('Running orphaned record cleanup check');
         
         // Validate all required components are available before proceeding
@@ -371,6 +378,12 @@ class DNSManager {
    */
   async processHostnames(hostnames, containerLabels) {
     try {
+      // Check if operations are paused
+      if (this.pauseManager && this.pauseManager.shouldPause('dns-processing')) {
+        logger.debug('DNS processing paused, skipping hostname processing')
+        return
+      }
+
       // Defensive programming: ensure hostnames is an array
       if (!hostnames) {
         logger.warn('Empty hostnames array passed to processHostnames');

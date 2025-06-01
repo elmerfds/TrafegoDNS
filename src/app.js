@@ -5,6 +5,7 @@
 const { ConfigManager } = require('./config');
 const { DNSManager, TraefikMonitor, DockerMonitor, StatusReporter, DirectDNSManager } = require('./services');
 const { EventBus } = require('./events/EventBus');
+const PauseManager = require('./services/PauseManager');
 const logger = require('./utils/logger');
 const { startApiServer } = require('./api');
 const ApiClient = require('./cli/apiClient');
@@ -188,10 +189,13 @@ async function start() {
     logger.info('📋 Loading configuration from database...');
     await config.loadFromDatabase();
     
+    // Initialize pause manager
+    const pauseManager = new PauseManager();
+    
     // Initialize services
     const statusReporter = new StatusReporter(config, eventBus);
-    const dnsManager = new DNSManager(config, eventBus);
-    const dockerMonitor = new DockerMonitor(config, eventBus);
+    const dnsManager = new DNSManager(config, eventBus, pauseManager);
+    const dockerMonitor = new DockerMonitor(config, eventBus, pauseManager);
 
     // Choose the appropriate monitor based on operation mode
     let monitor;
@@ -221,6 +225,9 @@ async function start() {
         // Start API server
         const apiPort = process.env.API_PORT || 3000;
         apiServer = await startApiServer(apiPort, config, eventBus);
+
+        // Make pause manager available to API routes
+        apiServer.app.set('pauseManager', pauseManager);
 
         // Inject local auth bypass middleware
         apiServer.app.use(localAuthBypass(config));

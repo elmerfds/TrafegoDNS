@@ -15,6 +15,7 @@ const hostnameRoutes = require('./hostnameRoutes');
 const configRoutes = require('./configRoutes');
 const logsRoutes = require('./logsRoutes');
 const activityRoutes = require('./activityRoutes');
+const pauseRoutes = require('./pauseRoutes');
 
 // Mount public routes that don't require authentication
 router.use('/auth', authRoutes);
@@ -35,6 +36,7 @@ router.use('/hostnames', hostnameRoutes);
 router.use('/config', configRoutes);
 router.use('/logs', logsRoutes);
 router.use('/activity', activityRoutes);
+router.use('/system', pauseRoutes);
 
 // Export the router
 module.exports = router;

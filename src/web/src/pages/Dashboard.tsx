@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button'
 import { useNavigate } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
 import { RecentActivity } from '@/components/RecentActivity'
+import { PauseControls } from '@/components/PauseControls'
 
 export function DashboardPage() {
   const navigate = useNavigate()
@@ -434,8 +435,13 @@ export function DashboardPage() {
         </Card>
       </div>
 
-      {/* Recent Activity */}
-      <RecentActivity />
+      {/* System Control and Recent Activity */}
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
+        <PauseControls />
+        <div className="lg:col-span-2">
+          <RecentActivity />
+        </div>
+      </div>
 
       {/* Provider Performance - Simplified */}
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
