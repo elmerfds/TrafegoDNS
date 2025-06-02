@@ -23,52 +23,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { SecretInput } from '@/components/ui/secret-input'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Loader2, Save, AlertTriangle } from 'lucide-react'
-
-interface Config {
-  operationMode: string
-  pollInterval: number
-  watchDockerEvents: boolean
-  cleanupOrphaned: boolean
-  cleanupGracePeriod: number
-  dnsProvider: string
-  dnsLabelPrefix: string
-  dnsDefaultType: string
-  dnsDefaultContent: string
-  dnsDefaultProxied: boolean
-  dnsDefaultTTL: number
-  dnsDefaultManage: boolean
-  cloudflareZone: string
-  route53Zone: string
-  route53ZoneId: string
-  route53Region: string
-  digitalOceanDomain: string
-  traefikApiUrl: string
-  traefikApiUsername: string
-  dockerSocket: string
-  genericLabelPrefix: string
-  traefikLabelPrefix: string
-  managedHostnames: string
-  preservedHostnames: string
-  domain: string
-  publicIP: string
-  publicIPv6: string
-  ipRefreshInterval: number
-  dnsCacheRefreshInterval: number
-  apiTimeout: number
-  recordDefaults: any
-  // Secret fields
-  cloudflareToken?: string
-  route53AccessKey?: string
-  route53SecretKey?: string
-  digitalOceanToken?: string
-  traefikApiPassword?: string
-  // Secret flags to indicate if values are set
-  hasCloudflareToken?: boolean
-  hasRoute53AccessKey?: boolean
-  hasRoute53SecretKey?: boolean
-  hasDigitalOceanToken?: boolean
-  hasTraefikApiPassword?: boolean
-}
+import { Config } from '@/types/config'
 
 export function SettingsPage() {
   const { toast } = useToast()
@@ -819,11 +774,14 @@ export function SettingsPage() {
               <div className="space-y-2">
                 <Label>Role Mapping</Label>
                 <div className="text-sm text-muted-foreground">
-                  {config.oidcRoleMapping && Object.keys(config.oidcRoleMapping).length > 0 ? (
+                  {config.oidcRoleMapping ? (
                     <ul className="list-disc list-inside">
-                      {Object.entries(config.oidcRoleMapping).map(([group, role]) => (
-                        <li key={group}>{group} → {role}</li>
-                      ))}
+                      {config.oidcRoleMapping.split(',').map((mapping) => {
+                        const [group, role] = mapping.split(':');
+                        return (
+                          <li key={group}>{group?.trim()} → {role?.trim()}</li>
+                        );
+                      })}
                     </ul>
                   ) : (
                     'No role mapping configured'

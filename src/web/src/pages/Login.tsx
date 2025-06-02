@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { AlertCircle, LogIn } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { useTheme } from '@/components/theme-provider'
+import { OidcStatus } from '@/types/config'
 
 const loginSchema = z.object({
   username: z.string().min(1, 'Username is required'),
@@ -37,7 +38,7 @@ export function LoginPage() {
   })
 
   // Check OIDC status
-  const { data: oidcStatus } = useQuery({
+  const { data: oidcStatus } = useQuery<OidcStatus>({
     queryKey: ['oidc-status'],
     queryFn: async () => {
       const response = await api.get('/auth/oidc/status')
