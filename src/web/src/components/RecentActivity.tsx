@@ -115,8 +115,8 @@ export function RecentActivity() {
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
+    <Card className="h-full flex flex-col overflow-hidden">
+      <CardHeader className="pb-3 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
@@ -138,7 +138,7 @@ export function RecentActivity() {
           </Button>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="space-y-3">
             {[...Array(5)].map((_, i) => (
@@ -158,20 +158,26 @@ export function RecentActivity() {
             <p className="text-sm">Activity will appear here as you manage DNS records</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {activities.map((activity) => {
+          <div className="space-y-4 pr-2">
+            {activities.map((activity, index) => {
               const Icon = activityIcons[activity.type] || Activity
               const colorClass = activityColors[activity.type] || 'text-gray-600'
               
               return (
-                <div key={activity.id} className="flex items-start space-x-3">
+                <div 
+                  key={activity.id} 
+                  className={cn(
+                    "flex items-start space-x-3 p-2 rounded-lg transition-colors hover:bg-muted/50",
+                    index === activities.length - 1 ? "mb-0" : "mb-3 border-b border-border/50 pb-3"
+                  )}
+                >
                   <div className={cn(
-                    'rounded-full p-2 mt-0.5',
-                    activity.type === 'created' && 'bg-green-100',
-                    activity.type === 'updated' && 'bg-blue-100',
-                    activity.type === 'deleted' && 'bg-red-100',
-                    activity.type === 'managed' && 'bg-purple-100',
-                    activity.type === 'tracked' && 'bg-orange-100'
+                    'rounded-full p-2 mt-0.5 flex-shrink-0',
+                    activity.type === 'created' && 'bg-green-100 dark:bg-green-900/30',
+                    activity.type === 'updated' && 'bg-blue-100 dark:bg-blue-900/30',
+                    activity.type === 'deleted' && 'bg-red-100 dark:bg-red-900/30',
+                    activity.type === 'managed' && 'bg-purple-100 dark:bg-purple-900/30',
+                    activity.type === 'tracked' && 'bg-orange-100 dark:bg-orange-900/30'
                   )}>
                     <Icon className={cn('h-4 w-4', colorClass)} />
                   </div>
@@ -182,12 +188,12 @@ export function RecentActivity() {
                       </span>
                       <Badge 
                         variant={activityBadgeVariants[activity.type]}
-                        className="text-xs"
+                        className="text-xs flex-shrink-0"
                       >
                         {activity.recordType}
                       </Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-muted-foreground line-clamp-2">
                       {getActivityDescription(activity)}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">

@@ -622,11 +622,7 @@ export function CustomizableDashboard() {
         )
 
       case 'recent-activity':
-        return (
-          <div className="h-full overflow-hidden">
-            <RecentActivity />
-          </div>
-        )
+        return <RecentActivity />
 
       case 'provider-status':
         return (
@@ -808,7 +804,6 @@ export function CustomizableDashboard() {
       >
         {['stats', 'alerts', 'system-overview', 'service-health', 'system-resources', 'dns-health', 'container-monitoring', 'quick-actions', 'pause-controls', 'recent-activity', 'provider-status', 'issues-monitoring'].map(widgetId => {
           const widget = renderWidget(widgetId)
-          if (!widget && widgetId === 'alerts') return <div key={widgetId} />
           if (!widget) return null
           
           return (
