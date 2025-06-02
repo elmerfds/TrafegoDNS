@@ -170,6 +170,10 @@ class SocketServer {
     this.subscribeToEvent(EventTypes.PORT_CLOSED);
     this.subscribeToEvent(EventTypes.PORT_ALERT_CREATED);
     this.subscribeToEvent(EventTypes.PORT_ALERT_ACKNOWLEDGED);
+    this.subscribeToEvent(EventTypes.PORT_RESERVED);
+    this.subscribeToEvent(EventTypes.PORT_RELEASED);
+    this.subscribeToEvent(EventTypes.PORT_CONFLICT_DETECTED);
+    this.subscribeToEvent(EventTypes.PORT_CONFLICT_RESOLVED);
     
     logger.debug('Socket server subscribed to application events');
   }

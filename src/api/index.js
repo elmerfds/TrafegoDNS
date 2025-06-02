@@ -97,6 +97,11 @@ if (webUIPath) {
 // API Routes
 app.use('/api/v1', v1Routes);
 
+// Apply additional routes if provided
+if (additionalRoutes) {
+  app.use('/api/v1', additionalRoutes);
+}
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'API is running' });
@@ -139,10 +144,10 @@ app.use(errorHandler);
  * @param {number} port - Port to listen on
  * @param {Object} config - Configuration object
  * @param {Object} eventBus - Event bus for real-time events
- * @param {Function} callback - Callback function to run after server starts
+ * @param {Object} additionalRoutes - Additional Express routes to mount at /api/v1
  * @returns {Object} - Server instance
  */
-async function startApiServer(port, config, eventBus, callback) {
+async function startApiServer(port, config, eventBus, additionalRoutes = null) {
   const apiPort = port || process.env.API_PORT || 3000;
 
   // Initialize User model now that database should be ready
@@ -217,9 +222,6 @@ async function startApiServer(port, config, eventBus, callback) {
       logger.info(`🔌 WebSocket server running for real-time updates`);
     }
 
-    if (typeof callback === 'function') {
-      callback(server, socketServer);
-    }
   });
 
   // Handle server errors

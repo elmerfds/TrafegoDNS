@@ -3,7 +3,7 @@
  * Primary responsibility: Wire up the application components
  */
 const { ConfigManager } = require('./config');
-const { DNSManager, TraefikMonitor, DockerMonitor, StatusReporter, DirectDNSManager } = require('./services');
+const { DNSManager, TraefikMonitor, DockerMonitor, StatusReporter, DirectDNSManager, PortMonitor } = require('./services');
 const { EventBus } = require('./events/EventBus');
 const PauseManager = require('./services/PauseManager');
 const logger = require('./utils/logger');
@@ -201,8 +201,7 @@ async function start() {
     let portMonitor = null;
     if (config.portMonitoringEnabled !== false) { // Default to enabled
       try {
-        const PortMonitor = require('./services/portMonitor');
-        portMonitor = new PortMonitor(config, database.db);
+        portMonitor = new PortMonitor(config, database);
         logger.info('🔍 Port monitoring service initialized');
       } catch (portError) {
         logger.warn(`⚠️ Failed to initialize port monitoring: ${portError.message}`);
@@ -244,10 +243,7 @@ async function start() {
           portMonitor
         });
         
-        apiServer = await startApiServer(apiPort, config, eventBus, (server, socketServer) => {
-          // Override the default routes with our enhanced routes
-          server.app.use('/api/v1', routesWithDeps);
-        });
+        apiServer = await startApiServer(apiPort, config, eventBus, routesWithDeps);
 
         // Make pause manager available to API routes
         apiServer.app.set('pauseManager', pauseManager);

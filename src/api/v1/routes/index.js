@@ -17,7 +17,7 @@ const activityRoutes = require('./activityRoutes');
 const pauseRoutes = require('./pauseRoutes');
 const userPreferencesRoutes = require('./userPreferencesRoutes');
 const dashboardLayoutsRoutes = require('./dashboardLayoutsRoutes');
-const createPortRoutes = require('./portRoutes');
+const portRoutes = require('./portRoutes');
 
 /**
  * Create router with dependencies
@@ -49,10 +49,8 @@ function createRoutes(dependencies = {}) {
   router.use('/user', userPreferencesRoutes);
   router.use('/user/dashboard-layouts', dashboardLayoutsRoutes);
 
-  // Mount port routes if dependencies are available
-  if (database && portMonitor) {
-    router.use('/ports', createPortRoutes(database, portMonitor));
-  }
+  // Mount port routes
+  router.use('/ports', portRoutes);
 
   return router;
 }
