@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Responsive, WidthProvider, Layout } from 'react-grid-layout'
+import type { SavedLayout, DashboardLayout } from '@/types/dashboard'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { 
@@ -20,7 +21,13 @@ import {
   Save,
   RotateCcw,
   Settings,
-  Minimize2
+  Minimize2,
+  Plus,
+  Trash2,
+  Edit2,
+  Check,
+  X,
+  Layout as LayoutIcon
 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -35,11 +42,43 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 // Import CSS for react-grid-layout
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
+import '@/styles/dashboard.css'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
@@ -92,20 +131,108 @@ const defaultLayouts = {
 export function CustomizableDashboard() {
   const navigate = useNavigate()
   const { toast } = useToast()
+  const queryClient = useQueryClient()
   const [layouts, setLayouts] = useState<any>(defaultLayouts)
   const [isEditMode, setIsEditMode] = useState(false)
+  const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [newLayoutName, setNewLayoutName] = useState('')
+  const [editingLayoutName, setEditingLayoutName] = useState<string | null>(null)
+  const [newName, setNewName] = useState('')
   
-  // Load saved layouts from localStorage
+  // Load all saved layouts
+  const { data: savedLayoutsData } = useQuery({
+    queryKey: ['dashboard-layouts'],
+    queryFn: async () => {
+      const response = await api.get('/user/dashboard-layouts')
+      return response.data
+    },
+  })
+  
+  // Load active layout
+  const { data: activeLayoutData } = useQuery({
+    queryKey: ['dashboard-layouts-active'],
+    queryFn: async () => {
+      const response = await api.get('/user/dashboard-layouts/active')
+      return response.data
+    },
+  })
+  
+  // Update layouts when active layout is loaded
   useEffect(() => {
-    const savedLayouts = localStorage.getItem('dashboardLayouts')
-    if (savedLayouts) {
-      try {
-        setLayouts(JSON.parse(savedLayouts))
-      } catch (e) {
-        console.error('Failed to load saved layouts')
-      }
+    if (activeLayoutData?.data?.layout) {
+      setLayouts(activeLayoutData.data.layout)
     }
-  }, [])
+  }, [activeLayoutData])
+  
+  // Mutation for saving a new layout
+  const saveLayoutMutation = useMutation({
+    mutationFn: async ({ name, layout }: { name: string, layout: any }) => {
+      const response = await api.put(`/user/dashboard-layouts/${encodeURIComponent(name)}`, { layout })
+      return response.data
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Layout saved',
+        description: 'Your dashboard layout has been saved successfully.',
+      })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-layouts'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-layouts-active'] })
+      setShowSaveDialog(false)
+      setNewLayoutName('')
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to save dashboard layout.',
+        variant: 'destructive',
+      })
+    },
+  })
+  
+  // Mutation for deleting a layout
+  const deleteLayoutMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const response = await api.delete(`/user/dashboard-layouts/${encodeURIComponent(name)}`)
+      return response.data
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Layout deleted',
+        description: 'The layout has been deleted successfully.',
+      })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-layouts'] })
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to delete layout.',
+        variant: 'destructive',
+      })
+    },
+  })
+  
+  // Mutation for setting active layout
+  const setActiveLayoutMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const response = await api.put(`/user/dashboard-layouts/${encodeURIComponent(name)}/set-active`)
+      return response.data
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Layout activated',
+        description: 'The layout has been set as active.',
+      })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-layouts'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-layouts-active'] })
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to set active layout.',
+        variant: 'destructive',
+      })
+    },
+  })
 
   // API queries
   const { data: statusResponse } = useQuery({
@@ -169,26 +296,65 @@ export function CustomizableDashboard() {
   const handleLayoutChange = (currentLayout: Layout[], allLayouts: any) => {
     // Always update layouts to maintain state
     setLayouts(allLayouts)
-    
-    // Auto-save layouts when in edit mode
-    if (isEditMode) {
-      localStorage.setItem('dashboardLayouts', JSON.stringify(allLayouts))
+  }
+
+  const saveCurrentLayout = (name: string) => {
+    saveLayoutMutation.mutate({ name, layout: layouts })
+  }
+  
+  const loadLayout = async (name: string) => {
+    try {
+      const response = await api.get(`/user/dashboard-layouts/${encodeURIComponent(name)}`)
+      if (response.data.data?.layout) {
+        setLayouts(response.data.data.layout)
+        setActiveLayoutMutation.mutate(name)
+        toast({
+          title: 'Layout loaded',
+          description: `Loaded layout "${name}"`,
+        })
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to load layout.',
+        variant: 'destructive',
+      })
     }
   }
-
-  const saveLayouts = () => {
-    localStorage.setItem('dashboardLayouts', JSON.stringify(layouts))
-    toast({
-      title: 'Layout saved',
-      description: 'Your dashboard layout has been saved successfully.',
-    })
-    setIsEditMode(false)
+  
+  const renameLayout = async (oldName: string, newName: string) => {
+    try {
+      // Get the layout data first
+      const response = await api.get(`/user/dashboard-layouts/${encodeURIComponent(oldName)}`)
+      if (response.data.data) {
+        // Save with new name
+        await api.put(`/user/dashboard-layouts/${encodeURIComponent(newName)}`, { layout: response.data.data.layout })
+        // Delete old one
+        await api.delete(`/user/dashboard-layouts/${encodeURIComponent(oldName)}`)
+        // If it was active, set the new one as active
+        if (response.data.data.is_active) {
+          await api.put(`/user/dashboard-layouts/${encodeURIComponent(newName)}/set-active`)
+        }
+        toast({
+          title: 'Layout renamed',
+          description: `Layout renamed to "${newName}"`,
+        })
+        queryClient.invalidateQueries({ queryKey: ['dashboard-layouts'] })
+        queryClient.invalidateQueries({ queryKey: ['dashboard-layouts-active'] })
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to rename layout.',
+        variant: 'destructive',
+      })
+    }
+    setEditingLayoutName(null)
+    setNewName('')
   }
 
-  const resetLayouts = () => {
-    const newLayouts = { ...defaultLayouts }
-    setLayouts(newLayouts)
-    localStorage.removeItem('dashboardLayouts')
+  const resetToDefault = () => {
+    setLayouts(defaultLayouts)
     toast({
       title: 'Layout reset',
       description: 'Dashboard layout has been reset to default.',
@@ -742,36 +908,201 @@ export function CustomizableDashboard() {
             Monitor your DNS records and container status in real-time
           </p>
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm">
-              <Settings className="h-4 w-4 mr-2" />
-              Dashboard Settings
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setIsEditMode(!isEditMode)}>
-              <GripVertical className="h-4 w-4 mr-2" />
-              {isEditMode ? 'Exit Edit Mode' : 'Edit Layout'}
-            </DropdownMenuItem>
-            {isEditMode && (
-              <>
-                <DropdownMenuItem onClick={compactLayout}>
-                  <Minimize2 className="h-4 w-4 mr-2" />
-                  Compact Layout
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={saveLayouts}>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Layout
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={resetLayouts} className="text-destructive">
-                  <RotateCcw className="h-4 w-4 mr-2" />
-                  Reset to Default
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex gap-2">
+          {/* Layout selector */}
+          <Select 
+            value={activeLayoutData?.data?.name || 'default'}
+            onValueChange={(value) => {
+              if (value === 'default') {
+                resetToDefault()
+              } else {
+                loadLayout(value)
+              }
+            }}
+          >
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Select layout" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">
+                <div className="flex items-center">
+                  <LayoutIcon className="h-4 w-4 mr-2" />
+                  Default Layout
+                </div>
+              </SelectItem>
+              {savedLayoutsData?.data?.map((layout: SavedLayout) => (
+                <SelectItem key={layout.id} value={layout.name}>
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center">
+                      <LayoutIcon className="h-4 w-4 mr-2" />
+                      {editingLayoutName === layout.name ? (
+                        <Input
+                          value={newName}
+                          onChange={(e) => setNewName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              renameLayout(layout.name, newName)
+                            } else if (e.key === 'Escape') {
+                              setEditingLayoutName(null)
+                              setNewName('')
+                            }
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="h-6 px-2"
+                          autoFocus
+                        />
+                      ) : (
+                        <span>{layout.name}</span>
+                      )}
+                    </div>
+                    {layout.is_active && (
+                      <Badge variant="default" className="ml-2 text-xs">
+                        Active
+                      </Badge>
+                    )}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          {/* Settings dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Settings className="h-4 w-4 mr-2" />
+                Layout Settings
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>Edit Layout</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => setIsEditMode(!isEditMode)}>
+                <GripVertical className="h-4 w-4 mr-2" />
+                {isEditMode ? 'Exit Edit Mode' : 'Edit Current Layout'}
+              </DropdownMenuItem>
+              {isEditMode && (
+                <>
+                  <DropdownMenuItem onClick={compactLayout}>
+                    <Minimize2 className="h-4 w-4 mr-2" />
+                    Compact Layout
+                  </DropdownMenuItem>
+                </>
+              )}
+              
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Manage Layouts</DropdownMenuLabel>
+              
+              <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
+                <DialogTrigger asChild>
+                  <DropdownMenuItem onSelect={(e) => {
+                    e.preventDefault()
+                    setShowSaveDialog(true)
+                  }}>
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Layout As...
+                  </DropdownMenuItem>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Save Layout</DialogTitle>
+                    <DialogDescription>
+                      Give your current layout a name to save it for later use.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="grid grid-cols-4 items-center gap-4">
+                      <Label htmlFor="name" className="text-right">
+                        Name
+                      </Label>
+                      <Input
+                        id="name"
+                        value={newLayoutName}
+                        onChange={(e) => setNewLayoutName(e.target.value)}
+                        placeholder="My Custom Layout"
+                        className="col-span-3"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      type="submit"
+                      onClick={() => {
+                        if (newLayoutName.trim()) {
+                          saveCurrentLayout(newLayoutName.trim())
+                        }
+                      }}
+                      disabled={!newLayoutName.trim()}
+                    >
+                      Save Layout
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              
+              {savedLayoutsData?.data && savedLayoutsData.data.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Saved Layouts</DropdownMenuLabel>
+                  {savedLayoutsData.data.map((layout: SavedLayout) => (
+                    <div key={layout.id} className="flex items-center px-2 py-1.5 text-sm hover:bg-accent rounded-sm">
+                      <span className="flex-1 truncate">{layout.name}</span>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setEditingLayoutName(layout.name)
+                            setNewName(layout.name)
+                          }}
+                        >
+                          <Edit2 className="h-3 w-3" />
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Layout</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete the layout "{layout.name}"? This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => deleteLayoutMutation.mutate(layout.name)}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+              
+              <DropdownMenuSeparator />
+              
+              <DropdownMenuItem onClick={resetToDefault} className="text-destructive">
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Reset to Default
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {isEditMode && (
@@ -799,7 +1130,7 @@ export function CustomizableDashboard() {
         draggableHandle={isEditMode ? ".drag-handle" : ""}
         verticalCompact={!isEditMode}
         transformScale={1}
-        resizeHandles={['se', 's', 'e']}
+        resizeHandles={['se', 's', 'e', 'w', 'sw']}
         useCSSTransforms={true}
       >
         {['stats', 'alerts', 'system-overview', 'service-health', 'system-resources', 'dns-health', 'container-monitoring', 'quick-actions', 'pause-controls', 'recent-activity', 'provider-status', 'issues-monitoring'].map(widgetId => {

@@ -16,6 +16,8 @@ const configRoutes = require('./configRoutes');
 const logsRoutes = require('./logsRoutes');
 const activityRoutes = require('./activityRoutes');
 const pauseRoutes = require('./pauseRoutes');
+const userPreferencesRoutes = require('./userPreferencesRoutes');
+const dashboardLayoutsRoutes = require('./dashboardLayoutsRoutes');
 
 // Mount public routes that don't require authentication
 router.use('/auth', authRoutes);
@@ -37,6 +39,8 @@ router.use('/config', configRoutes);
 router.use('/logs', logsRoutes);
 router.use('/activity', activityRoutes);
 router.use('/system', pauseRoutes);
+router.use('/user', userPreferencesRoutes);
+router.use('/user/dashboard-layouts', dashboardLayoutsRoutes);
 
 // Export the router
 module.exports = router;

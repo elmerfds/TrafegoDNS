@@ -1,0 +1,130 @@
+/* Dashboard Grid Layout Styles */
+
+/* Grid item styling during edit mode */
+.dashboard-item-edit {
+  border: 1px dashed rgba(var(--foreground), 0.2);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.dashboard-item-edit:hover {
+  border-color: rgba(var(--foreground), 0.4);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* React Grid Layout overrides */
+.react-grid-item {
+  transition: all 200ms ease;
+  transition-property: left, top, width, height;
+}
+
+.react-grid-item.cssTransforms {
+  transition-property: transform, width, height;
+}
+
+.react-grid-item.resizing {
+  z-index: 1;
+  will-change: width, height;
+}
+
+.react-grid-item.react-draggable-dragging {
+  transition: none;
+  z-index: 3;
+  will-change: transform;
+}
+
+.react-grid-item.react-grid-placeholder {
+  background: rgba(var(--primary), 0.1);
+  opacity: 1;
+  transition-duration: 100ms;
+  z-index: 2;
+  border-radius: 8px;
+  border: 2px dashed rgba(var(--primary), 0.3);
+}
+
+/* Resize handle styling */
+.react-resizable-handle {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+}
+
+.react-resizable-handle::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid rgba(var(--foreground), 0.4);
+  border-bottom: 2px solid rgba(var(--foreground), 0.4);
+}
+
+/* Handle positioning for different resize directions */
+.react-resizable-handle-s {
+  bottom: 0;
+  left: 0;
+  cursor: ns-resize;
+  height: 10px;
+  width: 100%;
+}
+
+.react-resizable-handle-e {
+  right: 0;
+  top: 0;
+  cursor: ew-resize;
+  width: 10px;
+  height: 100%;
+}
+
+.react-resizable-handle-se {
+  bottom: 0;
+  right: 0;
+  cursor: nwse-resize;
+}
+
+.react-resizable-handle-sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+
+.react-resizable-handle-w {
+  left: 0;
+  top: 0;
+  cursor: ew-resize;
+  width: 10px;
+  height: 100%;
+}
+
+/* Drag handle styling */
+.drag-handle {
+  cursor: move;
+  user-select: none;
+}
+
+/* Layout container */
+.layout {
+  position: relative;
+  margin: -8px; /* Compensate for grid gaps */
+}
+
+/* Ensure cards fill their containers */
+.react-grid-item > div {
+  height: 100%;
+}
+
+/* Dark mode adjustments */
+.dark .dashboard-item-edit {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.dark .dashboard-item-edit:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.dark .react-resizable-handle::after {
+  border-color: rgba(255, 255, 255, 0.4);
+}

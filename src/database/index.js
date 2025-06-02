@@ -11,6 +11,8 @@ const { fixSqliteConstraints } = require('./migrations/fixSqliteConstraints');
 const { createOrphanedRecordsHistory } = require('./migrations/createOrphanedRecordsHistory');
 const { up: ensureOrphanedAtColumn } = require('./migrations/ensureOrphanedAtColumn');
 const { createActivityLogTable } = require('./migrations/createActivityLogTable');
+const { up: createUserPreferencesTable } = require('./migrations/createUserPreferencesTable');
+const createDashboardLayoutsTable = require('./migrations/createDashboardLayoutsTable');
 
 // Import repositories
 const UserRepository = require('./repository/userRepository');
@@ -19,6 +21,8 @@ const SettingRepository = require('./repository/settingRepository');
 const AuditLogRepository = require('./repository/auditLogRepository');
 const ActivityLogRepository = require('./repository/activityLogRepository');
 const DNSRepositoryManager = require('./repository/dnsRepositoryManager');
+const UserPreferencesRepository = require('./repository/userPreferencesRepository');
+const DashboardLayoutsRepository = require('./repository/dashboardLayoutsRepository');
 
 // Database singleton
 let db = null;
@@ -84,6 +88,16 @@ async function initialize(migrate = true, options = {}) {
       if (shouldInitializeRepo('dnsManager') && (!repositories.dnsManager || options.force)) {
         repositories.dnsManager = new DNSRepositoryManager(db);
       }
+      
+      // User preferences repository
+      if (shouldInitializeRepo('userPreferences') && (!repositories.userPreferences || options.force)) {
+        repositories.userPreferences = new UserPreferencesRepository(db);
+      }
+      
+      // Dashboard layouts repository
+      if (shouldInitializeRepo('dashboardLayouts') && (!repositories.dashboardLayouts || options.force)) {
+        repositories.dashboardLayouts = new DashboardLayoutsRepository(db);
+      }
     }
     
     // Initialize each repository if it has an initialize method
@@ -96,6 +110,8 @@ async function initialize(migrate = true, options = {}) {
       dnsManager: 10,   // Highest priority
       setting: 5,       // Medium priority
       user: 3,          // Medium-low priority
+      userPreferences: 3, // Medium-low priority
+      dashboardLayouts: 3, // Medium-low priority
       revokedToken: 2,  // Low priority
       auditLog: 1,      // Lowest priority
       activityLog: 1    // Lowest priority
@@ -153,6 +169,22 @@ async function initialize(migrate = true, options = {}) {
         logger.info('Activity log table ready');
       } catch (activityLogError) {
         logger.error(`Failed to create activity log table: ${activityLogError.message}`);
+      }
+      
+      try {
+        // Create user preferences table
+        await createUserPreferencesTable(db);
+        logger.info('User preferences table ready');
+      } catch (userPrefsError) {
+        logger.error(`Failed to create user preferences table: ${userPrefsError.message}`);
+      }
+      
+      try {
+        // Create dashboard layouts table
+        await createDashboardLayoutsTable.up(db);
+        logger.info('Dashboard layouts table ready');
+      } catch (dashboardLayoutsError) {
+        logger.error(`Failed to create dashboard layouts table: ${dashboardLayoutsError.message}`);
       }
     }
     
