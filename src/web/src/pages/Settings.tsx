@@ -772,6 +772,68 @@ export function SettingsPage() {
           </CardContent>
         </Card>
 
+        {/* OIDC Settings (Read Only) */}
+        {config.oidcEnabled && (
+          <Card>
+            <CardHeader>
+              <CardTitle>OIDC/SSO Settings</CardTitle>
+              <CardDescription>
+                OpenID Connect authentication configuration (configured via environment variables)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <div className="text-sm text-muted-foreground">
+                    {config.oidcEnabled ? 'Enabled' : 'Disabled'}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Issuer</Label>
+                  <div className="text-sm text-muted-foreground">
+                    {config.oidcIssuerUrl || 'Not configured'}
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Client ID</Label>
+                  <div className="text-sm text-muted-foreground">
+                    {config.oidcClientId || 'Not configured'}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Redirect URI</Label>
+                  <div className="text-sm text-muted-foreground">
+                    {config.oidcRedirectUri || 'Not configured'}
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Scopes</Label>
+                <div className="text-sm text-muted-foreground">
+                  {config.oidcScopes || 'Not configured'}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Role Mapping</Label>
+                <div className="text-sm text-muted-foreground">
+                  {config.oidcRoleMapping && Object.keys(config.oidcRoleMapping).length > 0 ? (
+                    <ul className="list-disc list-inside">
+                      {Object.entries(config.oidcRoleMapping).map(([group, role]) => (
+                        <li key={group}>{group} → {role}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    'No role mapping configured'
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Save Button */}
         <div className="flex justify-end">
           <Button

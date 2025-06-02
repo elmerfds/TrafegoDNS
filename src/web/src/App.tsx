@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { useAuthStore } from '@/store/authStore'
 import { Layout } from '@/components/Layout'
 import { LoginPage } from '@/pages/Login'
+import { AuthCallbackPage } from '@/pages/AuthCallback'
 import { CustomizableDashboard } from '@/pages/CustomizableDashboard'
 import { DNSRecordsPage } from '@/pages/DNSRecords'
 import { ContainersPage } from '@/pages/Containers'
@@ -23,6 +24,7 @@ function App() {
       <Router>
         <Routes>
           <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/" />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route
             path="/"
             element={isAuthenticated ? <Layout /> : <Navigate to="/login" />}

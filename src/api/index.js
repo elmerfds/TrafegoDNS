@@ -20,6 +20,9 @@ const v1Routes = require('./v1/routes');
 // Import User model for initialization
 const User = require('./v1/models/User');
 
+// Import OIDC service for initialization
+const oidcService = require('./v1/services/oidcService');
+
 // Create Express app
 const app = express();
 
@@ -163,6 +166,30 @@ async function startApiServer(port, config, eventBus, callback) {
   } catch (error) {
     logger.error(`Failed to initialize User model: ${error.message}`);
     // Continue anyway - the model will retry
+  }
+
+  // Initialize OIDC service if configured
+  if (config && config.oidcEnabled) {
+    logger.info('Initializing OIDC service...');
+    try {
+      const oidcConfig = {
+        issuerUrl: config.oidcIssuerUrl,
+        clientId: config.oidcClientId,
+        clientSecret: config.oidcClientSecret,
+        redirectUri: config.oidcRedirectUri
+      };
+      
+      const initialized = await oidcService.initialize(oidcConfig);
+      if (initialized) {
+        logger.info('OIDC service initialized successfully');
+      } else {
+        logger.warn('OIDC service initialization failed - OIDC login will be unavailable');
+      }
+    } catch (error) {
+      logger.error(`Failed to initialize OIDC service: ${error.message}`);
+    }
+  } else {
+    logger.debug('OIDC not enabled in configuration');
   }
 
   // Create HTTP server

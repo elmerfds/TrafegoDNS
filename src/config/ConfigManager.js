@@ -204,6 +204,44 @@ class ConfigManager {
     if (this.ipRefreshInterval > 0) {
       setInterval(() => this.updatePublicIPs(), this.ipRefreshInterval);
     }
+    
+    // OIDC Configuration
+    this.oidcEnabled = EnvironmentLoader.getBool('OIDC_ENABLED', false);
+    this.oidcIssuerUrl = EnvironmentLoader.getString('OIDC_ISSUER_URL');
+    this.oidcClientId = EnvironmentLoader.getString('OIDC_CLIENT_ID');
+    this.oidcClientSecret = EnvironmentLoader.getSecret('OIDC_CLIENT_SECRET');
+    this.oidcRedirectUri = EnvironmentLoader.getString('OIDC_REDIRECT_URI', 'http://localhost:3001/api/v1/auth/oidc/callback');
+    this.oidcScopes = EnvironmentLoader.getString('OIDC_SCOPES', 'openid profile email groups');
+    this.oidcRoleMapping = this._parseOidcRoleMapping(EnvironmentLoader.getString('OIDC_ROLE_MAPPING', ''));
+    
+    // Store OIDC config in _envConfig
+    this._envConfig.oidcEnabled = this.oidcEnabled;
+    this._envConfig.oidcIssuerUrl = this.oidcIssuerUrl;
+    this._envConfig.oidcClientId = this.oidcClientId;
+    this._envConfig.oidcRedirectUri = this.oidcRedirectUri;
+    this._envConfig.oidcScopes = this.oidcScopes;
+    this._envConfig.oidcRoleMapping = this.oidcRoleMapping;
+  }
+  
+  /**
+   * Parse OIDC role mapping from environment variable
+   * Format: "group1:role1,group2:role2"
+   * Example: "admins:admin,operators:operator,users:viewer"
+   */
+  _parseOidcRoleMapping(mappingString) {
+    if (!mappingString) return {};
+    
+    const mapping = {};
+    const pairs = mappingString.split(',');
+    
+    for (const pair of pairs) {
+      const [group, role] = pair.trim().split(':');
+      if (group && role && ['admin', 'operator', 'viewer'].includes(role)) {
+        mapping[group] = role;
+      }
+    }
+    
+    return mapping;
   }
   
   /**
@@ -354,7 +392,15 @@ class ConfigManager {
         preservedHostnames: this.preservedHostnames,
         
         // Record type defaults
-        recordDefaults: this.recordDefaults
+        recordDefaults: this.recordDefaults,
+        
+        // OIDC settings (without secret)
+        oidcEnabled: this.oidcEnabled,
+        oidcIssuerUrl: this.oidcIssuerUrl,
+        oidcClientId: this.oidcClientId,
+        oidcRedirectUri: this.oidcRedirectUri,
+        oidcScopes: this.oidcScopes,
+        oidcRoleMapping: this.oidcRoleMapping
       };
       
       // Save all settings
@@ -429,6 +475,14 @@ class ConfigManager {
     if (settings.recordDefaults !== undefined && typeof settings.recordDefaults === 'object') {
       this.recordDefaults = { ...this.recordDefaults, ...settings.recordDefaults };
     }
+    
+    // OIDC settings
+    if (settings.oidcEnabled !== undefined) this.oidcEnabled = settings.oidcEnabled;
+    if (settings.oidcIssuerUrl !== undefined) this.oidcIssuerUrl = settings.oidcIssuerUrl;
+    if (settings.oidcClientId !== undefined) this.oidcClientId = settings.oidcClientId;
+    if (settings.oidcRedirectUri !== undefined) this.oidcRedirectUri = settings.oidcRedirectUri;
+    if (settings.oidcScopes !== undefined) this.oidcScopes = settings.oidcScopes;
+    if (settings.oidcRoleMapping !== undefined) this.oidcRoleMapping = settings.oidcRoleMapping;
   }
   
   /**
@@ -506,7 +560,13 @@ class ConfigManager {
       apiTimeout: this.apiTimeout,
       managedHostnames: this.managedHostnames,
       recordDefaults: this.recordDefaults,
-      dbLoaded: this._dbLoaded
+      dbLoaded: this._dbLoaded,
+      oidcEnabled: this.oidcEnabled,
+      oidcIssuerUrl: this.oidcIssuerUrl,
+      oidcClientId: this.oidcClientId,
+      oidcRedirectUri: this.oidcRedirectUri,
+      oidcScopes: this.oidcScopes,
+      oidcRoleMapping: this.oidcRoleMapping
     };
   }
   
@@ -783,6 +843,13 @@ class ConfigManager {
         logger.info('Found Traefik API password in environment but not in database');
       }
       
+      // Check OIDC client secret
+      if (this.oidcClientSecret && !allSettings.secret_oidcClientSecret) {
+        envSecrets.oidcClientSecret = this.oidcClientSecret;
+        hasNewSecrets = true;
+        logger.info('Found OIDC client secret in environment but not in database');
+      }
+      
       // Save any new secrets to database
       if (hasNewSecrets) {
         logger.info(`Saving ${Object.keys(envSecrets).length} environment secrets to database for persistence: ${Object.keys(envSecrets).join(', ')}`);
@@ -834,6 +901,11 @@ class ConfigManager {
       if (secrets.traefikApiPassword) {
         this.traefikApiPassword = secrets.traefikApiPassword;
         logger.debug('Loaded Traefik API password from database');
+      }
+      
+      if (secrets.oidcClientSecret) {
+        this.oidcClientSecret = secrets.oidcClientSecret;
+        logger.debug('Loaded OIDC client secret from database');
       }
       
       logger.info(`Loaded ${Object.keys(secrets).length} secrets from database`);
@@ -967,6 +1039,9 @@ class ConfigManager {
       if (this.traefikApiPassword) {
         secrets.traefikApiPassword = this.traefikApiPassword;
       }
+      if (this.oidcClientSecret) {
+        secrets.oidcClientSecret = this.oidcClientSecret;
+      }
       
       if (!database.isInitialized() || !database.repositories?.setting) {
         logger.warn('Database not initialized, returning environment secrets only');
@@ -1036,7 +1111,8 @@ class ConfigManager {
           hasRoute53AccessKey: !!this.route53AccessKey,
           hasRoute53SecretKey: !!this.route53SecretKey,
           hasDigitalOceanToken: !!this.digitalOceanToken,
-          hasTraefikApiPassword: !!this.traefikApiPassword
+          hasTraefikApiPassword: !!this.traefikApiPassword,
+          hasOidcClientSecret: !!this.oidcClientSecret
         };
       }
       
@@ -1047,7 +1123,8 @@ class ConfigManager {
         hasRoute53AccessKey: !!allSettings.secret_route53AccessKey || !!this.route53AccessKey,
         hasRoute53SecretKey: !!allSettings.secret_route53SecretKey || !!this.route53SecretKey,
         hasDigitalOceanToken: !!allSettings.secret_digitalOceanToken || !!this.digitalOceanToken,
-        hasTraefikApiPassword: !!allSettings.secret_traefikApiPassword || !!this.traefikApiPassword
+        hasTraefikApiPassword: !!allSettings.secret_traefikApiPassword || !!this.traefikApiPassword,
+        hasOidcClientSecret: !!allSettings.secret_oidcClientSecret || !!this.oidcClientSecret
       };
     } catch (error) {
       logger.error(`Failed to get secret status: ${error.message}`);
@@ -1056,7 +1133,8 @@ class ConfigManager {
         hasRoute53AccessKey: false,
         hasRoute53SecretKey: false,
         hasDigitalOceanToken: false,
-        hasTraefikApiPassword: false
+        hasTraefikApiPassword: false,
+        hasOidcClientSecret: false
       };
     }
   }

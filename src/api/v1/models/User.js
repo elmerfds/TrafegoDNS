@@ -124,7 +124,10 @@ class UserModel {
             passwordHash: bcrypt.hashSync(defaultPassword, 10),
             role: 'admin',
             createdAt: new Date().toISOString(),
-            lastLogin: null
+            lastLogin: null,
+            authProvider: 'local',
+            oidcSub: null,
+            displayName: null
           };
           
           // Save to file
@@ -512,7 +515,10 @@ class UserModel {
           passwordHash,
           role: userData.role || 'operator', // Default role
           createdAt: new Date().toISOString(),
-          lastLogin: null
+          lastLogin: null,
+          authProvider: userData.auth_provider || 'local',
+          oidcSub: userData.oidc_sub || null,
+          displayName: userData.display_name || null
         };
 
         // Add to users array

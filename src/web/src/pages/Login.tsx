@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { api, isApiError } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, LogIn } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { useTheme } from '@/components/theme-provider'
 
@@ -36,6 +36,15 @@ export function LoginPage() {
     resolver: zodResolver(loginSchema),
   })
 
+  // Check OIDC status
+  const { data: oidcStatus } = useQuery({
+    queryKey: ['oidc-status'],
+    queryFn: async () => {
+      const response = await api.get('/auth/oidc/status')
+      return response.data.data
+    },
+  })
+
   const loginMutation = useMutation({
     mutationFn: async (data: LoginFormData) => {
       const response = await api.post('/auth/login', data)
@@ -57,6 +66,20 @@ export function LoginPage() {
   const onSubmit = (data: LoginFormData) => {
     setError('')
     loginMutation.mutate(data)
+  }
+
+  const handleOidcLogin = async () => {
+    try {
+      const response = await api.get('/auth/oidc/authorize')
+      const { authUrl } = response.data.data
+      window.location.href = authUrl
+    } catch (error) {
+      if (isApiError(error)) {
+        setError(error.response?.data?.message || 'OIDC login failed')
+      } else {
+        setError('Failed to initiate OIDC login')
+      }
+    }
   }
 
   return (
@@ -128,6 +151,30 @@ export function LoginPage() {
             >
               {loginMutation.isPending ? 'Logging in...' : 'Login'}
             </Button>
+
+            {oidcStatus?.enabled && (
+              <>
+                <div className="relative my-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">Or</span>
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleOidcLogin}
+                  disabled={!oidcStatus?.configured}
+                >
+                  <LogIn className="mr-2 h-4 w-4" />
+                  Login with SSO
+                </Button>
+              </>
+            )}
           </form>
         </CardContent>
       </Card>
