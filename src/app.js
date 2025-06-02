@@ -196,6 +196,18 @@ async function start() {
     const statusReporter = new StatusReporter(config, eventBus);
     const dnsManager = new DNSManager(config, eventBus, pauseManager);
     const dockerMonitor = new DockerMonitor(config, eventBus, pauseManager);
+    
+    // Initialize port monitoring if enabled
+    let portMonitor = null;
+    if (config.portMonitoringEnabled !== false) { // Default to enabled
+      try {
+        const PortMonitor = require('./services/portMonitor');
+        portMonitor = new PortMonitor(config, database.db);
+        logger.info('🔍 Port monitoring service initialized');
+      } catch (portError) {
+        logger.warn(`⚠️ Failed to initialize port monitoring: ${portError.message}`);
+      }
+    }
 
     // Choose the appropriate monitor based on operation mode
     let monitor;
@@ -222,9 +234,20 @@ async function start() {
       logger.info('🚀 Starting API server and using API mode');
 
       try {
-        // Start API server
+        // Start API server with port monitoring support
         const apiPort = process.env.API_PORT || 3000;
-        apiServer = await startApiServer(apiPort, config, eventBus);
+        
+        // Create routes with dependencies
+        const createRoutes = require('./api/v1/routes');
+        const routesWithDeps = createRoutes({
+          database: database.db,
+          portMonitor
+        });
+        
+        apiServer = await startApiServer(apiPort, config, eventBus, (server, socketServer) => {
+          // Override the default routes with our enhanced routes
+          server.app.use('/api/v1', routesWithDeps);
+        });
 
         // Make pause manager available to API routes
         apiServer.app.set('pauseManager', pauseManager);
@@ -256,6 +279,16 @@ async function start() {
     // Initialize all services
     await dnsManager.init();
     await monitor.init();
+    
+    // Initialize port monitoring
+    if (portMonitor) {
+      try {
+        await portMonitor.initialize();
+        logger.info('✅ Port monitoring service started');
+      } catch (portError) {
+        logger.warn(`⚠️ Failed to start port monitoring: ${portError.message}`);
+      }
+    }
 
     // Start monitoring
     if (config.watchDockerEvents) {
@@ -273,7 +306,8 @@ async function start() {
       Monitor: monitor,
       TraefikMonitor: config.operationMode.toLowerCase() !== 'direct' ? monitor : null,
       DirectDNSManager: config.operationMode.toLowerCase() === 'direct' ? monitor : null,
-      ConfigManager: config
+      ConfigManager: config,
+      PortMonitor: portMonitor
     };
 
     // Initialize state management system
@@ -285,7 +319,8 @@ async function start() {
       Monitor: monitor,
       TraefikMonitor: config.operationMode.toLowerCase() !== 'direct' ? monitor : null,
       DirectDNSManager: config.operationMode.toLowerCase() === 'direct' ? monitor : null,
-      ConfigManager: config
+      ConfigManager: config,
+      PortMonitor: portMonitor
     });
 
     // Make state available globally
