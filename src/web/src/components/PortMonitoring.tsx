@@ -73,7 +73,7 @@ export default function PortMonitoring() {
   const [serviceType, setServiceType] = useState('web');
   
   // Real-time updates
-  const socket = useSocket();
+  const { socket, isConnected } = useSocket();
   
   useEffect(() => {
     loadStatistics();
@@ -81,7 +81,7 @@ export default function PortMonitoring() {
   }, []);
 
   useEffect(() => {
-    if (socket) {
+    if (socket && isConnected) {
       // Subscribe to port monitoring events
       socket.emit('subscribe', 'port:changed');
       socket.emit('subscribe', 'port:reserved');
@@ -89,7 +89,7 @@ export default function PortMonitoring() {
       socket.emit('subscribe', 'port:conflict:detected');
       socket.emit('subscribe', 'port:scan:completed');
 
-      socket.on('event', (event) => {
+      socket.on('event', (event: any) => {
         handlePortEvent(event);
       });
 
@@ -97,7 +97,7 @@ export default function PortMonitoring() {
         socket.off('event');
       };
     }
-  }, [socket]);
+  }, [socket, isConnected]);
 
   const handlePortEvent = (event: any) => {
     const { type, data } = event;
