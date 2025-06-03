@@ -14,15 +14,17 @@ import { OrphanedRecordsPage } from '@/pages/OrphanedRecords'
 import { LogsPage } from '@/pages/Logs'
 import PortManagement from '@/pages/PortManagement'
 import { Toaster } from '@/components/ui/toaster'
-import { ThemeProvider } from '@/contexts/ThemeContext'
+import { ThemeProvider } from '@/components/theme-provider'
+import { ColorThemeProvider } from '@/contexts/ThemeContext'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 
 function App() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
 
   return (
-    <ThemeProvider>
-      <Router>
+    <ThemeProvider defaultTheme="dark" storageKey="trafegodns-ui-theme">
+      <ColorThemeProvider>
+        <Router>
         <Routes>
           <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/" />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
@@ -50,8 +52,9 @@ function App() {
             <Route path="port-management" element={<PortManagement />} />
           </Route>
         </Routes>
-      </Router>
-      <Toaster />
+        </Router>
+        <Toaster />
+      </ColorThemeProvider>
     </ThemeProvider>
   )
 }

@@ -96,7 +96,7 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
+export function ColorThemeProvider({ children }: { children: React.ReactNode }) {
   const [currentTheme, setCurrentTheme] = useState<ThemeId>('teal'); // Default to teal
   const [isLoading, setIsLoading] = useState(true);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -114,14 +114,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         } catch (error) {
           console.warn('Failed to load theme from server, using localStorage fallback');
           // Fallback to localStorage
-          const savedTheme = localStorage.getItem('trafegodns-theme') as ThemeId;
+          const savedTheme = localStorage.getItem('trafegodns-color-theme') as ThemeId;
           if (savedTheme && themes[savedTheme]) {
             setCurrentTheme(savedTheme);
           }
         }
       } else {
         // For non-authenticated users, use localStorage
-        const savedTheme = localStorage.getItem('trafegodns-theme') as ThemeId;
+        const savedTheme = localStorage.getItem('trafegodns-color-theme') as ThemeId;
         if (savedTheme && themes[savedTheme]) {
           setCurrentTheme(savedTheme);
         }
@@ -152,11 +152,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         console.error('Failed to save theme to server:', error);
         // Fallback to localStorage even for authenticated users
-        localStorage.setItem('trafegodns-theme', themeId);
+        localStorage.setItem('trafegodns-color-theme', themeId);
       }
     } else {
       // For non-authenticated users, use localStorage
-      localStorage.setItem('trafegodns-theme', themeId);
+      localStorage.setItem('trafegodns-color-theme', themeId);
     }
   };
 

@@ -25,6 +25,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { Loader2, Save, AlertTriangle } from 'lucide-react'
 import { Config } from '@/types/config'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 export function SettingsPage() {
   const { toast } = useToast()
@@ -294,8 +295,23 @@ export function SettingsPage() {
               Customize the appearance of the application
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <ThemeSwitcher variant="button" showLabel={true} />
+          <CardContent className="space-y-6">
+            <div>
+              <div className="flex items-center space-x-2 mb-2">
+                <span className="text-sm font-medium">Dark/Light Mode:</span>
+                <ThemeToggle />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Switch between light and dark appearance
+              </p>
+            </div>
+            
+            <div>
+              <ThemeSwitcher variant="button" showLabel={true} />
+              <p className="text-xs text-muted-foreground mt-2">
+                Choose your preferred accent color theme
+              </p>
+            </div>
           </CardContent>
         </Card>
 
