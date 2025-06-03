@@ -24,6 +24,7 @@ import { SecretInput } from '@/components/ui/secret-input'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Loader2, Save, AlertTriangle } from 'lucide-react'
 import { Config } from '@/types/config'
+import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 
 export function SettingsPage() {
   const { toast } = useToast()
@@ -282,6 +283,19 @@ export function SettingsPage() {
               />
               <Label htmlFor="cleanupOrphaned">Cleanup Orphaned Records</Label>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Theme Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Theme Settings</CardTitle>
+            <CardDescription>
+              Customize the appearance of the application
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ThemeSwitcher variant="button" showLabel={true} />
           </CardContent>
         </Card>
 

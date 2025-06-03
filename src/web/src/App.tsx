@@ -14,14 +14,14 @@ import { OrphanedRecordsPage } from '@/pages/OrphanedRecords'
 import { LogsPage } from '@/pages/Logs'
 import PortManagement from '@/pages/PortManagement'
 import { Toaster } from '@/components/ui/toaster'
-import { ThemeProvider } from '@/components/theme-provider'
+import { ThemeProvider } from '@/contexts/ThemeContext'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 
 function App() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
 
   return (
-    <ThemeProvider defaultTheme="dark" storageKey="trafegodns-theme">
+    <ThemeProvider>
       <Router>
         <Routes>
           <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/" />} />
