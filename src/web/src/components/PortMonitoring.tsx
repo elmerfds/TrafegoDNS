@@ -683,7 +683,7 @@ export default function PortMonitoring() {
               {portCheckResults.length > 0 && (
                 <div className="space-y-2">
                   <h4 className="font-medium">Results:</h4>
-                  <div className="space-y-2">
+                  <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
                     {portCheckResults.map((port) => (
                       <div key={`${port.port}-${port.protocol}`} className="flex items-center justify-between p-3 border rounded">
                         <div className="flex items-center space-x-3">
@@ -781,53 +781,36 @@ export default function PortMonitoring() {
                     })()}
                   </div>
                   
-                  {/* Available Ports Section */}
-                  {(() => {
-                    const availablePorts = portScanResults.filter(p => p.available);
-                    return availablePorts.length > 0 && (
-                      <div className="space-y-2">
-                        <h5 className="text-sm font-medium text-green-700">✅ Available Ports ({availablePorts.length})</h5>
-                        <div className="space-y-2 max-h-40 overflow-y-auto">
-                          {availablePorts.map((port) => (
-                            <div key={`${port.port}-${port.protocol}`} className="flex items-center justify-between p-2 border border-green-200 bg-green-50 rounded">
-                              <div className="flex items-center space-x-3">
-                                <span className="font-mono text-sm">{port.port}/{port.protocol}</span>
-                                <CheckCircle className="h-4 w-4 text-green-500" />
-                                <Badge variant="default" className="bg-green-500">Available</Badge>
-                              </div>
-                              <div className="text-xs text-green-600">
-                                Ready for use
-                              </div>
+                  {/* Combined Results Section */}
+                  <div className="space-y-2">
+                    <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                      {portScanResults.map((port) => (
+                        <div key={`${port.port}-${port.protocol}`} className="p-3 border rounded space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <span className="font-mono text-sm font-bold">
+                                {port.port}/{port.protocol}
+                              </span>
+                              {port.available ? (
+                                <>
+                                  <Badge variant="default" className="bg-green-500">Available</Badge>
+                                  <CheckCircle className="h-4 w-4 text-green-500" />
+                                </>
+                              ) : (
+                                <>
+                                  <Badge variant="destructive">In Use</Badge>
+                                  <XCircle className="h-4 w-4 text-red-500" />
+                                </>
+                              )}
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })()}
-                  
-                  {/* Unavailable Ports Section */}
-                  {(() => {
-                    const unavailablePorts = portScanResults.filter(p => !p.available);
-                    return unavailablePorts.length > 0 && (
-                      <div className="space-y-2">
-                        <h5 className="text-sm font-medium text-red-700">❌ In Use ({unavailablePorts.length})</h5>
-                        <div className="space-y-2 max-h-40 overflow-y-auto">
-                          {unavailablePorts.map((port) => (
-                            <div key={`${port.port}-${port.protocol}`} className="flex items-center justify-between p-2 border border-red-200 bg-red-50 rounded">
-                              <div className="flex items-center space-x-3">
-                                <span className="font-mono text-sm">{port.port}/{port.protocol}</span>
-                                <XCircle className="h-4 w-4 text-red-500" />
-                                <Badge variant="destructive">In Use</Badge>
-                              </div>
-                              <div className="text-xs text-red-600">
-                                Already taken
-                              </div>
+                            <div className="text-sm text-muted-foreground">
+                              {port.available ? 'Ready for use' : 'Already taken'}
                             </div>
-                          ))}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })()}
+                      ))}
+                    </div>
+                  </div>
                   
                   {portScanResults.length === 0 && (
                     <div className="text-center py-4 text-muted-foreground">
@@ -929,7 +912,8 @@ export default function PortMonitoring() {
               {portSuggestions.length > 0 && (
                 <div className="space-y-3">
                   <h4 className="font-medium">Suggested Alternatives:</h4>
-                  {portSuggestions.map((suggestion, index) => (
+                  <div className="space-y-3 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                    {portSuggestions.map((suggestion, index) => (
                     <div key={index} className="p-3 border rounded">
                       <div className="text-sm font-medium mb-2">
                         Original: {suggestion.originalPort}
@@ -942,7 +926,8 @@ export default function PortMonitoring() {
                         ))}
                       </div>
                     </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -961,7 +946,8 @@ export default function PortMonitoring() {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <h4 className="font-medium">Configured Servers</h4>
-                  {servers.map(server => (
+                  <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                    {servers.map(server => (
                     <div key={server.id} className="flex items-center justify-between p-3 border rounded">
                       <div className="flex items-center space-x-3">
                         <Server className="h-4 w-4" />
@@ -974,7 +960,8 @@ export default function PortMonitoring() {
                         <Badge variant="outline">Host Server</Badge>
                       )}
                     </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
                 
                 <div className="border-t pt-4">
