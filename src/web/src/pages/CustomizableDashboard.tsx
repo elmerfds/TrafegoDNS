@@ -575,7 +575,7 @@ export function CustomizableDashboard() {
         )
 
       case 'system-resources':
-        return metrics ? (
+        return (
           <Card className="h-full flex flex-col overflow-hidden">
             <CardHeader className="flex-shrink-0">
               <CardTitle className="flex items-center gap-2">
@@ -585,50 +585,61 @@ export function CustomizableDashboard() {
               <CardDescription>Current resource utilization</CardDescription>
             </CardHeader>
             <CardContent className="flex-1 space-y-4 overflow-y-auto">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <HardDrive className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">Memory Usage</span>
+              {metrics ? (
+                <>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <HardDrive className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">Memory Usage</span>
+                      </div>
+                      <span className="text-sm font-medium">
+                        {Math.round((metrics.system.memory.used / metrics.system.memory.total) * 100)}%
+                      </span>
+                    </div>
+                    <Progress 
+                      value={(metrics.system.memory.used / metrics.system.memory.total) * 100} 
+                      className="h-2"
+                    />
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {formatBytes(metrics.system.memory.used)} / {formatBytes(metrics.system.memory.total)}
+                    </div>
                   </div>
-                  <span className="text-sm font-medium">
-                    {Math.round((metrics.system.memory.used / metrics.system.memory.total) * 100)}%
-                  </span>
-                </div>
-                <Progress 
-                  value={(metrics.system.memory.used / metrics.system.memory.total) * 100} 
-                  className="h-2"
-                />
-                <div className="text-xs text-muted-foreground mt-1">
-                  {formatBytes(metrics.system.memory.used)} / {formatBytes(metrics.system.memory.total)}
-                </div>
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <Cpu className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">CPU Load</span>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Cpu className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">CPU Load</span>
+                      </div>
+                      <span className="text-sm font-medium">
+                        {Math.round(Math.min((metrics.system.cpu.load[0] / metrics.system.cpu.cores) * 100, 100))}%
+                      </span>
+                    </div>
+                    <Progress 
+                      value={Math.min((metrics.system.cpu.load[0] / metrics.system.cpu.cores) * 100, 100)} 
+                      className="h-2"
+                    />
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Load: {metrics.system.cpu.load[0].toFixed(2)} / {metrics.system.cpu.cores} cores
+                    </div>
                   </div>
-                  <span className="text-sm font-medium">
-                    {Math.round(Math.min((metrics.system.cpu.load[0] / metrics.system.cpu.cores) * 100, 100))}%
-                  </span>
+                  <div className="pt-2 border-t">
+                    <div className="text-xs text-muted-foreground">
+                      Process Memory: {formatBytes(metrics.process.memory.heapUsed)}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="text-center space-y-3">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                    <p className="text-sm text-muted-foreground">Loading metrics...</p>
+                  </div>
                 </div>
-                <Progress 
-                  value={Math.min((metrics.system.cpu.load[0] / metrics.system.cpu.cores) * 100, 100)} 
-                  className="h-2"
-                />
-                <div className="text-xs text-muted-foreground mt-1">
-                  Load: {metrics.system.cpu.load[0].toFixed(2)} / {metrics.system.cpu.cores} cores
-                </div>
-              </div>
-              <div className="pt-2 border-t">
-                <div className="text-xs text-muted-foreground">
-                  Process Memory: {formatBytes(metrics.process.memory.heapUsed)}
-                </div>
-              </div>
+              )}
             </CardContent>
           </Card>
-        ) : null
+        )
 
       case 'dns-health':
         return (
