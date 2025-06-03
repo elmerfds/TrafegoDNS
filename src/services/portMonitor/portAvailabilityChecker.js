@@ -38,7 +38,16 @@ class PortAvailabilityChecker {
           available = await this._checkPortWithNetstat(port, protocol);
           break;
         case 'ss':
-          available = await this._checkPortWithSs(port, protocol);
+          try {
+            available = await this._checkPortWithSs(port, protocol);
+          } catch (ssError) {
+            if (ssError.message.includes('ENOENT') || ssError.message.includes('ss')) {
+              logger.debug('ss command not found, falling back to netstat for port check');
+              available = await this._checkPortWithNetstat(port, protocol);
+            } else {
+              throw ssError;
+            }
+          }
           break;
         case 'socket':
         default:
@@ -108,7 +117,15 @@ class PortAvailabilityChecker {
           return await this._getListeningPortsWithNetstat(protocol);
         case 'ss':
         default:
-          return await this._getListeningPortsWithSs(protocol);
+          try {
+            return await this._getListeningPortsWithSs(protocol);
+          } catch (ssError) {
+            if (ssError.message.includes('ENOENT') || ssError.message.includes('ss')) {
+              logger.warn('ss command not found, falling back to netstat');
+              return await this._getListeningPortsWithNetstat(protocol);
+            }
+            throw ssError;
+          }
       }
     } catch (error) {
       logger.error(`Failed to get listening ports: ${error.message}`);

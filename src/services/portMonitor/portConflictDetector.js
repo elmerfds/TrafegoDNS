@@ -400,6 +400,24 @@ class PortConflictDetector {
       }
     }
   }
+
+  /**
+   * Get count of recent conflicts detected
+   * @returns {number}
+   */
+  getRecentConflictsCount() {
+    // Return count of cached conflicts from last 5 minutes
+    const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+    let recentConflicts = 0;
+    
+    for (const [key, value] of this.cache.entries()) {
+      if (value.timestamp > fiveMinutesAgo && value.conflicts && value.conflicts.length > 0) {
+        recentConflicts += value.conflicts.length;
+      }
+    }
+    
+    return recentConflicts;
+  }
 }
 
 module.exports = PortConflictDetector;

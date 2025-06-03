@@ -741,6 +741,7 @@ export default function PortMonitoring() {
                     <SelectContent>
                       <SelectItem value="tcp">TCP</SelectItem>
                       <SelectItem value="udp">UDP</SelectItem>
+                      <SelectItem value="both">Both</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
