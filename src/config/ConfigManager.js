@@ -949,7 +949,7 @@ class ConfigManager {
         try {
           // Encrypt the secret value
           const iv = crypto.randomBytes(16);
-          const cipher = crypto.createCipherGCM('aes-256-gcm', key, iv);
+          const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
           cipher.setAAD(Buffer.from(secretName, 'utf8'));
           
           let encrypted = cipher.update(secretValue.trim(), 'utf8', 'hex');
@@ -1064,7 +1064,16 @@ class ConfigManager {
         const secretName = dbKey.replace('secret_', '');
         
         try {
-          const encryptedData = JSON.parse(encryptedValue);
+          // Handle case where encryptedValue is already parsed by settingRepository
+          let encryptedData;
+          if (typeof encryptedValue === 'string') {
+            encryptedData = JSON.parse(encryptedValue);
+          } else if (typeof encryptedValue === 'object' && encryptedValue !== null) {
+            encryptedData = encryptedValue;
+          } else {
+            logger.warn(`Invalid encrypted value type for secret ${secretName}: ${typeof encryptedValue}`);
+            continue;
+          }
           
           if (!encryptedData.iv || !encryptedData.authTag || !encryptedData.data) {
             logger.warn(`Invalid encrypted data format for secret ${secretName}`);
@@ -1073,7 +1082,7 @@ class ConfigManager {
           
           // Decrypt the secret value
           const iv = Buffer.from(encryptedData.iv, 'hex');
-          const decipher = crypto.createDecipherGCM('aes-256-gcm', key, iv);
+          const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
           decipher.setAAD(Buffer.from(secretName, 'utf8'));
           decipher.setAuthTag(Buffer.from(encryptedData.authTag, 'hex'));
           

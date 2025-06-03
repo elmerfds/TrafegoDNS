@@ -166,7 +166,7 @@ class PortRepository extends BaseRepository {
         description, labelsJson, container_id, container_name
       );
       
-      return this.getPortById(result.lastInsertRowid || this.getPortId(host, port, protocol));
+      return this.getPortById(result.lastID || this.getPortId(host, port, protocol));
     } catch (error) {
       logger.error('Failed to upsert port:', error);
       throw error;

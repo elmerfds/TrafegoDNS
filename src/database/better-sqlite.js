@@ -975,7 +975,8 @@ class BetterSQLite {
           role TEXT NOT NULL DEFAULT 'user',
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP,
-          last_login TIMESTAMP
+          last_login TIMESTAMP,
+          theme_preference TEXT DEFAULT 'teal'
         )
       `, 'users table');
 

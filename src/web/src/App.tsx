@@ -15,6 +15,7 @@ import { LogsPage } from '@/pages/Logs'
 import PortManagement from '@/pages/PortManagement'
 import { Toaster } from '@/components/ui/toaster'
 import { ThemeProvider } from '@/components/theme-provider'
+import { ColorThemeProvider } from '@/contexts/ColorThemeContext'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 
 function App() {
@@ -22,7 +23,8 @@ function App() {
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="trafegodns-theme">
-      <Router>
+      <ColorThemeProvider>
+        <Router>
         <Routes>
           <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/" />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
@@ -50,8 +52,9 @@ function App() {
             <Route path="port-management" element={<PortManagement />} />
           </Route>
         </Routes>
-      </Router>
-      <Toaster />
+        </Router>
+        <Toaster />
+      </ColorThemeProvider>
     </ThemeProvider>
   )
 }

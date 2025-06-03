@@ -24,6 +24,8 @@ import { SecretInput } from '@/components/ui/secret-input'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Loader2, Save, AlertTriangle } from 'lucide-react'
 import { Config } from '@/types/config'
+import { ColorThemeSwitcher } from '@/components/ColorThemeSwitcher'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 export function SettingsPage() {
   const { toast } = useToast()
@@ -281,6 +283,34 @@ export function SettingsPage() {
                 }
               />
               <Label htmlFor="cleanupOrphaned">Cleanup Orphaned Records</Label>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Theme Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Theme Settings</CardTitle>
+            <CardDescription>
+              Customize the appearance of the application
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div>
+              <div className="flex items-center space-x-2 mb-2">
+                <span className="text-sm font-medium">Dark/Light Mode:</span>
+                <ThemeToggle />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Switch between light and dark appearance
+              </p>
+            </div>
+            
+            <div>
+              <ColorThemeSwitcher showLabel={true} />
+              <p className="text-xs text-muted-foreground mt-2">
+                Choose your preferred accent color theme
+              </p>
             </div>
           </CardContent>
         </Card>

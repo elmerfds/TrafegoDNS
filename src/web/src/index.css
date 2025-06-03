@@ -4,51 +4,138 @@
 
 @layer base {
   :root {
-    /* TrafegoDNS Light Theme - Softer, less blinding */
+    /* TrafegoDNS Light Theme - Teal Accent (Default) */
     --background: 210 17% 98%;           /* Soft off-white #FAFBFC */
     --foreground: 222 47% 11%;           /* Dark navy for better contrast */
     --card: 0 0% 99%;                    /* Very light grey #FCFCFC */
     --card-foreground: 222 47% 11%;      /* Dark navy */
     --popover: 0 0% 99%;                 /* Very light grey */
     --popover-foreground: 222 47% 11%;   /* Dark navy */
-    --primary: 51 100% 45%;              /* Slightly darker gold #E6C200 */
-    --primary-foreground: 222 47% 11%;   /* Dark navy on gold */
-    --secondary: 217 33% 94%;            /* Light blue-grey #EBF0F7 */
-    --secondary-foreground: 222 47% 11%; /* Dark navy */
+    --primary: 173 80% 40%;              /* Teal primary */
+    --primary-foreground: 0 0% 100%;     /* White on teal */
+    --secondary: 166 76% 97%;            /* Light teal #F0FDFA */
+    --secondary-foreground: 173 80% 18%; /* Dark teal */
     --muted: 210 17% 92%;                /* Muted grey #E8EAED */
     --muted-foreground: 215 16% 35%;     /* Darker muted text for better contrast */
-    --accent: 51 100% 45%;               /* Gold accent #E6C200 */
-    --accent-foreground: 222 47% 11%;    /* Dark navy */
+    --accent: 166 76% 84%;               /* Teal accent #99F6E4 */
+    --accent-foreground: 173 80% 18%;    /* Dark teal */
     --destructive: 0 72% 51%;            /* Softer red #D73A49 */
     --destructive-foreground: 0 0% 98%;  /* Off-white */
     --border: 214 32% 88%;               /* Softer borders #D5DAE1 */
     --input: 0 0% 99%;                   /* Very light input background */
-    --ring: 51 100% 45%;                 /* Gold ring */
+    --ring: 173 80% 40%;                 /* Teal ring */
     --radius: 0.375rem;
   }
 
   .dark {
-    /* TrafegoDNS Dark Theme - True Dark with Blue Accents */
+    /* TrafegoDNS Dark Theme - Teal Accent (Default) */
     --background: 222 47% 7%;            /* Very Dark Navy #0a0f1c */
     --foreground: 210 40% 98%;           /* Soft White #F8FAFC */
     --card: 220 41% 10%;                 /* Dark Blue-Black #111827 */
     --card-foreground: 210 40% 98%;      /* Soft White #F8FAFC */
     --popover: 220 41% 10%;              /* Dark Blue-Black #111827 */
     --popover-foreground: 210 40% 98%;   /* Soft White #F8FAFC */
-    --primary: 51 100% 50%;              /* Gold #FFD700 */
-    --primary-foreground: 222 47% 7%;    /* Very Dark Navy #0a0f1c */
+    --primary: 173 80% 40%;              /* Teal primary */
+    --primary-foreground: 0 0% 100%;     /* White on teal */
     --secondary: 217 33% 17%;            /* Dark Blue #1e3a5f */
     --secondary-foreground: 210 40% 98%; /* Soft White #F8FAFC */
     --muted: 217 33% 17%;                /* Dark Blue #1e3a5f */
     --muted-foreground: 215 20% 65%;     /* Muted Blue-White #94a3b8 */
-    --accent: 51 100% 50%;               /* Gold #FFD700 */
-    --accent-foreground: 222 47% 7%;     /* Very Dark Navy #0a0f1c */
+    --accent: 166 76% 84%;               /* Teal accent #99F6E4 */
+    --accent-foreground: 173 80% 18%;    /* Dark teal */
     --destructive: 0 84% 60%;            /* Softer Red #ef4444 */
     --destructive-foreground: 210 40% 98%; /* Soft White #F8FAFC */
     --border: 217 33% 17%;               /* Dark Blue #1e3a5f */
     --input: 220 41% 10%;                /* Dark Blue-Black #111827 */
-    --ring: 51 100% 50%;                 /* Gold #FFD700 */
+    --ring: 173 80% 40%;                 /* Teal ring */
   }
+
+}
+
+/* Color Theme Overrides - Outside layers for maximum specificity */
+/* These are duplicated outside the @layer to ensure they override base styles */
+html.theme-gold,
+:root.theme-gold,
+.theme-gold,
+[data-theme="gold"] {
+  --primary: 43 96% 56% !important;
+  --accent: 48 96% 89% !important;
+  --ring: 43 96% 56% !important;
+  --primary-foreground: 0 0% 100% !important;
+}
+
+html.theme-gold:not(.dark),
+:root.theme-gold:not(.dark),
+.theme-gold:not(.dark),
+[data-theme="gold"]:not(.dark) {
+  --secondary: 255 251 235 !important;
+  --secondary-foreground: 146 64 14 !important;
+  --accent-foreground: 146 64 14 !important;
+}
+
+html.theme-gold.dark,
+:root.theme-gold.dark,
+.theme-gold.dark,
+[data-theme="gold"].dark {
+  --secondary: 31 41 55 !important;
+  --secondary-foreground: 252 211 77 !important;
+  --accent-foreground: 19 78 74 !important;
+}
+
+html.theme-blue,
+:root.theme-blue,
+.theme-blue,
+[data-theme="blue"] {
+  --primary: 217 91% 60% !important;
+  --accent: 213 93% 68% !important;
+  --ring: 217 91% 60% !important;
+  --primary-foreground: 0 0% 100% !important;
+}
+
+html.theme-blue:not(.dark),
+:root.theme-blue:not(.dark),
+.theme-blue:not(.dark),
+[data-theme="blue"]:not(.dark) {
+  --secondary: 239 246 255 !important;
+  --secondary-foreground: 30 58 138 !important;
+  --accent-foreground: 30 58 138 !important;
+}
+
+html.theme-blue.dark,
+:root.theme-blue.dark,
+.theme-blue.dark,
+[data-theme="blue"].dark {
+  --secondary: 31 41 55 !important;
+  --secondary-foreground: 147 197 253 !important;
+  --accent-foreground: 19 78 74 !important;
+}
+
+html.theme-purple,
+:root.theme-purple,
+.theme-purple,
+[data-theme="purple"] {
+  --primary: 262 83% 58% !important;
+  --accent: 266 83% 74% !important;
+  --ring: 262 83% 58% !important;
+  --primary-foreground: 0 0% 100% !important;
+}
+
+html.theme-purple:not(.dark),
+:root.theme-purple:not(.dark),
+.theme-purple:not(.dark),
+[data-theme="purple"]:not(.dark) {
+  --secondary: 245 243 255 !important;
+  --secondary-foreground: 76 29 149 !important;
+  --accent-foreground: 76 29 149 !important;
+}
+
+html.theme-purple.dark,
+:root.theme-purple.dark,
+.theme-purple.dark,
+[data-theme="purple"].dark {
+  --secondary: 31 41 55 !important;
+  --secondary-foreground: 196 181 253 !important;
+  --accent-foreground: 19 78 74 !important;
 }
 
 @layer base {

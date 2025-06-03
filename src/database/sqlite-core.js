@@ -378,6 +378,21 @@ class SQLiteCore {
   }
   
   /**
+   * Prepare a statement for reuse
+   * @param {string} sql - SQL query
+   * @returns {Object} - Prepared statement
+   */
+  prepare(sql) {
+    try {
+      return this.db.prepare(sql);
+    } catch (error) {
+      logger.error(`Error preparing statement: ${error.message}`);
+      logger.debug(`SQL: ${sql}`);
+      throw error;
+    }
+  }
+  
+  /**
    * Close the database connection
    */
   close() {

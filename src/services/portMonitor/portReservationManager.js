@@ -8,7 +8,9 @@ const PortReservationRepository = require('../../database/repository/portReserva
 class PortReservationManager {
   constructor(database) {
     this.database = database;
-    this.repository = new PortReservationRepository(database.db);
+    // Handle both database module and raw db object
+    const db = database.db || database;
+    this.repository = new PortReservationRepository(db);
     this.isInitialized = false;
     
     // Default reservation policies

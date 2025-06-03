@@ -14,6 +14,7 @@ const { createActivityLogTable } = require('./migrations/createActivityLogTable'
 const { up: createUserPreferencesTable } = require('./migrations/createUserPreferencesTable');
 const createDashboardLayoutsTable = require('./migrations/createDashboardLayoutsTable');
 const { createPortMonitoringTables } = require('./migrations/createPortMonitoringTables');
+const createPortReservationsTable = require('./migrations/createPortReservationsTable');
 
 // Import repositories
 const UserRepository = require('./repository/userRepository');
@@ -24,6 +25,10 @@ const ActivityLogRepository = require('./repository/activityLogRepository');
 const DNSRepositoryManager = require('./repository/dnsRepositoryManager');
 const UserPreferencesRepository = require('./repository/userPreferencesRepository');
 const DashboardLayoutsRepository = require('./repository/dashboardLayoutsRepository');
+const PortRepository = require('./repository/portRepository');
+const PortScanRepository = require('./repository/portScanRepository');
+const PortAlertRepository = require('./repository/portAlertRepository');
+const PortReservationRepository = require('./repository/portReservationRepository');
 
 // Database singleton
 let db = null;
@@ -99,6 +104,23 @@ async function initialize(migrate = true, options = {}) {
       if (shouldInitializeRepo('dashboardLayouts') && (!repositories.dashboardLayouts || options.force)) {
         repositories.dashboardLayouts = new DashboardLayoutsRepository(db);
       }
+      
+      // Port monitoring repositories
+      if (shouldInitializeRepo('port') && (!repositories.port || options.force)) {
+        repositories.port = new PortRepository(db);
+      }
+      
+      if (shouldInitializeRepo('portScan') && (!repositories.portScan || options.force)) {
+        repositories.portScan = new PortScanRepository(db);
+      }
+      
+      if (shouldInitializeRepo('portAlert') && (!repositories.portAlert || options.force)) {
+        repositories.portAlert = new PortAlertRepository(db);
+      }
+      
+      if (shouldInitializeRepo('portReservation') && (!repositories.portReservation || options.force)) {
+        repositories.portReservation = new PortReservationRepository(db);
+      }
     }
     
     // Initialize each repository if it has an initialize method
@@ -113,6 +135,10 @@ async function initialize(migrate = true, options = {}) {
       user: 3,          // Medium-low priority
       userPreferences: 3, // Medium-low priority
       dashboardLayouts: 3, // Medium-low priority
+      port: 3,          // Medium-low priority
+      portScan: 3,      // Medium-low priority
+      portAlert: 3,     // Medium-low priority
+      portReservation: 3, // Medium-low priority
       revokedToken: 2,  // Low priority
       auditLog: 1,      // Lowest priority
       activityLog: 1    // Lowest priority
@@ -194,6 +220,14 @@ async function initialize(migrate = true, options = {}) {
         logger.info('Port monitoring tables ready');
       } catch (portMonitoringError) {
         logger.error(`Failed to create port monitoring tables: ${portMonitoringError.message}`);
+      }
+      
+      try {
+        // Create port reservations table
+        await createPortReservationsTable.up(db);
+        logger.info('Port reservations table ready');
+      } catch (portReservationsError) {
+        logger.error(`Failed to create port reservations table: ${portReservationsError.message}`);
       }
     }
     

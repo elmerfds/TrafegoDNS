@@ -34,7 +34,7 @@ class PortScanRepository extends BaseRepository {
         JSON.stringify(metadata)
       );
 
-      return this.getScanById(result.lastInsertRowid);
+      return this.getScanById(result.lastID);
     } catch (error) {
       logger.error('Failed to create port scan:', error);
       throw error;
