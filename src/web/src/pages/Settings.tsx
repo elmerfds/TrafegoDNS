@@ -45,7 +45,9 @@ export function SettingsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (config: Partial<Config>) => {
+      console.log('Settings: Sending config update:', config)
       const response = await api.put('/config', config)
+      console.log('Settings: Config update response:', response.data)
       return response.data
     },
     onSuccess: () => {
@@ -155,6 +157,8 @@ export function SettingsPage() {
   }
 
   const handleSave = () => {
+    console.log('Settings: handleSave called with formData:', formData)
+    
     // Separate secrets from regular config
     const {
       cloudflareToken,
@@ -164,6 +168,8 @@ export function SettingsPage() {
       traefikApiPassword,
       ...regularConfig
     } = formData
+    
+    console.log('Settings: regularConfig after separation:', regularConfig)
 
     const secrets = {
       cloudflareToken,

@@ -508,6 +508,19 @@ class ConfigManager {
       // Apply updates
       this._applySettings(updates);
       
+      // If hostIp is being updated, update PortMonitor as well
+      if (updates.hostIp !== undefined) {
+        try {
+          const portMonitor = global.services?.PortMonitor;
+          if (portMonitor && portMonitor.availabilityChecker) {
+            logger.info(`🔧 Updating PortMonitor host IP to: ${updates.hostIp}`);
+            portMonitor.availabilityChecker.setHostIp(updates.hostIp, false);
+          }
+        } catch (error) {
+          logger.error(`Failed to update PortMonitor host IP: ${error.message}`);
+        }
+      }
+      
       // Save to database
       const saveResult = await this.saveToDatabase();
       

@@ -71,6 +71,7 @@ const getConfig = asyncHandler(async (req, res) => {
       
       // Network settings
       apiTimeout: ConfigManager.apiTimeout,
+      hostIp: ConfigManager.hostIp || '',
       
       // Record defaults
       recordDefaults: ConfigManager.recordDefaults || {}
@@ -148,6 +149,7 @@ const updateConfig = asyncHandler(async (req, res) => {
     
     // Network settings
     apiTimeout,
+    hostIp,
     
     // Cache settings
     dnsCacheRefreshInterval,
@@ -182,6 +184,7 @@ const updateConfig = asyncHandler(async (req, res) => {
   if (managedHostnames !== undefined) updatedConfig.managedHostnames = managedHostnames;
   if (preservedHostnames !== undefined) updatedConfig.preservedHostnames = preservedHostnames;
   if (apiTimeout !== undefined) updatedConfig.apiTimeout = apiTimeout;
+  if (hostIp !== undefined) updatedConfig.hostIp = hostIp;
   if (dnsCacheRefreshInterval !== undefined) updatedConfig.dnsCacheRefreshInterval = dnsCacheRefreshInterval;
   if (ipRefreshInterval !== undefined) updatedConfig.ipRefreshInterval = ipRefreshInterval;
   

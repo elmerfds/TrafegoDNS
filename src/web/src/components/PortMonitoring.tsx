@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -135,6 +136,28 @@ export default function PortMonitoring() {
   // Real-time updates
   const { socket, isConnected } = useSocket();
   
+  // Watch for config changes to sync host IP
+  const { data: configData } = useQuery({
+    queryKey: ['config'],
+    queryFn: async () => {
+      const response = await api.get('/config');
+      return response.data.data.config;
+    },
+    staleTime: 30000, // 30 seconds
+  });
+  
+  // Update servers when config changes
+  useEffect(() => {
+    if (configData?.hostIp) {
+      console.log('PortMonitoring: Config changed, updating host IP to:', configData.hostIp);
+      setServers(prev => prev.map(server => 
+        server.isHost 
+          ? { ...server, ip: configData.hostIp }
+          : server
+      ));
+    }
+  }, [configData?.hostIp]);
+  
   useEffect(() => {
     loadStatistics();
     loadReservations();
@@ -146,6 +169,8 @@ export default function PortMonitoring() {
       const response = await api.get('/config');
       const config = response.data.data.config;
       
+      console.log('PortMonitoring: Loaded config with hostIp:', config.hostIp);
+      
       // Update the host server IP with the configured value
       if (config.hostIp) {
         setServers(prev => prev.map(server => 
@@ -153,6 +178,7 @@ export default function PortMonitoring() {
             ? { ...server, ip: config.hostIp }
             : server
         ));
+        console.log('PortMonitoring: Updated host server IP to:', config.hostIp);
       }
     } catch (error) {
       console.error('Failed to load host configuration:', error);
@@ -444,9 +470,11 @@ export default function PortMonitoring() {
       setError(null);
       
       // Update the host IP in the application settings
-      await api.put('/config', {
+      console.log('Sending hostIp update to API:', editHostIpValue.trim());
+      const response = await api.put('/config', {
         hostIp: editHostIpValue.trim()
       });
+      console.log('API response:', response.data);
 
       // Update the local servers state
       setServers(prev => prev.map(server => 
@@ -464,6 +492,12 @@ export default function PortMonitoring() {
       }
 
       console.log('Host IP updated to:', editHostIpValue.trim());
+      
+      // Also reload the host configuration to ensure everything is synced
+      setTimeout(() => {
+        loadHostConfiguration();
+      }, 500);
+      
     } catch (error: any) {
       setError(error.response?.data?.error || 'Failed to update host IP');
     } finally {
@@ -1503,6 +1537,8 @@ export default function PortMonitoring() {
                     <div>Custom IP: {customServerIp || 'none'}</div>
                     <div>Form values: {newServerName} / {newServerIp}</div>
                     <div>Button disabled: {(!newServerName.trim() || !newServerIp.trim() || addingServer).toString()}</div>
+                    <div>Config hostIp: {configData?.hostIp || 'none'}</div>
+                    <div>Host server IP: {servers.find(s => s.isHost)?.ip || 'none'}</div>
                   </div>
                 </div>
               </div>
