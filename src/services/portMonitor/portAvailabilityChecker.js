@@ -433,6 +433,157 @@ class PortAvailabilityChecker {
 
     return ports;
   }
+
+  /**
+   * Get all system ports currently in use
+   * @param {string} server - Server to check
+   * @returns {Promise<Array>}
+   */
+  async getSystemPortsInUse(server = 'localhost') {
+    try {
+      // For remote servers, we need SSH or agent-based checking
+      if (server !== 'localhost' && server !== '127.0.0.1') {
+        logger.warn(`Remote port scanning for ${server} not implemented yet`);
+        return [];
+      }
+      
+      const listeningPorts = await this.getListeningPorts();
+      
+      return listeningPorts.map(port => ({
+        port: port.port,
+        protocol: port.protocol || 'tcp',
+        service: port.service || this._identifyService(port.port),
+        pid: port.pid,
+        address: port.address || '0.0.0.0'
+      }));
+    } catch (error) {
+      logger.error(`Failed to get system ports in use: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Check port availability on specific server
+   * @param {number} port - Port to check
+   * @param {string} protocol - Protocol
+   * @param {string} server - Server to check
+   * @returns {Promise<boolean>}
+   */
+  async checkPort(port, protocol = 'tcp', server = 'localhost') {
+    try {
+      // For local checks, use existing method
+      if (server === 'localhost' || server === '127.0.0.1') {
+        return await this.isPortAvailable(port, protocol);
+      }
+      
+      // For remote servers, try socket connection
+      return await this._checkRemotePort(port, protocol, server);
+    } catch (error) {
+      logger.error(`Failed to check port ${port}/${protocol} on ${server}: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Check multiple ports with protocol and server support
+   * @param {Array<number>} ports - Ports to check
+   * @param {string} protocol - Protocol
+   * @param {string} server - Server to check
+   * @returns {Promise<Object>}
+   */
+  async checkMultiplePorts(ports, protocol = 'tcp', server = 'localhost') {
+    const results = {};
+    
+    // Use batch checking for efficiency
+    const batchSize = 10;
+    for (let i = 0; i < ports.length; i += batchSize) {
+      const batch = ports.slice(i, i + batchSize);
+      const batchPromises = batch.map(port => 
+        this.checkPort(port, protocol, server)
+          .then(available => ({ port, available }))
+      );
+      
+      const batchResults = await Promise.all(batchPromises);
+      for (const { port, available } of batchResults) {
+        results[port] = available;
+      }
+    }
+    
+    return results;
+  }
+
+  /**
+   * Check remote port availability
+   * @private
+   * @param {number} port - Port to check
+   * @param {string} protocol - Protocol
+   * @param {string} server - Server address
+   * @returns {Promise<boolean>}
+   */
+  async _checkRemotePort(port, protocol, server) {
+    if (protocol === 'udp') {
+      // UDP checking is more complex, return unknown for now
+      logger.debug(`UDP port checking for remote servers not implemented`);
+      return true;
+    }
+    
+    // For TCP, try to connect
+    const { promisify } = require('util');
+    const net = require('net');
+    
+    return new Promise((resolve) => {
+      const socket = new net.Socket();
+      const timeout = 2000; // 2 second timeout
+      
+      socket.setTimeout(timeout);
+      
+      socket.on('connect', () => {
+        socket.destroy();
+        resolve(false); // Port is in use
+      });
+      
+      socket.on('error', () => {
+        resolve(true); // Port is available
+      });
+      
+      socket.on('timeout', () => {
+        socket.destroy();
+        resolve(true); // Assume available if timeout
+      });
+      
+      socket.connect(port, server);
+    });
+  }
+
+  /**
+   * Identify common services by port number
+   * @private
+   * @param {number} port - Port number
+   * @returns {string}
+   */
+  _identifyService(port) {
+    const commonPorts = {
+      20: 'FTP-DATA',
+      21: 'FTP',
+      22: 'SSH',
+      23: 'Telnet',
+      25: 'SMTP',
+      53: 'DNS',
+      80: 'HTTP',
+      110: 'POP3',
+      143: 'IMAP',
+      443: 'HTTPS',
+      445: 'SMB',
+      3306: 'MySQL',
+      5432: 'PostgreSQL',
+      6379: 'Redis',
+      8080: 'HTTP-Alt',
+      8443: 'HTTPS-Alt',
+      27017: 'MongoDB'
+    };
+    
+    return commonPorts[port] || 'Unknown';
+  }
 }
 
 module.exports = PortAvailabilityChecker;

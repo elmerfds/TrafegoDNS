@@ -571,6 +571,111 @@ class DockerPortIntegration {
 
     logger.debug('Docker Port Integration event bindings configured');
   }
+
+  /**
+   * Get all container ports currently mapped
+   * @returns {Promise<Array>}
+   */
+  async getContainerPorts() {
+    const containerPorts = [];
+    
+    try {
+      // Get Docker client if available
+      const DockerMonitor = global.services?.DockerMonitor;
+      if (!DockerMonitor || !DockerMonitor.docker) {
+        logger.debug('Docker not available for container port detection');
+        return containerPorts;
+      }
+      
+      // Get all running containers
+      const containers = await DockerMonitor.docker.listContainers({ all: false });
+      
+      for (const containerInfo of containers) {
+        try {
+          const container = DockerMonitor.docker.getContainer(containerInfo.Id);
+          const inspection = await container.inspect();
+          
+          // Extract port mappings
+          const ports = inspection.NetworkSettings?.Ports || {};
+          const containerName = inspection.Name?.replace(/^\//, '') || containerInfo.Names[0]?.replace(/^\//, '');
+          
+          for (const [containerPort, hostBindings] of Object.entries(ports)) {
+            if (hostBindings && hostBindings.length > 0) {
+              const [port, protocol] = containerPort.split('/');
+              
+              for (const binding of hostBindings) {
+                if (binding.HostPort) {
+                  containerPorts.push({
+                    containerId: containerInfo.Id,
+                    containerName,
+                    containerPort: parseInt(port),
+                    hostPort: parseInt(binding.HostPort),
+                    hostIp: binding.HostIp || '0.0.0.0',
+                    protocol: protocol || 'tcp',
+                    service: this._identifyContainerService(containerName, parseInt(port))
+                  });
+                }
+              }
+            }
+          }
+        } catch (error) {
+          logger.debug(`Failed to get ports for container ${containerInfo.Id}: ${error.message}`);
+        }
+      }
+    } catch (error) {
+      logger.error(`Failed to get container ports: ${error.message}`);
+    }
+    
+    return containerPorts;
+  }
+
+  /**
+   * Identify container service by name and port
+   * @private
+   * @param {string} containerName - Container name
+   * @param {number} port - Container port
+   * @returns {string}
+   */
+  _identifyContainerService(containerName, port) {
+    // Common patterns in container names
+    const namePatterns = {
+      nginx: 'nginx',
+      apache: 'apache',
+      mysql: 'mysql',
+      postgres: 'postgresql',
+      mongo: 'mongodb',
+      redis: 'redis',
+      rabbitmq: 'rabbitmq',
+      elasticsearch: 'elasticsearch',
+      kibana: 'kibana',
+      grafana: 'grafana',
+      prometheus: 'prometheus',
+      traefik: 'traefik'
+    };
+    
+    const lowerName = containerName.toLowerCase();
+    for (const [pattern, service] of Object.entries(namePatterns)) {
+      if (lowerName.includes(pattern)) {
+        return service;
+      }
+    }
+    
+    // Fallback to port-based identification
+    const portServices = {
+      80: 'http',
+      443: 'https',
+      3306: 'mysql',
+      5432: 'postgresql',
+      6379: 'redis',
+      27017: 'mongodb',
+      9200: 'elasticsearch',
+      5601: 'kibana',
+      3000: 'grafana',
+      9090: 'prometheus'
+    };
+    
+    return portServices[port] || 'docker';
+  }
 }
 
 module.exports = DockerPortIntegration;
