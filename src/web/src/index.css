@@ -11,19 +11,19 @@
     --card-foreground: 222 47% 11%;      /* Dark navy */
     --popover: 0 0% 99%;                 /* Very light grey */
     --popover-foreground: 222 47% 11%;   /* Dark navy */
-    --primary: 20 184 166;               /* Teal primary */
-    --primary-foreground: 255 255 255;   /* White on teal */
-    --secondary: 240 253 250;            /* Light teal #F0FDFA */
-    --secondary-foreground: 19 78 74;    /* Dark teal */
+    --primary: 173 80% 40%;              /* Teal primary */
+    --primary-foreground: 0 0% 100%;     /* White on teal */
+    --secondary: 166 76% 97%;            /* Light teal #F0FDFA */
+    --secondary-foreground: 173 80% 18%; /* Dark teal */
     --muted: 210 17% 92%;                /* Muted grey #E8EAED */
     --muted-foreground: 215 16% 35%;     /* Darker muted text for better contrast */
-    --accent: 153 246 228;               /* Teal accent #99F6E4 */
-    --accent-foreground: 19 78 74;       /* Dark teal */
+    --accent: 166 76% 84%;               /* Teal accent #99F6E4 */
+    --accent-foreground: 173 80% 18%;    /* Dark teal */
     --destructive: 0 72% 51%;            /* Softer red #D73A49 */
     --destructive-foreground: 0 0% 98%;  /* Off-white */
     --border: 214 32% 88%;               /* Softer borders #D5DAE1 */
     --input: 0 0% 99%;                   /* Very light input background */
-    --ring: 20 184 166;                  /* Teal ring */
+    --ring: 173 80% 40%;                 /* Teal ring */
     --radius: 0.375rem;
   }
 
@@ -35,77 +35,21 @@
     --card-foreground: 210 40% 98%;      /* Soft White #F8FAFC */
     --popover: 220 41% 10%;              /* Dark Blue-Black #111827 */
     --popover-foreground: 210 40% 98%;   /* Soft White #F8FAFC */
-    --primary: 20 184 166;               /* Teal primary */
-    --primary-foreground: 255 255 255;   /* White on teal */
+    --primary: 173 80% 40%;              /* Teal primary */
+    --primary-foreground: 0 0% 100%;     /* White on teal */
     --secondary: 217 33% 17%;            /* Dark Blue #1e3a5f */
     --secondary-foreground: 210 40% 98%; /* Soft White #F8FAFC */
     --muted: 217 33% 17%;                /* Dark Blue #1e3a5f */
     --muted-foreground: 215 20% 65%;     /* Muted Blue-White #94a3b8 */
-    --accent: 153 246 228;               /* Teal accent #99F6E4 */
-    --accent-foreground: 19 78 74;       /* Dark teal */
+    --accent: 166 76% 84%;               /* Teal accent #99F6E4 */
+    --accent-foreground: 173 80% 18%;    /* Dark teal */
     --destructive: 0 84% 60%;            /* Softer Red #ef4444 */
     --destructive-foreground: 210 40% 98%; /* Soft White #F8FAFC */
     --border: 217 33% 17%;               /* Dark Blue #1e3a5f */
     --input: 220 41% 10%;                /* Dark Blue-Black #111827 */
-    --ring: 20 184 166;                  /* Teal ring */
+    --ring: 173 80% 40%;                 /* Teal ring */
   }
 
-  /* Gold Theme Variables - Classic TrafegoDNS Gold */
-  .theme-gold {
-    --primary: 245 158 11 !important;               /* Amber-500 gold primary */
-    --accent: 252 211 77 !important;                /* Amber-300 gold accent */  
-    --ring: 245 158 11 !important;                  /* Amber-500 gold ring */
-  }
-  
-  .theme-gold:not(.dark) {
-    --secondary: 255 251 235 !important;            /* Amber-50 light secondary */
-    --secondary-foreground: 146 64 14 !important;   /* Amber-800 dark text */
-    --accent-foreground: 146 64 14 !important;      /* Amber-800 for light mode text */
-  }
-  
-  .theme-gold.dark {
-    --secondary: 31 41 55 !important;               /* Dark secondary for dark mode */
-    --secondary-foreground: 252 211 77 !important;  /* Amber-300 for dark mode text */
-    --accent-foreground: 19 78 74 !important;       /* Dark teal for contrast */
-  }
-
-  /* Blue Theme Variables - Professional Blue */
-  .theme-blue {
-    --primary: 59 130 246 !important;               /* Blue-500 primary */
-    --accent: 147 197 253 !important;               /* Blue-300 accent */
-    --ring: 59 130 246 !important;                  /* Blue-500 ring */
-  }
-  
-  .theme-blue:not(.dark) {
-    --secondary: 239 246 255 !important;            /* Blue-50 light secondary */
-    --secondary-foreground: 30 58 138 !important;   /* Blue-800 dark text */
-    --accent-foreground: 30 58 138 !important;      /* Blue-800 for light mode text */
-  }
-  
-  .theme-blue.dark {
-    --secondary: 31 41 55 !important;               /* Dark secondary for dark mode */
-    --secondary-foreground: 147 197 253 !important; /* Blue-300 for dark mode text */
-    --accent-foreground: 19 78 74 !important;       /* Dark teal for contrast */
-  }
-
-  /* Purple Theme Variables - Creative Purple */
-  .theme-purple {
-    --primary: 139 92 246 !important;               /* Violet-500 primary */
-    --accent: 196 181 253 !important;               /* Violet-300 accent */
-    --ring: 139 92 246 !important;                  /* Violet-500 ring */
-  }
-  
-  .theme-purple:not(.dark) {
-    --secondary: 245 243 255 !important;            /* Violet-50 light secondary */
-    --secondary-foreground: 76 29 149 !important;   /* Violet-800 dark text */
-    --accent-foreground: 76 29 149 !important;      /* Violet-800 for light mode text */
-  }
-  
-  .theme-purple.dark {
-    --secondary: 31 41 55 !important;               /* Dark secondary for dark mode */
-    --secondary-foreground: 196 181 253 !important; /* Violet-300 for dark mode text */
-    --accent-foreground: 19 78 74 !important;       /* Dark teal for contrast */
-  }
 }
 
 /* Color Theme Overrides - Outside layers for maximum specificity */
@@ -114,10 +58,10 @@ html.theme-gold,
 :root.theme-gold,
 .theme-gold,
 [data-theme="gold"] {
-  --primary: 245 158 11 !important;
-  --accent: 252 211 77 !important;
-  --ring: 245 158 11 !important;
-  --primary-foreground: 255 255 255 !important;
+  --primary: 43 96% 56% !important;
+  --accent: 48 96% 89% !important;
+  --ring: 43 96% 56% !important;
+  --primary-foreground: 0 0% 100% !important;
 }
 
 html.theme-gold:not(.dark),
@@ -142,10 +86,10 @@ html.theme-blue,
 :root.theme-blue,
 .theme-blue,
 [data-theme="blue"] {
-  --primary: 59 130 246 !important;
-  --accent: 147 197 253 !important;
-  --ring: 59 130 246 !important;
-  --primary-foreground: 255 255 255 !important;
+  --primary: 217 91% 60% !important;
+  --accent: 213 93% 68% !important;
+  --ring: 217 91% 60% !important;
+  --primary-foreground: 0 0% 100% !important;
 }
 
 html.theme-blue:not(.dark),
@@ -170,10 +114,10 @@ html.theme-purple,
 :root.theme-purple,
 .theme-purple,
 [data-theme="purple"] {
-  --primary: 139 92 246 !important;
-  --accent: 196 181 253 !important;
-  --ring: 139 92 246 !important;
-  --primary-foreground: 255 255 255 !important;
+  --primary: 262 83% 58% !important;
+  --accent: 266 83% 74% !important;
+  --ring: 262 83% 58% !important;
+  --primary-foreground: 0 0% 100% !important;
 }
 
 html.theme-purple:not(.dark),

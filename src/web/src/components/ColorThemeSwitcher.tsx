@@ -48,12 +48,30 @@ export function ColorThemeSwitcher({ showLabel = true }: ColorThemeSwitcherProps
       {/* Debug: Visual color test */}
       <div className="mt-4 space-y-2 text-xs">
         <div className="flex items-center space-x-2">
-          <div className="w-4 h-4 bg-primary rounded" />
+          <div 
+            className="w-4 h-4 rounded border" 
+            style={{
+              backgroundColor: `hsl(var(--primary))`,
+              border: '1px solid hsl(var(--border))'
+            }}
+          />
           <span>Primary color (should change with theme)</span>
+          <code className="text-xs bg-muted px-1 rounded">
+            hsl({getComputedStyle(document.documentElement).getPropertyValue('--primary').trim()})
+          </code>
         </div>
         <div className="flex items-center space-x-2">
-          <div className="w-4 h-4 bg-accent rounded" />
+          <div 
+            className="w-4 h-4 rounded border" 
+            style={{
+              backgroundColor: `hsl(var(--accent))`,
+              border: '1px solid hsl(var(--border))'
+            }}
+          />
           <span>Accent color (should change with theme)</span>
+          <code className="text-xs bg-muted px-1 rounded">
+            hsl({getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()})
+          </code>
         </div>
         <div className="text-muted-foreground">
           Current theme: {currentTheme}
