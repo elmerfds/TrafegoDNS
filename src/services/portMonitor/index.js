@@ -361,7 +361,7 @@ class PortMonitor {
               labels: { source: 'system' }
             });
           } catch (err) {
-            logger.debug(`Failed to store port ${portInfo.port}: ${err.message}`);
+            logger.error(`Failed to store port ${portInfo.port}: ${err.message}`);
           }
         }
       }
@@ -391,7 +391,7 @@ class PortMonitor {
                 }
               });
             } catch (err) {
-              logger.debug(`Failed to store container port ${portInfo.hostPort}: ${err.message}`);
+              logger.error(`Failed to store container port ${portInfo.hostPort}: ${err.message}`);
             }
           }
         }

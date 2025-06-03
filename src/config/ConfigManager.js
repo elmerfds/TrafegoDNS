@@ -1064,7 +1064,16 @@ class ConfigManager {
         const secretName = dbKey.replace('secret_', '');
         
         try {
-          const encryptedData = JSON.parse(encryptedValue);
+          // Handle case where encryptedValue is already parsed by settingRepository
+          let encryptedData;
+          if (typeof encryptedValue === 'string') {
+            encryptedData = JSON.parse(encryptedValue);
+          } else if (typeof encryptedValue === 'object' && encryptedValue !== null) {
+            encryptedData = encryptedValue;
+          } else {
+            logger.warn(`Invalid encrypted value type for secret ${secretName}: ${typeof encryptedValue}`);
+            continue;
+          }
           
           if (!encryptedData.iv || !encryptedData.authTag || !encryptedData.data) {
             logger.warn(`Invalid encrypted data format for secret ${secretName}`);

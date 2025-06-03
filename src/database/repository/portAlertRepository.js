@@ -29,7 +29,7 @@ class PortAlertRepository extends BaseRepository {
       `);
 
       const result = stmt.run(port_id, alert_type, severity, title, description);
-      return this.getAlertById(result.lastInsertRowid);
+      return this.getAlertById(result.lastID);
     } catch (error) {
       logger.error('Failed to create port alert:', error);
       throw error;
