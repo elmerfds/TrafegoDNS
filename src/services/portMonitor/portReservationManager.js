@@ -261,6 +261,116 @@ class PortReservationManager {
   }
 
   /**
+   * Check if a port is reserved
+   * @param {number} port - Port to check
+   * @param {string} protocol - Protocol
+   * @returns {Promise<boolean>}
+   */
+  async isPortReserved(port, protocol = 'tcp') {
+    if (!this.isInitialized) {
+      return false;
+    }
+
+    const reservation = await this.repository.getPortReservation(port, protocol);
+    return !!reservation;
+  }
+
+  /**
+   * Get reservation information for a port
+   * @param {number} port - Port to check
+   * @param {string} protocol - Protocol
+   * @returns {Promise<Object|null>}
+   */
+  async getReservationInfo(port, protocol = 'tcp') {
+    if (!this.isInitialized) {
+      return null;
+    }
+
+    return await this.repository.getPortReservation(port, protocol);
+  }
+
+  /**
+   * Reserve a single port
+   * @param {Object} options - Reservation options
+   * @returns {Promise<Object>}
+   */
+  async reservePort(options) {
+    const {
+      port,
+      containerId,
+      protocol = 'tcp',
+      duration = null,
+      metadata = {}
+    } = options;
+
+    if (!port || !containerId) {
+      throw new Error('Port and container ID are required');
+    }
+
+    const reservations = await this.createReservations([port], containerId, protocol, duration, metadata);
+    return reservations[0];
+  }
+
+  /**
+   * Release ports for a container
+   * @param {string} containerId - Container ID
+   * @param {Array<number>} ports - Specific ports to release (optional)
+   * @returns {Promise<Array>}
+   */
+  async releasePortsForContainer(containerId, ports = null) {
+    if (!this.isInitialized) {
+      throw new Error('Port Reservation Manager not initialized');
+    }
+
+    if (ports && ports.length > 0) {
+      // Release specific ports
+      const releasedCount = await this.releaseReservations(ports, containerId);
+      const releasedReservations = [];
+      for (const port of ports) {
+        releasedReservations.push({
+          port,
+          containerId,
+          releasedAt: new Date().toISOString()
+        });
+      }
+      return releasedReservations;
+    } else {
+      // Release all ports for the container
+      const existingReservations = await this.getContainerReservations(containerId, true);
+      await this.releaseAllContainerReservations(containerId);
+      return existingReservations.map(reservation => ({
+        port: reservation.port,
+        containerId,
+        releasedAt: new Date().toISOString()
+      }));
+    }
+  }
+
+  /**
+   * Get reservations with filters
+   * @param {Object} filters - Filter options
+   * @returns {Promise<Array>}
+   */
+  async getReservations(filters = {}) {
+    if (!this.isInitialized) {
+      throw new Error('Port Reservation Manager not initialized');
+    }
+
+    const { containerId, ports, activeOnly = true } = filters;
+
+    if (containerId) {
+      return await this.getContainerReservations(containerId, activeOnly);
+    }
+
+    if (ports && ports.length > 0) {
+      return await this.getActiveReservations(ports);
+    }
+
+    // Get all active reservations
+    return await this.getActiveReservations();
+  }
+
+  /**
    * Get reservation statistics
    * @returns {Promise<Object>}
    */

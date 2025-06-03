@@ -6,9 +6,11 @@ const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/authMiddleware');
 const {
+  getPortsInUse,
   checkPortAvailability,
   reservePorts,
   releasePorts,
+  updatePortDocumentation,
   suggestAlternativePorts,
   validateDeployment,
   getPortStatistics,
@@ -481,5 +483,69 @@ router.post('/recommendations', authenticate, getPortRecommendations);
  *         description: Server error
  */
 router.post('/scan-range', authenticate, scanPortRange);
+
+/**
+ * @swagger
+ * /api/v1/ports/in-use:
+ *   get:
+ *     summary: Get ports currently in use
+ *     description: Get all ports in use on a specified server
+ *     tags: [Ports]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: server
+ *         schema:
+ *           type: string
+ *           default: localhost
+ *         description: Server IP or hostname to check
+ *     responses:
+ *       200:
+ *         description: List of ports in use
+ *       500:
+ *         description: Server error
+ */
+router.get('/in-use', authenticate, getPortsInUse);
+
+/**
+ * @swagger
+ * /api/v1/ports/{port}/documentation:
+ *   put:
+ *     summary: Update port documentation
+ *     description: Add or update documentation/notes for a specific port
+ *     tags: [Ports]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: port
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Port number
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               documentation:
+ *                 type: string
+ *                 description: Documentation/notes for the port
+ *               server:
+ *                 type: string
+ *                 default: localhost
+ *                 description: Server where the port is located
+ *     responses:
+ *       200:
+ *         description: Documentation updated successfully
+ *       400:
+ *         description: Invalid port number
+ *       500:
+ *         description: Server error
+ */
+router.put('/:port/documentation', authenticate, updatePortDocumentation);
 
 module.exports = router;

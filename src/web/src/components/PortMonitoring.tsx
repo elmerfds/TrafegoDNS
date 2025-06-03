@@ -10,7 +10,7 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Switch } from './ui/switch';
 import { Progress } from './ui/progress';
-import { AlertTriangle, CheckCircle, XCircle, Search, Settings, Activity, Wifi, WifiOff } from 'lucide-react';
+import { AlertTriangle, CheckCircle, XCircle, Search, Settings, Activity, Wifi, WifiOff, Plus, Server } from 'lucide-react';
 import { useSocket } from '../hooks/useSocket';
 import { api } from '../lib/api';
 
@@ -57,6 +57,23 @@ interface PortStatistics {
   excludedPorts: number[];
 }
 
+interface PortInUse {
+  port: number;
+  protocol: string;
+  service?: string;
+  containerId?: string;
+  containerName?: string;
+  documentation?: string;
+  lastSeen: string;
+}
+
+interface Server {
+  id: string;
+  name: string;
+  ip: string;
+  isHost: boolean;
+}
+
 export default function PortMonitoring() {
   const [statistics, setStatistics] = useState<PortStatistics | null>(null);
   const [reservations, setReservations] = useState<PortReservation[]>([]);
@@ -67,10 +84,23 @@ export default function PortMonitoring() {
   
   // Form states
   const [portsToCheck, setPortsToCheck] = useState('');
-  const [protocol, setProtocol] = useState('tcp');
+  const [protocol, setProtocol] = useState('both'); // Changed default to 'both'
   const [scanStartPort, setScanStartPort] = useState('3000');
   const [scanEndPort, setScanEndPort] = useState('3100');
   const [serviceType, setServiceType] = useState('web');
+  const [selectedServer, setSelectedServer] = useState('host');
+  const [customServerIp, setCustomServerIp] = useState('');
+  const [portsInUse, setPortsInUse] = useState<PortInUse[]>([]);
+  const [servers, setServers] = useState<Server[]>([
+    { id: 'host', name: 'Host Server', ip: 'localhost', isHost: true }
+  ]);
+  
+  // Reservation form states
+  const [reservationPort, setReservationPort] = useState('');
+  const [reservationContainerId, setReservationContainerId] = useState('');
+  const [reservationDuration, setReservationDuration] = useState('3600');
+  const [reservationNotes, setReservationNotes] = useState('');
+  const [showReservationDialog, setShowReservationDialog] = useState(false);
   
   // Real-time updates
   const { socket, isConnected } = useSocket();
@@ -78,7 +108,8 @@ export default function PortMonitoring() {
   useEffect(() => {
     loadStatistics();
     loadReservations();
-  }, []);
+    loadPortsInUse();
+  }, [selectedServer]);
 
   useEffect(() => {
     if (socket && isConnected) {
@@ -133,6 +164,61 @@ export default function PortMonitoring() {
       setReservations(response.data.data.reservations);
     } catch (error) {
       console.error('Failed to load port reservations:', error);
+    }
+  };
+
+  const loadPortsInUse = async () => {
+    try {
+      const serverIp = selectedServer === 'custom' ? customServerIp : servers.find(s => s.id === selectedServer)?.ip || 'localhost';
+      const response = await api.get(`/ports/in-use?server=${serverIp}`);
+      setPortsInUse(response.data.data.ports);
+    } catch (error) {
+      console.error('Failed to load ports in use:', error);
+    }
+  };
+
+  const createReservation = async () => {
+    if (!reservationPort || !reservationContainerId) {
+      setError('Port and Container ID are required');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      await api.post('/ports/reserve', {
+        ports: [parseInt(reservationPort)],
+        containerId: reservationContainerId,
+        protocol: protocol === 'both' ? 'tcp' : protocol,
+        duration: parseInt(reservationDuration),
+        metadata: {
+          notes: reservationNotes,
+          createdBy: 'user'
+        }
+      });
+
+      setShowReservationDialog(false);
+      setReservationPort('');
+      setReservationContainerId('');
+      setReservationNotes('');
+      loadReservations();
+    } catch (error: any) {
+      setError(error.response?.data?.message || 'Failed to create reservation');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updatePortDocumentation = async (port: number, documentation: string) => {
+    try {
+      await api.put(`/ports/${port}/documentation`, {
+        documentation,
+        server: selectedServer === 'custom' ? customServerIp : servers.find(s => s.id === selectedServer)?.ip
+      });
+      loadPortsInUse();
+    } catch (error) {
+      console.error('Failed to update port documentation:', error);
     }
   };
 
@@ -314,13 +400,108 @@ export default function PortMonitoring() {
         </div>
       )}
 
-      <Tabs defaultValue="check" className="space-y-4">
+      <Tabs defaultValue="in-use" className="space-y-4">
         <TabsList>
+          <TabsTrigger value="in-use">Ports in Use</TabsTrigger>
           <TabsTrigger value="check">Port Checker</TabsTrigger>
           <TabsTrigger value="scan">Range Scanner</TabsTrigger>
           <TabsTrigger value="reservations">Reservations</TabsTrigger>
           <TabsTrigger value="suggestions">Suggestions</TabsTrigger>
+          <TabsTrigger value="servers">Servers</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="in-use" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Ports Currently in Use</CardTitle>
+              <CardDescription>
+                All ports in use on {selectedServer === 'custom' ? customServerIp : servers.find(s => s.id === selectedServer)?.name || 'Host'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4">
+                <Label htmlFor="serverSelect">Server</Label>
+                <div className="flex space-x-2">
+                  <Select value={selectedServer} onValueChange={setSelectedServer}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {servers.map(server => (
+                        <SelectItem key={server.id} value={server.id}>
+                          {server.name} ({server.ip})
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="custom">Custom IP...</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {selectedServer === 'custom' && (
+                    <Input
+                      placeholder="Enter server IP"
+                      value={customServerIp}
+                      onChange={(e) => setCustomServerIp(e.target.value)}
+                      className="w-48"
+                    />
+                  )}
+                  <Button onClick={loadPortsInUse} disabled={loading}>
+                    <Search className="h-4 w-4 mr-2" />
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+              
+              {portsInUse.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No ports found in use. Click Refresh to scan.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="text-sm text-muted-foreground mb-2">
+                    Found {portsInUse.length} ports in use
+                  </div>
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {portsInUse.map((portInfo) => (
+                      <div key={`${portInfo.port}-${portInfo.protocol}`} className="p-3 border rounded space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <span className="font-mono text-sm font-bold">
+                              {portInfo.port}/{portInfo.protocol}
+                            </span>
+                            <Badge variant="destructive">In Use</Badge>
+                            {portInfo.service && (
+                              <Badge variant="outline">{portInfo.service}</Badge>
+                            )}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            Last seen: {formatDate(portInfo.lastSeen)}
+                          </div>
+                        </div>
+                        {portInfo.containerName && (
+                          <div className="text-sm">
+                            Container: <span className="font-medium">{portInfo.containerName}</span>
+                            {portInfo.containerId && (
+                              <span className="text-xs text-muted-foreground ml-2">
+                                ({portInfo.containerId.substring(0, 12)})
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        <div className="flex items-center space-x-2">
+                          <Input
+                            placeholder="Add documentation/notes..."
+                            value={portInfo.documentation || ''}
+                            onChange={(e) => updatePortDocumentation(portInfo.port, e.target.value)}
+                            className="text-sm"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="check" className="space-y-4">
           <Card>
@@ -339,12 +520,13 @@ export default function PortMonitoring() {
                   className="flex-1"
                 />
                 <Select value={protocol} onValueChange={setProtocol}>
-                  <SelectTrigger className="w-24">
+                  <SelectTrigger className="w-32">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="tcp">TCP</SelectItem>
-                    <SelectItem value="udp">UDP</SelectItem>
+                    <SelectItem value="both">Both</SelectItem>
+                    <SelectItem value="tcp">TCP Only</SelectItem>
+                    <SelectItem value="udp">UDP Only</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button onClick={checkPortAvailability} disabled={loading}>
@@ -437,11 +619,17 @@ export default function PortMonitoring() {
 
         <TabsContent value="reservations" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Active Port Reservations</CardTitle>
-              <CardDescription>
-                Currently active port reservations in the system
-              </CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Active Port Reservations</CardTitle>
+                <CardDescription>
+                  Currently active port reservations in the system
+                </CardDescription>
+              </div>
+              <Button onClick={() => setShowReservationDialog(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Reservation
+              </Button>
             </CardHeader>
             <CardContent>
               {reservations.length === 0 ? (
@@ -537,7 +725,123 @@ export default function PortMonitoring() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="servers" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Server Management</CardTitle>
+              <CardDescription>
+                Configure servers for port monitoring
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <h4 className="font-medium">Configured Servers</h4>
+                  {servers.map(server => (
+                    <div key={server.id} className="flex items-center justify-between p-3 border rounded">
+                      <div className="flex items-center space-x-3">
+                        <Server className="h-4 w-4" />
+                        <div>
+                          <div className="font-medium">{server.name}</div>
+                          <div className="text-sm text-muted-foreground">{server.ip}</div>
+                        </div>
+                      </div>
+                      {server.isHost && (
+                        <Badge variant="outline">Host Server</Badge>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="border-t pt-4">
+                  <h4 className="font-medium mb-2">Add Custom Server</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Input placeholder="Server Name" />
+                    <Input placeholder="Server IP" />
+                  </div>
+                  <Button className="mt-2">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Server
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      <Dialog open={showReservationDialog} onOpenChange={setShowReservationDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Port Reservation</DialogTitle>
+            <DialogDescription>
+              Reserve a port for a specific container
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="reservationPort">Port Number</Label>
+              <Input
+                id="reservationPort"
+                type="number"
+                placeholder="e.g., 8080"
+                value={reservationPort}
+                onChange={(e) => setReservationPort(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="reservationContainerId">Container ID</Label>
+              <Input
+                id="reservationContainerId"
+                placeholder="Container ID or name"
+                value={reservationContainerId}
+                onChange={(e) => setReservationContainerId(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="reservationProtocol">Protocol</Label>
+              <Select value={protocol} onValueChange={setProtocol}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="tcp">TCP</SelectItem>
+                  <SelectItem value="udp">UDP</SelectItem>
+                  <SelectItem value="both">Both</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="reservationDuration">Duration (seconds)</Label>
+              <Input
+                id="reservationDuration"
+                type="number"
+                placeholder="3600"
+                value={reservationDuration}
+                onChange={(e) => setReservationDuration(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="reservationNotes">Notes</Label>
+              <Input
+                id="reservationNotes"
+                placeholder="Optional notes about this reservation"
+                value={reservationNotes}
+                onChange={(e) => setReservationNotes(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end space-x-2 mt-6">
+            <Button variant="outline" onClick={() => setShowReservationDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={createReservation} disabled={loading}>
+              Create Reservation
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

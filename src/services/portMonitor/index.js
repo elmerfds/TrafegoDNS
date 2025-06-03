@@ -504,6 +504,322 @@ class PortMonitor {
       }
     }, 60000); // Every minute
   }
+
+  /**
+   * Get all ports currently in use on a server
+   * @param {string} server - Server IP or hostname
+   * @returns {Promise<Array>}
+   */
+  async getPortsInUse(server = 'localhost') {
+    try {
+      // Get system ports in use
+      const systemPorts = await this.availabilityChecker.getSystemPortsInUse(server);
+      
+      // Get Docker container ports if server is localhost
+      let containerPorts = [];
+      if (server === 'localhost' || server === '127.0.0.1') {
+        containerPorts = await this.dockerIntegration.getContainerPorts();
+      }
+      
+      // Merge and format results
+      const portsInUse = new Map();
+      
+      // Add system ports
+      for (const port of systemPorts) {
+        portsInUse.set(`${port.port}-${port.protocol}`, {
+          port: port.port,
+          protocol: port.protocol,
+          service: port.service,
+          lastSeen: new Date().toISOString()
+        });
+      }
+      
+      // Add container ports
+      for (const containerPort of containerPorts) {
+        const key = `${containerPort.hostPort}-${containerPort.protocol || 'tcp'}`;
+        const existing = portsInUse.get(key);
+        
+        if (existing) {
+          existing.containerId = containerPort.containerId;
+          existing.containerName = containerPort.containerName;
+        } else {
+          portsInUse.set(key, {
+            port: containerPort.hostPort,
+            protocol: containerPort.protocol || 'tcp',
+            containerId: containerPort.containerId,
+            containerName: containerPort.containerName,
+            service: containerPort.service || 'docker',
+            lastSeen: new Date().toISOString()
+          });
+        }
+      }
+      
+      // Get port documentation from database
+      const portDocs = await this.database.repositories?.portDocumentation?.getAll() || [];
+      for (const doc of portDocs) {
+        const key = `${doc.port}-${doc.protocol}`;
+        const port = portsInUse.get(key);
+        if (port) {
+          port.documentation = doc.documentation;
+        }
+      }
+      
+      return Array.from(portsInUse.values());
+    } catch (error) {
+      logger.error(`Failed to get ports in use: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Check port availability with protocol awareness
+   * @param {Array<number>} ports - Ports to check
+   * @param {string} protocol - Protocol (tcp, udp, both)
+   * @param {string} server - Server to check
+   * @returns {Promise<Object>}
+   */
+  async checkPortsAvailability(ports, protocol = 'both', server = 'localhost') {
+    try {
+      const results = {
+        ports: []
+      };
+      
+      for (const port of ports) {
+        if (protocol === 'both') {
+          // Check both TCP and UDP
+          const tcpAvailable = await this.availabilityChecker.checkPort(port, 'tcp', server);
+          const udpAvailable = await this.availabilityChecker.checkPort(port, 'udp', server);
+          
+          // Port is only available if BOTH protocols are available
+          const available = tcpAvailable && udpAvailable;
+          
+          results.ports.push({
+            port,
+            available,
+            reserved: await this.reservationManager.isPortReserved(port),
+            protocol: 'both',
+            details: {
+              tcp: tcpAvailable,
+              udp: udpAvailable
+            }
+          });
+        } else {
+          const available = await this.availabilityChecker.checkPort(port, protocol, server);
+          const reserved = await this.reservationManager.isPortReserved(port, protocol);
+          
+          results.ports.push({
+            port,
+            available,
+            reserved,
+            protocol,
+            reservedBy: reserved ? await this.reservationManager.getReservationInfo(port, protocol) : null
+          });
+        }
+      }
+      
+      return results;
+    } catch (error) {
+      logger.error(`Failed to check port availability: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Reserve ports with enhanced options
+   * @param {Object} options - Reservation options
+   * @returns {Promise<Object>}
+   */
+  async reservePorts(options) {
+    const { ports, containerId, protocol = 'tcp', duration = 3600, metadata = {}, server = 'localhost' } = options;
+    
+    try {
+      const results = {
+        reserved: [],
+        conflicts: [],
+        suggestions: []
+      };
+      
+      // Check each port
+      for (const port of ports) {
+        const available = await this.availabilityChecker.checkPort(port, protocol, server);
+        
+        if (!available) {
+          const conflict = {
+            port,
+            protocol,
+            reason: 'Port already in use'
+          };
+          results.conflicts.push(conflict);
+          
+          // Get suggestions
+          const alternatives = await this.suggestionEngine.suggestAlternatives(port, protocol);
+          results.suggestions.push({
+            originalPort: port,
+            alternatives: alternatives.slice(0, 3)
+          });
+        } else {
+          // Reserve the port
+          const reservation = await this.reservationManager.reservePort({
+            port,
+            containerId,
+            protocol,
+            duration,
+            metadata
+          });
+          results.reserved.push(reservation);
+        }
+      }
+      
+      return results;
+    } catch (error) {
+      logger.error(`Failed to reserve ports: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Release ports for a container
+   * @param {string} containerId - Container ID
+   * @param {Array<number>} ports - Specific ports to release (optional)
+   * @returns {Promise<Object>}
+   */
+  async releasePorts(containerId, ports = null) {
+    try {
+      const released = await this.reservationManager.releasePortsForContainer(containerId, ports);
+      return {
+        released,
+        count: released.length
+      };
+    } catch (error) {
+      logger.error(`Failed to release ports: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Update port documentation
+   * @param {number} port - Port number
+   * @param {string} documentation - Documentation text
+   * @param {string} server - Server IP
+   * @returns {Promise<void>}
+   */
+  async updatePortDocumentation(port, documentation, server = 'localhost') {
+    try {
+      // Store in database
+      if (!this.database.repositories?.portDocumentation) {
+        // Create simple storage if repository doesn't exist
+        const portDocs = this.portDocumentation || new Map();
+        portDocs.set(`${port}-${server}`, {
+          port,
+          server,
+          documentation,
+          updatedAt: new Date().toISOString()
+        });
+        this.portDocumentation = portDocs;
+      } else {
+        await this.database.repositories.portDocumentation.upsert({
+          port,
+          server,
+          documentation,
+          protocol: 'tcp', // Default protocol
+          updatedAt: new Date().toISOString()
+        });
+      }
+    } catch (error) {
+      logger.error(`Failed to update port documentation: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get port statistics
+   * @returns {Promise<Object>}
+   */
+  async getStatistics() {
+    try {
+      const reservations = await this.reservationManager.getActiveReservations();
+      const monitoredPorts = this.monitoredPorts.size;
+      
+      return {
+        totalMonitoredPorts: monitoredPorts,
+        activeReservations: reservations.length,
+        availablePortsInRange: await this._countAvailablePorts(),
+        conflictsDetected: this.conflictDetector.getRecentConflictsCount(),
+        lastScanTime: this.lastScanTime || null,
+        monitoringEnabled: this.enableRealTimeMonitoring,
+        portRanges: this.portRanges,
+        excludedPorts: this.excludedPorts
+      };
+    } catch (error) {
+      logger.error(`Failed to get statistics: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get reservations with filters
+   * @param {Object} filters - Filter options
+   * @returns {Promise<Array>}
+   */
+  async getReservations(filters = {}) {
+    try {
+      return await this.reservationManager.getReservations(filters);
+    } catch (error) {
+      logger.error(`Failed to get reservations: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Scan port range
+   * @param {number} startPort - Start port
+   * @param {number} endPort - End port
+   * @param {string} protocol - Protocol
+   * @param {string} server - Server
+   * @returns {Promise<Object>}
+   */
+  async scanPortRange(startPort, endPort, protocol = 'tcp', server = 'localhost') {
+    try {
+      const results = {};
+      const batchSize = 50;
+      
+      for (let port = startPort; port <= endPort; port += batchSize) {
+        const batch = [];
+        for (let p = port; p < Math.min(port + batchSize, endPort + 1); p++) {
+          batch.push(p);
+        }
+        
+        const batchResults = await this.availabilityChecker.checkMultiplePorts(batch, protocol, server);
+        Object.assign(results, batchResults);
+      }
+      
+      this.lastScanTime = new Date().toISOString();
+      return results;
+    } catch (error) {
+      logger.error(`Failed to scan port range: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Count available ports in configured ranges
+   * @private
+   * @returns {Promise<number>}
+   */
+  async _countAvailablePorts() {
+    let count = 0;
+    for (const range of this.portRanges) {
+      for (let port = range.start; port <= range.end; port++) {
+        if (!this.excludedPorts.includes(port)) {
+          const status = this.monitoredPorts.get(port);
+          if (status && status.available) {
+            count++;
+          }
+        }
+      }
+    }
+    return count;
+  }
 }
 
 module.exports = PortMonitor;
