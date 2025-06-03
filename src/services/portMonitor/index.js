@@ -3,7 +3,7 @@
  * Orchestrates port monitoring, conflict detection, and reservation management
  */
 const logger = require('../../utils/logger');
-const EventBus = require('../../events/EventBus');
+const { EventBus } = require('../../events/EventBus');
 const EventTypes = require('../../events/EventTypes');
 const PortAvailabilityChecker = require('./portAvailabilityChecker');
 const PortReservationManager = require('./portReservationManager');

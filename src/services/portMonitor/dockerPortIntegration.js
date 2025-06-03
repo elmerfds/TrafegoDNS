@@ -3,7 +3,7 @@
  * Integrates port monitoring with Docker container lifecycle events
  */
 const logger = require('../../utils/logger');
-const EventBus = require('../../events/EventBus');
+const { EventBus } = require('../../events/EventBus');
 const EventTypes = require('../../events/EventTypes');
 
 class DockerPortIntegration {
