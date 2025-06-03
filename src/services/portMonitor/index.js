@@ -526,10 +526,12 @@ class PortMonitor {
       
       // Add system ports
       for (const port of systemPorts) {
+        const overrideLabel = await this.getPortServiceLabel(port.port, port.protocol, server);
         portsInUse.set(`${port.port}-${port.protocol}`, {
           port: port.port,
           protocol: port.protocol,
-          service: port.service,
+          service: overrideLabel || port.service,
+          isOverridden: !!overrideLabel,
           lastSeen: new Date().toISOString()
         });
       }
@@ -537,18 +539,36 @@ class PortMonitor {
       // Add container ports
       for (const containerPort of containerPorts) {
         const key = `${containerPort.hostPort}-${containerPort.protocol || 'tcp'}`;
+        const overrideLabel = await this.getPortServiceLabel(containerPort.hostPort, containerPort.protocol || 'tcp', server);
         const existing = portsInUse.get(key);
         
         if (existing) {
           existing.containerId = containerPort.containerId;
           existing.containerName = containerPort.containerName;
+          existing.image = containerPort.image;
+          existing.imageId = containerPort.imageId;
+          existing.status = containerPort.status;
+          existing.labels = containerPort.labels;
+          existing.created = containerPort.created;
+          existing.started = containerPort.started;
+          if (overrideLabel) {
+            existing.service = overrideLabel;
+            existing.isOverridden = true;
+          }
         } else {
           portsInUse.set(key, {
             port: containerPort.hostPort,
             protocol: containerPort.protocol || 'tcp',
             containerId: containerPort.containerId,
             containerName: containerPort.containerName,
-            service: containerPort.service || 'docker',
+            service: overrideLabel || containerPort.service || 'docker',
+            isOverridden: !!overrideLabel,
+            image: containerPort.image,
+            imageId: containerPort.imageId,
+            status: containerPort.status,
+            labels: containerPort.labels,
+            created: containerPort.created,
+            started: containerPort.started,
             lastSeen: new Date().toISOString()
           });
         }
@@ -728,6 +748,72 @@ class PortMonitor {
     } catch (error) {
       logger.error(`Failed to update port documentation: ${error.message}`);
       throw error;
+    }
+  }
+
+  /**
+   * Update port service label override
+   * @param {number} port - Port number
+   * @param {string} serviceLabel - Custom service label
+   * @param {string} server - Server IP
+   * @param {string} protocol - Protocol
+   * @returns {Promise<void>}
+   */
+  async updatePortServiceLabel(port, serviceLabel, server = 'localhost', protocol = 'tcp') {
+    try {
+      // Store in database or memory
+      if (!this.database.repositories?.portLabels) {
+        // Create simple storage if repository doesn't exist
+        const portLabels = this.portLabels || new Map();
+        portLabels.set(`${port}-${protocol}-${server}`, {
+          port,
+          server,
+          protocol,
+          serviceLabel,
+          updatedAt: new Date().toISOString()
+        });
+        this.portLabels = portLabels;
+      } else {
+        await this.database.repositories.portLabels.upsert({
+          port,
+          server,
+          protocol,
+          serviceLabel,
+          updatedAt: new Date().toISOString()
+        });
+      }
+      
+      logger.info(`Updated service label for port ${port}/${protocol} to "${serviceLabel}"`);
+    } catch (error) {
+      logger.error(`Failed to update port service label: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get port service label override
+   * @param {number} port - Port number
+   * @param {string} protocol - Protocol
+   * @param {string} server - Server IP
+   * @returns {Promise<string|null>}
+   */
+  async getPortServiceLabel(port, protocol = 'tcp', server = 'localhost') {
+    try {
+      if (!this.database.repositories?.portLabels) {
+        const portLabels = this.portLabels || new Map();
+        const label = portLabels.get(`${port}-${protocol}-${server}`);
+        return label?.serviceLabel || null;
+      } else {
+        const label = await this.database.repositories.portLabels.findOne({
+          port,
+          server,
+          protocol
+        });
+        return label?.serviceLabel || null;
+      }
+    } catch (error) {
+      logger.error(`Failed to get port service label: ${error.message}`);
+      return null;
     }
   }
 

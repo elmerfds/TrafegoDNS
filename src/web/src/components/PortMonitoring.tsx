@@ -65,6 +65,13 @@ interface PortInUse {
   containerName?: string;
   documentation?: string;
   lastSeen: string;
+  isOverridden?: boolean;
+  image?: string;
+  imageId?: string;
+  status?: string;
+  labels?: Record<string, any>;
+  created?: string;
+  started?: string;
 }
 
 interface Server {
@@ -102,6 +109,14 @@ export default function PortMonitoring() {
   const [reservationNotes, setReservationNotes] = useState('');
   const [showReservationDialog, setShowReservationDialog] = useState(false);
   
+  // Search and filter states
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filteredPortsInUse, setFilteredPortsInUse] = useState<PortInUse[]>([]);
+  
+  // Label override states
+  const [editingLabelPort, setEditingLabelPort] = useState<number | null>(null);
+  const [newServiceLabel, setNewServiceLabel] = useState('');
+  
   // Real-time updates
   const { socket, isConnected } = useSocket();
   
@@ -110,6 +125,26 @@ export default function PortMonitoring() {
     loadReservations();
     loadPortsInUse();
   }, [selectedServer]);
+
+  // Filter ports based on search term
+  useEffect(() => {
+    if (!searchTerm.trim()) {
+      setFilteredPortsInUse(portsInUse);
+    } else {
+      const filtered = portsInUse.filter(port => {
+        const searchLower = searchTerm.toLowerCase();
+        return (
+          port.port.toString().includes(searchLower) ||
+          port.protocol.toLowerCase().includes(searchLower) ||
+          port.service?.toLowerCase().includes(searchLower) ||
+          port.containerName?.toLowerCase().includes(searchLower) ||
+          port.documentation?.toLowerCase().includes(searchLower) ||
+          port.containerId?.toLowerCase().includes(searchLower)
+        );
+      });
+      setFilteredPortsInUse(filtered);
+    }
+  }, [portsInUse, searchTerm]);
 
   useEffect(() => {
     if (socket && isConnected) {
@@ -220,6 +255,32 @@ export default function PortMonitoring() {
     } catch (error) {
       console.error('Failed to update port documentation:', error);
     }
+  };
+
+  const updatePortServiceLabel = async (port: number, serviceLabel: string, protocol: string = 'tcp') => {
+    try {
+      await api.put(`/ports/${port}/label`, {
+        serviceLabel,
+        server: selectedServer === 'custom' ? customServerIp : servers.find(s => s.id === selectedServer)?.ip,
+        protocol
+      });
+      loadPortsInUse();
+      setEditingLabelPort(null);
+      setNewServiceLabel('');
+    } catch (error) {
+      console.error('Failed to update port service label:', error);
+      setError('Failed to update service label');
+    }
+  };
+
+  const startEditingLabel = (port: number, currentLabel: string) => {
+    setEditingLabelPort(port);
+    setNewServiceLabel(currentLabel || '');
+  };
+
+  const cancelEditingLabel = () => {
+    setEditingLabelPort(null);
+    setNewServiceLabel('');
   };
 
   const checkPortAvailability = async () => {
@@ -419,34 +480,48 @@ export default function PortMonitoring() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="mb-4">
-                <Label htmlFor="serverSelect">Server</Label>
-                <div className="flex space-x-2">
-                  <Select value={selectedServer} onValueChange={setSelectedServer}>
-                    <SelectTrigger className="w-48">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {servers.map(server => (
-                        <SelectItem key={server.id} value={server.id}>
-                          {server.name} ({server.ip})
-                        </SelectItem>
-                      ))}
-                      <SelectItem value="custom">Custom IP...</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {selectedServer === 'custom' && (
-                    <Input
-                      placeholder="Enter server IP"
-                      value={customServerIp}
-                      onChange={(e) => setCustomServerIp(e.target.value)}
-                      className="w-48"
-                    />
-                  )}
-                  <Button onClick={loadPortsInUse} disabled={loading}>
-                    <Search className="h-4 w-4 mr-2" />
-                    Refresh
-                  </Button>
+              <div className="mb-4 space-y-4">
+                <div>
+                  <Label htmlFor="serverSelect">Server</Label>
+                  <div className="flex space-x-2">
+                    <Select value={selectedServer} onValueChange={setSelectedServer}>
+                      <SelectTrigger className="w-48">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {servers.map(server => (
+                          <SelectItem key={server.id} value={server.id}>
+                            {server.name} ({server.ip})
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="custom">Custom IP...</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {selectedServer === 'custom' && (
+                      <Input
+                        placeholder="Enter server IP"
+                        value={customServerIp}
+                        onChange={(e) => setCustomServerIp(e.target.value)}
+                        className="w-48"
+                      />
+                    )}
+                    <Button onClick={loadPortsInUse} disabled={loading}>
+                      <Search className="h-4 w-4 mr-2" />
+                      Refresh
+                    </Button>
+                  </div>
+                </div>
+                
+                {/* Search Bar */}
+                <div>
+                  <Label htmlFor="searchPorts">Search Ports</Label>
+                  <Input
+                    id="searchPorts"
+                    placeholder="Search by port, service, container name, or documentation..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full"
+                  />
                 </div>
               </div>
               
@@ -457,10 +532,10 @@ export default function PortMonitoring() {
               ) : (
                 <div className="space-y-2">
                   <div className="text-sm text-muted-foreground mb-2">
-                    Found {portsInUse.length} ports in use
+                    {searchTerm ? `Found ${filteredPortsInUse.length} of ${portsInUse.length} ports` : `Found ${portsInUse.length} ports in use`}
                   </div>
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {portsInUse.map((portInfo) => (
+                  <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 400px)' }}>
+                    {filteredPortsInUse.map((portInfo) => (
                       <div key={`${portInfo.port}-${portInfo.protocol}`} className="p-3 border rounded space-y-2">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-3">
@@ -469,7 +544,51 @@ export default function PortMonitoring() {
                             </span>
                             <Badge variant="destructive">In Use</Badge>
                             {portInfo.service && (
-                              <Badge variant="outline">{portInfo.service}</Badge>
+                              <div className="flex items-center space-x-2">
+                                {editingLabelPort === portInfo.port ? (
+                                  <div className="flex items-center space-x-2">
+                                    <Input
+                                      value={newServiceLabel}
+                                      onChange={(e) => setNewServiceLabel(e.target.value)}
+                                      placeholder="Service label"
+                                      className="w-32 h-6 text-xs"
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          updatePortServiceLabel(portInfo.port, newServiceLabel, portInfo.protocol);
+                                        } else if (e.key === 'Escape') {
+                                          cancelEditingLabel();
+                                        }
+                                      }}
+                                    />
+                                    <Button 
+                                      size="sm" 
+                                      variant="outline" 
+                                      className="h-6 px-2"
+                                      onClick={() => updatePortServiceLabel(portInfo.port, newServiceLabel, portInfo.protocol)}
+                                    >
+                                      ✓
+                                    </Button>
+                                    <Button 
+                                      size="sm" 
+                                      variant="outline" 
+                                      className="h-6 px-2"
+                                      onClick={cancelEditingLabel}
+                                    >
+                                      ✕
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <Badge 
+                                    variant={portInfo.isOverridden ? "default" : "outline"}
+                                    className={`cursor-pointer ${portInfo.isOverridden ? 'bg-blue-500' : ''}`}
+                                    onClick={() => startEditingLabel(portInfo.port, portInfo.service || '')}
+                                    title={portInfo.isOverridden ? 'Custom label (click to edit)' : 'Auto-detected label (click to override)'}
+                                  >
+                                    {portInfo.service}
+                                    {portInfo.isOverridden && ' *'}
+                                  </Badge>
+                                )}
+                              </div>
                             )}
                           </div>
                           <div className="text-sm text-muted-foreground">
@@ -477,12 +596,29 @@ export default function PortMonitoring() {
                           </div>
                         </div>
                         {portInfo.containerName && (
-                          <div className="text-sm">
-                            Container: <span className="font-medium">{portInfo.containerName}</span>
-                            {portInfo.containerId && (
-                              <span className="text-xs text-muted-foreground ml-2">
-                                ({portInfo.containerId.substring(0, 12)})
-                              </span>
+                          <div className="text-sm space-y-1">
+                            <div>
+                              Container: <span className="font-medium">{portInfo.containerName}</span>
+                              {portInfo.containerId && (
+                                <span className="text-xs text-muted-foreground ml-2">
+                                  ({portInfo.containerId.substring(0, 12)})
+                                </span>
+                              )}
+                              {portInfo.status && (
+                                <Badge variant="outline" className="ml-2 text-xs">
+                                  {portInfo.status}
+                                </Badge>
+                              )}
+                            </div>
+                            {portInfo.image && (
+                              <div className="text-xs text-muted-foreground">
+                                Image: {portInfo.image}
+                              </div>
+                            )}
+                            {portInfo.started && (
+                              <div className="text-xs text-muted-foreground">
+                                Started: {formatDate(portInfo.started)}
+                              </div>
                             )}
                           </div>
                         )}
@@ -637,7 +773,7 @@ export default function PortMonitoring() {
                   No active port reservations
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 400px)' }}>
                   {reservations.map((reservation) => (
                     <div key={reservation.id} className="p-3 border rounded space-y-2">
                       <div className="flex items-center justify-between">
