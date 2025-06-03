@@ -97,11 +97,6 @@ if (webUIPath) {
 // API Routes
 app.use('/api/v1', v1Routes);
 
-// Apply additional routes if provided
-if (additionalRoutes) {
-  app.use('/api/v1', additionalRoutes);
-}
-
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'API is running' });
@@ -149,6 +144,11 @@ app.use(errorHandler);
  */
 async function startApiServer(port, config, eventBus, additionalRoutes = null) {
   const apiPort = port || process.env.API_PORT || 3000;
+  
+  // Apply additional routes if provided
+  if (additionalRoutes) {
+    app.use('/api/v1', additionalRoutes);
+  }
 
   // Initialize User model now that database should be ready
   logger.info('Initializing User model...');
