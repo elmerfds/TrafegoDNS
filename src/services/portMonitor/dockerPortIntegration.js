@@ -284,6 +284,113 @@ class DockerPortIntegration {
   }
 
   /**
+   * Get all container ports from Docker runtime
+   * @returns {Promise<Array>}
+   */
+  async getContainerPorts() {
+    try {
+      const { exec } = require('child_process');
+      const { promisify } = require('util');
+      const execPromise = promisify(exec);
+      
+      // Get running containers with port mappings
+      const { stdout } = await execPromise(
+        'docker ps --format "{{.ID}}|{{.Names}}|{{.Image}}|{{.Ports}}|{{.Status}}|{{.CreatedAt}}"'
+      );
+      
+      const containerPorts = [];
+      const lines = stdout.trim().split('\n').filter(line => line.length > 0);
+      
+      for (const line of lines) {
+        const [id, name, image, ports, status, created] = line.split('|');
+        
+        if (!ports || ports.trim() === '') continue;
+        
+        // Parse port mappings
+        const portMappings = this._parseDockerPorts(ports);
+        
+        for (const mapping of portMappings) {
+          containerPorts.push({
+            containerId: id,
+            containerName: name,
+            image: image,
+            hostPort: mapping.hostPort,
+            containerPort: mapping.containerPort,
+            protocol: mapping.protocol || 'tcp',
+            hostIp: mapping.hostIp || '0.0.0.0',
+            status: status,
+            created: created,
+            service: this._identifyService(mapping.hostPort),
+            labels: { source: 'docker-runtime' }
+          });
+        }
+      }
+      
+      return containerPorts;
+    } catch (error) {
+      logger.error(`Failed to get container ports: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Parse Docker ports string into structured data
+   * @param {string} portsString - Docker ports string
+   * @returns {Array}
+   * @private
+   */
+  _parseDockerPorts(portsString) {
+    const mappings = [];
+    
+    // Docker ports format: "0.0.0.0:8080->80/tcp, 0.0.0.0:8443->443/tcp"
+    const portEntries = portsString.split(',').map(p => p.trim());
+    
+    for (const entry of portEntries) {
+      // Match patterns like "0.0.0.0:8080->80/tcp" or "8080->80/tcp"
+      const match = entry.match(/(?:([^:]+):)?(\d+)->(\d+)\/?(tcp|udp)?/);
+      
+      if (match) {
+        const [, hostIp, hostPort, containerPort, protocol] = match;
+        mappings.push({
+          hostIp: hostIp || '0.0.0.0',
+          hostPort: parseInt(hostPort),
+          containerPort: parseInt(containerPort),
+          protocol: protocol || 'tcp'
+        });
+      }
+    }
+    
+    return mappings;
+  }
+
+  /**
+   * Identify service by port number
+   * @param {number} port - Port number
+   * @returns {string}
+   * @private
+   */
+  _identifyService(port) {
+    const commonPorts = {
+      80: 'HTTP',
+      443: 'HTTPS',
+      3000: 'Development',
+      3001: 'Development',
+      8080: 'HTTP-Alt',
+      8443: 'HTTPS-Alt',
+      8000: 'HTTP-Dev',
+      5000: 'Flask/Dev',
+      4000: 'Application',
+      9000: 'Portainer',
+      3306: 'MySQL',
+      5432: 'PostgreSQL',
+      6379: 'Redis',
+      27017: 'MongoDB'
+    };
+    
+    return commonPorts[port] || 'Application';
+  }
+
+  /**
    * Update integration configuration
    * @param {Object} newConfig - New configuration
    */

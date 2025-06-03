@@ -343,6 +343,62 @@ class PortMonitor {
     try {
       logger.info('Performing initial port scan');
 
+      // First, get system ports in use and store them
+      const systemPorts = await this.availabilityChecker.getSystemPortsInUse('localhost');
+      logger.info(`Found ${systemPorts.length} system ports in use`);
+      
+      // Store system ports in database
+      if (this.database.repositories?.port) {
+        for (const portInfo of systemPorts) {
+          try {
+            await this.database.repositories.port.upsertPort({
+              host: 'localhost',
+              port: portInfo.port,
+              protocol: portInfo.protocol || 'tcp',
+              status: 'open',
+              service_name: portInfo.service,
+              description: `System port - ${portInfo.service}`,
+              labels: { source: 'system' }
+            });
+          } catch (err) {
+            logger.debug(`Failed to store port ${portInfo.port}: ${err.message}`);
+          }
+        }
+      }
+
+      // Get Docker container ports
+      try {
+        const containerPorts = await this.dockerIntegration.getContainerPorts();
+        logger.info(`Found ${containerPorts.length} Docker container ports`);
+        
+        // Store container ports in database
+        if (this.database.repositories?.port) {
+          for (const portInfo of containerPorts) {
+            try {
+              await this.database.repositories.port.upsertPort({
+                host: 'localhost',
+                port: portInfo.hostPort,
+                protocol: portInfo.protocol || 'tcp',
+                status: 'open',
+                service_name: portInfo.service || 'docker',
+                container_id: portInfo.containerId,
+                container_name: portInfo.containerName,
+                description: `Docker container port - ${portInfo.containerName}`,
+                labels: { 
+                  source: 'docker',
+                  image: portInfo.image,
+                  containerPort: portInfo.containerPort
+                }
+              });
+            } catch (err) {
+              logger.debug(`Failed to store container port ${portInfo.hostPort}: ${err.message}`);
+            }
+          }
+        }
+      } catch (dockerError) {
+        logger.warn(`Failed to get Docker container ports: ${dockerError.message}`);
+      }
+
       // Scan all configured port ranges
       const allPorts = [];
       for (const range of this.portRanges) {
@@ -372,10 +428,11 @@ class PortMonitor {
       
       this.eventBus.emit(EventTypes.PORT_SCAN_COMPLETED, {
         portsScanned: allPorts.length,
+        systemPorts: systemPorts.length,
         timestamp: this.lastScanTime
       });
 
-      logger.info(`Initial port scan completed: ${allPorts.length} ports scanned`);
+      logger.info(`Initial port scan completed: ${allPorts.length} ports scanned, ${systemPorts.length} system ports stored`);
     } catch (error) {
       logger.error(`Initial port scan failed: ${error.message}`);
       this.eventBus.emit(EventTypes.PORT_SCAN_FAILED, {

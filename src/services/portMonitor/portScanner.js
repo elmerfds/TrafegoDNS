@@ -14,10 +14,11 @@ class PortScanner {
     this.config = config;
     this.db = database;
     
-    // Initialize repositories
-    this.portRepository = new PortRepository(database);
-    this.scanRepository = new PortScanRepository(database);
-    this.alertRepository = new PortAlertRepository(database);
+    // Initialize repositories - handle both database module and raw db object
+    const db = database.db || database;
+    this.portRepository = new PortRepository(db);
+    this.scanRepository = new PortScanRepository(db);
+    this.alertRepository = new PortAlertRepository(db);
     
     // Scanning configuration
     this.timeout = config.PORT_SCAN_TIMEOUT || 5000;
