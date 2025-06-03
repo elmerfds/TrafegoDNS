@@ -182,6 +182,9 @@ class ConfigManager {
     // IP refresh interval in milliseconds (default: 1 hour)
     this.ipRefreshInterval = EnvironmentLoader.getInt('IP_REFRESH_INTERVAL', 3600000);
     
+    // Host IP for Docker containers (for port monitoring)
+    this.hostIp = EnvironmentLoader.getString('HOST_IP') || EnvironmentLoader.getString('DOCKER_HOST_IP') || '';
+    
     // Now that provider config is validated, set the default content if not provided
     if (!this.defaultContent && !process.env.DNS_DEFAULT_CONTENT) {
       this.defaultContent = this.getProviderDomain();
@@ -284,6 +287,7 @@ class ConfigManager {
     
     // Network settings
     this._envConfig.apiTimeout = this.apiTimeout;
+    this._envConfig.hostIp = this.hostIp;
     
     // Label settings
     this._envConfig.genericLabelPrefix = this.genericLabelPrefix;
@@ -382,6 +386,7 @@ class ConfigManager {
         
         // Network settings
         apiTimeout: this.apiTimeout,
+        hostIp: this.hostIp,
         
         // Label settings
         genericLabelPrefix: this.genericLabelPrefix,
@@ -466,6 +471,7 @@ class ConfigManager {
     }
     if (settings.ipRefreshInterval !== undefined) this.ipRefreshInterval = settings.ipRefreshInterval;
     if (settings.apiTimeout !== undefined) this.apiTimeout = settings.apiTimeout;
+    if (settings.hostIp !== undefined) this.hostIp = settings.hostIp;
     if (settings.genericLabelPrefix !== undefined) this.genericLabelPrefix = settings.genericLabelPrefix;
     if (settings.traefikLabelPrefix !== undefined) this.traefikLabelPrefix = settings.traefikLabelPrefix;
     if (settings.managedHostnames !== undefined) this.managedHostnames = settings.managedHostnames;
@@ -553,6 +559,7 @@ class ConfigManager {
       domain: this.getProviderDomain(),
       publicIP: this.getPublicIPSync(),
       publicIPv6: this.getPublicIPv6Sync(),
+      hostIp: this.hostIp,
       ipRefreshInterval: this.ipRefreshInterval,
       traefikApiUrl: this.traefikApiUrl,
       dockerSocket: this.dockerSocket,

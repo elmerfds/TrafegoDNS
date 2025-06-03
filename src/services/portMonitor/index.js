@@ -26,6 +26,12 @@ class PortMonitor {
     this.suggestionEngine = new PortSuggestionEngine(this.availabilityChecker, this.reservationManager, config);
     this.dockerIntegration = new DockerPortIntegration(this.conflictDetector, this.suggestionEngine, this.eventBus);
     
+    // Configure host IP if provided in config
+    if (config.hostIp) {
+      logger.info(`🔧 Setting host IP for port monitoring: ${config.hostIp}`);
+      this.availabilityChecker.setHostIp(config.hostIp, false); // Don't validate during initialization
+    }
+    
     // Port monitoring state
     this.monitoredPorts = new Map();
     this.portChanges = new Map();

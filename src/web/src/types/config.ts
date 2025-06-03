@@ -26,6 +26,7 @@ export interface Config {
   domain: string
   publicIP: string
   publicIPv6: string
+  hostIp: string
   ipRefreshInterval: number
   dnsCacheRefreshInterval: number
   apiTimeout: number

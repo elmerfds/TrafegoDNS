@@ -120,14 +120,45 @@ export default function PortMonitoring() {
   const [editingLabelPort, setEditingLabelPort] = useState<number | null>(null);
   const [newServiceLabel, setNewServiceLabel] = useState('');
   
+  // Server management states
+  const [newServerName, setNewServerName] = useState('');
+  const [newServerIp, setNewServerIp] = useState('');
+  const [editingHostIp, setEditingHostIp] = useState(false);
+  const [editHostIpValue, setEditHostIpValue] = useState('');
+  
   // Real-time updates
   const { socket, isConnected } = useSocket();
   
   useEffect(() => {
     loadStatistics();
     loadReservations();
-    loadPortsInUse();
-  }, [selectedServer]);
+    loadHostConfiguration();
+  }, []);
+
+  const loadHostConfiguration = async () => {
+    try {
+      const response = await api.get('/config');
+      const config = response.data.data.config;
+      
+      // Update the host server IP with the configured value
+      if (config.hostIp) {
+        setServers(prev => prev.map(server => 
+          server.isHost 
+            ? { ...server, ip: config.hostIp }
+            : server
+        ));
+      }
+    } catch (error) {
+      console.error('Failed to load host configuration:', error);
+    }
+  };
+
+  useEffect(() => {
+    // Only load ports when we have a valid server selection
+    if (selectedServer !== 'custom' || (selectedServer === 'custom' && customServerIp.trim())) {
+      loadPortsInUse();
+    }
+  }, [selectedServer, customServerIp]);
 
   // Filter ports based on search term
   useEffect(() => {
@@ -235,11 +266,146 @@ export default function PortMonitoring() {
 
   const loadPortsInUse = async () => {
     try {
-      const serverIp = selectedServer === 'custom' ? customServerIp : servers.find(s => s.id === selectedServer)?.ip || 'localhost';
+      let serverIp = 'localhost';
+      
+      if (selectedServer === 'custom') {
+        if (!customServerIp || !customServerIp.trim()) {
+          setError('Please enter a valid server IP for custom server selection');
+          return;
+        }
+        serverIp = customServerIp.trim();
+      } else {
+        const server = servers.find(s => s.id === selectedServer);
+        if (server) {
+          serverIp = server.ip;
+        }
+      }
+      
+      console.log('Loading ports for server:', serverIp);
+      setLoading(true);
+      setError(null);
+      
       const response = await api.get(`/ports/in-use?server=${serverIp}`);
       setPortsInUse(response.data.data.ports);
-    } catch (error) {
+      
+      console.log(`Loaded ${response.data.data.ports.length} ports for server ${serverIp}`);
+    } catch (error: any) {
       console.error('Failed to load ports in use:', error);
+      setError(error.response?.data?.message || `Failed to load ports from server ${selectedServer === 'custom' ? customServerIp : selectedServer}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addServer = () => {
+    if (!newServerName.trim() || !newServerIp.trim()) {
+      setError('Please enter both server name and IP address');
+      return;
+    }
+    
+    // Validate IP format
+    const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$|^localhost$|^host\.docker\.internal$/;
+    if (!ipRegex.test(newServerIp.trim())) {
+      setError('Please enter a valid IP address format (e.g., 192.168.1.100)');
+      return;
+    }
+    
+    // Check if server already exists
+    const existingServer = servers.find(s => 
+      s.ip === newServerIp.trim() || 
+      s.name.toLowerCase() === newServerName.trim().toLowerCase()
+    );
+    
+    if (existingServer) {
+      setError('A server with this name or IP already exists');
+      return;
+    }
+    
+    const newServer: Server = {
+      id: `server-${Date.now()}`,
+      name: newServerName.trim(),
+      ip: newServerIp.trim(),
+      isHost: false
+    };
+    
+    setServers(prev => [...prev, newServer]);
+    setNewServerName('');
+    setNewServerIp('');
+    setError(null);
+    
+    console.log('Added new server:', newServer);
+  };
+
+  const removeServer = (serverId: string) => {
+    // Don't allow removing the host server
+    const serverToRemove = servers.find(s => s.id === serverId);
+    if (serverToRemove?.isHost) {
+      setError('Cannot remove the host server');
+      return;
+    }
+    
+    setServers(prev => prev.filter(s => s.id !== serverId));
+    
+    // If the removed server was selected, switch back to host
+    if (selectedServer === serverId) {
+      setSelectedServer('host');
+    }
+  };
+
+  const startEditingHostIp = () => {
+    const hostServer = servers.find(s => s.isHost);
+    setEditHostIpValue(hostServer?.ip || 'localhost');
+    setEditingHostIp(true);
+  };
+
+  const cancelEditingHostIp = () => {
+    setEditingHostIp(false);
+    setEditHostIpValue('');
+    setError(null);
+  };
+
+  const saveHostIp = async () => {
+    if (!editHostIpValue.trim()) {
+      setError('Host IP cannot be empty');
+      return;
+    }
+
+    // Validate IP format
+    const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$|^localhost$|^host\.docker\.internal$/;
+    if (!ipRegex.test(editHostIpValue.trim())) {
+      setError('Please enter a valid IP address format');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Update the host IP in the application settings
+      await api.put('/config', {
+        hostIp: editHostIpValue.trim()
+      });
+
+      // Update the local servers state
+      setServers(prev => prev.map(server => 
+        server.isHost 
+          ? { ...server, ip: editHostIpValue.trim() }
+          : server
+      ));
+
+      setEditingHostIp(false);
+      setEditHostIpValue('');
+      
+      // Reload ports if host server is selected
+      if (selectedServer === 'host') {
+        loadPortsInUse();
+      }
+
+      console.log('Host IP updated to:', editHostIpValue.trim());
+    } catch (error: any) {
+      setError(error.response?.data?.error || 'Failed to update host IP');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1137,7 +1303,7 @@ export default function PortMonitoring() {
             <CardHeader>
               <CardTitle>Server Management</CardTitle>
               <CardDescription>
-                Configure servers for port monitoring
+                Configure servers for port monitoring. You can edit the host server IP to specify the actual host machine address for Docker environments.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1146,32 +1312,110 @@ export default function PortMonitoring() {
                   <h4 className="font-medium">Configured Servers</h4>
                   <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
                     {servers.map(server => (
-                    <div key={server.id} className="flex items-center justify-between p-3 border rounded">
-                      <div className="flex items-center space-x-3">
-                        <Server className="h-4 w-4" />
-                        <div>
-                          <div className="font-medium">{server.name}</div>
-                          <div className="text-sm text-muted-foreground">{server.ip}</div>
+                      <div key={server.id} className="flex items-center justify-between p-3 border rounded">
+                        <div className="flex items-center space-x-3">
+                          <Server className="h-4 w-4" />
+                          <div className="flex-1">
+                            <div className="font-medium">{server.name}</div>
+                            {server.isHost && editingHostIp ? (
+                              <div className="flex items-center space-x-2 mt-1">
+                                <Input
+                                  value={editHostIpValue}
+                                  onChange={(e) => setEditHostIpValue(e.target.value)}
+                                  placeholder="Enter host IP"
+                                  className="text-xs h-6 flex-1"
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      saveHostIp();
+                                    } else if (e.key === 'Escape') {
+                                      cancelEditingHostIp();
+                                    }
+                                  }}
+                                />
+                                <Button 
+                                  size="sm" 
+                                  variant="outline" 
+                                  className="h-6 px-2"
+                                  onClick={saveHostIp}
+                                  disabled={loading}
+                                >
+                                  ✓
+                                </Button>
+                                <Button 
+                                  size="sm" 
+                                  variant="outline" 
+                                  className="h-6 px-2"
+                                  onClick={cancelEditingHostIp}
+                                >
+                                  ✕
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="text-sm text-muted-foreground">{server.ip}</div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {server.isHost ? (
+                            <div className="flex items-center space-x-2">
+                              <Badge variant="outline">Host Server</Badge>
+                              {!editingHostIp && (
+                                <Button 
+                                  size="sm" 
+                                  variant="outline" 
+                                  className="h-6 px-2 text-xs"
+                                  onClick={startEditingHostIp}
+                                >
+                                  Edit IP
+                                </Button>
+                              )}
+                            </div>
+                          ) : (
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="h-6 px-2 text-xs text-red-600 hover:text-red-700"
+                              onClick={() => removeServer(server.id)}
+                            >
+                              <X className="h-3 w-3 mr-1" />
+                              Remove
+                            </Button>
+                          )}
                         </div>
                       </div>
-                      {server.isHost && (
-                        <Badge variant="outline">Host Server</Badge>
-                      )}
-                    </div>
                     ))}
                   </div>
                 </div>
                 
                 <div className="border-t pt-4">
                   <h4 className="font-medium mb-2">Add Custom Server</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <Input placeholder="Server Name" />
-                    <Input placeholder="Server IP" />
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-4">
+                      <Input 
+                        placeholder="Server Name" 
+                        value={newServerName}
+                        onChange={(e) => setNewServerName(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && addServer()}
+                      />
+                      <Input 
+                        placeholder="Server IP (e.g., 192.168.1.100)" 
+                        value={newServerIp}
+                        onChange={(e) => setNewServerIp(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && addServer()}
+                      />
+                    </div>
+                    <Button 
+                      className="w-full"
+                      onClick={addServer}
+                      disabled={!newServerName.trim() || !newServerIp.trim()}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Server
+                    </Button>
                   </div>
-                  <Button className="mt-2">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Server
-                  </Button>
+                  <div className="text-xs text-muted-foreground mt-2">
+                    Supported formats: IP addresses (192.168.1.100), localhost, host.docker.internal
+                  </div>
                 </div>
               </div>
             </CardContent>
