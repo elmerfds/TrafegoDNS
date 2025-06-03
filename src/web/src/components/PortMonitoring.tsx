@@ -103,6 +103,11 @@ export default function PortMonitoring() {
     { id: 'host', name: 'Host Server', ip: 'localhost', isHost: true }
   ]);
   
+  // Debug server state changes
+  useEffect(() => {
+    console.log('Servers state updated:', servers);
+  }, [servers]);
+  
   // Reservation form states
   const [reservationPort, setReservationPort] = useState('');
   const [reservationContainerId, setReservationContainerId] = useState('');
@@ -125,6 +130,7 @@ export default function PortMonitoring() {
   const [newServerIp, setNewServerIp] = useState('');
   const [editingHostIp, setEditingHostIp] = useState(false);
   const [editHostIpValue, setEditHostIpValue] = useState('');
+  const [addingServer, setAddingServer] = useState(false);
   
   // Real-time updates
   const { socket, isConnected } = useSocket();
@@ -154,9 +160,13 @@ export default function PortMonitoring() {
   };
 
   useEffect(() => {
+    console.log('useEffect triggered for port loading:', { selectedServer, customServerIp });
     // Only load ports when we have a valid server selection
-    if (selectedServer !== 'custom' || (selectedServer === 'custom' && customServerIp.trim())) {
+    if (selectedServer !== 'custom' || (selectedServer === 'custom' && customServerIp && customServerIp.trim())) {
+      console.log('Valid server selection, loading ports');
       loadPortsInUse();
+    } else {
+      console.log('Invalid server selection, skipping port load');
     }
   }, [selectedServer, customServerIp]);
 
@@ -265,19 +275,27 @@ export default function PortMonitoring() {
   };
 
   const loadPortsInUse = async () => {
+    console.log('loadPortsInUse called with selectedServer:', selectedServer, 'customServerIp:', customServerIp);
+    
     try {
       let serverIp = 'localhost';
       
       if (selectedServer === 'custom') {
         if (!customServerIp || !customServerIp.trim()) {
-          setError('Please enter a valid server IP for custom server selection');
+          const errorMsg = 'Please enter a valid server IP for custom server selection';
+          setError(errorMsg);
+          console.log('Custom server validation failed:', errorMsg);
           return;
         }
         serverIp = customServerIp.trim();
+        console.log('Using custom server IP:', serverIp);
       } else {
         const server = servers.find(s => s.id === selectedServer);
         if (server) {
           serverIp = server.ip;
+          console.log('Found server from list:', server);
+        } else {
+          console.log('Server not found in list, using default localhost');
         }
       }
       
@@ -285,55 +303,99 @@ export default function PortMonitoring() {
       setLoading(true);
       setError(null);
       
-      const response = await api.get(`/ports/in-use?server=${serverIp}`);
-      setPortsInUse(response.data.data.ports);
+      const response = await api.get(`/ports/in-use?server=${encodeURIComponent(serverIp)}`);
+      console.log('API response:', response.data);
       
-      console.log(`Loaded ${response.data.data.ports.length} ports for server ${serverIp}`);
+      if (response.data && response.data.data && response.data.data.ports) {
+        setPortsInUse(response.data.data.ports);
+        console.log(`Loaded ${response.data.data.ports.length} ports for server ${serverIp}`);
+      } else {
+        console.log('Unexpected API response structure:', response.data);
+        setPortsInUse([]);
+      }
+      
     } catch (error: any) {
       console.error('Failed to load ports in use:', error);
-      setError(error.response?.data?.message || `Failed to load ports from server ${selectedServer === 'custom' ? customServerIp : selectedServer}`);
+      const errorMsg = error.response?.data?.message || error.message || `Failed to load ports from server ${selectedServer === 'custom' ? customServerIp : selectedServer}`;
+      setError(errorMsg);
+      console.log('Error details:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const addServer = () => {
+  const addServer = async () => {
+    console.log('addServer called with:', { newServerName, newServerIp });
+    
+    if (addingServer) {
+      console.log('Already adding server, skipping...');
+      return;
+    }
+    
     if (!newServerName.trim() || !newServerIp.trim()) {
       setError('Please enter both server name and IP address');
+      console.log('Validation failed: missing name or IP');
       return;
     }
     
-    // Validate IP format
-    const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$|^localhost$|^host\.docker\.internal$/;
-    if (!ipRegex.test(newServerIp.trim())) {
-      setError('Please enter a valid IP address format (e.g., 192.168.1.100)');
-      return;
+    try {
+      setAddingServer(true);
+      // Clear any existing errors first
+      setError(null);
+      
+      // Validate IP format - expanded regex to include more formats
+      const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$|^localhost$|^host\.docker\.internal$|^127\.0\.0\.1$/;
+      if (!ipRegex.test(newServerIp.trim())) {
+        setError('Please enter a valid IP address format (e.g., 192.168.1.100)');
+        console.log('IP validation failed:', newServerIp.trim());
+        return;
+      }
+      
+      // Check if server already exists
+      const existingServer = servers.find(s => 
+        s.ip === newServerIp.trim() || 
+        s.name.toLowerCase() === newServerName.trim().toLowerCase()
+      );
+      
+      if (existingServer) {
+        setError('A server with this name or IP already exists');
+        console.log('Server already exists:', existingServer);
+        return;
+      }
+      
+      const newServer: Server = {
+        id: `server-${Date.now()}`,
+        name: newServerName.trim(),
+        ip: newServerIp.trim(),
+        isHost: false
+      };
+      
+      console.log('Adding new server:', newServer);
+      setServers(prev => {
+        const updated = [...prev, newServer];
+        console.log('Updated servers list:', updated);
+        return updated;
+      });
+      
+      // Clear form
+      setNewServerName('');
+      setNewServerIp('');
+      
+      console.log('Server added successfully, form cleared');
+      
+      // Show success message
+      console.log(`Successfully added server: ${newServer.name} (${newServer.ip})`);
+      
+    } catch (error) {
+      console.error('Error adding server:', error);
+      setError('Failed to add server');
+    } finally {
+      setAddingServer(false);
     }
-    
-    // Check if server already exists
-    const existingServer = servers.find(s => 
-      s.ip === newServerIp.trim() || 
-      s.name.toLowerCase() === newServerName.trim().toLowerCase()
-    );
-    
-    if (existingServer) {
-      setError('A server with this name or IP already exists');
-      return;
-    }
-    
-    const newServer: Server = {
-      id: `server-${Date.now()}`,
-      name: newServerName.trim(),
-      ip: newServerIp.trim(),
-      isHost: false
-    };
-    
-    setServers(prev => [...prev, newServer]);
-    setNewServerName('');
-    setNewServerIp('');
-    setError(null);
-    
-    console.log('Added new server:', newServer);
   };
 
   const removeServer = (serverId: string) => {
@@ -802,9 +864,15 @@ export default function PortMonitoring() {
                         className="w-48"
                       />
                     )}
-                    <Button onClick={loadPortsInUse} disabled={loading}>
+                    <Button 
+                      onClick={() => {
+                        console.log('Refresh button clicked');
+                        loadPortsInUse();
+                      }} 
+                      disabled={loading}
+                    >
                       <Search className="h-4 w-4 mr-2" />
-                      Refresh
+                      {loading ? 'Loading...' : 'Refresh'}
                     </Button>
                   </div>
                 </div>
@@ -1303,7 +1371,7 @@ export default function PortMonitoring() {
             <CardHeader>
               <CardTitle>Server Management</CardTitle>
               <CardDescription>
-                Configure servers for port monitoring. You can edit the host server IP to specify the actual host machine address for Docker environments.
+                Configure servers for port monitoring. You can edit the host server IP to specify the actual host machine address for Docker environments. After adding a server, you can select it in the "Ports in Use" tab.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1311,7 +1379,7 @@ export default function PortMonitoring() {
                 <div className="space-y-2">
                   <h4 className="font-medium">Configured Servers</h4>
                   <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
-                    {servers.map(server => (
+                    {servers.length > 0 ? servers.map(server => (
                       <div key={server.id} className="flex items-center justify-between p-3 border rounded">
                         <div className="flex items-center space-x-3">
                           <Server className="h-4 w-4" />
@@ -1375,7 +1443,10 @@ export default function PortMonitoring() {
                               size="sm" 
                               variant="outline" 
                               className="h-6 px-2 text-xs text-red-600 hover:text-red-700"
-                              onClick={() => removeServer(server.id)}
+                              onClick={() => {
+                                console.log('Removing server:', server.id);
+                                removeServer(server.id);
+                              }}
                             >
                               <X className="h-3 w-3 mr-1" />
                               Remove
@@ -1383,7 +1454,11 @@ export default function PortMonitoring() {
                           )}
                         </div>
                       </div>
-                    ))}
+                    )) : (
+                      <div className="text-center py-4 text-muted-foreground">
+                        No servers configured
+                      </div>
+                    )}
                   </div>
                 </div>
                 
@@ -1406,15 +1481,28 @@ export default function PortMonitoring() {
                     </div>
                     <Button 
                       className="w-full"
-                      onClick={addServer}
-                      disabled={!newServerName.trim() || !newServerIp.trim()}
+                      onClick={() => {
+                        console.log('Add Server button clicked');
+                        addServer();
+                      }}
+                      disabled={!newServerName.trim() || !newServerIp.trim() || addingServer}
                     >
                       <Plus className="h-4 w-4 mr-2" />
-                      Add Server
+                      {addingServer ? 'Adding...' : 'Add Server'}
                     </Button>
                   </div>
                   <div className="text-xs text-muted-foreground mt-2">
                     Supported formats: IP addresses (192.168.1.100), localhost, host.docker.internal
+                  </div>
+                  
+                  {/* Debug info */}
+                  <div className="mt-4 p-2 bg-gray-50 dark:bg-gray-800 rounded text-xs">
+                    <div className="font-medium mb-1">Debug Info:</div>
+                    <div>Total servers: {servers.length}</div>
+                    <div>Selected server: {selectedServer}</div>
+                    <div>Custom IP: {customServerIp || 'none'}</div>
+                    <div>Form values: {newServerName} / {newServerIp}</div>
+                    <div>Button disabled: {(!newServerName.trim() || !newServerIp.trim() || addingServer).toString()}</div>
                   </div>
                 </div>
               </div>
