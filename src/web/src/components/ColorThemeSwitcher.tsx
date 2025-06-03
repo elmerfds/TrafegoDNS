@@ -9,6 +9,14 @@ interface ColorThemeSwitcherProps {
 export function ColorThemeSwitcher({ showLabel = true }: ColorThemeSwitcherProps) {
   const { currentTheme, setTheme } = useColorTheme();
 
+  // Test CSS variables
+  React.useEffect(() => {
+    const root = getComputedStyle(document.documentElement);
+    const primary = root.getPropertyValue('--primary');
+    const accent = root.getPropertyValue('--accent');
+    console.log('Current CSS variables:', { primary, accent, theme: currentTheme });
+  }, [currentTheme]);
+
   return (
     <div className="space-y-3">
       {showLabel && (
@@ -36,6 +44,20 @@ export function ColorThemeSwitcher({ showLabel = true }: ColorThemeSwitcherProps
             <span>{theme.name}</span>
           </Button>
         ))}
+      </div>
+      {/* Debug: Visual color test */}
+      <div className="mt-4 space-y-2 text-xs">
+        <div className="flex items-center space-x-2">
+          <div className="w-4 h-4 bg-primary rounded" />
+          <span>Primary color (should change with theme)</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <div className="w-4 h-4 bg-accent rounded" />
+          <span>Accent color (should change with theme)</span>
+        </div>
+        <div className="text-muted-foreground">
+          Current theme: {currentTheme}
+        </div>
       </div>
     </div>
   );
