@@ -19,9 +19,21 @@ const getPortsInUse = asyncHandler(async (req, res) => {
   }
 
   const { server = 'localhost' } = req.query;
+  
+  logger.info(`📡 API: Getting ports in use for server: ${server}`);
 
   try {
     const portsInUse = await PortMonitor.getPortsInUse(server);
+    
+    logger.info(`📡 API: Returning ${portsInUse.length} ports`);
+    
+    // Check for port 80 in API response
+    const port80 = portsInUse.find(p => p.port === 80);
+    if (port80) {
+      logger.info(`✅ API: Port 80 is in response: ${JSON.stringify(port80)}`);
+    } else {
+      logger.warn(`⚠️ API: Port 80 NOT in response`);
+    }
     
     res.json({
       success: true,

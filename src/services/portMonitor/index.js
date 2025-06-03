@@ -347,6 +347,14 @@ class PortMonitor {
       const systemPorts = await this.availabilityChecker.getSystemPortsInUse('localhost');
       logger.info(`Found ${systemPorts.length} system ports in use`);
       
+      // Log port 80 status
+      const port80 = systemPorts.find(p => p.port === 80);
+      if (port80) {
+        logger.info(`✅ Port 80 detected in initial scan: ${JSON.stringify(port80)}`);
+      } else {
+        logger.warn(`⚠️ Port 80 NOT detected in initial scan`);
+      }
+      
       // Store system ports in database
       if (this.database.repositories?.port) {
         for (const portInfo of systemPorts) {
@@ -360,6 +368,10 @@ class PortMonitor {
               description: `System port - ${portInfo.service}`,
               labels: { source: 'system' }
             });
+            
+            if (portInfo.port === 80) {
+              logger.info(`✅ Port 80 stored in database`);
+            }
           } catch (err) {
             logger.error(`Failed to store port ${portInfo.port}: ${err.message}`);
           }
@@ -569,18 +581,34 @@ class PortMonitor {
    */
   async getPortsInUse(server = 'localhost') {
     try {
-      logger.debug(`Getting ports in use for server: ${server}`);
+      logger.info(`🔍 Getting ports in use for server: ${server}`);
       
       // Get system ports in use
       const systemPorts = await this.availabilityChecker.getSystemPortsInUse(server);
-      logger.debug(`Found ${systemPorts.length} system ports`);
+      logger.info(`📊 Found ${systemPorts.length} system ports`);
+      
+      // Log first few system ports for debugging
+      if (systemPorts.length > 0) {
+        logger.debug('Sample system ports:');
+        systemPorts.slice(0, 5).forEach(p => {
+          logger.debug(`  - Port ${p.port}/${p.protocol}: ${p.service}`);
+        });
+        
+        // Check for port 80
+        const port80 = systemPorts.find(p => p.port === 80);
+        if (port80) {
+          logger.info(`✅ Port 80 found in system ports: ${JSON.stringify(port80)}`);
+        } else {
+          logger.warn(`⚠️ Port 80 NOT found in system ports`);
+        }
+      }
       
       // Get Docker container ports if server is localhost
       let containerPorts = [];
       if (server === 'localhost' || server === '127.0.0.1') {
         try {
           containerPorts = await this.dockerIntegration.getContainerPorts();
-          logger.debug(`Found ${containerPorts.length} container ports`);
+          logger.info(`📊 Found ${containerPorts.length} container ports`);
         } catch (dockerError) {
           logger.warn(`Failed to get Docker container ports: ${dockerError.message}`);
           containerPorts = [];
@@ -673,7 +701,20 @@ class PortMonitor {
       }
       
       const result = Array.from(portsInUse.values());
-      logger.info(`Returning ${result.length} total ports in use (${systemPorts.length} system + ${containerPorts.length} container)`);
+      logger.info(`📤 Returning ${result.length} total ports in use (${systemPorts.length} system + ${containerPorts.length} container)`);
+      
+      // Check final result for port 80
+      const finalPort80 = result.find(p => p.port === 80);
+      if (finalPort80) {
+        logger.info(`✅ Port 80 in final result: ${JSON.stringify(finalPort80)}`);
+      } else {
+        logger.warn(`⚠️ Port 80 NOT in final result`);
+        // Log all ports for debugging
+        logger.debug('All ports in final result:');
+        result.forEach(p => {
+          logger.debug(`  - Port ${p.port}/${p.protocol}: ${p.service} (source: ${p.source})`);
+        });
+      }
       
       return result;
     } catch (error) {

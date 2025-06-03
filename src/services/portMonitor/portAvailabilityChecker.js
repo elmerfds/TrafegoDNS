@@ -13,6 +13,7 @@ class PortAvailabilityChecker {
     this.preferredMethod = config.PORT_CHECK_METHOD || 'socket'; // socket, netstat, ss
     this.cache = new Map();
     this.cacheTimeout = config.PORT_CACHE_TIMEOUT || 5000; // 5 seconds
+    this.isDocker = require('fs').existsSync('/.dockerenv');
   }
 
   /**
@@ -361,18 +362,27 @@ class PortAvailabilityChecker {
   async _getListeningPortsWithNetstat(protocol) {
     return new Promise((resolve, reject) => {
       // Use more comprehensive netstat flags for better detection
-      const args = ['-ln'];
-      if (protocol) {
-        args.push(protocol === 'udp' ? '-u' : '-t');
+      let args = ['-ln'];
+      
+      // Check if we're in a Docker container
+      const isDocker = require('fs').existsSync('/.dockerenv');
+      
+      if (isDocker) {
+        // In Docker, we might need different flags
+        args = ['-tuln'];
       } else {
-        // Include both TCP and UDP if no protocol specified
-        args.push('-tu');
+        if (protocol) {
+          args.push(protocol === 'udp' ? '-u' : '-t');
+        } else {
+          // Include both TCP and UDP if no protocol specified
+          args.push('-tu');
+        }
+        
+        // Add additional flags for more comprehensive output
+        args.push('--numeric-ports', '--numeric-hosts');
       }
       
-      // Add additional flags for more comprehensive output
-      args.push('--numeric-ports', '--numeric-hosts');
-      
-      logger.debug(`Running netstat with args: ${args.join(' ')}`);
+      logger.debug(`Running netstat with args: ${args.join(' ')} (Docker: ${isDocker})`);
       
       const netstat = spawn('netstat', args);
       let output = '';
@@ -423,18 +433,27 @@ class PortAvailabilityChecker {
   async _getListeningPortsWithSs(protocol) {
     return new Promise((resolve, reject) => {
       // Use more comprehensive ss flags for better detection
-      const args = ['-ln'];
-      if (protocol) {
-        args.push(protocol === 'udp' ? '-u' : '-t');
+      let args = ['-ln'];
+      
+      // Check if we're in a Docker container
+      const isDocker = require('fs').existsSync('/.dockerenv');
+      
+      if (isDocker) {
+        // In Docker, use simpler flags that work better
+        args = ['-tuln'];
       } else {
-        // Include both TCP and UDP if no protocol specified
-        args.push('-tu');
+        if (protocol) {
+          args.push(protocol === 'udp' ? '-u' : '-t');
+        } else {
+          // Include both TCP and UDP if no protocol specified
+          args.push('-tu');
+        }
+        
+        // Add additional flags for more comprehensive output
+        args.push('--numeric', '--all');
       }
       
-      // Add additional flags for more comprehensive output
-      args.push('--numeric', '--all');
-      
-      logger.debug(`Running ss with args: ${args.join(' ')}`);
+      logger.debug(`Running ss with args: ${args.join(' ')} (Docker: ${isDocker})`);
       
       const ss = spawn('ss', args);
       let output = '';
@@ -486,6 +505,8 @@ class PortAvailabilityChecker {
   _parseNetstatOutput(output, protocol) {
     const ports = [];
     const lines = output.split('\n');
+    
+    logger.debug(`📝 Parsing netstat output (${lines.length} lines)`);
 
     for (const line of lines) {
       const trimmedLine = line.trim();
@@ -525,13 +546,19 @@ class PortAvailabilityChecker {
           }
           
           if (!protocol || lineProtocol.toLowerCase() === protocol.toLowerCase()) {
-            ports.push({
+            const portInfo = {
               port: port,
               protocol: lineProtocol.toLowerCase(),
               host: (host === '0.0.0.0' || host === '::' || host === '*' || !host) ? '*' : host,
               state: 'LISTEN',
               service: this._identifyService(port)
-            });
+            };
+            ports.push(portInfo);
+            
+            // Log port 80 specifically
+            if (port === 80) {
+              logger.info(`✅ Parsed port 80 from netstat: ${JSON.stringify(portInfo)}`);
+            }
           }
           matched = true;
           break;
@@ -541,10 +568,23 @@ class PortAvailabilityChecker {
       if (!matched && trimmedLine.includes('LISTEN')) {
         // Debug log for unmatched LISTEN lines
         logger.debug(`Unmatched netstat LISTEN line: ${trimmedLine}`);
+        // Check if this line might contain port 80
+        if (trimmedLine.includes(':80 ')) {
+          logger.warn(`⚠️ Unmatched line contains port 80: ${trimmedLine}`);
+        }
       }
     }
 
-    logger.debug(`Parsed ${ports.length} ports from netstat output`);
+    logger.info(`📊 Parsed ${ports.length} ports from netstat output`);
+    
+    // Log port 80 status
+    const port80 = ports.find(p => p.port === 80);
+    if (port80) {
+      logger.info(`✅ Port 80 found in parsed results`);
+    } else {
+      logger.warn(`⚠️ Port 80 NOT found in parsed results`);
+    }
+    
     return ports;
   }
 
@@ -558,6 +598,8 @@ class PortAvailabilityChecker {
   _parseSsOutput(output, protocol) {
     const ports = [];
     const lines = output.split('\n');
+    
+    logger.debug(`📝 Parsing ss output (${lines.length} lines)`);
 
     for (const line of lines) {
       const trimmedLine = line.trim();
@@ -606,22 +648,41 @@ class PortAvailabilityChecker {
           const lineProtocol = parts[0] === 'UNCONN' ? 'udp' : 'tcp';
           
           if (!protocol || lineProtocol === protocol) {
-            ports.push({
+            const portInfo = {
               port: port,
               protocol: lineProtocol,
               host: (host === '0.0.0.0' || host === '*' || host === '::' || host === '[::]' || !host) ? '*' : host,
               state: parts[0],
               service: this._identifyService(port)
-            });
+            };
+            ports.push(portInfo);
+            
+            // Log port 80 specifically
+            if (port === 80) {
+              logger.info(`✅ Parsed port 80 from ss: ${JSON.stringify(portInfo)}`);
+            }
           }
         } else {
           // Debug log for unmatched LISTEN/UNCONN lines
           logger.debug(`Unmatched ss ${parts[0]} line: ${trimmedLine}`);
+          // Check if this line might contain port 80
+          if (trimmedLine.includes(':80 ')) {
+            logger.warn(`⚠️ Unmatched line contains port 80: ${trimmedLine}`);
+          }
         }
       }
     }
 
-    logger.debug(`Parsed ${ports.length} ports from ss output`);
+    logger.info(`📊 Parsed ${ports.length} ports from ss output`);
+    
+    // Log port 80 status
+    const port80 = ports.find(p => p.port === 80);
+    if (port80) {
+      logger.info(`✅ Port 80 found in parsed results`);
+    } else {
+      logger.warn(`⚠️ Port 80 NOT found in parsed results`);
+    }
+    
     return ports;
   }
 
@@ -632,23 +693,62 @@ class PortAvailabilityChecker {
    */
   async getSystemPortsInUse(server = 'localhost') {
     try {
+      logger.info(`🔍 Getting system ports in use for server: ${server}`);
+      
       // For remote servers, we need SSH or agent-based checking
       if (server !== 'localhost' && server !== '127.0.0.1') {
         logger.warn(`Remote port scanning for ${server} not implemented yet`);
         return [];
       }
       
+      // Get listening ports using standard methods
       const listeningPorts = await this.getListeningPorts();
+      logger.info(`✅ getListeningPorts returned ${listeningPorts.length} ports`);
       
-      const systemPorts = listeningPorts.map(port => ({
-        port: port.port,
-        protocol: port.protocol || 'tcp',
-        service: port.service || this._identifyService(port.port),
-        pid: port.pid,
-        address: port.address || port.host || '0.0.0.0'
-      }));
+      // Create a map to track all ports
+      const portMap = new Map();
       
-      logger.debug(`Found ${systemPorts.length} system ports in use`);
+      // Add listening ports first
+      listeningPorts.forEach(port => {
+        const key = `${port.port}-${port.protocol || 'tcp'}`;
+        portMap.set(key, {
+          port: port.port,
+          protocol: port.protocol || 'tcp',
+          service: port.service || this._identifyService(port.port),
+          pid: port.pid,
+          address: port.address || port.host || '0.0.0.0',
+          source: 'system'
+        });
+      });
+      
+      // If running in Docker and we got few ports, also check common ports via socket
+      if (this.isDocker && listeningPorts.length < 10) {
+        logger.info('🔍 Running in Docker with limited port visibility, checking common ports via socket...');
+        
+        const commonPorts = await this._checkCommonPortsViaSocket(server);
+        logger.info(`✅ Socket check found ${commonPorts.length} additional ports in use`);
+        
+        // Add socket-detected ports
+        commonPorts.forEach(port => {
+          const key = `${port.port}-${port.protocol}`;
+          if (!portMap.has(key)) {
+            portMap.set(key, port);
+          }
+        });
+      }
+      
+      const systemPorts = Array.from(portMap.values());
+      
+      logger.info(`📊 Returning ${systemPorts.length} total system ports`);
+      
+      // Check port 80 in final result
+      const finalPort80 = systemPorts.find(p => p.port === 80);
+      if (finalPort80) {
+        logger.info(`✅ Port 80 in final result: ${JSON.stringify(finalPort80)}`);
+      } else {
+        logger.warn(`⚠️ Port 80 NOT in final result`);
+      }
+      
       return systemPorts;
     } catch (error) {
       logger.error(`Failed to get system ports in use: ${error.message}`);
@@ -900,6 +1000,120 @@ class PortAvailabilityChecker {
     }
     
     return commonPorts[port] || 'Unknown';
+  }
+
+  /**
+   * Check common ports via socket connection
+   * @private
+   * @param {string} server - Server to check
+   * @returns {Promise<Array>}
+   */
+  async _checkCommonPortsViaSocket(server) {
+    const commonPortsList = [
+      // System services
+      { port: 22, service: 'SSH' },
+      { port: 53, service: 'DNS' },
+      { port: 80, service: 'HTTP/Unraid' },
+      { port: 443, service: 'HTTPS' },
+      
+      // Database services
+      { port: 3306, service: 'MySQL' },
+      { port: 5432, service: 'PostgreSQL' },
+      { port: 6379, service: 'Redis' },
+      { port: 27017, service: 'MongoDB' },
+      { port: 11211, service: 'Memcached' },
+      
+      // Container & orchestration
+      { port: 2375, service: 'Docker' },
+      { port: 2376, service: 'Docker-TLS' },
+      { port: 9000, service: 'Portainer' },
+      { port: 9443, service: 'Portainer-SSL' },
+      
+      // Unraid specific
+      { port: 6901, service: 'Unraid-Nginx' },
+      { port: 7000, service: 'Unraid-Docker' },
+      
+      // Web servers & proxies
+      { port: 8080, service: 'HTTP-Alt' },
+      { port: 8443, service: 'HTTPS-Alt' },
+      { port: 8000, service: 'HTTP-Dev' },
+      { port: 8888, service: 'HTTP-Alt2' },
+      
+      // Media servers
+      { port: 32400, service: 'Plex' },
+      { port: 8096, service: 'Jellyfin' },
+      { port: 8989, service: 'Sonarr' },
+      { port: 7878, service: 'Radarr' },
+      { port: 8686, service: 'Lidarr' },
+      { port: 9117, service: 'Jackett' },
+      
+      // Monitoring
+      { port: 9090, service: 'Prometheus' },
+      { port: 3001, service: 'Grafana' },
+      { port: 9200, service: 'Elasticsearch' },
+      { port: 5601, service: 'Kibana' },
+      
+      // Development
+      { port: 3000, service: 'Node-Dev' },
+      { port: 5000, service: 'Flask-Dev' },
+      { port: 5173, service: 'Vite-Dev' },
+      { port: 4000, service: 'Dev-Server' },
+      
+      // Other common services
+      { port: 1883, service: 'MQTT' },
+      { port: 8123, service: 'Home-Assistant' },
+      { port: 25565, service: 'Minecraft' },
+      { port: 3389, service: 'RDP' },
+      { port: 5900, service: 'VNC' }
+    ];
+
+    const detectedPorts = [];
+    
+    // Check ports in parallel with controlled concurrency
+    const batchSize = 10;
+    for (let i = 0; i < commonPortsList.length; i += batchSize) {
+      const batch = commonPortsList.slice(i, i + batchSize);
+      
+      const checkPromises = batch.map(({ port, service }) => {
+        return new Promise((resolve) => {
+          const socket = new net.Socket();
+          const timeout = setTimeout(() => {
+            socket.destroy();
+            resolve(null);
+          }, 500); // Quick 500ms timeout
+
+          socket.connect(port, server, () => {
+            clearTimeout(timeout);
+            socket.destroy();
+            resolve({
+              port,
+              protocol: 'tcp',
+              service: service || this._identifyService(port),
+              pid: 'unknown',
+              address: server,
+              source: 'socket-scan'
+            });
+          });
+
+          socket.on('error', () => {
+            clearTimeout(timeout);
+            socket.destroy();
+            resolve(null);
+          });
+        });
+      });
+
+      const results = await Promise.all(checkPromises);
+      const foundPorts = results.filter(r => r !== null);
+      detectedPorts.push(...foundPorts);
+      
+      // Small delay between batches to avoid overwhelming the system
+      if (i + batchSize < commonPortsList.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+
+    return detectedPorts;
   }
 }
 
