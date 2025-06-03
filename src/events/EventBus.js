@@ -64,6 +64,16 @@ class EventBus {
   }
 
   /**
+   * Subscribe to an event (EventEmitter-style alias)
+   * @param {string} eventType - Event type
+   * @param {Function} handler - Event handler
+   * @returns {Function} - Unsubscribe function
+   */
+  on(eventType, handler) {
+    return this.subscribe(eventType, handler);
+  }
+
+  /**
    * Emit an event (new preferred method name)
    * @param {string} eventType - Event type to emit
    * @param {Object} data - Event data

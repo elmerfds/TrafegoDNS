@@ -10,7 +10,7 @@ class DockerPortIntegration {
   constructor(conflictDetector, suggestionEngine, eventBus) {
     this.conflictDetector = conflictDetector;
     this.suggestionEngine = suggestionEngine;
-    this.eventBus = eventBus || EventBus;
+    this.eventBus = eventBus;
     this.isInitialized = false;
     
     // Container port mappings cache

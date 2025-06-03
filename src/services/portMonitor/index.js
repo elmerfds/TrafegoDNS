@@ -15,7 +15,7 @@ class PortMonitor {
   constructor(config, database, eventBus) {
     this.config = config;
     this.database = database;
-    this.eventBus = eventBus || EventBus; // Use provided eventBus or fallback to EventBus class
+    this.eventBus = eventBus; // Use provided eventBus
     this.isInitialized = false;
     this.isRunning = false;
     
