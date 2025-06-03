@@ -85,6 +85,7 @@ export default function PortMonitoring() {
   const [statistics, setStatistics] = useState<PortStatistics | null>(null);
   const [reservations, setReservations] = useState<PortReservation[]>([]);
   const [portCheckResults, setPortCheckResults] = useState<PortStatus[]>([]);
+  const [portScanResults, setPortScanResults] = useState<PortStatus[]>([]);
   const [portSuggestions, setPortSuggestions] = useState<PortSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -356,6 +357,7 @@ export default function PortMonitoring() {
 
     setLoading(true);
     setError(null);
+    setPortScanResults([]); // Clear previous results
 
     try {
       const response = await api.post('/ports/scan-range', {
@@ -365,16 +367,23 @@ export default function PortMonitoring() {
       });
 
       const results = response.data.data.results;
-      const availablePorts = Object.entries(results)
-        .filter(([_, available]) => available)
-        .map(([port, _]) => ({
-          port: parseInt(port),
-          available: true,
-          reserved: false,
-          protocol
-        }));
+      const summary = response.data.data.summary;
+      
+      // Include all ports (available and unavailable) for complete picture
+      const allPorts = Object.entries(results).map(([port, available]) => ({
+        port: parseInt(port),
+        available: available as boolean,
+        reserved: false,
+        protocol
+      }));
 
-      setPortCheckResults(availablePorts as PortStatus[]);
+      setPortScanResults(allPorts as PortStatus[]);
+      
+      // Show summary in success message
+      if (summary) {
+        setError(null); // Clear any previous errors
+        console.log(`Scan complete: ${summary.availablePorts}/${summary.totalPorts} ports available (${summary.availabilityPercentage}%)`);
+      }
     } catch (error: any) {
       setError(error.response?.data?.message || 'Failed to scan port range');
     } finally {
@@ -674,7 +683,7 @@ export default function PortMonitoring() {
               {portCheckResults.length > 0 && (
                 <div className="space-y-2">
                   <h4 className="font-medium">Results:</h4>
-                  <div className="space-y-2">
+                  <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
                     {portCheckResults.map((port) => (
                       <div key={`${port.port}-${port.protocol}`} className="flex items-center justify-between p-3 border rounded">
                         <div className="flex items-center space-x-3">
@@ -741,14 +750,75 @@ export default function PortMonitoring() {
                     <SelectContent>
                       <SelectItem value="tcp">TCP</SelectItem>
                       <SelectItem value="udp">UDP</SelectItem>
+                      <SelectItem value="both">Both</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
               <Button onClick={scanPortRange} disabled={loading} className="w-full">
                 <Search className="h-4 w-4 mr-2" />
-                Scan Range
+                {loading ? 'Scanning...' : 'Scan Range'}
               </Button>
+
+              {loading && (
+                <div className="flex items-center justify-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                  <span className="ml-2 text-sm text-muted-foreground">
+                    Scanning ports {scanStartPort} to {scanEndPort}...
+                  </span>
+                </div>
+              )}
+
+              {portScanResults.length > 0 && (
+                <div className="space-y-4 mt-4">
+                  <h4 className="font-medium">Scan Results:</h4>
+                  <div className="text-sm text-muted-foreground mb-2">
+                    {(() => {
+                      const availableCount = portScanResults.filter(p => p.available).length;
+                      const totalCount = portScanResults.length;
+                      const percentage = Math.round((availableCount / totalCount) * 100);
+                      return `${availableCount}/${totalCount} ports available (${percentage}%)`;
+                    })()}
+                  </div>
+                  
+                  {/* Combined Results Section */}
+                  <div className="space-y-2">
+                    <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                      {portScanResults.map((port) => (
+                        <div key={`${port.port}-${port.protocol}`} className="p-3 border rounded space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <span className="font-mono text-sm font-bold">
+                                {port.port}/{port.protocol}
+                              </span>
+                              {port.available ? (
+                                <>
+                                  <Badge variant="default" className="bg-green-500">Available</Badge>
+                                  <CheckCircle className="h-4 w-4 text-green-500" />
+                                </>
+                              ) : (
+                                <>
+                                  <Badge variant="destructive">In Use</Badge>
+                                  <XCircle className="h-4 w-4 text-red-500" />
+                                </>
+                              )}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {port.available ? 'Ready for use' : 'Already taken'}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {portScanResults.length === 0 && (
+                    <div className="text-center py-4 text-muted-foreground">
+                      No results to display
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -842,7 +912,8 @@ export default function PortMonitoring() {
               {portSuggestions.length > 0 && (
                 <div className="space-y-3">
                   <h4 className="font-medium">Suggested Alternatives:</h4>
-                  {portSuggestions.map((suggestion, index) => (
+                  <div className="space-y-3 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                    {portSuggestions.map((suggestion, index) => (
                     <div key={index} className="p-3 border rounded">
                       <div className="text-sm font-medium mb-2">
                         Original: {suggestion.originalPort}
@@ -855,7 +926,8 @@ export default function PortMonitoring() {
                         ))}
                       </div>
                     </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -874,7 +946,8 @@ export default function PortMonitoring() {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <h4 className="font-medium">Configured Servers</h4>
-                  {servers.map(server => (
+                  <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                    {servers.map(server => (
                     <div key={server.id} className="flex items-center justify-between p-3 border rounded">
                       <div className="flex items-center space-x-3">
                         <Server className="h-4 w-4" />
@@ -887,7 +960,8 @@ export default function PortMonitoring() {
                         <Badge variant="outline">Host Server</Badge>
                       )}
                     </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
                 
                 <div className="border-t pt-4">

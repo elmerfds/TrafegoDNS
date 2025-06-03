@@ -875,8 +875,18 @@ class PortMonitor {
           batch.push(p);
         }
         
-        const batchResults = await this.availabilityChecker.checkMultiplePorts(batch, protocol, server);
-        Object.assign(results, batchResults);
+        if (protocol === 'both') {
+          // Check both TCP and UDP, port is available only if both are available
+          const tcpResults = await this.availabilityChecker.checkMultiplePorts(batch, 'tcp', server);
+          const udpResults = await this.availabilityChecker.checkMultiplePorts(batch, 'udp', server);
+          
+          for (const port of batch) {
+            results[port] = tcpResults[port] && udpResults[port];
+          }
+        } else {
+          const batchResults = await this.availabilityChecker.checkMultiplePorts(batch, protocol, server);
+          Object.assign(results, batchResults);
+        }
       }
       
       this.lastScanTime = new Date().toISOString();
