@@ -10,7 +10,7 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Switch } from './ui/switch';
 import { Progress } from './ui/progress';
-import { AlertTriangle, CheckCircle, XCircle, Search, Settings, Activity, Wifi, WifiOff, Plus, Server } from 'lucide-react';
+import { AlertTriangle, CheckCircle, XCircle, Search, Settings, Activity, Wifi, WifiOff, Plus, Server, Clock, Lock, X } from 'lucide-react';
 import { useSocket } from '../hooks/useSocket';
 import { api } from '../lib/api';
 
@@ -107,6 +107,8 @@ export default function PortMonitoring() {
   const [reservationPort, setReservationPort] = useState('');
   const [reservationContainerId, setReservationContainerId] = useState('');
   const [reservationDuration, setReservationDuration] = useState('3600');
+  const [reservationDurationType, setReservationDurationType] = useState('hours');
+  const [reservationDurationValue, setReservationDurationValue] = useState('1');
   const [reservationNotes, setReservationNotes] = useState('');
   const [showReservationDialog, setShowReservationDialog] = useState(false);
   
@@ -223,20 +225,46 @@ export default function PortMonitoring() {
     setError(null);
 
     try {
+      // Calculate duration in seconds based on type
+      let durationInSeconds = parseInt(reservationDurationValue);
+      switch (reservationDurationType) {
+        case 'minutes':
+          durationInSeconds *= 60;
+          break;
+        case 'hours':
+          durationInSeconds *= 3600;
+          break;
+        case 'days':
+          durationInSeconds *= 86400;
+          break;
+        case 'weeks':
+          durationInSeconds *= 604800;
+          break;
+        case 'permanent':
+          durationInSeconds = 0; // 0 means permanent
+          break;
+        default:
+          break;
+      }
+
       await api.post('/ports/reserve', {
         ports: [parseInt(reservationPort)],
         containerId: reservationContainerId,
         protocol: protocol === 'both' ? 'tcp' : protocol,
-        duration: parseInt(reservationDuration),
+        duration: durationInSeconds,
         metadata: {
           notes: reservationNotes,
-          createdBy: 'user'
+          createdBy: 'user',
+          durationType: reservationDurationType,
+          originalDurationValue: reservationDurationValue
         }
       });
 
       setShowReservationDialog(false);
       setReservationPort('');
       setReservationContainerId('');
+      setReservationDurationValue('1');
+      setReservationDurationType('hours');
       setReservationNotes('');
       loadReservations();
     } catch (error: any) {
@@ -393,16 +421,77 @@ export default function PortMonitoring() {
 
   const getStatusBadge = (port: PortStatus) => {
     if (port.reserved) {
-      return <Badge variant="secondary">Reserved</Badge>;
+      return <Badge variant="secondary" className="bg-blue-100 text-blue-800">Reserved</Badge>;
     }
     if (port.available) {
-      return <Badge variant="default" className="bg-green-500">Available</Badge>;
+      return <Badge variant="default" className="bg-green-100 text-green-800">Available</Badge>;
     }
-    return <Badge variant="destructive">In Use</Badge>;
+    return <Badge variant="destructive" className="bg-red-100 text-red-800">In Use</Badge>;
+  };
+
+  const getReservationStatusBadge = (expiresAt: string) => {
+    const now = new Date();
+    const expiry = new Date(expiresAt);
+    const timeUntilExpiry = expiry.getTime() - now.getTime();
+    const hoursUntilExpiry = timeUntilExpiry / (1000 * 60 * 60);
+    
+    if (timeUntilExpiry <= 0) {
+      return <Badge variant="destructive" className="bg-red-100 text-red-800">Expired</Badge>;
+    } else if (hoursUntilExpiry <= 1) {
+      return <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-300">Expiring Soon</Badge>;
+    } else if (hoursUntilExpiry <= 24) {
+      return <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300">Expires Today</Badge>;
+    } else {
+      return <Badge variant="secondary" className="bg-blue-100 text-blue-800">Active</Badge>;
+    }
+  };
+
+  const addPortToReservation = (port: PortStatus) => {
+    setReservationPort(port.port.toString());
+    setShowReservationDialog(true);
+  };
+
+  const getDurationPreview = () => {
+    const value = parseInt(reservationDurationValue) || 1;
+    
+    if (reservationDurationType === 'permanent') {
+      return 'Permanent reservation';
+    }
+    
+    const now = new Date();
+    let endTime = new Date(now);
+    
+    switch (reservationDurationType) {
+      case 'minutes':
+        endTime.setMinutes(now.getMinutes() + value);
+        break;
+      case 'hours':
+        endTime.setHours(now.getHours() + value);
+        break;
+      case 'days':
+        endTime.setDate(now.getDate() + value);
+        break;
+      case 'weeks':
+        endTime.setDate(now.getDate() + (value * 7));
+        break;
+    }
+    
+    return `Until ${endTime.toLocaleString()}`;
   };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString();
+  };
+
+  const releaseReservation = async (reservationId: number) => {
+    try {
+      await api.delete(`/ports/reservations/${reservationId}`);
+      loadReservations();
+      loadStatistics();
+    } catch (error) {
+      console.error('Failed to release reservation:', error);
+      setError('Failed to release reservation');
+    }
   };
 
   return (
@@ -636,8 +725,20 @@ export default function PortMonitoring() {
                             placeholder="Add documentation/notes..."
                             value={portInfo.documentation || ''}
                             onChange={(e) => updatePortDocumentation(portInfo.port, e.target.value)}
-                            className="text-sm"
+                            className="text-sm flex-1"
                           />
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="h-8 px-3 text-xs whitespace-nowrap"
+                            onClick={() => {
+                              setReservationPort(portInfo.port.toString());
+                              setReservationContainerId(portInfo.containerId || '');
+                              setShowReservationDialog(true);
+                            }}
+                          >
+<Lock className="h-3 w-3 mr-1" />Reserve
+                          </Button>
                         </div>
                       </div>
                     ))}
@@ -695,11 +796,23 @@ export default function PortMonitoring() {
                           )}
                           {getStatusBadge(port)}
                         </div>
-                        {port.reserved && port.reservedBy && (
-                          <div className="text-sm text-muted-foreground">
-                            Reserved by: {port.reservedBy}
-                          </div>
-                        )}
+                        <div className="flex items-center space-x-2">
+                          {port.reserved && port.reservedBy && (
+                            <div className="text-sm text-muted-foreground">
+                              Reserved by: {port.reservedBy}
+                            </div>
+                          )}
+                          {port.available && (
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="h-6 px-2 text-xs"
+                              onClick={() => addPortToReservation(port)}
+                            >
+                              + Reserve
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -793,18 +906,30 @@ export default function PortMonitoring() {
                               </span>
                               {port.available ? (
                                 <>
-                                  <Badge variant="default" className="bg-green-500">Available</Badge>
+                                  <Badge variant="default" className="bg-green-100 text-green-800">Available</Badge>
                                   <CheckCircle className="h-4 w-4 text-green-500" />
                                 </>
                               ) : (
                                 <>
-                                  <Badge variant="destructive">In Use</Badge>
+                                  <Badge variant="destructive" className="bg-red-100 text-red-800">In Use</Badge>
                                   <XCircle className="h-4 w-4 text-red-500" />
                                 </>
                               )}
                             </div>
-                            <div className="text-sm text-muted-foreground">
-                              {port.available ? 'Ready for use' : 'Already taken'}
+                            <div className="flex items-center space-x-2">
+                              <div className="text-sm text-muted-foreground">
+                                {port.available ? 'Ready for use' : 'Already taken'}
+                              </div>
+                              {port.available && (
+                                <Button 
+                                  size="sm" 
+                                  variant="outline" 
+                                  className="h-6 px-2 text-xs"
+                                  onClick={() => addPortToReservation(port)}
+                                >
+                                  + Reserve
+                                </Button>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -848,17 +973,37 @@ export default function PortMonitoring() {
                     <div key={reservation.id} className="p-3 border rounded space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
-                          <span className="font-mono text-sm">
+                          <span className="font-mono text-sm font-bold">
                             {reservation.port}/{reservation.protocol}
                           </span>
-                          <Badge variant="secondary">Reserved</Badge>
+                          {getReservationStatusBadge(reservation.expires_at)}
                         </div>
-                        <div className="text-sm text-muted-foreground">
-                          Expires: {formatDate(reservation.expires_at)}
+                        <div className="flex items-center text-sm text-muted-foreground">
+                          <Clock className="h-3 w-3 mr-1" />
+                          {reservation.expires_at === '9999-12-31T23:59:59.999Z' ? (
+                            'Permanent reservation'
+                          ) : (
+                            `Expires: ${formatDate(reservation.expires_at)}`
+                          )}
                         </div>
                       </div>
-                      <div className="text-sm text-muted-foreground">
-                        Container: {reservation.container_id}
+                      <div className="flex items-start justify-between">
+                        <div className="text-sm text-muted-foreground flex-1">
+                          Container: {reservation.container_id}
+                          {reservation.metadata?.notes && (
+                            <div className="text-xs mt-1 text-gray-600">
+                              Notes: {reservation.metadata.notes}
+                            </div>
+                          )}
+                        </div>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="h-6 px-2 text-xs text-red-600 hover:text-red-700 border-red-200 hover:border-red-300 ml-2"
+                          onClick={() => releaseReservation(reservation.id)}
+                        >
+                          <X className="h-3 w-3 mr-1" />Release
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -1023,14 +1168,83 @@ export default function PortMonitoring() {
               </Select>
             </div>
             <div>
-              <Label htmlFor="reservationDuration">Duration (seconds)</Label>
-              <Input
-                id="reservationDuration"
-                type="number"
-                placeholder="3600"
-                value={reservationDuration}
-                onChange={(e) => setReservationDuration(e.target.value)}
-              />
+              <Label htmlFor="reservationDuration">Duration</Label>
+              <div className="flex space-x-2">
+                <Input
+                  id="reservationDuration"
+                  type="number"
+                  placeholder="1"
+                  value={reservationDurationValue}
+                  onChange={(e) => setReservationDurationValue(e.target.value)}
+                  className="flex-1"
+                  min="1"
+                />
+                <Select value={reservationDurationType} onValueChange={setReservationDurationType}>
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="minutes">Minutes</SelectItem>
+                    <SelectItem value="hours">Hours</SelectItem>
+                    <SelectItem value="days">Days</SelectItem>
+                    <SelectItem value="weeks">Weeks</SelectItem>
+                    <SelectItem value="permanent">Permanent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                {reservationDurationType === 'permanent' ? (
+                  'Permanent reservations require manual release'
+                ) : (
+                  `Preview: ${getDurationPreview()}`
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1 mt-2">
+                <span className="text-xs text-muted-foreground mr-2">Quick presets:</span>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="h-5 px-2 text-xs"
+                  onClick={() => {
+                    setReservationDurationValue('1');
+                    setReservationDurationType('hours');
+                  }}
+                >
+                  1 hour
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="h-5 px-2 text-xs"
+                  onClick={() => {
+                    setReservationDurationValue('1');
+                    setReservationDurationType('days');
+                  }}
+                >
+                  1 day
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="h-5 px-2 text-xs"
+                  onClick={() => {
+                    setReservationDurationValue('1');
+                    setReservationDurationType('weeks');
+                  }}
+                >
+                  1 week
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="h-5 px-2 text-xs"
+                  onClick={() => {
+                    setReservationDurationType('permanent');
+                  }}
+                >
+                  Permanent
+                </Button>
+              </div>
             </div>
             <div>
               <Label htmlFor="reservationNotes">Notes</Label>
