@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { useAuthStore } from '@/store/authStore'
 import { Layout } from '@/components/Layout'
 import { LoginPage } from '@/pages/Login'
+import { AuthCallbackPage } from '@/pages/AuthCallback'
 import { CustomizableDashboard } from '@/pages/CustomizableDashboard'
 import { DNSRecordsPage } from '@/pages/DNSRecords'
 import { ContainersPage } from '@/pages/Containers'
@@ -11,6 +12,7 @@ import { UsersPage } from '@/pages/Users'
 import { ProfilePage } from '@/pages/Profile'
 import { OrphanedRecordsPage } from '@/pages/OrphanedRecords'
 import { LogsPage } from '@/pages/Logs'
+import PortManagement from '@/pages/PortManagement'
 import { Toaster } from '@/components/ui/toaster'
 import { ThemeProvider } from '@/components/theme-provider'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
@@ -23,6 +25,7 @@ function App() {
       <Router>
         <Routes>
           <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/" />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route
             path="/"
             element={isAuthenticated ? <Layout /> : <Navigate to="/login" />}
@@ -44,6 +47,7 @@ function App() {
             <Route path="profile" element={<ProfilePage />} />
             <Route path="orphaned-records" element={<OrphanedRecordsPage />} />
             <Route path="logs" element={<LogsPage />} />
+            <Route path="port-management" element={<PortManagement />} />
           </Route>
         </Routes>
       </Router>

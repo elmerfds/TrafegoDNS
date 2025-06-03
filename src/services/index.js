@@ -7,11 +7,13 @@ const TraefikMonitor = require('./TraefikMonitor');
 const DockerMonitor = require('./dockerMonitor');
 const StatusReporter = require('./StatusReporter');
 const DirectDNSManager = require('./DirectDNSManager');
+const PortMonitor = require('./portMonitor');
 
 module.exports = {
   DNSManager,
   TraefikMonitor,
   DockerMonitor,
   StatusReporter,
-  DirectDNSManager
+  DirectDNSManager,
+  PortMonitor
 };

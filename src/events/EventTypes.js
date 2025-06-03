@@ -66,6 +66,20 @@ module.exports = {
     API_RESPONSE: 'api:response',
     API_ERROR: 'api:error',
 
+    // Port monitoring events
+    PORT_SCAN_STARTED: 'port:scan:started',
+    PORT_SCAN_COMPLETED: 'port:scan:completed',
+    PORT_SCAN_FAILED: 'port:scan:failed',
+    PORT_CHANGED: 'port:changed',
+    PORT_DISCOVERED: 'port:discovered',
+    PORT_CLOSED: 'port:closed',
+    PORT_ALERT_CREATED: 'port:alert:created',
+    PORT_ALERT_ACKNOWLEDGED: 'port:alert:acknowledged',
+    PORT_RESERVED: 'port:reserved',
+    PORT_RELEASED: 'port:released',
+    PORT_CONFLICT_DETECTED: 'port:conflict:detected',
+    PORT_CONFLICT_RESOLVED: 'port:conflict:resolved',
+
     // Status events
     STATUS_UPDATE: 'status:update',
     ERROR_OCCURRED: 'error:occurred'

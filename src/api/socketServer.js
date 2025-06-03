@@ -161,6 +161,20 @@ class SocketServer {
     // Status Events
     this.subscribeToEvent(EventTypes.STATUS_UPDATE);
     
+    // Port Monitoring Events
+    this.subscribeToEvent(EventTypes.PORT_SCAN_STARTED);
+    this.subscribeToEvent(EventTypes.PORT_SCAN_COMPLETED);
+    this.subscribeToEvent(EventTypes.PORT_SCAN_FAILED);
+    this.subscribeToEvent(EventTypes.PORT_CHANGED);
+    this.subscribeToEvent(EventTypes.PORT_DISCOVERED);
+    this.subscribeToEvent(EventTypes.PORT_CLOSED);
+    this.subscribeToEvent(EventTypes.PORT_ALERT_CREATED);
+    this.subscribeToEvent(EventTypes.PORT_ALERT_ACKNOWLEDGED);
+    this.subscribeToEvent(EventTypes.PORT_RESERVED);
+    this.subscribeToEvent(EventTypes.PORT_RELEASED);
+    this.subscribeToEvent(EventTypes.PORT_CONFLICT_DETECTED);
+    this.subscribeToEvent(EventTypes.PORT_CONFLICT_RESOLVED);
+    
     logger.debug('Socket server subscribed to application events');
   }
   

@@ -13,6 +13,7 @@ const { up: ensureOrphanedAtColumn } = require('./migrations/ensureOrphanedAtCol
 const { createActivityLogTable } = require('./migrations/createActivityLogTable');
 const { up: createUserPreferencesTable } = require('./migrations/createUserPreferencesTable');
 const createDashboardLayoutsTable = require('./migrations/createDashboardLayoutsTable');
+const { createPortMonitoringTables } = require('./migrations/createPortMonitoringTables');
 
 // Import repositories
 const UserRepository = require('./repository/userRepository');
@@ -185,6 +186,14 @@ async function initialize(migrate = true, options = {}) {
         logger.info('Dashboard layouts table ready');
       } catch (dashboardLayoutsError) {
         logger.error(`Failed to create dashboard layouts table: ${dashboardLayoutsError.message}`);
+      }
+      
+      try {
+        // Create port monitoring tables
+        await createPortMonitoringTables(db);
+        logger.info('Port monitoring tables ready');
+      } catch (portMonitoringError) {
+        logger.error(`Failed to create port monitoring tables: ${portMonitoringError.message}`);
       }
     }
     

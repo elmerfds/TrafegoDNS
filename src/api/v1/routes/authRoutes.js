@@ -11,7 +11,10 @@ const {
   getProfile,
   getUsers,
   updateUser,
-  deleteUser
+  deleteUser,
+  oidcAuthorize,
+  oidcCallback,
+  oidcStatus
 } = require('../controllers/authController');
 const { authenticate, authorize } = require('../middleware/authMiddleware');
 const { authLimiter } = require('../middleware/rateLimitMiddleware');
@@ -370,5 +373,94 @@ router.put('/users/:id', authenticate, authorize('admin'), updateUser);
  *        description: User not found
  */
 router.delete('/users/:id', authenticate, authorize('admin'), deleteUser);
+
+/**
+ * @swagger
+ * /auth/oidc/status:
+ *  get:
+ *    summary: Get OIDC configuration status
+ *    tags: [Authentication]
+ *    responses:
+ *      200:
+ *        description: OIDC status retrieved successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                data:
+ *                  type: object
+ *                  properties:
+ *                    enabled:
+ *                      type: boolean
+ *                    configured:
+ *                      type: boolean
+ *                    issuer:
+ *                      type: string
+ *                    metadata:
+ *                      type: object
+ */
+router.get('/oidc/status', oidcStatus);
+
+/**
+ * @swagger
+ * /auth/oidc/authorize:
+ *  get:
+ *    summary: Get OIDC authorization URL
+ *    tags: [Authentication]
+ *    responses:
+ *      200:
+ *        description: Authorization URL generated successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                data:
+ *                  type: object
+ *                  properties:
+ *                    authUrl:
+ *                      type: string
+ *                    state:
+ *                      type: string
+ *      404:
+ *        description: OIDC not enabled
+ *      500:
+ *        description: Failed to initialize OIDC
+ */
+router.get('/oidc/authorize', oidcAuthorize);
+
+/**
+ * @swagger
+ * /auth/oidc/callback:
+ *  get:
+ *    summary: Handle OIDC callback
+ *    tags: [Authentication]
+ *    parameters:
+ *      - in: query
+ *        name: code
+ *        schema:
+ *          type: string
+ *        required: true
+ *        description: Authorization code
+ *      - in: query
+ *        name: state
+ *        schema:
+ *          type: string
+ *        required: true
+ *        description: State parameter
+ *    responses:
+ *      302:
+ *        description: Redirect to frontend with token
+ *      400:
+ *        description: Invalid callback parameters
+ */
+router.get('/oidc/callback', oidcCallback);
 
 module.exports = router;

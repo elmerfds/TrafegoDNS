@@ -23,52 +23,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { SecretInput } from '@/components/ui/secret-input'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Loader2, Save, AlertTriangle } from 'lucide-react'
-
-interface Config {
-  operationMode: string
-  pollInterval: number
-  watchDockerEvents: boolean
-  cleanupOrphaned: boolean
-  cleanupGracePeriod: number
-  dnsProvider: string
-  dnsLabelPrefix: string
-  dnsDefaultType: string
-  dnsDefaultContent: string
-  dnsDefaultProxied: boolean
-  dnsDefaultTTL: number
-  dnsDefaultManage: boolean
-  cloudflareZone: string
-  route53Zone: string
-  route53ZoneId: string
-  route53Region: string
-  digitalOceanDomain: string
-  traefikApiUrl: string
-  traefikApiUsername: string
-  dockerSocket: string
-  genericLabelPrefix: string
-  traefikLabelPrefix: string
-  managedHostnames: string
-  preservedHostnames: string
-  domain: string
-  publicIP: string
-  publicIPv6: string
-  ipRefreshInterval: number
-  dnsCacheRefreshInterval: number
-  apiTimeout: number
-  recordDefaults: any
-  // Secret fields
-  cloudflareToken?: string
-  route53AccessKey?: string
-  route53SecretKey?: string
-  digitalOceanToken?: string
-  traefikApiPassword?: string
-  // Secret flags to indicate if values are set
-  hasCloudflareToken?: boolean
-  hasRoute53AccessKey?: boolean
-  hasRoute53SecretKey?: boolean
-  hasDigitalOceanToken?: boolean
-  hasTraefikApiPassword?: boolean
-}
+import { Config } from '@/types/config'
 
 export function SettingsPage() {
   const { toast } = useToast()
@@ -771,6 +726,71 @@ export function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* OIDC Settings (Read Only) */}
+        {config.oidcEnabled && (
+          <Card>
+            <CardHeader>
+              <CardTitle>OIDC/SSO Settings</CardTitle>
+              <CardDescription>
+                OpenID Connect authentication configuration (configured via environment variables)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <div className="text-sm text-muted-foreground">
+                    {config.oidcEnabled ? 'Enabled' : 'Disabled'}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Issuer</Label>
+                  <div className="text-sm text-muted-foreground">
+                    {config.oidcIssuerUrl || 'Not configured'}
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Client ID</Label>
+                  <div className="text-sm text-muted-foreground">
+                    {config.oidcClientId || 'Not configured'}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Redirect URI</Label>
+                  <div className="text-sm text-muted-foreground">
+                    {config.oidcRedirectUri || 'Not configured'}
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Scopes</Label>
+                <div className="text-sm text-muted-foreground">
+                  {config.oidcScopes || 'Not configured'}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Role Mapping</Label>
+                <div className="text-sm text-muted-foreground">
+                  {config.oidcRoleMapping ? (
+                    <ul className="list-disc list-inside">
+                      {config.oidcRoleMapping.split(',').map((mapping) => {
+                        const [group, role] = mapping.split(':');
+                        return (
+                          <li key={group}>{group?.trim()} → {role?.trim()}</li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    'No role mapping configured'
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Save Button */}
         <div className="flex justify-end">

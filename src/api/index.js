@@ -7,6 +7,8 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const http = require('http');
+const path = require('path');
+const fs = require('fs');
 const swaggerUi = require('swagger-ui-express');
 const logger = require('../utils/logger');
 const { errorHandler } = require('./v1/middleware/errorMiddleware');
@@ -14,17 +16,17 @@ const { globalLimiter } = require('./v1/middleware/rateLimitMiddleware');
 const configureCors = require('./v1/middleware/corsMiddleware');
 const SocketServer = require('./socketServer');
 
-// Import routes
-const v1Routes = require('./v1/routes');
+// Import routes - will be set up in startApiServer
+let v1Routes = null;
 
 // Import User model for initialization
 const User = require('./v1/models/User');
 
+// Import OIDC service for initialization
+const oidcService = require('./v1/services/oidcService');
+
 // Create Express app
 const app = express();
-
-const path = require('path');
-const fs = require('fs');
 
 // Determine the web UI path
 const webDistPath = path.join(__dirname, '../web/dist');
@@ -91,8 +93,7 @@ if (webUIPath) {
   app.use(express.static(webUIPath));
 }
 
-// API Routes
-app.use('/api/v1', v1Routes);
+// API Routes - will be set up in startApiServer
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -109,38 +110,52 @@ app.get('/docs/swagger', (req, res) => {
   res.redirect('/swagger.html');
 });
 
-// 404 Handler for API routes
-app.use('/api/*', (req, res) => {
-  res.status(404).json({
-    status: 'error',
-    code: 'ENDPOINT_NOT_FOUND',
-    message: `Endpoint not found: ${req.method} ${req.originalUrl}`
-  });
-});
-
-// Catch all routes - serve index.html for SPA
-app.get('*', (req, res) => {
-  const indexPath = path.join(webUIPath || publicPath, 'index.html');
-  if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
-  } else {
-    res.status(404).send('Web UI not found');
-  }
-});
-
-// Error handling middleware
-app.use(errorHandler);
+// Note: 404 handlers and catch-all routes will be set up after API routes are mounted
 
 /**
  * Start the API server
  * @param {number} port - Port to listen on
  * @param {Object} config - Configuration object
  * @param {Object} eventBus - Event bus for real-time events
- * @param {Function} callback - Callback function to run after server starts
+ * @param {Object} additionalRoutes - Additional Express routes to mount at /api/v1
  * @returns {Object} - Server instance
  */
-async function startApiServer(port, config, eventBus, callback) {
+async function startApiServer(port, config, eventBus, additionalRoutes = null) {
   const apiPort = port || process.env.API_PORT || 3000;
+
+  // Set up routes - use additionalRoutes if provided, otherwise use default
+  if (additionalRoutes) {
+    v1Routes = additionalRoutes;
+  } else {
+    // Use default routes if no additional routes provided
+    const createRoutes = require('./v1/routes');
+    v1Routes = createRoutes();
+  }
+  
+  // Mount API routes BEFORE creating the server
+  app.use('/api/v1', v1Routes);
+  
+  // 404 Handler for API routes
+  app.use('/api/*', (req, res) => {
+    res.status(404).json({
+      status: 'error',
+      code: 'ENDPOINT_NOT_FOUND',
+      message: `Endpoint not found: ${req.method} ${req.originalUrl}`
+    });
+  });
+
+  // Catch all routes - serve index.html for SPA
+  app.get('*', (req, res) => {
+    const indexPath = path.join(webUIPath || publicPath, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.status(404).send('Web UI not found');
+    }
+  });
+
+  // Error handling middleware
+  app.use(errorHandler);
 
   // Initialize User model now that database should be ready
   logger.info('Initializing User model...');
@@ -163,6 +178,30 @@ async function startApiServer(port, config, eventBus, callback) {
   } catch (error) {
     logger.error(`Failed to initialize User model: ${error.message}`);
     // Continue anyway - the model will retry
+  }
+
+  // Initialize OIDC service if configured
+  if (config && config.oidcEnabled) {
+    logger.info('Initializing OIDC service...');
+    try {
+      const oidcConfig = {
+        issuerUrl: config.oidcIssuerUrl,
+        clientId: config.oidcClientId,
+        clientSecret: config.oidcClientSecret,
+        redirectUri: config.oidcRedirectUri
+      };
+      
+      const initialized = await oidcService.initialize(oidcConfig);
+      if (initialized) {
+        logger.info('OIDC service initialized successfully');
+      } else {
+        logger.warn('OIDC service initialization failed - OIDC login will be unavailable');
+      }
+    } catch (error) {
+      logger.error(`Failed to initialize OIDC service: ${error.message}`);
+    }
+  } else {
+    logger.debug('OIDC not enabled in configuration');
   }
 
   // Create HTTP server
@@ -190,9 +229,6 @@ async function startApiServer(port, config, eventBus, callback) {
       logger.info(`🔌 WebSocket server running for real-time updates`);
     }
 
-    if (typeof callback === 'function') {
-      callback(server, socketServer);
-    }
   });
 
   // Handle server errors

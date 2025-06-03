@@ -6,6 +6,8 @@ const { ApiError } = require('../../../utils/apiError');
 const logger = require('../../../utils/logger');
 const User = require('../models/User');
 const jwtService = require('../services/jwtService');
+const oidcService = require('../services/oidcService');
+const ConfigManager = require('../../../config/ConfigManager');
 
 /**
  * @desc    Authenticate user & get token
@@ -351,6 +353,114 @@ const deleteUser = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * @desc    Get OIDC configuration and authorization URL
+ * @route   GET /api/v1/auth/oidc/authorize
+ * @access  Public
+ */
+const oidcAuthorize = asyncHandler(async (req, res) => {
+  // Get config instance
+  const config = new ConfigManager();
+  
+  // Check if OIDC is enabled
+  if (!config.oidcEnabled) {
+    throw new ApiError('OIDC authentication is not enabled', 404, 'OIDC_NOT_ENABLED');
+  }
+  
+  // Initialize OIDC service if not already done
+  if (!oidcService.isEnabled()) {
+    const initialized = await oidcService.initialize({
+      issuerUrl: config.oidcIssuerUrl,
+      clientId: config.oidcClientId,
+      clientSecret: config.oidcClientSecret,
+      redirectUri: config.oidcRedirectUri
+    });
+    
+    if (!initialized) {
+      throw new ApiError('Failed to initialize OIDC service', 500, 'OIDC_INIT_FAILED');
+    }
+  }
+  
+  // Get authorization URL
+  const { authUrl, state } = oidcService.getAuthorizationUrl(
+    config.oidcRedirectUri,
+    config.oidcScopes
+  );
+  
+  res.json({
+    status: 'success',
+    data: {
+      authUrl,
+      state
+    }
+  });
+});
+
+/**
+ * @desc    Handle OIDC callback
+ * @route   GET /api/v1/auth/oidc/callback
+ * @access  Public
+ */
+const oidcCallback = asyncHandler(async (req, res) => {
+  const { code, state } = req.query;
+  
+  if (!code || !state) {
+    throw new ApiError('Missing authorization code or state', 400, 'MISSING_PARAMS');
+  }
+  
+  // Get config instance
+  const config = new ConfigManager();
+  
+  // Handle callback
+  const { userInfo } = await oidcService.handleCallback(
+    code,
+    state,
+    config.oidcRedirectUri
+  );
+  
+  // Create or update user
+  const user = await oidcService.createOrUpdateUser(userInfo, {
+    roleMapping: config.oidcRoleMapping
+  });
+  
+  // Generate JWT tokens
+  const { accessToken, refreshToken, expiresIn } = jwtService.generateTokens(user);
+  
+  // Set refresh token as cookie
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+  });
+  
+  logger.info(`OIDC user ${user.username} logged in successfully`);
+  
+  // Redirect to frontend with token
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  res.redirect(`${frontendUrl}/auth/callback?token=${accessToken}&expiresIn=${expiresIn}`);
+});
+
+/**
+ * @desc    Get OIDC status
+ * @route   GET /api/v1/auth/oidc/status
+ * @access  Public
+ */
+const oidcStatus = asyncHandler(async (req, res) => {
+  // Get config instance
+  const config = new ConfigManager();
+  
+  res.json({
+    status: 'success',
+    data: {
+      enabled: config.oidcEnabled,
+      configured: oidcService.isEnabled(),
+      issuer: config.oidcEnabled ? config.oidcIssuerUrl : null,
+      metadata: oidcService.getProviderMetadata()
+    }
+  });
+});
+
 module.exports = {
   login,
   register,
@@ -359,5 +469,8 @@ module.exports = {
   getProfile,
   getUsers,
   updateUser,
-  deleteUser
+  deleteUser,
+  oidcAuthorize,
+  oidcCallback,
+  oidcStatus
 };
