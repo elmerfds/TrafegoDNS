@@ -5,6 +5,7 @@ export interface Port {
   protocol: 'tcp' | 'udp';
   status: 'open' | 'closed' | 'filtered' | 'unknown';
   service_name?: string;
+  service?: string; // Alternative service name field
   service_version?: string;
   description?: string;
   labels: Record<string, string>;
@@ -16,6 +17,7 @@ export interface Port {
   updated_at: string;
   unread_alerts?: number;
   alerts?: PortAlert[];
+  source?: string; // Source of the port information (e.g., 'system', 'docker', 'manual')
 }
 
 export interface PortAlert {
