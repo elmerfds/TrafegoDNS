@@ -14,8 +14,8 @@ const { globalLimiter } = require('./v1/middleware/rateLimitMiddleware');
 const configureCors = require('./v1/middleware/corsMiddleware');
 const SocketServer = require('./socketServer');
 
-// Import routes
-const v1Routes = require('./v1/routes');
+// Import routes - will be set up in startApiServer
+let v1Routes = null;
 
 // Import User model for initialization
 const User = require('./v1/models/User');
@@ -94,8 +94,7 @@ if (webUIPath) {
   app.use(express.static(webUIPath));
 }
 
-// API Routes
-app.use('/api/v1', v1Routes);
+// API Routes - will be set up in startApiServer
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -144,11 +143,18 @@ app.use(errorHandler);
  */
 async function startApiServer(port, config, eventBus, additionalRoutes = null) {
   const apiPort = port || process.env.API_PORT || 3000;
-  
-  // Apply additional routes if provided
+
+  // Set up routes - use additionalRoutes if provided, otherwise use default
   if (additionalRoutes) {
-    app.use('/api/v1', additionalRoutes);
+    v1Routes = additionalRoutes;
+  } else {
+    // Use default routes if no additional routes provided
+    const createRoutes = require('./v1/routes');
+    v1Routes = createRoutes();
   }
+  
+  // Mount API routes
+  app.use('/api/v1', v1Routes);
 
   // Initialize User model now that database should be ready
   logger.info('Initializing User model...');
