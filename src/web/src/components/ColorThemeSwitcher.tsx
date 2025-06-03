@@ -29,7 +29,8 @@ export function ColorThemeSwitcher({ showLabel = true }: ColorThemeSwitcherProps
                 id === 'teal' ? 'bg-teal-500' :
                 id === 'gold' ? 'bg-amber-500' :
                 id === 'blue' ? 'bg-blue-500' :
-                'bg-purple-500'
+                id === 'purple' ? 'bg-violet-500' :
+                'bg-gray-500'
               }`}
             />
             <span>{theme.name}</span>

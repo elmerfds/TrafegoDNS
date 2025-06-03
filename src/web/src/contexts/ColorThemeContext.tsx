@@ -87,6 +87,9 @@ export function ColorThemeProvider({ children }: { children: React.ReactNode }) 
     const currentThemeClass = colorThemes[currentTheme].className;
     if (currentThemeClass) {
       root.classList.add(currentThemeClass);
+      console.log(`Applied color theme: ${currentTheme} (class: ${currentThemeClass})`);
+    } else {
+      console.log(`Applied color theme: ${currentTheme} (default teal)`);
     }
   }, [currentTheme]);
 

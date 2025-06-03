@@ -50,43 +50,55 @@
     --ring: 20 184 166;                  /* Teal ring */
   }
 
-  /* Gold Theme Variables */
+  /* Gold Theme Variables - Classic TrafegoDNS Gold */
   .theme-gold {
-    --primary: 245 158 11;               /* Gold primary */
-    --accent: 252 211 77;                /* Gold accent */
-    --ring: 245 158 11;                  /* Gold ring */
+    --primary: 245 158 11;               /* Amber-500 gold primary */
+    --accent: 252 211 77;                /* Amber-300 gold accent */  
+    --ring: 245 158 11;                  /* Amber-500 gold ring */
+    --secondary: 255 251 235;            /* Amber-50 light secondary */
+    --secondary-foreground: 146 64 14;   /* Amber-800 dark text */
   }
   
   .theme-gold.dark {
-    --primary: 245 158 11;               /* Gold primary */
-    --accent: 252 211 77;                /* Gold accent */
-    --ring: 245 158 11;                  /* Gold ring */
+    --primary: 245 158 11;               /* Amber-500 gold primary */
+    --accent: 252 211 77;                /* Amber-300 gold accent */
+    --ring: 245 158 11;                  /* Amber-500 gold ring */
+    --secondary: 31 41 55;               /* Dark secondary for dark mode */
+    --secondary-foreground: 252 211 77;  /* Amber-300 for dark mode text */
   }
 
-  /* Blue Theme Variables */
+  /* Blue Theme Variables - Professional Blue */
   .theme-blue {
-    --primary: 59 130 246;               /* Blue primary */
-    --accent: 147 197 253;               /* Blue accent */
-    --ring: 59 130 246;                  /* Blue ring */
+    --primary: 59 130 246;               /* Blue-500 primary */
+    --accent: 147 197 253;               /* Blue-300 accent */
+    --ring: 59 130 246;                  /* Blue-500 ring */
+    --secondary: 239 246 255;            /* Blue-50 light secondary */
+    --secondary-foreground: 30 58 138;   /* Blue-800 dark text */
   }
   
   .theme-blue.dark {
-    --primary: 59 130 246;               /* Blue primary */
-    --accent: 147 197 253;               /* Blue accent */
-    --ring: 59 130 246;                  /* Blue ring */
+    --primary: 59 130 246;               /* Blue-500 primary */
+    --accent: 147 197 253;               /* Blue-300 accent */
+    --ring: 59 130 246;                  /* Blue-500 ring */
+    --secondary: 31 41 55;               /* Dark secondary for dark mode */
+    --secondary-foreground: 147 197 253; /* Blue-300 for dark mode text */
   }
 
-  /* Purple Theme Variables */
+  /* Purple Theme Variables - Creative Purple */
   .theme-purple {
-    --primary: 139 92 246;               /* Purple primary */
-    --accent: 196 181 253;               /* Purple accent */
-    --ring: 139 92 246;                  /* Purple ring */
+    --primary: 139 92 246;               /* Violet-500 primary */
+    --accent: 196 181 253;               /* Violet-300 accent */
+    --ring: 139 92 246;                  /* Violet-500 ring */
+    --secondary: 245 243 255;            /* Violet-50 light secondary */
+    --secondary-foreground: 76 29 149;   /* Violet-800 dark text */
   }
   
   .theme-purple.dark {
-    --primary: 139 92 246;               /* Purple primary */
-    --accent: 196 181 253;               /* Purple accent */
-    --ring: 139 92 246;                  /* Purple ring */
+    --primary: 139 92 246;               /* Violet-500 primary */
+    --accent: 196 181 253;               /* Violet-300 accent */
+    --ring: 139 92 246;                  /* Violet-500 ring */
+    --secondary: 31 41 55;               /* Dark secondary for dark mode */
+    --secondary-foreground: 196 181 253; /* Violet-300 for dark mode text */
   }
 }
 
