@@ -14,7 +14,9 @@ const {
   deleteUser,
   oidcAuthorize,
   oidcCallback,
-  oidcStatus
+  oidcStatus,
+  updateThemePreference,
+  getThemePreference
 } = require('../controllers/authController');
 const { authenticate, authorize } = require('../middleware/authMiddleware');
 const { authLimiter } = require('../middleware/rateLimitMiddleware');
@@ -462,5 +464,88 @@ router.get('/oidc/authorize', oidcAuthorize);
  *        description: Invalid callback parameters
  */
 router.get('/oidc/callback', oidcCallback);
+
+/**
+ * @swagger
+ * /auth/theme:
+ *  get:
+ *    summary: Get user theme preference
+ *    tags: [Authentication]
+ *    security:
+ *      - BearerAuth: []
+ *    responses:
+ *      200:
+ *        description: Theme preference retrieved successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                data:
+ *                  type: object
+ *                  properties:
+ *                    theme:
+ *                      type: string
+ *                      example: teal
+ *                    availableThemes:
+ *                      type: array
+ *                      items:
+ *                        type: string
+ *                      example: [teal, gold, blue, purple]
+ *      401:
+ *        description: Not authenticated
+ */
+router.get('/theme', authenticate, getThemePreference);
+
+/**
+ * @swagger
+ * /auth/theme:
+ *  put:
+ *    summary: Update user theme preference
+ *    tags: [Authentication]
+ *    security:
+ *      - BearerAuth: []
+ *    requestBody:
+ *      required: true
+ *      content:
+ *        application/json:
+ *          schema:
+ *            type: object
+ *            required:
+ *              - theme
+ *            properties:
+ *              theme:
+ *                type: string
+ *                enum: [teal, gold, blue, purple]
+ *                description: Theme ID
+ *    responses:
+ *      200:
+ *        description: Theme preference updated successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                data:
+ *                  type: object
+ *                  properties:
+ *                    theme:
+ *                      type: string
+ *                      example: teal
+ *                    message:
+ *                      type: string
+ *                      example: Theme preference updated successfully
+ *      400:
+ *        description: Invalid theme
+ *      401:
+ *        description: Not authenticated
+ */
+router.put('/theme', authenticate, updateThemePreference);
 
 module.exports = router;

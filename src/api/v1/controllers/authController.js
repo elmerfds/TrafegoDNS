@@ -461,6 +461,65 @@ const oidcStatus = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * @desc    Update user theme preference
+ * @route   PUT /api/v1/auth/theme
+ * @access  Private
+ */
+const updateThemePreference = asyncHandler(async (req, res) => {
+  const { theme } = req.body;
+  const userId = req.user.id;
+
+  // Validate theme
+  const validThemes = ['teal', 'gold', 'blue', 'purple'];
+  if (!theme || !validThemes.includes(theme)) {
+    throw new ApiError(
+      `Invalid theme. Must be one of: ${validThemes.join(', ')}`,
+      400,
+      'INVALID_THEME'
+    );
+  }
+
+  try {
+    await User.updateThemePreference(userId, theme);
+
+    logger.info(`User ${req.user.username} updated theme preference to ${theme}`);
+
+    res.json({
+      status: 'success',
+      data: {
+        theme,
+        message: 'Theme preference updated successfully'
+      }
+    });
+  } catch (error) {
+    throw new ApiError(`Failed to update theme preference: ${error.message}`, 500, 'THEME_UPDATE_ERROR');
+  }
+});
+
+/**
+ * @desc    Get user theme preference
+ * @route   GET /api/v1/auth/theme
+ * @access  Private
+ */
+const getThemePreference = asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    const theme = await User.getThemePreference(userId);
+
+    res.json({
+      status: 'success',
+      data: {
+        theme,
+        availableThemes: ['teal', 'gold', 'blue', 'purple']
+      }
+    });
+  } catch (error) {
+    throw new ApiError(`Failed to get theme preference: ${error.message}`, 500, 'THEME_GET_ERROR');
+  }
+});
+
 module.exports = {
   login,
   register,
@@ -472,5 +531,7 @@ module.exports = {
   deleteUser,
   oidcAuthorize,
   oidcCallback,
-  oidcStatus
+  oidcStatus,
+  updateThemePreference,
+  getThemePreference
 };

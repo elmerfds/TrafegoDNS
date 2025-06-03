@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { api } from '../lib/api';
+import { useAuthStore } from '../store/authStore';
 
 // Theme definitions
 export const themes = {
@@ -96,14 +98,39 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [currentTheme, setCurrentTheme] = useState<ThemeId>('teal'); // Default to teal
+  const [isLoading, setIsLoading] = useState(true);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
-  // Load theme from localStorage on mount
+  // Load theme from API for authenticated users, localStorage for guests
   useEffect(() => {
-    const savedTheme = localStorage.getItem('trafegodns-theme') as ThemeId;
-    if (savedTheme && themes[savedTheme]) {
-      setCurrentTheme(savedTheme);
-    }
-  }, []);
+    const loadTheme = async () => {
+      if (isAuthenticated) {
+        try {
+          const response = await api.get('/auth/theme');
+          const themeId = response.data.data.theme;
+          if (themeId && themes[themeId as ThemeId]) {
+            setCurrentTheme(themeId as ThemeId);
+          }
+        } catch (error) {
+          console.warn('Failed to load theme from server, using localStorage fallback');
+          // Fallback to localStorage
+          const savedTheme = localStorage.getItem('trafegodns-theme') as ThemeId;
+          if (savedTheme && themes[savedTheme]) {
+            setCurrentTheme(savedTheme);
+          }
+        }
+      } else {
+        // For non-authenticated users, use localStorage
+        const savedTheme = localStorage.getItem('trafegodns-theme') as ThemeId;
+        if (savedTheme && themes[savedTheme]) {
+          setCurrentTheme(savedTheme);
+        }
+      }
+      setIsLoading(false);
+    };
+
+    loadTheme();
+  }, [isAuthenticated]);
 
   // Apply theme to CSS variables
   useEffect(() => {
@@ -116,9 +143,21 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     });
   }, [currentTheme]);
 
-  const setTheme = (themeId: ThemeId) => {
+  const setTheme = async (themeId: ThemeId) => {
     setCurrentTheme(themeId);
-    localStorage.setItem('trafegodns-theme', themeId);
+    
+    if (isAuthenticated) {
+      try {
+        await api.put('/auth/theme', { theme: themeId });
+      } catch (error) {
+        console.error('Failed to save theme to server:', error);
+        // Fallback to localStorage even for authenticated users
+        localStorage.setItem('trafegodns-theme', themeId);
+      }
+    } else {
+      // For non-authenticated users, use localStorage
+      localStorage.setItem('trafegodns-theme', themeId);
+    }
   };
 
   return (

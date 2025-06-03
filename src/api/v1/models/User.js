@@ -719,6 +719,63 @@ class UserModel {
       }
     );
   }
+
+  /**
+   * Update user theme preference
+   * @param {string} id - User ID
+   * @param {string} themeId - Theme ID
+   * @returns {Promise<boolean>} - Success status
+   */
+  async updateThemePreference(id, themeId) {
+    return this.withDatabaseReady(
+      // SQLite implementation
+      async () => this.userRepository.updateThemePreference(id, themeId),
+      
+      // JSON fallback implementation
+      async () => {
+        const userIndex = this.users.findIndex(u => u.id === id);
+        if (userIndex === -1) {
+          throw new Error('User not found');
+        }
+
+        // Validate theme ID
+        const validThemes = ['teal', 'gold', 'blue', 'purple'];
+        if (!validThemes.includes(themeId)) {
+          throw new Error(`Invalid theme ID: ${themeId}. Must be one of: ${validThemes.join(', ')}`);
+        }
+
+        // Update theme preference
+        this.users[userIndex].themePreference = themeId;
+        this.users[userIndex].updatedAt = new Date().toISOString();
+
+        // Save to file
+        this.saveUsers();
+        return true;
+      }
+    );
+  }
+
+  /**
+   * Get user theme preference
+   * @param {string} id - User ID
+   * @returns {Promise<string>} - Theme ID
+   */
+  async getThemePreference(id) {
+    return this.withDatabaseReady(
+      // SQLite implementation
+      async () => this.userRepository.getThemePreference(id),
+      
+      // JSON fallback implementation
+      async () => {
+        const user = this.users.find(u => u.id === id);
+        if (!user) {
+          throw new Error('User not found');
+        }
+
+        return user.themePreference || 'teal'; // Default to teal
+      }
+    );
+  }
 }
 
 // Create singleton instance but don't initialize yet

@@ -32,7 +32,8 @@ class UserRepository extends BaseRepository {
             role TEXT NOT NULL DEFAULT 'operator',
             created_at TEXT NOT NULL,
             updated_at TEXT,
-            last_login TEXT
+            last_login TEXT,
+            theme_preference TEXT DEFAULT 'teal'
           )
         `);
 
@@ -379,6 +380,66 @@ class UserRepository extends BaseRepository {
       }
       
       logger.error(`Failed to migrate users: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Update user theme preference
+   * @param {number} id - User ID
+   * @param {string} themeId - Theme ID (teal, gold, blue, purple)
+   * @returns {Promise<boolean>} - Success status
+   */
+  async updateThemePreference(id, themeId) {
+    try {
+      // Validate theme ID
+      const validThemes = ['teal', 'gold', 'blue', 'purple'];
+      if (!validThemes.includes(themeId)) {
+        throw new Error(`Invalid theme ID: ${themeId}. Must be one of: ${validThemes.join(', ')}`);
+      }
+
+      const sql = `
+        UPDATE ${this.tableName}
+        SET theme_preference = ?, updated_at = ?
+        WHERE id = ?
+      `;
+      
+      const now = new Date().toISOString();
+      const result = await this.db.run(sql, [themeId, now, id]);
+      
+      if (result.changes === 0) {
+        throw new Error('User not found');
+      }
+      
+      logger.debug(`Updated theme preference for user ${id} to ${themeId}`);
+      return true;
+    } catch (error) {
+      logger.error(`Failed to update theme preference: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get user theme preference
+   * @param {number} id - User ID
+   * @returns {Promise<string>} - Theme ID
+   */
+  async getThemePreference(id) {
+    try {
+      const sql = `
+        SELECT theme_preference FROM ${this.tableName}
+        WHERE id = ?
+      `;
+      
+      const result = await this.db.get(sql, [id]);
+      
+      if (!result) {
+        throw new Error('User not found');
+      }
+      
+      return result.theme_preference || 'teal'; // Default to teal
+    } catch (error) {
+      logger.error(`Failed to get theme preference: ${error.message}`);
       throw error;
     }
   }
