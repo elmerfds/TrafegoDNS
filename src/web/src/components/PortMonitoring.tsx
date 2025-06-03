@@ -241,7 +241,7 @@ export default function PortMonitoring() {
           durationInSeconds *= 604800;
           break;
         case 'permanent':
-          durationInSeconds = 0; // 0 means permanent
+          durationInSeconds = 100 * 365 * 24 * 3600; // 100 years (effectively permanent)
           break;
         default:
           break;
@@ -483,9 +483,14 @@ export default function PortMonitoring() {
     return new Date(dateString).toLocaleString();
   };
 
-  const releaseReservation = async (reservationId: number) => {
+  const releaseReservation = async (reservation: PortReservation) => {
     try {
-      await api.delete(`/ports/reservations/${reservationId}`);
+      await api.delete('/ports/reserve', {
+        data: {
+          ports: [reservation.port],
+          containerId: reservation.container_id
+        }
+      });
       loadReservations();
       loadStatistics();
     } catch (error) {
@@ -733,7 +738,11 @@ export default function PortMonitoring() {
                             className="h-8 px-3 text-xs whitespace-nowrap"
                             onClick={() => {
                               setReservationPort(portInfo.port.toString());
-                              setReservationContainerId(portInfo.containerId || '');
+                              // Prefer container name, fallback to service label, then container ID
+                              const containerIdentifier = portInfo.containerName || 
+                                                        (portInfo.serviceLabel !== 'Unknown' ? portInfo.serviceLabel : '') ||
+                                                        portInfo.containerId || '';
+                              setReservationContainerId(containerIdentifier);
                               setShowReservationDialog(true);
                             }}
                           >
@@ -1000,7 +1009,7 @@ export default function PortMonitoring() {
                           size="sm" 
                           variant="outline" 
                           className="h-6 px-2 text-xs text-red-600 hover:text-red-700 border-red-200 hover:border-red-300 ml-2"
-                          onClick={() => releaseReservation(reservation.id)}
+                          onClick={() => releaseReservation(reservation)}
                         >
                           <X className="h-3 w-3 mr-1" />Release
                         </Button>
