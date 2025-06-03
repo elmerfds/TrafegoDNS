@@ -569,79 +569,113 @@ class PortMonitor {
    */
   async getPortsInUse(server = 'localhost') {
     try {
+      logger.debug(`Getting ports in use for server: ${server}`);
+      
       // Get system ports in use
       const systemPorts = await this.availabilityChecker.getSystemPortsInUse(server);
+      logger.debug(`Found ${systemPorts.length} system ports`);
       
       // Get Docker container ports if server is localhost
       let containerPorts = [];
       if (server === 'localhost' || server === '127.0.0.1') {
-        containerPorts = await this.dockerIntegration.getContainerPorts();
+        try {
+          containerPorts = await this.dockerIntegration.getContainerPorts();
+          logger.debug(`Found ${containerPorts.length} container ports`);
+        } catch (dockerError) {
+          logger.warn(`Failed to get Docker container ports: ${dockerError.message}`);
+          containerPorts = [];
+        }
       }
       
       // Merge and format results
       const portsInUse = new Map();
       
-      // Add system ports
+      // Add system ports first (higher priority for service identification)
       for (const port of systemPorts) {
-        const overrideLabel = await this.getPortServiceLabel(port.port, port.protocol, server);
-        portsInUse.set(`${port.port}-${port.protocol}`, {
-          port: port.port,
-          protocol: port.protocol,
-          service: overrideLabel || port.service,
-          isOverridden: !!overrideLabel,
-          lastSeen: new Date().toISOString()
-        });
+        try {
+          const overrideLabel = await this.getPortServiceLabel(port.port, port.protocol, server);
+          portsInUse.set(`${port.port}-${port.protocol}`, {
+            port: port.port,
+            protocol: port.protocol,
+            service: overrideLabel || port.service || this.availabilityChecker._identifyService(port.port),
+            isOverridden: !!overrideLabel,
+            pid: port.pid,
+            address: port.address,
+            lastSeen: new Date().toISOString(),
+            source: 'system'
+          });
+        } catch (err) {
+          logger.debug(`Error processing system port ${port.port}: ${err.message}`);
+        }
       }
       
-      // Add container ports
+      // Add or merge container ports
       for (const containerPort of containerPorts) {
-        const key = `${containerPort.hostPort}-${containerPort.protocol || 'tcp'}`;
-        const overrideLabel = await this.getPortServiceLabel(containerPort.hostPort, containerPort.protocol || 'tcp', server);
-        const existing = portsInUse.get(key);
-        
-        if (existing) {
-          existing.containerId = containerPort.containerId;
-          existing.containerName = containerPort.containerName;
-          existing.image = containerPort.image;
-          existing.imageId = containerPort.imageId;
-          existing.status = containerPort.status;
-          existing.labels = containerPort.labels;
-          existing.created = containerPort.created;
-          existing.started = containerPort.started;
-          if (overrideLabel) {
-            existing.service = overrideLabel;
-            existing.isOverridden = true;
+        try {
+          const key = `${containerPort.hostPort}-${containerPort.protocol || 'tcp'}`;
+          const overrideLabel = await this.getPortServiceLabel(containerPort.hostPort, containerPort.protocol || 'tcp', server);
+          const existing = portsInUse.get(key);
+          
+          if (existing) {
+            // Merge container info with existing system port
+            existing.containerId = containerPort.containerId;
+            existing.containerName = containerPort.containerName;
+            existing.image = containerPort.image;
+            existing.imageId = containerPort.imageId;
+            existing.status = containerPort.status;
+            existing.labels = containerPort.labels;
+            existing.created = containerPort.created;
+            existing.started = containerPort.started;
+            existing.source = 'system+docker';
+            if (overrideLabel) {
+              existing.service = overrideLabel;
+              existing.isOverridden = true;
+            } else if (!existing.service || existing.service === 'System') {
+              // Use container service if system service is generic
+              existing.service = containerPort.service || 'docker';
+            }
+          } else {
+            // Add new container port
+            portsInUse.set(key, {
+              port: containerPort.hostPort,
+              protocol: containerPort.protocol || 'tcp',
+              containerId: containerPort.containerId,
+              containerName: containerPort.containerName,
+              service: overrideLabel || containerPort.service || 'docker',
+              isOverridden: !!overrideLabel,
+              image: containerPort.image,
+              imageId: containerPort.imageId,
+              status: containerPort.status,
+              labels: containerPort.labels,
+              created: containerPort.created,
+              started: containerPort.started,
+              lastSeen: new Date().toISOString(),
+              source: 'docker'
+            });
           }
-        } else {
-          portsInUse.set(key, {
-            port: containerPort.hostPort,
-            protocol: containerPort.protocol || 'tcp',
-            containerId: containerPort.containerId,
-            containerName: containerPort.containerName,
-            service: overrideLabel || containerPort.service || 'docker',
-            isOverridden: !!overrideLabel,
-            image: containerPort.image,
-            imageId: containerPort.imageId,
-            status: containerPort.status,
-            labels: containerPort.labels,
-            created: containerPort.created,
-            started: containerPort.started,
-            lastSeen: new Date().toISOString()
-          });
+        } catch (err) {
+          logger.debug(`Error processing container port ${containerPort.hostPort}: ${err.message}`);
         }
       }
       
       // Get port documentation from database
-      const portDocs = await this.database.repositories?.portDocumentation?.getAll() || [];
-      for (const doc of portDocs) {
-        const key = `${doc.port}-${doc.protocol}`;
-        const port = portsInUse.get(key);
-        if (port) {
-          port.documentation = doc.documentation;
+      try {
+        const portDocs = await this.database.repositories?.portDocumentation?.getAll() || [];
+        for (const doc of portDocs) {
+          const key = `${doc.port}-${doc.protocol}`;
+          const port = portsInUse.get(key);
+          if (port) {
+            port.documentation = doc.documentation;
+          }
         }
+      } catch (docsError) {
+        logger.debug(`Failed to load port documentation: ${docsError.message}`);
       }
       
-      return Array.from(portsInUse.values());
+      const result = Array.from(portsInUse.values());
+      logger.info(`Returning ${result.length} total ports in use (${systemPorts.length} system + ${containerPorts.length} container)`);
+      
+      return result;
     } catch (error) {
       logger.error(`Failed to get ports in use: ${error.message}`);
       throw error;

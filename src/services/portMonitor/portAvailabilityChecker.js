@@ -111,24 +111,65 @@ class PortAvailabilityChecker {
   async getListeningPorts(protocol = null) {
     try {
       const method = this.config.SYSTEM_PORT_SCAN_METHOD || 'ss';
+      logger.info(`Getting listening ports using method: ${method}, protocol filter: ${protocol || 'all'}`);
+      
+      let ports = [];
+      let usedMethod = method;
       
       switch (method) {
         case 'netstat':
-          return await this._getListeningPortsWithNetstat(protocol);
+          ports = await this._getListeningPortsWithNetstat(protocol);
+          break;
         case 'ss':
         default:
           try {
-            return await this._getListeningPortsWithSs(protocol);
+            ports = await this._getListeningPortsWithSs(protocol);
           } catch (ssError) {
-            if (ssError.message.includes('ENOENT') || ssError.message.includes('ss')) {
+            if (ssError.message.includes('ENOENT') || ssError.message.includes('ss') || ssError.message.includes('not found')) {
               logger.warn('ss command not found, falling back to netstat');
-              return await this._getListeningPortsWithNetstat(protocol);
+              usedMethod = 'netstat (fallback)';
+              ports = await this._getListeningPortsWithNetstat(protocol);
+            } else {
+              throw ssError;
             }
-            throw ssError;
           }
+          break;
       }
+      
+      // Remove duplicates based on port and protocol
+      const uniquePorts = new Map();
+      for (const port of ports) {
+        const key = `${port.port}-${port.protocol}`;
+        if (!uniquePorts.has(key)) {
+          uniquePorts.set(key, port);
+        }
+      }
+      const filteredPorts = Array.from(uniquePorts.values());
+      
+      logger.info(`Found ${filteredPorts.length} unique listening ports using ${usedMethod} (${ports.length} total before deduplication)`);
+      
+      if (filteredPorts.length > 0) {
+        // Sort ports for consistent output
+        filteredPorts.sort((a, b) => a.port - b.port);
+        
+        // Log some examples for debugging
+        const examples = filteredPorts.slice(0, 10).map(p => `${p.port}/${p.protocol}(${p.service})`);
+        logger.info(`Sample ports: ${examples.join(', ')}${filteredPorts.length > 10 ? '...' : ''}`);
+        
+        // Check for common system ports to verify detection is working
+        const systemPorts = [22, 53, 80, 443];
+        const foundSystemPorts = filteredPorts.filter(p => systemPorts.includes(p.port));
+        if (foundSystemPorts.length > 0) {
+          logger.info(`Detected common system ports: ${foundSystemPorts.map(p => p.port).join(', ')}`);
+        }
+      } else {
+        logger.warn('No listening ports detected - this may indicate a parsing issue');
+      }
+      
+      return filteredPorts;
     } catch (error) {
       logger.error(`Failed to get listening ports: ${error.message}`);
+      logger.error(`Error stack: ${error.stack}`);
       return [];
     }
   }
@@ -319,22 +360,41 @@ class PortAvailabilityChecker {
    */
   async _getListeningPortsWithNetstat(protocol) {
     return new Promise((resolve, reject) => {
+      // Use more comprehensive netstat flags for better detection
       const args = ['-ln'];
       if (protocol) {
         args.push(protocol === 'udp' ? '-u' : '-t');
+      } else {
+        // Include both TCP and UDP if no protocol specified
+        args.push('-tu');
       }
+      
+      // Add additional flags for more comprehensive output
+      args.push('--numeric-ports', '--numeric-hosts');
+      
+      logger.debug(`Running netstat with args: ${args.join(' ')}`);
       
       const netstat = spawn('netstat', args);
       let output = '';
+      let errorOutput = '';
       
       netstat.stdout.on('data', (data) => {
         output += data.toString();
       });
+      
+      netstat.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+      });
 
       netstat.on('close', (code) => {
         if (code !== 0) {
-          reject(new Error(`netstat exited with code ${code}`));
-          return;
+          logger.warn(`netstat exited with code ${code}, stderr: ${errorOutput}`);
+          // Don't reject immediately, try to parse what we got
+        }
+
+        logger.debug(`netstat output length: ${output.length} characters`);
+        if (output.length > 0) {
+          logger.debug(`First few lines of netstat output:\n${output.split('\n').slice(0, 5).join('\n')}`);
         }
 
         const ports = this._parseNetstatOutput(output, protocol);
@@ -342,8 +402,15 @@ class PortAvailabilityChecker {
       });
 
       netstat.on('error', (error) => {
+        logger.error(`netstat command failed: ${error.message}`);
         reject(error);
       });
+      
+      // Set a timeout to prevent hanging
+      setTimeout(() => {
+        netstat.kill();
+        reject(new Error('netstat command timeout'));
+      }, 10000);
     });
   }
 
@@ -355,22 +422,41 @@ class PortAvailabilityChecker {
    */
   async _getListeningPortsWithSs(protocol) {
     return new Promise((resolve, reject) => {
+      // Use more comprehensive ss flags for better detection
       const args = ['-ln'];
       if (protocol) {
         args.push(protocol === 'udp' ? '-u' : '-t');
+      } else {
+        // Include both TCP and UDP if no protocol specified
+        args.push('-tu');
       }
+      
+      // Add additional flags for more comprehensive output
+      args.push('--numeric', '--all');
+      
+      logger.debug(`Running ss with args: ${args.join(' ')}`);
       
       const ss = spawn('ss', args);
       let output = '';
+      let errorOutput = '';
       
       ss.stdout.on('data', (data) => {
         output += data.toString();
       });
+      
+      ss.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+      });
 
       ss.on('close', (code) => {
         if (code !== 0) {
-          reject(new Error(`ss exited with code ${code}`));
-          return;
+          logger.warn(`ss exited with code ${code}, stderr: ${errorOutput}`);
+          // Don't reject immediately, try to parse what we got
+        }
+
+        logger.debug(`ss output length: ${output.length} characters`);
+        if (output.length > 0) {
+          logger.debug(`First few lines of ss output:\n${output.split('\n').slice(0, 5).join('\n')}`);
         }
 
         const ports = this._parseSsOutput(output, protocol);
@@ -378,8 +464,15 @@ class PortAvailabilityChecker {
       });
 
       ss.on('error', (error) => {
+        logger.error(`ss command failed: ${error.message}`);
         reject(error);
       });
+      
+      // Set a timeout to prevent hanging
+      setTimeout(() => {
+        ss.kill();
+        reject(new Error('ss command timeout'));
+      }, 10000);
     });
   }
 
@@ -395,21 +488,63 @@ class PortAvailabilityChecker {
     const lines = output.split('\n');
 
     for (const line of lines) {
-      const match = line.match(/^(tcp|udp)\s+\d+\s+\d+\s+([^:]+):(\d+)\s+/);
-      if (match) {
-        const [, lineProtocol, host, port] = match;
-        
-        if (!protocol || lineProtocol === protocol) {
-          ports.push({
-            port: parseInt(port),
-            protocol: lineProtocol,
-            host: host === '0.0.0.0' ? '*' : host,
-            state: 'LISTEN'
-          });
+      const trimmedLine = line.trim();
+      if (!trimmedLine) continue;
+      
+      // Skip header lines
+      if (trimmedLine.includes('Proto') || trimmedLine.includes('Active')) continue;
+      
+      // Multiple regex patterns to handle different netstat formats
+      const patterns = [
+        // Standard format: tcp 0 0 0.0.0.0:80 0.0.0.0:* LISTEN
+        /^(tcp|udp)(?:6)?\s+\d+\s+\d+\s+([^:\s]+):(\d+)\s+[^:\s]+:[^:\s]+\s+(?:LISTEN|listening)/i,
+        // Alternative format: tcp 0 0 :::80 :::* LISTEN  
+        /^(tcp|udp)(?:6)?\s+\d+\s+\d+\s+:::(\d+)\s+:::.*?\s+(?:LISTEN|listening)/i,
+        // Format with interface: tcp 0 0 127.0.0.1:80 0.0.0.0:* LISTEN
+        /^(tcp|udp)(?:6)?\s+\d+\s+\d+\s+([^:\s]*):(\d+)\s+.*?\s+(?:LISTEN|listening)/i,
+        // Simplified format: tcp 127.0.0.1:80 LISTEN
+        /^(tcp|udp)(?:6)?\s+([^:\s]*):(\d+)\s+.*?(?:LISTEN|listening)/i
+      ];
+      
+      let matched = false;
+      for (const pattern of patterns) {
+        const match = trimmedLine.match(pattern);
+        if (match) {
+          let lineProtocol, host, port;
+          
+          if (match.length === 4 && pattern === patterns[1]) {
+            // IPv6 format :::port
+            [, lineProtocol, port] = match;
+            host = '::';
+            port = parseInt(port);
+          } else if (match.length === 4) {
+            [, lineProtocol, host, port] = match;
+            port = parseInt(port);
+          } else {
+            continue;
+          }
+          
+          if (!protocol || lineProtocol.toLowerCase() === protocol.toLowerCase()) {
+            ports.push({
+              port: port,
+              protocol: lineProtocol.toLowerCase(),
+              host: (host === '0.0.0.0' || host === '::' || host === '*' || !host) ? '*' : host,
+              state: 'LISTEN',
+              service: this._identifyService(port)
+            });
+          }
+          matched = true;
+          break;
         }
+      }
+      
+      if (!matched && trimmedLine.includes('LISTEN')) {
+        // Debug log for unmatched LISTEN lines
+        logger.debug(`Unmatched netstat LISTEN line: ${trimmedLine}`);
       }
     }
 
+    logger.debug(`Parsed ${ports.length} ports from netstat output`);
     return ports;
   }
 
@@ -425,29 +560,68 @@ class PortAvailabilityChecker {
     const lines = output.split('\n');
 
     for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (!trimmedLine) continue;
+      
+      // Skip header lines
+      if (trimmedLine.includes('State') || trimmedLine.includes('Netid')) continue;
+      
       // ss output format: State Recv-Q Send-Q Local Address:Port Peer Address:Port
-      const parts = line.trim().split(/\s+/);
+      const parts = trimmedLine.split(/\s+/);
       
       if (parts.length >= 4 && (parts[0] === 'LISTEN' || parts[0] === 'UNCONN')) {
         const localAddress = parts[3];
-        const match = localAddress.match(/^([^:]+):(\d+)$/);
+        let match = null;
+        
+        // Handle different address formats
+        const addressPatterns = [
+          // Standard IPv4: 0.0.0.0:80
+          /^([^:\[\]]+):(\d+)$/,
+          // IPv6 with brackets: [::]:80
+          /^\[([^\]]+)\]:(\d+)$/,
+          // IPv6 without brackets: :::80
+          /^:::(\d+)$/,
+          // Wildcard: *:80
+          /^\*:(\d+)$/
+        ];
+        
+        for (const pattern of addressPatterns) {
+          match = localAddress.match(pattern);
+          if (match) break;
+        }
         
         if (match) {
-          const [, host, port] = match;
+          let host, port;
+          
+          if (match.length === 2) {
+            // Patterns with only port (:::80 or *:80)
+            host = localAddress.startsWith(':::') ? '::' : '*';
+            port = parseInt(match[1]);
+          } else {
+            // Patterns with host and port
+            [, host, port] = match;
+            port = parseInt(port);
+          }
+          
           const lineProtocol = parts[0] === 'UNCONN' ? 'udp' : 'tcp';
           
           if (!protocol || lineProtocol === protocol) {
             ports.push({
-              port: parseInt(port),
+              port: port,
               protocol: lineProtocol,
-              host: host === '0.0.0.0' || host === '*' ? '*' : host,
-              state: parts[0]
+              host: (host === '0.0.0.0' || host === '*' || host === '::' || host === '[::]' || !host) ? '*' : host,
+              state: parts[0],
+              service: this._identifyService(port)
             });
           }
+        } else {
+          // Debug log for unmatched LISTEN/UNCONN lines
+          logger.debug(`Unmatched ss ${parts[0]} line: ${trimmedLine}`);
         }
       }
     }
 
+    logger.debug(`Parsed ${ports.length} ports from ss output`);
     return ports;
   }
 
@@ -466,13 +640,16 @@ class PortAvailabilityChecker {
       
       const listeningPorts = await this.getListeningPorts();
       
-      return listeningPorts.map(port => ({
+      const systemPorts = listeningPorts.map(port => ({
         port: port.port,
         protocol: port.protocol || 'tcp',
         service: port.service || this._identifyService(port.port),
         pid: port.pid,
-        address: port.address || '0.0.0.0'
+        address: port.address || port.host || '0.0.0.0'
       }));
+      
+      logger.debug(`Found ${systemPorts.length} system ports in use`);
+      return systemPorts;
     } catch (error) {
       logger.error(`Failed to get system ports in use: ${error.message}`);
       return [];
@@ -586,7 +763,7 @@ class PortAvailabilityChecker {
       23: 'Telnet',
       25: 'SMTP',
       53: 'DNS',
-      80: 'HTTP',
+      80: 'HTTP/Unraid',  // Common for Unraid web interface
       110: 'POP3',
       143: 'IMAP',
       443: 'HTTPS',
@@ -595,45 +772,114 @@ class PortAvailabilityChecker {
       995: 'POP3S',
       587: 'SMTP-TLS',
       465: 'SMTPS',
+      993: 'IMAPS',
+      995: 'POP3S',
+      
+      // NAS and Server Management
+      8080: 'HTTP-Alt/Admin',
+      8443: 'HTTPS-Alt/Admin',
+      9000: 'Portainer/Admin',
+      7000: 'Unraid-Docker',
+      6901: 'Unraid-Nginx',
+      
+      // Databases
       3306: 'MySQL',
       3307: 'MySQL-Alt',
       5432: 'PostgreSQL', 
       5433: 'PostgreSQL-Alt',
       6379: 'Redis',
       6380: 'Redis-Alt',
-      8080: 'HTTP-Alt',
-      8443: 'HTTPS-Alt',
-      8000: 'HTTP-Dev',
-      8888: 'HTTP-Dev',
-      3000: 'Node-Dev',
-      3001: 'React-Dev',
-      5000: 'Flask-Dev',
-      5173: 'Vite-Dev',
-      4000: 'Dev-Server',
-      9000: 'Portainer',
-      9090: 'Prometheus',
-      3001: 'Grafana',
       27017: 'MongoDB',
       27018: 'MongoDB-Alt',
-      2375: 'Docker-API',
-      2376: 'Docker-TLS',
-      5672: 'RabbitMQ',
-      15672: 'RabbitMQ-Web',
-      9200: 'Elasticsearch',
-      9300: 'Elasticsearch-Node',
-      5601: 'Kibana',
       1433: 'SQL-Server',
       1521: 'Oracle',
       5984: 'CouchDB',
       11211: 'Memcached',
-      6379: 'Redis',
       8086: 'InfluxDB',
+      
+      // Development
+      3000: 'Node-Dev',
+      3001: 'React-Dev/Grafana',
+      5000: 'Flask-Dev',
+      5173: 'Vite-Dev',
+      4000: 'Dev-Server',
+      8000: 'HTTP-Dev',
+      8888: 'HTTP-Dev/Jupyter',
+      
+      // Monitoring & Analytics  
+      9090: 'Prometheus',
+      3001: 'Grafana',
+      9200: 'Elasticsearch',
+      9300: 'Elasticsearch-Node',
+      5601: 'Kibana',
+      8125: 'StatsD',
+      4567: 'InfluxDB-Admin',
+      
+      // Container & Orchestration
+      2375: 'Docker-API',
+      2376: 'Docker-TLS',
+      2377: 'Docker-Swarm',
+      6443: 'Kubernetes-API',
+      10250: 'Kubelet',
+      
+      // Message Queues
+      5672: 'RabbitMQ',
+      15672: 'RabbitMQ-Web',
+      9092: 'Kafka',
+      2181: 'Zookeeper',
+      
+      // File Systems & Storage
       2049: 'NFS',
       139: 'NetBIOS',
+      445: 'SMB/CIFS',
+      21: 'FTP',
+      990: 'FTPS',
+      
+      // Directory Services
       389: 'LDAP',
       636: 'LDAPS',
+      88: 'Kerberos',
+      464: 'Kpasswd',
+      
+      // Network Services
       161: 'SNMP',
-      162: 'SNMP-Trap'
+      162: 'SNMP-Trap',
+      67: 'DHCP-Server',
+      68: 'DHCP-Client',
+      69: 'TFTP',
+      
+      // Media & Streaming
+      8096: 'Jellyfin',
+      32400: 'Plex',
+      8989: 'Sonarr',
+      7878: 'Radarr',
+      8686: 'Lidarr',
+      9117: 'Jackett',
+      6767: 'Bazarr',
+      8191: 'FlareSolverr',
+      
+      // Home Automation
+      8123: 'Home-Assistant',
+      1883: 'MQTT',
+      8883: 'MQTT-TLS',
+      
+      // Backup & Sync
+      8384: 'Syncthing',
+      22000: 'Syncthing-Relay',
+      
+      // VPN
+      1194: 'OpenVPN',
+      500: 'IPSec',
+      4500: 'IPSec-NAT',
+      
+      // Gaming
+      25565: 'Minecraft',
+      27015: 'Steam',
+      
+      // Misc Applications
+      6052: 'X11-Forward',
+      5900: 'VNC',
+      3389: 'RDP'
     };
     
     // Check for common development port ranges
@@ -647,9 +893,13 @@ class PortAvailabilityChecker {
       return 'Application';
     } else if (port >= 5000 && port <= 5999) {
       return 'Service';
+    } else if (port >= 7000 && port <= 7999) {
+      return 'Custom-Service';
+    } else if (port >= 32000 && port <= 65535) {
+      return 'Dynamic/Private';
     }
     
-    return commonPorts[port] || 'System';
+    return commonPorts[port] || 'Unknown';
   }
 }
 

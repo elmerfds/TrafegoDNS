@@ -521,41 +521,54 @@ export default function PortMonitoring() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {ports.map((port) => (
-                    <TableRow key={port.id}>
-                      <TableCell className="font-medium">{port.host}</TableCell>
-                      <TableCell>{port.port}</TableCell>
-                      <TableCell>{port.protocol.toUpperCase()}</TableCell>
-                      <TableCell>{getStatusBadge(port.status)}</TableCell>
-                      <TableCell>
-                        {port.service_name ? (
-                          <div>
-                            <div className="font-medium">{port.service_name}</div>
-                            {port.service_version && (
-                              <div className="text-sm text-muted-foreground">{port.service_version}</div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">Unknown</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {port.unread_alerts ? (
-                          <Badge variant="destructive">{port.unread_alerts}</Badge>
-                        ) : (
-                          <span className="text-muted-foreground">None</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {new Date(port.last_seen).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="sm">
-                          <Eye className="h-4 w-4" />
-                        </Button>
+                  {ports.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        {searchTerm ? `No ports found matching "${searchTerm}"` : 'No ports found'}
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : (
+                    ports.map((port, index) => (
+                      <TableRow key={port.id || `${port.host}-${port.port}-${index}`}>
+                        <TableCell className="font-medium">{port.host}</TableCell>
+                        <TableCell className="font-mono">{port.port}</TableCell>
+                        <TableCell>{port.protocol.toUpperCase()}</TableCell>
+                        <TableCell>{getStatusBadge(port.status)}</TableCell>
+                        <TableCell>
+                          {port.service_name || port.service ? (
+                            <div>
+                              <div className="font-medium">{port.service_name || port.service}</div>
+                              {port.service_version && (
+                                <div className="text-sm text-muted-foreground">{port.service_version}</div>
+                              )}
+                              {port.source && (
+                                <div className="text-xs text-muted-foreground">
+                                  Source: {port.source}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">Unknown</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {port.unread_alerts ? (
+                            <Badge variant="destructive">{port.unread_alerts}</Badge>
+                          ) : (
+                            <span className="text-muted-foreground">None</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {new Date(port.last_seen || new Date()).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="sm">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </CardContent>

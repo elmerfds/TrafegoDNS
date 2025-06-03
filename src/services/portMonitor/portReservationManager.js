@@ -16,7 +16,7 @@ class PortReservationManager {
     // Default reservation policies
     this.policies = {
       defaultDuration: 3600, // 1 hour in seconds
-      maxDuration: 86400, // 24 hours in seconds
+      maxDuration: 100 * 365 * 24 * 3600, // 100 years in seconds (effectively unlimited)
       cleanupInterval: 300, // 5 minutes in seconds
       allowExtension: true,
       maxReservationsPerContainer: 100
@@ -67,7 +67,17 @@ class PortReservationManager {
 
     // Apply duration policy
     const reservationDuration = this._validateDuration(duration);
-    const expiresAt = new Date(Date.now() + reservationDuration * 1000).toISOString();
+    
+    // Handle permanent reservations with a special date
+    let expiresAt;
+    const hundredYears = 100 * 365 * 24 * 3600;
+    if (reservationDuration >= hundredYears) {
+      // Use a standard "permanent" date
+      expiresAt = '9999-12-31T23:59:59.999Z';
+      logger.info('Creating permanent reservation');
+    } else {
+      expiresAt = new Date(Date.now() + reservationDuration * 1000).toISOString();
+    }
 
     // Check container reservation limits
     await this._checkContainerLimits(containerId);
@@ -440,9 +450,18 @@ class PortReservationManager {
   _validateDuration(duration) {
     const requestedDuration = duration || this.policies.defaultDuration;
     
+    logger.debug(`Validating duration: requested=${requestedDuration}s, default=${this.policies.defaultDuration}s, max=${this.policies.maxDuration}s`);
+    
+    // Allow very long durations for permanent reservations
     if (requestedDuration > this.policies.maxDuration) {
-      logger.warn(`Requested duration ${requestedDuration}s exceeds maximum ${this.policies.maxDuration}s, using maximum`);
-      return this.policies.maxDuration;
+      // Only warn if it's not a permanent reservation (100 years)
+      const hundredYears = 100 * 365 * 24 * 3600;
+      if (requestedDuration < hundredYears) {
+        logger.warn(`Requested duration ${requestedDuration}s exceeds maximum ${this.policies.maxDuration}s, using maximum`);
+        return this.policies.maxDuration;
+      }
+      // Allow permanent reservations to pass through
+      logger.info(`Creating permanent reservation with duration: ${requestedDuration}s (${Math.round(requestedDuration / (365 * 24 * 3600))} years)`);
     }
 
     if (requestedDuration < 60) { // Minimum 1 minute
@@ -450,7 +469,29 @@ class PortReservationManager {
       return 60;
     }
 
+    // Log the final duration for debugging
+    logger.debug(`Final validated duration: ${requestedDuration}s (${this._formatDuration(requestedDuration)})`);
     return requestedDuration;
+  }
+
+  /**
+   * Format duration for human-readable logging
+   * @param {number} seconds - Duration in seconds
+   * @returns {string}
+   * @private
+   */
+  _formatDuration(seconds) {
+    if (seconds >= 365 * 24 * 3600) {
+      return `${Math.round(seconds / (365 * 24 * 3600))} years`;
+    } else if (seconds >= 24 * 3600) {
+      return `${Math.round(seconds / (24 * 3600))} days`;
+    } else if (seconds >= 3600) {
+      return `${Math.round(seconds / 3600)} hours`;
+    } else if (seconds >= 60) {
+      return `${Math.round(seconds / 60)} minutes`;
+    } else {
+      return `${seconds} seconds`;
+    }
   }
 
   /**

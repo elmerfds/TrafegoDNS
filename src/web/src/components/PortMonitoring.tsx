@@ -136,6 +136,34 @@ export default function PortMonitoring() {
     } else {
       const filtered = portsInUse.filter(port => {
         const searchLower = searchTerm.toLowerCase();
+        const searchTrimmed = searchTerm.trim();
+        
+        // Check for wildcard patterns in port searches
+        if (/^[\d*?]+$/.test(searchTrimmed)) {
+          // This is a port pattern search (contains only digits, *, and ?)
+          const portString = port.port.toString();
+          
+          if (searchTrimmed.includes('*') || searchTrimmed.includes('?')) {
+            // Convert wildcard pattern to regex
+            const regexPattern = searchTrimmed
+              .replace(/\*/g, '.*')  // * matches any number of characters
+              .replace(/\?/g, '.');  // ? matches exactly one character
+            
+            try {
+              const regex = new RegExp(`^${regexPattern}$`);
+              return regex.test(portString);
+            } catch (error) {
+              // If regex is invalid, fall back to partial matching
+              return portString.includes(searchTrimmed.replace(/[*?]/g, ''));
+            }
+          } else {
+            // Pure numeric search - exact match only
+            const searchPort = parseInt(searchTrimmed);
+            return port.port === searchPort;
+          }
+        }
+        
+        // For non-numeric/non-pattern searches, use partial matching on all fields
         return (
           port.port.toString().includes(searchLower) ||
           port.protocol.toLowerCase().includes(searchLower) ||
@@ -620,11 +648,27 @@ export default function PortMonitoring() {
                   <Label htmlFor="searchPorts">Search Ports</Label>
                   <Input
                     id="searchPorts"
-                    placeholder="Search by port, service, container name, or documentation..."
+                    placeholder="Search ports (exact: 80, wildcard: 80*, 80?1, text: nginx)..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full"
                   />
+                  {searchTerm && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {(() => {
+                        const trimmed = searchTerm.trim();
+                        if (/^[\d*?]+$/.test(trimmed)) {
+                          if (trimmed.includes('*') || trimmed.includes('?')) {
+                            return `Port wildcard pattern: "${trimmed}" (* = any chars, ? = one char)`;
+                          } else {
+                            return `Searching for exact port match: ${trimmed}`;
+                          }
+                        } else {
+                          return `Text search in all fields: "${trimmed}"`;
+                        }
+                      })()}
+                    </div>
+                  )}
                 </div>
               </div>
               
