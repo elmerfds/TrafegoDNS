@@ -7,6 +7,8 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const http = require('http');
+const path = require('path');
+const fs = require('fs');
 const swaggerUi = require('swagger-ui-express');
 const logger = require('../utils/logger');
 const { errorHandler } = require('./v1/middleware/errorMiddleware');
@@ -25,9 +27,6 @@ const oidcService = require('./v1/services/oidcService');
 
 // Create Express app
 const app = express();
-
-const path = require('path');
-const fs = require('fs');
 
 // Determine the web UI path
 const webDistPath = path.join(__dirname, '../web/dist');
@@ -111,27 +110,7 @@ app.get('/docs/swagger', (req, res) => {
   res.redirect('/swagger.html');
 });
 
-// 404 Handler for API routes
-app.use('/api/*', (req, res) => {
-  res.status(404).json({
-    status: 'error',
-    code: 'ENDPOINT_NOT_FOUND',
-    message: `Endpoint not found: ${req.method} ${req.originalUrl}`
-  });
-});
-
-// Catch all routes - serve index.html for SPA
-app.get('*', (req, res) => {
-  const indexPath = path.join(webUIPath || publicPath, 'index.html');
-  if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
-  } else {
-    res.status(404).send('Web UI not found');
-  }
-});
-
-// Error handling middleware
-app.use(errorHandler);
+// Note: 404 handlers and catch-all routes will be set up after API routes are mounted
 
 /**
  * Start the API server
@@ -153,8 +132,30 @@ async function startApiServer(port, config, eventBus, additionalRoutes = null) {
     v1Routes = createRoutes();
   }
   
-  // Mount API routes
+  // Mount API routes BEFORE creating the server
   app.use('/api/v1', v1Routes);
+  
+  // 404 Handler for API routes
+  app.use('/api/*', (req, res) => {
+    res.status(404).json({
+      status: 'error',
+      code: 'ENDPOINT_NOT_FOUND',
+      message: `Endpoint not found: ${req.method} ${req.originalUrl}`
+    });
+  });
+
+  // Catch all routes - serve index.html for SPA
+  app.get('*', (req, res) => {
+    const indexPath = path.join(webUIPath || publicPath, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.status(404).send('Web UI not found');
+    }
+  });
+
+  // Error handling middleware
+  app.use(errorHandler);
 
   // Initialize User model now that database should be ready
   logger.info('Initializing User model...');
