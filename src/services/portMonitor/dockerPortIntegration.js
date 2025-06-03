@@ -612,7 +612,15 @@ class DockerPortIntegration {
                     hostPort: parseInt(binding.HostPort),
                     hostIp: binding.HostIp || '0.0.0.0',
                     protocol: protocol || 'tcp',
-                    service: this._identifyContainerService(containerName, parseInt(port))
+                    service: this._identifyContainerService(containerName, parseInt(port), inspection),
+                    // Additional container metadata
+                    image: inspection.Config?.Image || containerInfo.Image,
+                    imageId: inspection.Image || 'unknown',
+                    status: inspection.State?.Status || 'unknown',
+                    labels: inspection.Config?.Labels || {},
+                    env: inspection.Config?.Env || [],
+                    created: inspection.Created,
+                    started: inspection.State?.StartedAt
                   });
                 }
               }
@@ -630,18 +638,76 @@ class DockerPortIntegration {
   }
 
   /**
-   * Identify container service by name and port
+   * Identify container service by name, port, and container metadata
    * @private
    * @param {string} containerName - Container name
    * @param {number} port - Container port
+   * @param {Object} inspection - Container inspection data
    * @returns {string}
    */
-  _identifyContainerService(containerName, port) {
+  _identifyContainerService(containerName, port, inspection = {}) {
+    const labels = inspection.Config?.Labels || {};
+    const image = inspection.Config?.Image || '';
+    
+    // Check for explicit service labels first
+    if (labels['trafegodns.service']) {
+      return labels['trafegodns.service'];
+    }
+    
+    if (labels['service.name']) {
+      return labels['service.name'];
+    }
+    
+    if (labels['app.name']) {
+      return labels['app.name'];
+    }
+    
+    // Check common Docker labels
+    if (labels['traefik.http.services']) {
+      return 'traefik-service';
+    }
+    
+    if (labels['com.docker.compose.service']) {
+      return labels['com.docker.compose.service'];
+    }
+    
+    // Check image name for service identification
+    const imageName = image.toLowerCase();
+    const imagePatterns = {
+      'nginx': 'nginx',
+      'apache': 'apache',
+      'httpd': 'apache',
+      'mysql': 'mysql',
+      'mariadb': 'mysql',
+      'postgres': 'postgresql',
+      'mongo': 'mongodb',
+      'redis': 'redis',
+      'traefik': 'traefik',
+      'caddy': 'caddy',
+      'portainer': 'portainer',
+      'nextcloud': 'nextcloud',
+      'wordpress': 'wordpress',
+      'node': 'nodejs',
+      'python': 'python',
+      'grafana': 'grafana',
+      'prometheus': 'prometheus',
+      'elasticsearch': 'elasticsearch',
+      'kibana': 'kibana'
+    };
+    
+    for (const [pattern, service] of Object.entries(imagePatterns)) {
+      if (imageName.includes(pattern)) {
+        return service;
+      }
+    }
+    
     // Common patterns in container names
     const namePatterns = {
       nginx: 'nginx',
       apache: 'apache',
+      httpd: 'apache',
       mysql: 'mysql',
+      mariadb: 'mysql',
       postgres: 'postgresql',
       mongo: 'mongodb',
       redis: 'redis',
@@ -650,10 +716,29 @@ class DockerPortIntegration {
       kibana: 'kibana',
       grafana: 'grafana',
       prometheus: 'prometheus',
-      traefik: 'traefik'
+      traefik: 'traefik',
+      caddy: 'caddy',
+      portainer: 'portainer',
+      nextcloud: 'nextcloud',
+      wordpress: 'wordpress',
+      node: 'nodejs',
+      python: 'python',
+      flask: 'flask',
+      django: 'django',
+      api: 'api',
+      web: 'web-app',
+      app: 'application',
+      service: 'service',
+      server: 'server',
+      frontend: 'frontend',
+      backend: 'backend',
+      db: 'database',
+      cache: 'cache'
     };
     
     const lowerName = containerName.toLowerCase();
+    
+    // Check for exact matches first
     for (const [pattern, service] of Object.entries(namePatterns)) {
       if (lowerName.includes(pattern)) {
         return service;
@@ -664,17 +749,43 @@ class DockerPortIntegration {
     const portServices = {
       80: 'http',
       443: 'https',
+      8080: 'http-alt',
+      8443: 'https-alt',
+      3000: 'dev-server',
+      3001: 'dev-server',
+      5000: 'web-app',
+      8000: 'web-app',
+      8888: 'web-app',
       3306: 'mysql',
       5432: 'postgresql',
       6379: 'redis',
       27017: 'mongodb',
       9200: 'elasticsearch',
       5601: 'kibana',
-      3000: 'grafana',
-      9090: 'prometheus'
+      9090: 'prometheus',
+      3001: 'grafana',
+      2375: 'docker-api',
+      2376: 'docker-api-tls',
+      9000: 'portainer',
+      8081: 'nexus',
+      5672: 'rabbitmq',
+      15672: 'rabbitmq-mgmt',
+      1433: 'mssql',
+      1521: 'oracle',
+      5984: 'couchdb'
     };
     
-    return portServices[port] || 'docker';
+    // If port matches, return the service name
+    if (portServices[port]) {
+      return portServices[port];
+    }
+    
+    // If container name looks custom, use a more descriptive fallback
+    if (lowerName.length > 20 || lowerName.includes('-') || lowerName.includes('_')) {
+      return 'custom-app';
+    }
+    
+    return 'docker';
   }
 }
 

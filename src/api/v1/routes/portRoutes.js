@@ -11,6 +11,7 @@ const {
   reservePorts,
   releasePorts,
   updatePortDocumentation,
+  updatePortServiceLabel,
   suggestAlternativePorts,
   validateDeployment,
   getPortStatistics,
@@ -547,5 +548,52 @@ router.get('/in-use', authenticate, getPortsInUse);
  *         description: Server error
  */
 router.put('/:port/documentation', authenticate, updatePortDocumentation);
+
+/**
+ * @swagger
+ * /api/v1/ports/{port}/label:
+ *   put:
+ *     summary: Update port service label
+ *     description: Override the automatic service label for a specific port
+ *     tags: [Ports]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: port
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Port number
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - serviceLabel
+ *             properties:
+ *               serviceLabel:
+ *                 type: string
+ *                 description: Custom service label/name
+ *               server:
+ *                 type: string
+ *                 default: localhost
+ *                 description: Server where the port is located
+ *               protocol:
+ *                 type: string
+ *                 enum: [tcp, udp]
+ *                 default: tcp
+ *                 description: Protocol for the port
+ *     responses:
+ *       200:
+ *         description: Service label updated successfully
+ *       400:
+ *         description: Invalid port number or missing service label
+ *       500:
+ *         description: Server error
+ */
+router.put('/:port/label', authenticate, updatePortServiceLabel);
 
 module.exports = router;

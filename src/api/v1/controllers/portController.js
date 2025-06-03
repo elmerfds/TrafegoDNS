@@ -234,6 +234,45 @@ const updatePortDocumentation = asyncHandler(async (req, res) => {
 });
 
 /**
+ * @desc    Update port service label
+ * @route   PUT /api/v1/ports/:port/label
+ * @access  Private
+ */
+const updatePortServiceLabel = asyncHandler(async (req, res) => {
+  const { PortMonitor } = global.services || {};
+  
+  if (!PortMonitor) {
+    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+  }
+
+  const port = parseInt(req.params.port);
+  const { serviceLabel, server = 'localhost', protocol = 'tcp' } = req.body;
+
+  if (isNaN(port) || port < 1 || port > 65535) {
+    throw new ApiError('Invalid port number', 400, 'INVALID_PORT');
+  }
+
+  if (!serviceLabel || serviceLabel.trim().length === 0) {
+    throw new ApiError('Service label is required', 400, 'MISSING_SERVICE_LABEL');
+  }
+
+  try {
+    await PortMonitor.updatePortServiceLabel(port, serviceLabel.trim(), server, protocol);
+    
+    res.json({
+      success: true,
+      message: 'Port service label updated successfully'
+    });
+  } catch (error) {
+    throw new ApiError(
+      `Failed to update service label: ${error.message}`,
+      500,
+      'UPDATE_SERVICE_LABEL_FAILED'
+    );
+  }
+});
+
+/**
  * @desc    Suggest alternative ports
  * @route   POST /api/v1/ports/suggest-alternatives
  * @access  Private
@@ -503,6 +542,7 @@ module.exports = {
   reservePorts,
   releasePorts,
   updatePortDocumentation,
+  updatePortServiceLabel,
   suggestAlternativePorts,
   validateDeployment,
   getPortStatistics,

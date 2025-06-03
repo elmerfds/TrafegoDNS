@@ -473,7 +473,7 @@ class PortAvailabilityChecker {
     try {
       // For local checks, use existing method
       if (server === 'localhost' || server === '127.0.0.1') {
-        return await this.isPortAvailable(port, protocol);
+        return await this.checkSinglePort(port, protocol, server);
       }
       
       // For remote servers, try socket connection
@@ -574,15 +574,65 @@ class PortAvailabilityChecker {
       143: 'IMAP',
       443: 'HTTPS',
       445: 'SMB',
+      993: 'IMAPS',
+      995: 'POP3S',
+      587: 'SMTP-TLS',
+      465: 'SMTPS',
       3306: 'MySQL',
-      5432: 'PostgreSQL',
+      3307: 'MySQL-Alt',
+      5432: 'PostgreSQL', 
+      5433: 'PostgreSQL-Alt',
       6379: 'Redis',
+      6380: 'Redis-Alt',
       8080: 'HTTP-Alt',
       8443: 'HTTPS-Alt',
-      27017: 'MongoDB'
+      8000: 'HTTP-Dev',
+      8888: 'HTTP-Dev',
+      3000: 'Node-Dev',
+      3001: 'React-Dev',
+      5000: 'Flask-Dev',
+      5173: 'Vite-Dev',
+      4000: 'Dev-Server',
+      9000: 'Portainer',
+      9090: 'Prometheus',
+      3001: 'Grafana',
+      27017: 'MongoDB',
+      27018: 'MongoDB-Alt',
+      2375: 'Docker-API',
+      2376: 'Docker-TLS',
+      5672: 'RabbitMQ',
+      15672: 'RabbitMQ-Web',
+      9200: 'Elasticsearch',
+      9300: 'Elasticsearch-Node',
+      5601: 'Kibana',
+      1433: 'SQL-Server',
+      1521: 'Oracle',
+      5984: 'CouchDB',
+      11211: 'Memcached',
+      6379: 'Redis',
+      8086: 'InfluxDB',
+      2049: 'NFS',
+      139: 'NetBIOS',
+      389: 'LDAP',
+      636: 'LDAPS',
+      161: 'SNMP',
+      162: 'SNMP-Trap'
     };
     
-    return commonPorts[port] || 'Unknown';
+    // Check for common development port ranges
+    if (port >= 3000 && port <= 3999) {
+      return 'Dev-Server';
+    } else if (port >= 8000 && port <= 8999) {
+      return 'Web-Server';
+    } else if (port >= 9000 && port <= 9999) {
+      return 'Monitoring';
+    } else if (port >= 4000 && port <= 4999) {
+      return 'Application';
+    } else if (port >= 5000 && port <= 5999) {
+      return 'Service';
+    }
+    
+    return commonPorts[port] || 'System';
   }
 }
 
