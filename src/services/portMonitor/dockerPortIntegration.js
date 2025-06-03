@@ -7,10 +7,10 @@ const EventBus = require('../../events/EventBus');
 const EventTypes = require('../../events/EventTypes');
 
 class DockerPortIntegration {
-  constructor(conflictDetector, suggestionEngine) {
+  constructor(conflictDetector, suggestionEngine, eventBus) {
     this.conflictDetector = conflictDetector;
     this.suggestionEngine = suggestionEngine;
-    this.eventBus = EventBus;
+    this.eventBus = eventBus || EventBus;
     this.isInitialized = false;
     
     // Container port mappings cache

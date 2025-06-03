@@ -12,10 +12,10 @@ const PortSuggestionEngine = require('./portSuggestionEngine');
 const DockerPortIntegration = require('./dockerPortIntegration');
 
 class PortMonitor {
-  constructor(config, database) {
+  constructor(config, database, eventBus) {
     this.config = config;
     this.database = database;
-    this.eventBus = EventBus;
+    this.eventBus = eventBus || EventBus; // Use provided eventBus or fallback to EventBus class
     this.isInitialized = false;
     this.isRunning = false;
     
@@ -24,7 +24,7 @@ class PortMonitor {
     this.reservationManager = new PortReservationManager(database);
     this.conflictDetector = new PortConflictDetector(this.availabilityChecker, this.reservationManager);
     this.suggestionEngine = new PortSuggestionEngine(this.availabilityChecker, this.reservationManager, config);
-    this.dockerIntegration = new DockerPortIntegration(this.conflictDetector, this.suggestionEngine);
+    this.dockerIntegration = new DockerPortIntegration(this.conflictDetector, this.suggestionEngine, this.eventBus);
     
     // Port monitoring state
     this.monitoredPorts = new Map();

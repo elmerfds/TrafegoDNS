@@ -201,7 +201,7 @@ async function start() {
     let portMonitor = null;
     if (config.portMonitoringEnabled !== false) { // Default to enabled
       try {
-        portMonitor = new PortMonitor(config, database);
+        portMonitor = new PortMonitor(config, database, eventBus);
         logger.info('🔍 Port monitoring service initialized');
       } catch (portError) {
         logger.warn(`⚠️ Failed to initialize port monitoring: ${portError.message}`);
