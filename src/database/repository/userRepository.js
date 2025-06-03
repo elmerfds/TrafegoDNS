@@ -46,6 +46,9 @@ class UserRepository extends BaseRepository {
         // Create default admin user for fresh installs
         await this.ensureDefaultAdmin();
       } else {
+        // Table exists, check if theme_preference column exists
+        await this.ensureThemePreferenceColumn();
+        
         // Check if any users exist
         const userCount = await this.count();
         if (userCount === 0) {
@@ -55,6 +58,29 @@ class UserRepository extends BaseRepository {
     } catch (error) {
       logger.error(`Failed to initialize ${this.tableName} table: ${error.message}`);
       // Don't throw the error, just log it - allow application to continue
+    }
+  }
+
+  /**
+   * Ensure theme_preference column exists in the users table
+   */
+  async ensureThemePreferenceColumn() {
+    try {
+      // Check if column exists
+      const tableInfo = await this.db.all(`PRAGMA table_info(${this.tableName})`);
+      const hasThemeColumn = tableInfo.some(column => column.name === 'theme_preference');
+      
+      if (!hasThemeColumn) {
+        logger.info('Adding theme_preference column to users table');
+        await this.db.run(`
+          ALTER TABLE ${this.tableName} 
+          ADD COLUMN theme_preference TEXT DEFAULT 'teal'
+        `);
+        logger.info('Successfully added theme_preference column');
+      }
+    } catch (error) {
+      logger.error(`Failed to add theme_preference column: ${error.message}`);
+      // Don't throw - allow app to continue
     }
   }
 

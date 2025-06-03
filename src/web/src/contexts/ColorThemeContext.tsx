@@ -75,22 +75,33 @@ export function ColorThemeProvider({ children }: { children: React.ReactNode }) 
   // Apply theme class to document root
   useEffect(() => {
     const root = document.documentElement;
+    const body = document.body;
     
-    // Remove all theme classes
+    // Remove all theme classes from both html and body
     Object.values(colorThemes).forEach(theme => {
       if (theme.className) {
         root.classList.remove(theme.className);
+        body.classList.remove(theme.className);
       }
     });
     
-    // Add current theme class
+    // Also set data attribute for CSS selectors
+    root.removeAttribute('data-theme');
+    
+    // Add current theme class to both html and body
     const currentThemeClass = colorThemes[currentTheme].className;
     if (currentThemeClass) {
       root.classList.add(currentThemeClass);
+      body.classList.add(currentThemeClass);
+      root.setAttribute('data-theme', currentTheme);
       console.log(`Applied color theme: ${currentTheme} (class: ${currentThemeClass})`);
     } else {
+      root.setAttribute('data-theme', 'teal');
       console.log(`Applied color theme: ${currentTheme} (default teal)`);
     }
+    
+    // Force style recalculation
+    void root.offsetHeight;
   }, [currentTheme]);
 
   const setTheme = async (themeId: ColorThemeId) => {

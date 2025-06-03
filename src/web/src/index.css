@@ -110,22 +110,88 @@
 
 /* Color Theme Overrides - Outside layers for maximum specificity */
 /* These are duplicated outside the @layer to ensure they override base styles */
-.theme-gold {
+html.theme-gold,
+:root.theme-gold,
+.theme-gold,
+[data-theme="gold"] {
   --primary: 245 158 11 !important;
   --accent: 252 211 77 !important;
   --ring: 245 158 11 !important;
+  --primary-foreground: 255 255 255 !important;
 }
 
-.theme-blue {
+html.theme-gold:not(.dark),
+:root.theme-gold:not(.dark),
+.theme-gold:not(.dark),
+[data-theme="gold"]:not(.dark) {
+  --secondary: 255 251 235 !important;
+  --secondary-foreground: 146 64 14 !important;
+  --accent-foreground: 146 64 14 !important;
+}
+
+html.theme-gold.dark,
+:root.theme-gold.dark,
+.theme-gold.dark,
+[data-theme="gold"].dark {
+  --secondary: 31 41 55 !important;
+  --secondary-foreground: 252 211 77 !important;
+  --accent-foreground: 19 78 74 !important;
+}
+
+html.theme-blue,
+:root.theme-blue,
+.theme-blue,
+[data-theme="blue"] {
   --primary: 59 130 246 !important;
   --accent: 147 197 253 !important;
   --ring: 59 130 246 !important;
+  --primary-foreground: 255 255 255 !important;
 }
 
-.theme-purple {
+html.theme-blue:not(.dark),
+:root.theme-blue:not(.dark),
+.theme-blue:not(.dark),
+[data-theme="blue"]:not(.dark) {
+  --secondary: 239 246 255 !important;
+  --secondary-foreground: 30 58 138 !important;
+  --accent-foreground: 30 58 138 !important;
+}
+
+html.theme-blue.dark,
+:root.theme-blue.dark,
+.theme-blue.dark,
+[data-theme="blue"].dark {
+  --secondary: 31 41 55 !important;
+  --secondary-foreground: 147 197 253 !important;
+  --accent-foreground: 19 78 74 !important;
+}
+
+html.theme-purple,
+:root.theme-purple,
+.theme-purple,
+[data-theme="purple"] {
   --primary: 139 92 246 !important;
   --accent: 196 181 253 !important;
   --ring: 139 92 246 !important;
+  --primary-foreground: 255 255 255 !important;
+}
+
+html.theme-purple:not(.dark),
+:root.theme-purple:not(.dark),
+.theme-purple:not(.dark),
+[data-theme="purple"]:not(.dark) {
+  --secondary: 245 243 255 !important;
+  --secondary-foreground: 76 29 149 !important;
+  --accent-foreground: 76 29 149 !important;
+}
+
+html.theme-purple.dark,
+:root.theme-purple.dark,
+.theme-purple.dark,
+[data-theme="purple"].dark {
+  --secondary: 31 41 55 !important;
+  --secondary-foreground: 196 181 253 !important;
+  --accent-foreground: 19 78 74 !important;
 }
 
 @layer base {
