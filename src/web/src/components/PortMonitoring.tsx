@@ -738,9 +738,9 @@ export default function PortMonitoring() {
                             className="h-8 px-3 text-xs whitespace-nowrap"
                             onClick={() => {
                               setReservationPort(portInfo.port.toString());
-                              // Prefer container name, fallback to service label, then container ID
+                              // Prefer container name, fallback to service, then container ID
                               const containerIdentifier = portInfo.containerName || 
-                                                        (portInfo.serviceLabel !== 'Unknown' ? portInfo.serviceLabel : '') ||
+                                                        (portInfo.service && portInfo.service !== 'Unknown' ? portInfo.service : '') ||
                                                         portInfo.containerId || '';
                               setReservationContainerId(containerIdentifier);
                               setShowReservationDialog(true);
