@@ -14,6 +14,7 @@ class PortAvailabilityChecker {
     this.cache = new Map();
     this.cacheTimeout = config.PORT_CACHE_TIMEOUT || 5000; // 5 seconds
     this.isDocker = require('fs').existsSync('/.dockerenv');
+    this.hostIp = null; // Cache the detected host IP
   }
 
   /**
@@ -24,7 +25,14 @@ class PortAvailabilityChecker {
    * @returns {Promise<boolean>}
    */
   async checkSinglePort(port, protocol = 'tcp', host = 'localhost') {
-    const cacheKey = `${host}:${port}:${protocol}`;
+    // If we're in Docker and checking localhost, use the actual host IP for socket checks
+    let targetHost = host;
+    if (this.isDocker && (host === 'localhost' || host === '127.0.0.1') && this.preferredMethod === 'socket') {
+      targetHost = await this._detectHostIp();
+      logger.debug(`Docker detected: checking port ${port} on actual host IP ${targetHost} instead of ${host}`);
+    }
+    
+    const cacheKey = `${targetHost}:${port}:${protocol}`;
     const cached = this.cache.get(cacheKey);
     
     if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
@@ -52,7 +60,7 @@ class PortAvailabilityChecker {
           break;
         case 'socket':
         default:
-          available = await this._checkPortWithSocket(port, host, protocol);
+          available = await this._checkPortWithSocket(port, targetHost, protocol);
           break;
       }
 
@@ -77,6 +85,13 @@ class PortAvailabilityChecker {
    * @returns {Promise<Object>} - Object with port as key and availability as value
    */
   async checkMultiplePorts(ports, protocol = 'tcp', host = 'localhost') {
+    // Pre-detect host IP if needed to avoid multiple detections
+    let targetHost = host;
+    if (this.isDocker && (host === 'localhost' || host === '127.0.0.1') && this.preferredMethod === 'socket') {
+      targetHost = await this._detectHostIp();
+      logger.debug(`Docker detected: will check multiple ports on actual host IP ${targetHost} instead of ${host}`);
+    }
+    
     const results = {};
     const concurrency = this.config.PORT_CHECK_CONCURRENCY || 10;
     
@@ -84,7 +99,7 @@ class PortAvailabilityChecker {
     for (let i = 0; i < ports.length; i += concurrency) {
       const batch = ports.slice(i, i + concurrency);
       const batchPromises = batch.map(async (port) => {
-        const available = await this.checkSinglePort(port, protocol, host);
+        const available = await this.checkSinglePort(port, protocol, targetHost);
         return { port, available };
       });
 
@@ -211,6 +226,35 @@ class PortAvailabilityChecker {
     }
 
     return availablePorts;
+  }
+
+  /**
+   * Set the host IP manually (useful for configuration override)
+   * @param {string} hostIp - The host IP to use
+   */
+  setHostIp(hostIp) {
+    if (hostIp && hostIp.match(/^\d+\.\d+\.\d+\.\d+$|^host\.docker\.internal$/)) {
+      this.hostIp = hostIp;
+      logger.info(`🔧 Manually set host IP to: ${this.hostIp}`);
+    } else {
+      logger.warn(`⚠️ Invalid host IP format: ${hostIp}`);
+    }
+  }
+
+  /**
+   * Get the currently detected or set host IP
+   * @returns {string|null}
+   */
+  getHostIp() {
+    return this.hostIp;
+  }
+
+  /**
+   * Reset host IP detection (force re-detection on next use)
+   */
+  resetHostIp() {
+    this.hostIp = null;
+    logger.debug('🔄 Reset host IP cache - will re-detect on next use');
   }
 
   /**
@@ -721,12 +765,13 @@ class PortAvailabilityChecker {
         });
       });
       
-      // If running in Docker and we got few ports, also check common ports via socket
-      if (this.isDocker && listeningPorts.length < 10) {
-        logger.info('🔍 Running in Docker with limited port visibility, checking common ports via socket...');
+      // If running in Docker, always check common ports via socket
+      // This is necessary because ss/netstat only see the container's namespace
+      if (this.isDocker) {
+        logger.info('🔍 Running in Docker, checking host ports via socket...');
         
         const commonPorts = await this._checkCommonPortsViaSocket(server);
-        logger.info(`✅ Socket check found ${commonPorts.length} additional ports in use`);
+        logger.info(`✅ Socket check found ${commonPorts.length} host ports in use`);
         
         // Add socket-detected ports
         commonPorts.forEach(port => {
@@ -1003,12 +1048,205 @@ class PortAvailabilityChecker {
   }
 
   /**
+   * Detect the host IP address when running in Docker
+   * @returns {Promise<string>}
+   */
+  async _detectHostIp() {
+    if (this.hostIp) {
+      return this.hostIp; // Return cached value
+    }
+
+    if (!this.isDocker) {
+      this.hostIp = 'localhost';
+      return this.hostIp;
+    }
+
+    logger.info('🔍 Detecting host IP address from Docker container...');
+    
+    const { execSync } = require('child_process');
+    
+    // Method 1: Try to get the default gateway (most reliable)
+    const gatewayCommands = [
+      'ip route show default | awk \'/default/ {print $3}\'',
+      'ip route | grep default | awk \'{print $3}\'',
+      'route -n | grep "^0.0.0.0" | awk \'{print $2}\'',
+      'cat /proc/net/route | awk \'$2 == "00000000" {print $3}\' | head -1 | sed \'s/../&:/g; s/:$//; s/\\(..\\):\\(..\\):\\(..\\):\\(..\\)/\\4.\\3.\\2.\\1/\''
+    ];
+
+    for (const cmd of gatewayCommands) {
+      try {
+        const result = execSync(cmd, { encoding: 'utf8', timeout: 2000 }).trim();
+        if (result && result.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+          // Validate this IP by testing connectivity to port 22 (SSH)
+          if (await this._testHostConnectivity(result)) {
+            this.hostIp = result;
+            logger.info(`✅ Detected and verified host IP via gateway: ${this.hostIp}`);
+            return this.hostIp;
+          } else {
+            logger.debug(`Gateway IP ${result} found but not reachable`);
+          }
+        }
+      } catch (err) {
+        logger.debug(`Gateway command failed: ${cmd.split('|')[0]} - ${err.message}`);
+      }
+    }
+
+    // Method 2: Try to get host IP from container's network interface
+    try {
+      const result = execSync('ip route get 1.1.1.1 | awk \'{print $7; exit}\'', { encoding: 'utf8', timeout: 2000 }).trim();
+      if (result && result.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+        // Get the gateway for this interface
+        const gateway = execSync(`ip route | grep ${result} | grep default | awk '{print $3}'`, { encoding: 'utf8', timeout: 1000 }).trim();
+        if (gateway && gateway.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+          if (await this._testHostConnectivity(gateway)) {
+            this.hostIp = gateway;
+            logger.info(`✅ Detected and verified host IP via interface route: ${this.hostIp}`);
+            return this.hostIp;
+          }
+        }
+      }
+    } catch (err) {
+      logger.debug(`Interface route detection failed: ${err.message}`);
+    }
+
+    // Method 3: Check Docker environment variables
+    const dockerHostVars = [
+      process.env.DOCKER_HOST_IP,
+      process.env.HOST_IP,
+      process.env.DOCKER_GATEWAY_IP
+    ];
+    
+    for (const envIP of dockerHostVars) {
+      if (envIP && envIP.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+        if (await this._testHostConnectivity(envIP)) {
+          this.hostIp = envIP;
+          logger.info(`✅ Detected host IP from environment variable: ${this.hostIp}`);
+          return this.hostIp;
+        }
+      }
+    }
+
+    // Method 4: Test common Docker host addresses
+    const commonHosts = [
+      'host.docker.internal',
+      '172.17.0.1',  // Default Docker bridge
+      '172.18.0.1',  // Alternative bridge
+      '172.19.0.1',  // Another alternative
+      '172.20.0.1',  // Docker Compose networks
+      '10.0.2.2',    // VirtualBox
+      '192.168.65.2', // Docker Desktop
+      '192.168.0.1', // Common router IP
+      '192.168.1.1'  // Another common router IP
+    ];
+
+    logger.info('🧪 Testing common Docker host addresses...');
+    for (const host of commonHosts) {
+      if (await this._testHostConnectivity(host)) {
+        this.hostIp = host;
+        logger.info(`✅ Detected working host IP: ${this.hostIp}`);
+        return this.hostIp;
+      }
+    }
+
+    // Method 5: Parse /etc/hosts for host.docker.internal or other host entries
+    try {
+      const hostsFile = execSync('cat /etc/hosts 2>/dev/null || echo ""', { encoding: 'utf8', timeout: 1000 });
+      const lines = hostsFile.split('\n');
+      
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith('#')) {
+          const parts = trimmed.split(/\s+/);
+          if (parts.length >= 2) {
+            const ip = parts[0];
+            const hostnames = parts.slice(1);
+            
+            if (ip.match(/^\d+\.\d+\.\d+\.\d+$/) && 
+                (hostnames.includes('host.docker.internal') || 
+                 hostnames.some(h => h.includes('host')) ||
+                 hostnames.some(h => h.includes('gateway')))) {
+              
+              if (await this._testHostConnectivity(ip)) {
+                this.hostIp = ip;
+                logger.info(`✅ Detected host IP from /etc/hosts: ${this.hostIp} (${hostnames.join(', ')})`);
+                return this.hostIp;
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      logger.debug(`Failed to parse /etc/hosts: ${err.message}`);
+    }
+
+    // Fallback
+    logger.warn('⚠️ Could not detect host IP, falling back to localhost');
+    this.hostIp = 'localhost';
+    return this.hostIp;
+  }
+
+  /**
+   * Test if a host is reachable by trying to connect to common ports
+   * @private
+   */
+  async _testHostConnectivity(host) {
+    // Try multiple common ports to increase chance of detection
+    const testPorts = [22, 80, 443, 8080, 53];
+    
+    for (const port of testPorts) {
+      const isReachable = await new Promise((resolve) => {
+        const socket = new net.Socket();
+        const timeout = setTimeout(() => {
+          socket.destroy();
+          resolve(false);
+        }, 500);
+
+        socket.connect(port, host, () => {
+          clearTimeout(timeout);
+          socket.destroy();
+          logger.debug(`✅ Host ${host} is reachable on port ${port}`);
+          resolve(true);
+        });
+
+        socket.on('error', (err) => {
+          clearTimeout(timeout);
+          socket.destroy();
+          // ECONNREFUSED is actually a good sign - the host exists but port is closed
+          if (err.code === 'ECONNREFUSED') {
+            logger.debug(`✅ Host ${host} is reachable (port ${port} refused connection)`);
+            resolve(true);
+          } else {
+            // Other errors like EHOSTUNREACH, ENOTFOUND mean host is not reachable
+            resolve(false);
+          }
+        });
+      });
+      
+      if (isReachable) {
+        return true;
+      }
+    }
+    
+    logger.debug(`❌ Host ${host} is not reachable on any test ports`);
+    return false;
+  }
+
+  /**
    * Check common ports via socket connection
    * @private
    * @param {string} server - Server to check
    * @returns {Promise<Array>}
    */
   async _checkCommonPortsViaSocket(server) {
+    // Determine the correct host to check
+    let targetHost = server;
+    
+    if (this.isDocker && (server === 'localhost' || server === '127.0.0.1')) {
+      // Use the detected host IP
+      targetHost = await this._detectHostIp();
+      logger.info(`🎯 Using detected host IP for port scanning: ${targetHost}`);
+    }
+
     const commonPortsList = [
       // System services
       { port: 22, service: 'SSH' },
@@ -1075,16 +1313,55 @@ class PortAvailabilityChecker {
       const batch = commonPortsList.slice(i, i + batchSize);
       
       const checkPromises = batch.map(({ port, service }) => {
-        return new Promise((resolve) => {
-          const socket = new net.Socket();
-          const timeout = setTimeout(() => {
-            socket.destroy();
-            resolve(null);
-          }, 500); // Quick 500ms timeout
+        return new Promise(async (resolve) => {
+          // Try primary host first
+          const tryHost = async (host) => {
+            return new Promise((hostResolve) => {
+              const socket = new net.Socket();
+              const timeout = setTimeout(() => {
+                socket.destroy();
+                hostResolve(false);
+              }, 300); // Shorter timeout for multiple attempts
 
-          socket.connect(port, server, () => {
-            clearTimeout(timeout);
-            socket.destroy();
+              socket.connect(port, host, () => {
+                clearTimeout(timeout);
+                socket.destroy();
+                if (port === 80 || port === 22 || port === 443) {
+                  logger.info(`✅ Socket connected to port ${port} on ${host} - port is in use`);
+                } else {
+                  logger.debug(`✅ Socket connected to port ${port} on ${host} - port is in use`);
+                }
+                hostResolve(true);
+              });
+
+              socket.on('error', (err) => {
+                clearTimeout(timeout);
+                socket.destroy();
+                if (err.code === 'ECONNREFUSED') {
+                  // Port is explicitly closed/available
+                  if (port === 80) {
+                    logger.debug(`❌ Port ${port} on ${host}: Connection refused (not in use)`);
+                  }
+                  hostResolve(false);
+                } else if (err.code === 'ENOTFOUND' || err.code === 'EAI_AGAIN') {
+                  // Host doesn't exist, try next
+                  if (port === 80) {
+                    logger.debug(`⚠️ Port ${port} on ${host}: Host not found (${err.code})`);
+                  }
+                  hostResolve('skip');
+                } else {
+                  if (port === 80) {
+                    logger.debug(`❓ Port ${port} on ${host}: ${err.code}`);
+                  }
+                  hostResolve(false);
+                }
+              });
+            });
+          };
+
+          // Try primary host
+          const primaryResult = await tryHost(targetHost);
+          if (primaryResult === true) {
             resolve({
               port,
               protocol: 'tcp',
@@ -1093,24 +1370,66 @@ class PortAvailabilityChecker {
               address: server,
               source: 'socket-scan'
             });
-          });
+            return;
+          }
 
-          socket.on('error', () => {
-            clearTimeout(timeout);
-            socket.destroy();
-            resolve(null);
-          });
+          // If primary failed with host not found, try fallbacks
+          if (primaryResult === 'skip') {
+            const fallbackHosts = ['localhost', '127.0.0.1'];
+            if (targetHost !== 'localhost' && targetHost !== '127.0.0.1') {
+              fallbackHosts.push('172.17.0.1', 'host.docker.internal');
+            }
+            
+            for (const fallbackHost of fallbackHosts) {
+              if (fallbackHost === targetHost) continue; // Skip if same as primary
+              
+              const fallbackResult = await tryHost(fallbackHost);
+              if (fallbackResult === true) {
+                logger.debug(`✅ Port ${port} found via fallback host: ${fallbackHost}`);
+                resolve({
+                  port,
+                  protocol: 'tcp',
+                  service: service || this._identifyService(port),
+                  pid: 'unknown',
+                  address: server,
+                  source: 'socket-scan'
+                });
+                return;
+              }
+            }
+          }
+
+          resolve(null);
         });
       });
 
       const results = await Promise.all(checkPromises);
       const foundPorts = results.filter(r => r !== null);
+      if (foundPorts.length > 0) {
+        logger.debug(`Batch found ${foundPorts.length} ports: ${foundPorts.map(p => p.port).join(', ')}`);
+      }
       detectedPorts.push(...foundPorts);
       
       // Small delay between batches to avoid overwhelming the system
       if (i + batchSize < commonPortsList.length) {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
+    }
+
+    logger.info(`🔍 Socket scan complete: found ${detectedPorts.length} ports in use`);
+    if (detectedPorts.length > 0) {
+      const portList = detectedPorts.map(p => `${p.port}(${p.service})`).join(', ');
+      logger.info(`📋 Detected ports: ${portList}`);
+      
+      // Check specifically for port 80
+      const port80 = detectedPorts.find(p => p.port === 80);
+      if (port80) {
+        logger.info(`✅ Port 80 found via socket scan!`);
+      } else {
+        logger.warn(`⚠️ Port 80 NOT found via socket scan - may not be accessible from container`);
+      }
+    } else {
+      logger.warn(`⚠️ No ports detected via socket scan - host may not be accessible from container`);
     }
 
     return detectedPorts;

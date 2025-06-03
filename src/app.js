@@ -272,6 +272,18 @@ async function start() {
       logger.info('🚀 Starting in direct CLI mode (API server disabled)');
     }
 
+    // Make services available to API controllers via global BEFORE initialization
+    global.services = {
+      DNSManager: dnsManager,
+      DockerMonitor: dockerMonitor,
+      StatusReporter: statusReporter,
+      Monitor: monitor,
+      TraefikMonitor: config.operationMode.toLowerCase() !== 'direct' ? monitor : null,
+      DirectDNSManager: config.operationMode.toLowerCase() === 'direct' ? monitor : null,
+      ConfigManager: config,
+      PortMonitor: portMonitor
+    };
+
     // Initialize all services
     await dnsManager.init();
     await monitor.init();
@@ -293,18 +305,6 @@ async function start() {
 
     // Start main polling
     await monitor.startPolling();
-
-    // Make services available to API controllers via global
-    global.services = {
-      DNSManager: dnsManager,
-      DockerMonitor: dockerMonitor,
-      StatusReporter: statusReporter,
-      Monitor: monitor,
-      TraefikMonitor: config.operationMode.toLowerCase() !== 'direct' ? monitor : null,
-      DirectDNSManager: config.operationMode.toLowerCase() === 'direct' ? monitor : null,
-      ConfigManager: config,
-      PortMonitor: portMonitor
-    };
 
     // Initialize state management system
     const { initializeStateManagement } = require('./state');
