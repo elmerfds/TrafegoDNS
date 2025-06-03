@@ -24,7 +24,7 @@ import { SecretInput } from '@/components/ui/secret-input'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Loader2, Save, AlertTriangle } from 'lucide-react'
 import { Config } from '@/types/config'
-import { ThemeSwitcher } from '@/components/ThemeSwitcher'
+import { ColorThemeSwitcher } from '@/components/ColorThemeSwitcher'
 import { ThemeToggle } from '@/components/theme-toggle'
 
 export function SettingsPage() {
@@ -307,7 +307,7 @@ export function SettingsPage() {
             </div>
             
             <div>
-              <ThemeSwitcher variant="button" showLabel={true} />
+              <ColorThemeSwitcher showLabel={true} />
               <p className="text-xs text-muted-foreground mt-2">
                 Choose your preferred accent color theme
               </p>

@@ -4,53 +4,89 @@
 
 @layer base {
   :root {
-    /* Default theme colors will be set by ThemeContext */
-    --background: 248 250 252;
-    --foreground: 15 23 42;
-    --card: 255 255 255;
-    --card-foreground: 15 23 42;
-    --popover: 255 255 255;
-    --popover-foreground: 15 23 42;
-    --primary: 20 184 166;
-    --primary-foreground: 255 255 255;
-    --secondary: 240 253 250;
-    --secondary-foreground: 19 78 74;
-    --muted: 248 250 252;
-    --muted-foreground: 100 116 139;
-    --accent: 153 246 228;
-    --accent-foreground: 19 78 74;
-    --destructive: 239 68 68;
-    --destructive-foreground: 255 255 255;
-    --border: 226 232 240;
-    --input: 255 255 255;
-    --ring: 20 184 166;
-    --success: 34 197 94;
-    --warning: 245 158 11;
+    /* TrafegoDNS Light Theme - Teal Accent (Default) */
+    --background: 210 17% 98%;           /* Soft off-white #FAFBFC */
+    --foreground: 222 47% 11%;           /* Dark navy for better contrast */
+    --card: 0 0% 99%;                    /* Very light grey #FCFCFC */
+    --card-foreground: 222 47% 11%;      /* Dark navy */
+    --popover: 0 0% 99%;                 /* Very light grey */
+    --popover-foreground: 222 47% 11%;   /* Dark navy */
+    --primary: 20 184 166;               /* Teal primary */
+    --primary-foreground: 255 255 255;   /* White on teal */
+    --secondary: 240 253 250;            /* Light teal #F0FDFA */
+    --secondary-foreground: 19 78 74;    /* Dark teal */
+    --muted: 210 17% 92%;                /* Muted grey #E8EAED */
+    --muted-foreground: 215 16% 35%;     /* Darker muted text for better contrast */
+    --accent: 153 246 228;               /* Teal accent #99F6E4 */
+    --accent-foreground: 19 78 74;       /* Dark teal */
+    --destructive: 0 72% 51%;            /* Softer red #D73A49 */
+    --destructive-foreground: 0 0% 98%;  /* Off-white */
+    --border: 214 32% 88%;               /* Softer borders #D5DAE1 */
+    --input: 0 0% 99%;                   /* Very light input background */
+    --ring: 20 184 166;                  /* Teal ring */
     --radius: 0.375rem;
   }
 
   .dark {
-    --background: 15 23 42;
-    --foreground: 248 250 252;
-    --card: 30 41 59;
-    --card-foreground: 248 250 252;
-    --popover: 30 41 59;
-    --popover-foreground: 248 250 252;
-    --primary: 20 184 166;
-    --primary-foreground: 255 255 255;
-    --secondary: 30 41 59;
-    --secondary-foreground: 248 250 252;
-    --muted: 30 41 59;
-    --muted-foreground: 148 163 184;
-    --accent: 153 246 228;
-    --accent-foreground: 19 78 74;
-    --destructive: 239 68 68;
-    --destructive-foreground: 255 255 255;
-    --border: 30 41 59;
-    --input: 30 41 59;
-    --ring: 20 184 166;
-    --success: 34 197 94;
-    --warning: 245 158 11;
+    /* TrafegoDNS Dark Theme - Teal Accent (Default) */
+    --background: 222 47% 7%;            /* Very Dark Navy #0a0f1c */
+    --foreground: 210 40% 98%;           /* Soft White #F8FAFC */
+    --card: 220 41% 10%;                 /* Dark Blue-Black #111827 */
+    --card-foreground: 210 40% 98%;      /* Soft White #F8FAFC */
+    --popover: 220 41% 10%;              /* Dark Blue-Black #111827 */
+    --popover-foreground: 210 40% 98%;   /* Soft White #F8FAFC */
+    --primary: 20 184 166;               /* Teal primary */
+    --primary-foreground: 255 255 255;   /* White on teal */
+    --secondary: 217 33% 17%;            /* Dark Blue #1e3a5f */
+    --secondary-foreground: 210 40% 98%; /* Soft White #F8FAFC */
+    --muted: 217 33% 17%;                /* Dark Blue #1e3a5f */
+    --muted-foreground: 215 20% 65%;     /* Muted Blue-White #94a3b8 */
+    --accent: 153 246 228;               /* Teal accent #99F6E4 */
+    --accent-foreground: 19 78 74;       /* Dark teal */
+    --destructive: 0 84% 60%;            /* Softer Red #ef4444 */
+    --destructive-foreground: 210 40% 98%; /* Soft White #F8FAFC */
+    --border: 217 33% 17%;               /* Dark Blue #1e3a5f */
+    --input: 220 41% 10%;                /* Dark Blue-Black #111827 */
+    --ring: 20 184 166;                  /* Teal ring */
+  }
+
+  /* Gold Theme Variables */
+  .theme-gold {
+    --primary: 245 158 11;               /* Gold primary */
+    --accent: 252 211 77;                /* Gold accent */
+    --ring: 245 158 11;                  /* Gold ring */
+  }
+  
+  .theme-gold.dark {
+    --primary: 245 158 11;               /* Gold primary */
+    --accent: 252 211 77;                /* Gold accent */
+    --ring: 245 158 11;                  /* Gold ring */
+  }
+
+  /* Blue Theme Variables */
+  .theme-blue {
+    --primary: 59 130 246;               /* Blue primary */
+    --accent: 147 197 253;               /* Blue accent */
+    --ring: 59 130 246;                  /* Blue ring */
+  }
+  
+  .theme-blue.dark {
+    --primary: 59 130 246;               /* Blue primary */
+    --accent: 147 197 253;               /* Blue accent */
+    --ring: 59 130 246;                  /* Blue ring */
+  }
+
+  /* Purple Theme Variables */
+  .theme-purple {
+    --primary: 139 92 246;               /* Purple primary */
+    --accent: 196 181 253;               /* Purple accent */
+    --ring: 139 92 246;                  /* Purple ring */
+  }
+  
+  .theme-purple.dark {
+    --primary: 139 92 246;               /* Purple primary */
+    --accent: 196 181 253;               /* Purple accent */
+    --ring: 139 92 246;                  /* Purple ring */
   }
 }
 

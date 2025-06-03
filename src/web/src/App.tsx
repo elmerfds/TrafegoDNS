@@ -15,14 +15,14 @@ import { LogsPage } from '@/pages/Logs'
 import PortManagement from '@/pages/PortManagement'
 import { Toaster } from '@/components/ui/toaster'
 import { ThemeProvider } from '@/components/theme-provider'
-import { ColorThemeProvider } from '@/contexts/ThemeContext'
+import { ColorThemeProvider } from '@/contexts/ColorThemeContext'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 
 function App() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
 
   return (
-    <ThemeProvider defaultTheme="dark" storageKey="trafegodns-ui-theme">
+    <ThemeProvider defaultTheme="dark" storageKey="trafegodns-theme">
       <ColorThemeProvider>
         <Router>
         <Routes>
