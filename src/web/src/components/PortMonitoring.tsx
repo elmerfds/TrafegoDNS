@@ -644,12 +644,26 @@ export default function PortMonitoring() {
     try {
       const ports = portsToCheck.split(',').map(p => parseInt(p.trim())).filter(p => !isNaN(p));
       
+      if (ports.length === 0) {
+        setError('Please enter valid port numbers');
+        return;
+      }
+      
+      console.log('Sending suggest alternatives request:', {
+        ports,
+        protocol,
+        serviceType,
+        maxSuggestions: 5
+      });
+      
       const response = await api.post('/ports/suggest-alternatives', {
         ports,
         protocol,
         serviceType,
         maxSuggestions: 5
       });
+      
+      console.log('Suggest alternatives response:', response.data);
 
       setPortSuggestions(response.data.data.suggestions);
     } catch (error: any) {

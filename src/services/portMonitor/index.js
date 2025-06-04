@@ -209,17 +209,52 @@ class PortMonitor {
 
   /**
    * Suggest alternative ports
-   * @param {Array<number>} requestedPorts - Requested ports
-   * @param {string} protocol - Protocol
-   * @param {Object} options - Suggestion options
+   * @param {Object|Array<number>} requestedPortsOrOptions - Requested ports array or options object
+   * @param {string} protocol - Protocol (if first param is array)
+   * @param {Object} options - Suggestion options (if first param is array)
    * @returns {Promise<Object>}
    */
-  async suggestAlternativePorts(requestedPorts, protocol = 'tcp', options = {}) {
+  async suggestAlternativePorts(requestedPortsOrOptions, protocol = 'tcp', options = {}) {
     try {
+      let requestedPorts, finalProtocol, finalOptions;
+      
+      // Handle both old signature (array, protocol, options) and new signature (options object)
+      if (Array.isArray(requestedPortsOrOptions)) {
+        // Old signature: suggestAlternativePorts(ports, protocol, options)
+        requestedPorts = requestedPortsOrOptions;
+        finalProtocol = protocol;
+        finalOptions = options;
+      } else if (typeof requestedPortsOrOptions === 'object' && requestedPortsOrOptions.ports) {
+        // New signature: suggestAlternativePorts({ports, protocol, serviceType, ...})
+        const {
+          ports,
+          protocol: optProtocol = 'tcp',
+          serviceType = 'custom',
+          maxSuggestions = 5,
+          server = 'localhost',
+          ...otherOptions
+        } = requestedPortsOrOptions;
+        
+        requestedPorts = ports;
+        finalProtocol = optProtocol;
+        finalOptions = {
+          serviceType,
+          maxSuggestions,
+          server,
+          ...otherOptions
+        };
+      } else {
+        throw new Error('Invalid parameters: expected ports array or options object with ports property');
+      }
+      
+      if (!Array.isArray(requestedPorts) || requestedPorts.length === 0) {
+        throw new Error('requestedPorts must be a non-empty array');
+      }
+
       const suggestions = await this.suggestionEngine.suggestAlternativePorts(
         requestedPorts,
-        protocol,
-        options
+        finalProtocol,
+        finalOptions
       );
 
       return {

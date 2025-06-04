@@ -304,6 +304,8 @@ const suggestAlternativePorts = asyncHandler(async (req, res) => {
     server = 'localhost'
   } = req.body;
 
+  logger.info(`📡 API: Suggest alternatives request: ports=${JSON.stringify(ports)}, protocol=${protocol}, serviceType=${serviceType}`);
+
   if (!ports || !Array.isArray(ports) || ports.length === 0) {
     throw new ApiError('Ports array is required', 400, 'INVALID_PORTS');
   }
