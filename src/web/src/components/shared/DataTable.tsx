@@ -85,7 +85,7 @@ export interface DataTableProps<T> {
   selectable?: boolean;
   selectedItems?: T[];
   onSelectionChange?: (selectedItems: T[]) => void;
-  getItemId?: (item: T) => string | number;
+  getItemId?: (item: T, index?: number) => string | number;
   
   // Refresh
   onRefresh?: () => void;
@@ -113,7 +113,7 @@ export function DataTable<T>({
   selectable = false,
   selectedItems = [],
   onSelectionChange,
-  getItemId = (item: T, index: number) => index,
+  getItemId = (item: T, index?: number) => index || 0,
   onRefresh,
   emptyMessage = 'No data available',
   className = ''
@@ -130,14 +130,14 @@ export function DataTable<T>({
     }
   };
   
-  const handleSelectItem = (item: T) => {
+  const handleSelectItem = (item: T, index: number) => {
     if (!onSelectionChange) return;
     
-    const itemId = getItemId(item);
-    const isSelected = selectedItems.some(selected => getItemId(selected) === itemId);
+    const itemId = getItemId(item, index);
+    const isSelected = selectedItems.some((selected, idx) => getItemId(selected, idx) === itemId);
     
     if (isSelected) {
-      onSelectionChange(selectedItems.filter(selected => getItemId(selected) !== itemId));
+      onSelectionChange(selectedItems.filter((selected, idx) => getItemId(selected, idx) !== itemId));
     } else {
       onSelectionChange([...selectedItems, item]);
     }
@@ -326,7 +326,7 @@ export function DataTable<T>({
               // Data rows
               data.map((item, index) => {
                 const itemId = getItemId(item, index);
-                const isSelected = selectedItems.some(selected => getItemId(selected) === itemId);
+                const isSelected = selectedItems.some(selected => getItemId(selected, selectedItems.indexOf(selected)) === itemId);
                 
                 return (
                   <TableRow key={itemId} className={isSelected ? 'bg-blue-50' : ''}>
@@ -335,7 +335,7 @@ export function DataTable<T>({
                         <input
                           type="checkbox"
                           checked={isSelected}
-                          onChange={() => handleSelectItem(item)}
+                          onChange={() => handleSelectItem(item, index)}
                           className="rounded border-gray-300"
                         />
                       </TableCell>

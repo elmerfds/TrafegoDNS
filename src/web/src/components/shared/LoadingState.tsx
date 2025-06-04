@@ -22,11 +22,15 @@ export function Spinner({ size = 'md', className = '' }: SpinnerProps) {
 // Skeleton components for different content types
 export interface SkeletonProps {
   className?: string;
+  style?: React.CSSProperties;
 }
 
-export function Skeleton({ className = '' }: SkeletonProps) {
+export function Skeleton({ className = '', style }: SkeletonProps) {
   return (
-    <div className={`animate-pulse bg-gray-200 rounded ${className}`} />
+    <div 
+      className={`animate-pulse bg-gray-200 rounded ${className}`} 
+      style={style}
+    />
   );
 }
 

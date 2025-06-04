@@ -11,6 +11,7 @@ export interface Port {
   labels?: Record<string, string>; // Made optional to match schema
   container_id?: string;
   container_name?: string;
+  description?: string; // Add description field
   first_detected: string; // Updated field name
   last_seen: string;
   scan_count?: number; // New field from schema
@@ -97,10 +98,33 @@ export interface PortStatistics {
 }
 
 export interface PortScanRequest {
-  host: string;
+  host?: string;
+  server?: string;
+  startPort: number;
+  endPort: number;
+  protocol: 'tcp' | 'udp' | 'both';
+  timeout?: number;
+  concurrency?: number;
   port_range?: string;
   protocols?: ('tcp' | 'udp')[];
   scan_type?: string;
+}
+
+export interface PortScanResult {
+  results: Record<string, boolean>;
+  summary: {
+    totalPorts: number;
+    availablePorts: number;
+    unavailablePorts: number;
+    availabilityPercentage: number;
+  };
+  metadata?: {
+    startPort: number;
+    endPort: number;
+    protocol: string;
+    server: string;
+    timestamp: string;
+  };
 }
 
 // New interfaces for updated schema
@@ -141,6 +165,7 @@ export interface PortFilters {
   service_name?: string;
   service?: string;
   port_range?: string;
+  search?: string; // Add search field
   page?: number;
   limit?: number;
   sort_by?: string;

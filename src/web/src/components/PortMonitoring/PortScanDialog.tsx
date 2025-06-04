@@ -20,6 +20,13 @@ import {
   Activity
 } from 'lucide-react';
 import { Form } from '../shared/Form';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
 import { api } from '../../lib/api';
 import { useErrorHandler } from '../../hooks/useErrorHandler';
 import { useToast } from '../../hooks/use-toast';
@@ -302,11 +309,16 @@ export function PortScanDialog({
 
             <div className="grid grid-cols-2 gap-4">
               <Form.Field name="protocol" label="Protocol" required>
-                <Form.Select disabled={isScanning}>
-                  <option value="tcp">TCP</option>
-                  <option value="udp">UDP</option>
-                  <option value="both">Both</option>
-                </Form.Select>
+                <Select disabled={isScanning} name="protocol" defaultValue={defaultValues.protocol}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select protocol" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="tcp">TCP</SelectItem>
+                    <SelectItem value="udp">UDP</SelectItem>
+                    <SelectItem value="both">Both</SelectItem>
+                  </SelectContent>
+                </Select>
               </Form.Field>
               
               <Form.Field name="server" label="Server" required>

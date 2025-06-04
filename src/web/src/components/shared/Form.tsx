@@ -40,7 +40,7 @@ export type ValidationRule<T = any> = {
   pattern?: RegExp;
   min?: number;
   max?: number;
-  custom?: (value: T) => string | null;
+  custom?: (value: T, formData?: FormData) => string | null;
 };
 
 export interface FormProps {
@@ -79,7 +79,7 @@ export function Form({
     setTouched(prev => ({ ...prev, [name]: true }));
   }, []);
 
-  const validateField = (name: string, value: any): string | null => {
+  const validateField = (name: string, value: any, formData?: FormData): string | null => {
     const rules = validation[name];
     if (!rules) return null;
 
@@ -121,7 +121,7 @@ export function Form({
 
     // Custom validation
     if (rules.custom) {
-      return rules.custom(value);
+      return rules.custom(value, formData);
     }
 
     return null;
@@ -132,7 +132,7 @@ export function Form({
 
     for (const [name, rules] of Object.entries(validation)) {
       const value = formData.get(name);
-      const error = validateField(name, value);
+      const error = validateField(name, value, formData);
       if (error) {
         newErrors[name] = error;
       }
@@ -292,6 +292,7 @@ export interface FormSelectProps {
   children: React.ReactNode;
   placeholder?: string;
   defaultValue?: string;
+  disabled?: boolean;
 }
 
 export function FormSelect({ 
@@ -300,6 +301,7 @@ export function FormSelect({
   children, 
   placeholder,
   defaultValue,
+  disabled,
   ...props 
 }: FormSelectProps) {
   const { setFieldTouched, clearFieldError } = useFormContext();
@@ -318,6 +320,7 @@ export function FormSelect({
         name={name}
         onValueChange={handleValueChange}
         defaultValue={defaultValue}
+        disabled={disabled}
         {...props}
       >
         <SelectTrigger>

@@ -81,11 +81,12 @@ export function PortsInUseTab({
       key: 'status',
       header: 'Status',
       accessor: (port) => {
-        const variants = {
-          open: 'default' as const,
-          closed: 'secondary' as const,
-          listening: 'default' as const,
-          filtered: 'destructive' as const
+        const variants: Record<string, 'default' | 'secondary' | 'destructive'> = {
+          open: 'default',
+          closed: 'secondary',
+          listening: 'default',
+          filtered: 'destructive',
+          unknown: 'secondary'
         };
         
         return (
