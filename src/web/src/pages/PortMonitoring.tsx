@@ -320,7 +320,7 @@ export default function PortMonitoring() {
 
         <TabsContent value="overview" className="space-y-6">
           {/* Statistics Cards */}
-          {statistics && (
+          {statistics && statistics.ports && statistics.alerts && statistics.scans && (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -329,10 +329,10 @@ export default function PortMonitoring() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {Object.values(statistics.ports.byStatus).reduce((a, b) => a + b, 0)}
+                    {statistics.ports.byStatus ? Object.values(statistics.ports.byStatus).reduce((a, b) => a + b, 0) : 0}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {statistics.ports.byStatus.open || 0} open, {statistics.ports.byStatus.closed || 0} closed
+                    {statistics.ports.byStatus?.open || 0} open, {statistics.ports.byStatus?.closed || 0} closed
                   </p>
                 </CardContent>
               </Card>
@@ -343,9 +343,9 @@ export default function PortMonitoring() {
                   <AlertTriangle className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{statistics.alerts.unacknowledged}</div>
+                  <div className="text-2xl font-bold">{statistics.alerts.unacknowledged || 0}</div>
                   <p className="text-xs text-muted-foreground">
-                    {statistics.alerts.bySeverity.critical || 0} critical, {statistics.alerts.bySeverity.high || 0} high
+                    {statistics.alerts.bySeverity?.critical || 0} critical, {statistics.alerts.bySeverity?.high || 0} high
                   </p>
                 </CardContent>
               </Card>
@@ -356,9 +356,9 @@ export default function PortMonitoring() {
                   <Activity className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{statistics.scans.recentScans}</div>
+                  <div className="text-2xl font-bold">{statistics.scans.recentScans || 0}</div>
                   <p className="text-xs text-muted-foreground">
-                    Avg: {Math.round(statistics.scans.averageDuration / 1000)}s duration
+                    Avg: {statistics.scans.averageDuration ? Math.round(statistics.scans.averageDuration / 1000) : 0}s duration
                   </p>
                 </CardContent>
               </Card>
@@ -369,11 +369,39 @@ export default function PortMonitoring() {
                   <Clock className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{statistics.ports.recentActivity}</div>
+                  <div className="text-2xl font-bold">{statistics.ports.recentActivity || 0}</div>
                   <p className="text-xs text-muted-foreground">Port changes (24h)</p>
                 </CardContent>
               </Card>
             </div>
+          )}
+
+          {/* Show loading state for statistics */}
+          {!statistics && statsLoading && (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <Card key={index}>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
+                    <div className="h-4 w-4 bg-gray-200 rounded animate-pulse" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-8 w-16 bg-gray-200 rounded animate-pulse mb-2" />
+                    <div className="h-3 w-24 bg-gray-200 rounded animate-pulse" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Show error state for statistics */}
+          {!statistics && !statsLoading && statsError && (
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                Failed to load statistics: {statsError}
+              </AlertDescription>
+            </Alert>
           )}
 
           {/* Recent Alerts */}
@@ -416,7 +444,7 @@ export default function PortMonitoring() {
           </Card>
 
           {/* Top Services and Hosts */}
-          {statistics && (
+          {statistics && statistics.ports && statistics.ports.topServices && statistics.ports.topHosts && (
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
                 <CardHeader>
