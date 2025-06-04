@@ -5,6 +5,8 @@
 const net = require('net');
 const { spawn } = require('child_process');
 const logger = require('../../utils/logger');
+const protocolHandler = require('../../utils/protocolHandler');
+const { PortCheckError, wrapPortError } = require('../../utils/portError');
 
 class PortAvailabilityChecker {
   constructor(config) {
@@ -26,11 +28,34 @@ class PortAvailabilityChecker {
   /**
    * Check if a single port is available
    * @param {number} port - Port to check
-   * @param {string} protocol - Protocol (tcp/udp)
+   * @param {string|string[]} protocol - Protocol(s) (tcp/udp/both)
    * @param {string} host - Host to check (default: localhost)
    * @returns {Promise<boolean>}
    */
   async checkSinglePort(port, protocol = 'tcp', host = 'localhost') {
+    const normalizedProtocol = protocolHandler.normalizeProtocol(protocol);
+    const protocols = protocolHandler.expandProtocols(normalizedProtocol);
+    
+    // For multiple protocols, all must be available
+    for (const proto of protocols) {
+      const isAvailable = await this._checkSingleProtocolPort(port, proto, host);
+      if (!isAvailable) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
+
+  /**
+   * Check if a single port is available for a specific protocol
+   * @param {number} port - Port to check
+   * @param {string} protocol - Protocol (tcp/udp)
+   * @param {string} host - Host to check (default: localhost)
+   * @returns {Promise<boolean>}
+   * @private
+   */
+  async _checkSingleProtocolPort(port, protocol = 'tcp', host = 'localhost') {
     // If we're in Docker and checking localhost, use the actual host IP for socket checks
     let targetHost = host;
     if (this.isDocker && (host === 'localhost' || host === '127.0.0.1') && this.preferredMethod === 'socket') {
@@ -80,7 +105,23 @@ class PortAvailabilityChecker {
 
       return available;
     } catch (error) {
-      logger.debug(`Failed to check port ${port}: ${error.message}`);
+      const portError = new PortCheckError(
+        `Failed to check port ${port}/${protocol} on ${targetHost}`,
+        port,
+        protocol,
+        targetHost,
+        error
+      );
+      logger.error('Port availability check failed', {
+        port,
+        protocol,
+        host: targetHost,
+        method: this.preferredMethod,
+        error: portError.toJSON()
+      });
+      
+      // For port checks, we can choose to throw or return a result object
+      // Return false for now but with detailed logging
       return false;
     }
   }
@@ -88,11 +129,12 @@ class PortAvailabilityChecker {
   /**
    * Check multiple ports availability
    * @param {Array<number>} ports - Ports to check
-   * @param {string} protocol - Protocol (tcp/udp)
+   * @param {string|string[]} protocol - Protocol(s) (tcp/udp/both)
    * @param {string} host - Host to check
    * @returns {Promise<Object>} - Object with port as key and availability as value
    */
   async checkMultiplePorts(ports, protocol = 'tcp', host = 'localhost') {
+    const normalizedProtocol = protocolHandler.normalizeProtocol(protocol);
     // Pre-detect host IP if needed to avoid multiple detections
     let targetHost = host;
     if (this.isDocker && (host === 'localhost' || host === '127.0.0.1') && this.preferredMethod === 'socket') {
@@ -107,7 +149,7 @@ class PortAvailabilityChecker {
     for (let i = 0; i < ports.length; i += concurrency) {
       const batch = ports.slice(i, i + concurrency);
       const batchPromises = batch.map(async (port) => {
-        const available = await this.checkSinglePort(port, protocol, targetHost);
+        const available = await this.checkSinglePort(port, normalizedProtocol, targetHost);
         return { port, available };
       });
 
@@ -118,7 +160,13 @@ class PortAvailabilityChecker {
         if (result.status === 'fulfilled') {
           results[port] = result.value.available;
         } else {
-          logger.debug(`Failed to check port ${port}: ${result.reason}`);
+          logger.error(`Failed to check port ${port} in batch:`, {
+            port,
+            protocol: normalizedProtocol,
+            host: targetHost,
+            error: result.reason,
+            batchIndex: index
+          });
           results[port] = false;
         }
       });
@@ -129,13 +177,14 @@ class PortAvailabilityChecker {
 
   /**
    * Get all listening ports on the system
-   * @param {string} protocol - Protocol filter (tcp/udp)
+   * @param {string|string[]} protocol - Protocol filter (tcp/udp/both)
    * @returns {Promise<Array<Object>>}
    */
   async getListeningPorts(protocol = null) {
+    const normalizedProtocol = protocol ? protocolHandler.normalizeProtocol(protocol) : null;
     try {
       const method = this.config.SYSTEM_PORT_SCAN_METHOD || 'ss';
-      logger.info(`Getting listening ports using method: ${method}, protocol filter: ${protocol || 'all'}`);
+      logger.info(`Getting listening ports using method: ${method}, protocol filter: ${normalizedProtocol || 'all'}`);
       
       let ports = [];
       let usedMethod = method;
@@ -192,8 +241,20 @@ class PortAvailabilityChecker {
       
       return filteredPorts;
     } catch (error) {
-      logger.error(`Failed to get listening ports: ${error.message}`);
-      logger.error(`Error stack: ${error.stack}`);
+      const portError = wrapPortError(error, {
+        operation: 'scan',
+        protocol: normalizedProtocol,
+        method: usedMethod
+      });
+      
+      logger.error('Failed to get listening ports', {
+        method: usedMethod,
+        protocol: normalizedProtocol,
+        error: portError.toJSON()
+      });
+      
+      // For system port listing, empty array return is acceptable but should be distinguished from successful empty result
+      // Consider throwing in future if callers can handle it
       return [];
     }
   }
@@ -804,8 +865,19 @@ class PortAvailabilityChecker {
       
       return systemPorts;
     } catch (error) {
-      logger.error(`Failed to get system ports in use: ${error.message}`);
-      return [];
+      const portError = wrapPortError(error, {
+        operation: 'scan',
+        server
+      });
+      
+      logger.error('Failed to get system ports in use', {
+        server,
+        error: portError.toJSON()
+      });
+      
+      // For system port scanning, consider throwing instead of returning empty array
+      // to distinguish between 'no ports' and 'scan failed'
+      throw portError;
     }
   }
 
@@ -826,8 +898,23 @@ class PortAvailabilityChecker {
       // For remote servers, try socket connection
       return await this._checkRemotePort(port, protocol, server);
     } catch (error) {
-      logger.error(`Failed to check port ${port}/${protocol} on ${server}: ${error.message}`);
-      return false;
+      const portError = new PortCheckError(
+        `Failed to check port ${port}/${protocol} on ${server}`,
+        port,
+        protocol,
+        server,
+        error
+      );
+      
+      logger.error('Port availability check failed', {
+        port,
+        protocol,
+        server,
+        error: portError.toJSON()
+      });
+      
+      // Re-throw to let caller handle the error appropriately
+      throw portError;
     }
   }
 

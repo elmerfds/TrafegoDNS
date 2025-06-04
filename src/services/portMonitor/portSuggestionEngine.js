@@ -3,6 +3,7 @@
  * Suggests alternative ports when conflicts are detected
  */
 const logger = require('../../utils/logger');
+const protocolHandler = require('../../utils/protocolHandler');
 
 class PortSuggestionEngine {
   constructor(availabilityChecker, reservationManager, config) {
@@ -34,25 +35,42 @@ class PortSuggestionEngine {
 
   /**
    * Suggest alternative ports for a list of requested ports
-   * @param {Array<number>} requestedPorts - Originally requested ports
-   * @param {string} protocol - Protocol (tcp/udp)
    * @param {Object} options - Suggestion options
+   * @param {Array<number>} options.requestedPorts - Originally requested ports
+   * @param {string|string[]} [options.protocol='tcp'] - Protocol(s) (tcp/udp/both)
+   * @param {boolean} [options.preferSequential] - Prefer sequential ports for multiple ports
+   * @param {number} [options.maxSuggestions] - Maximum number of suggestions per port
+   * @param {number} [options.nearbyRange] - Range to search around original ports
+   * @param {boolean} [options.avoidWellKnown] - Avoid well-known service ports
    * @returns {Promise<Array<Object>>}
    */
-  async suggestAlternativePorts(requestedPorts, protocol = 'tcp', options = {}) {
+  async suggestAlternativePorts(options = {}) {
+    // Handle backward compatibility with old signature
+    if (Array.isArray(options)) {
+      const [requestedPorts, protocol = 'tcp', opts = {}] = arguments;
+      return this.suggestAlternativePorts({
+        requestedPorts,
+        protocol,
+        ...opts
+      });
+    }
+
+    const {
+      requestedPorts = [],
+      protocol: inputProtocol = 'tcp',
+      preferSequential = this.suggestionRules.preferSequential,
+      maxSuggestions = this.suggestionRules.maxSuggestions,
+      nearbyRange = this.suggestionRules.nearbyRange,
+      avoidWellKnown = this.suggestionRules.avoidWellKnownPorts
+    } = options;
+
+    const protocol = protocolHandler.normalizeProtocol(inputProtocol);
     const suggestions = [];
     
     logger.info(`🔍 PortSuggestionEngine: Finding alternatives for ports: ${JSON.stringify(requestedPorts)}, protocol: ${protocol}`);
     logger.info(`🔧 Configuration: portRanges=${JSON.stringify(this.portRanges)}, excludedPorts=[${this.excludedPorts.join(', ')}]`);
     
     try {
-      const {
-        preferSequential = this.suggestionRules.preferSequential,
-        maxSuggestions = this.suggestionRules.maxSuggestions,
-        nearbyRange = this.suggestionRules.nearbyRange,
-        avoidWellKnown = this.suggestionRules.avoidWellKnownPorts
-      } = options;
-      
       // Be more lenient for suggestions - allow well-known ports if we can't find enough alternatives
       const relaxedAvoidWellKnown = avoidWellKnown;
 
@@ -450,28 +468,29 @@ class PortSuggestionEngine {
       return false;
     }
 
-    // Check system availability - handle 'both' protocol
+    // Check system availability using ProtocolHandler
     let isAvailable = true;
     try {
-      if (protocol === 'both') {
-        logger.debug(`🔍 Checking port ${port} availability for both TCP and UDP...`);
-        const tcpAvailable = await this.availabilityChecker.checkSinglePort(port, 'tcp');
-        const udpAvailable = await this.availabilityChecker.checkSinglePort(port, 'udp');
-        
-        // For suggestions, be more lenient - port is available if either TCP or UDP is available
-        // This allows for more flexibility in port suggestions
-        isAvailable = tcpAvailable || udpAvailable;
-        logger.debug(`🔍 Port ${port} availability: TCP=${tcpAvailable}, UDP=${udpAvailable}, either=${isAvailable}`);
-        
-        if (tcpAvailable && udpAvailable) {
-          logger.debug(`✅ Port ${port} fully available for both protocols`);
-        } else if (isAvailable) {
-          logger.debug(`⚠️ Port ${port} partially available (TCP: ${tcpAvailable}, UDP: ${udpAvailable})`);
-        }
-      } else {
-        logger.debug(`🔍 Checking port ${port} availability for ${protocol}...`);
-        isAvailable = await this.availabilityChecker.checkSinglePort(port, protocol);
-        logger.debug(`🔍 Port ${port} ${protocol} availability: ${isAvailable}`);
+      const protocols = protocolHandler.expandProtocols(protocol);
+      logger.debug(`🔍 Checking port ${port} availability for protocols: ${protocols.join(', ')}`);
+      
+      const availabilityResults = [];
+      for (const proto of protocols) {
+        const protoAvailable = await this.availabilityChecker.checkSinglePort(port, proto);
+        availabilityResults.push({ protocol: proto, available: protoAvailable });
+      }
+      
+      // For suggestions, be more lenient - port is available if any protocol is available
+      // This allows for more flexibility in port suggestions
+      isAvailable = availabilityResults.some(result => result.available);
+      
+      logger.debug(`🔍 Port ${port} availability results:`, availabilityResults);
+      
+      if (availabilityResults.every(result => result.available)) {
+        logger.debug(`✅ Port ${port} fully available for all requested protocols`);
+      } else if (isAvailable) {
+        const availableProtocols = availabilityResults.filter(r => r.available).map(r => r.protocol);
+        logger.debug(`⚠️ Port ${port} partially available for: ${availableProtocols.join(', ')}`);
       }
     } catch (error) {
       logger.debug(`⚠️ Port ${port} availability check failed: ${error.message}, assuming unavailable`);
@@ -483,21 +502,21 @@ class PortSuggestionEngine {
       return false;
     }
 
-    // Check reservations - be more flexible for 'both' protocol
+    // Check reservations using ProtocolHandler
     try {
+      const protocols = protocolHandler.expandProtocols(protocol);
       let hasReservation = false;
-      if (protocol === 'both') {
-        // Check both TCP and UDP reservations
-        const tcpReservation = await this.reservationManager.getPortReservation(port, 'tcp');
-        const udpReservation = await this.reservationManager.getPortReservation(port, 'udp');
-        hasReservation = !!(tcpReservation || udpReservation);
-      } else {
-        const reservation = await this.reservationManager.getPortReservation(port, protocol);
-        hasReservation = !!reservation;
+      
+      for (const proto of protocols) {
+        const reservation = await this.reservationManager.getPortReservation(port, proto);
+        if (reservation) {
+          hasReservation = true;
+          break;
+        }
       }
       
       if (hasReservation) {
-        logger.debug(`❌ Port ${port} rejected: has active reservation`);
+        logger.debug(`❌ Port ${port} rejected: has active reservation for one or more protocols`);
         return false;
       }
     } catch (error) {

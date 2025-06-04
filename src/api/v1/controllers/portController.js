@@ -92,19 +92,14 @@ const checkPortAvailability = asyncHandler(async (req, res) => {
     
     res.json({
       success: true,
-      data: result,
-      meta: {
-        requestedPorts: ports,
-        protocol,
-        server,
-        timestamp: new Date().toISOString()
-      }
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
-    throw new ApiError(
+    logger.error('Failed to check port availability:', error);
+    return res.apiError(
       `Failed to check port availability: ${error.message}`,
       500,
-      'PORT_CHECK_FAILED'
+      'CHECK_AVAILABILITY_FAILED'
     );
   }
 });
@@ -118,7 +113,7 @@ const reservePorts = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    return res.apiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
   const { 
@@ -130,13 +125,24 @@ const reservePorts = asyncHandler(async (req, res) => {
     server = 'localhost'
   } = req.body;
 
+  // Validation
+  const errors = [];
   if (!ports || !Array.isArray(ports) || ports.length === 0) {
-    throw new ApiError('Ports array is required', 400, 'INVALID_PORTS');
+    errors.push('Ports array is required');
+  }
+  if (!containerId) {
+    errors.push('Container ID is required');
+  }
+  if (!protocolHandler.isValidProtocol(protocol)) {
+    errors.push('Protocol must be tcp, udp, or both');
   }
 
-  if (!containerId) {
-    throw new ApiError('Container ID is required', 400, 'MISSING_CONTAINER_ID');
+  if (errors.length > 0) {
+    return res.apiValidationError(errors);
   }
+
+  // Normalize protocol
+  const normalizedProtocol = protocolHandler.normalizeProtocol(protocol);
 
   // Add user info to metadata
   metadata.createdBy = req.user?.username || 'system';
@@ -146,28 +152,25 @@ const reservePorts = asyncHandler(async (req, res) => {
     const result = await PortMonitor.reservePorts({
       ports,
       containerId,
-      protocol,
+      protocol: normalizedProtocol,
       duration,
       metadata,
       server
     });
 
     if (result.conflicts && result.conflicts.length > 0) {
-      return res.status(409).json({
-        success: false,
-        code: 'PORT_CONFLICTS',
-        message: 'Some ports are already in use',
-        data: result
+      return res.apiConflict('Some ports are already in use', {
+        conflicts: result.conflicts,
+        available: result.available || []
       });
     }
 
-    res.status(201).json({
-      success: true,
-      data: result,
-      message: 'Ports reserved successfully'
-    });
+    return res.status(201).json(
+      ApiResponse.success(result, 'Ports reserved successfully')
+    );
   } catch (error) {
-    throw new ApiError(
+    logger.error('Failed to reserve ports:', error);
+    return res.apiError(
       `Failed to reserve ports: ${error.message}`,
       500,
       'PORT_RESERVATION_FAILED'
@@ -184,25 +187,22 @@ const releasePorts = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    return res.apiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
   const { ports, containerId } = req.body;
 
   if (!containerId) {
-    throw new ApiError('Container ID is required', 400, 'MISSING_CONTAINER_ID');
+    return res.apiValidationError(['Container ID is required']);
   }
 
   try {
     const result = await PortMonitor.releasePorts(containerId, ports);
     
-    res.json({
-      success: true,
-      data: result,
-      message: 'Ports released successfully'
-    });
+    return res.apiSuccess(result, 'Ports released successfully');
   } catch (error) {
-    throw new ApiError(
+    logger.error('Failed to release ports:', error);
+    return res.apiError(
       `Failed to release ports: ${error.message}`,
       500,
       'PORT_RELEASE_FAILED'
@@ -293,12 +293,12 @@ const suggestAlternativePorts = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    return res.apiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
   const {
-    ports,
-    protocol = 'both',
+    requestedPorts: ports,
+    protocol = 'tcp',
     serviceType = 'custom',
     maxSuggestions = 5,
     server = 'localhost'
@@ -307,30 +307,36 @@ const suggestAlternativePorts = asyncHandler(async (req, res) => {
   logger.info(`📡 API: Suggest alternatives request: ports=${JSON.stringify(ports)}, protocol=${protocol}, serviceType=${serviceType}`);
 
   if (!ports || !Array.isArray(ports) || ports.length === 0) {
-    throw new ApiError('Ports array is required', 400, 'INVALID_PORTS');
+    return res.apiValidationError(['Ports array is required']);
   }
 
+  // Validate and normalize protocol
+  if (!protocolHandler.isValidProtocol(protocol)) {
+    return res.apiValidationError(['Protocol must be tcp, udp, or both']);
+  }
+
+  const normalizedProtocol = protocolHandler.normalizeProtocol(protocol);
+
   try {
-    const suggestionsResult = await PortMonitor.suggestAlternativePorts({
-      ports,
-      protocol,
-      serviceType,
-      maxSuggestions,
-      server
+    // Use the standardized method signature
+    const suggestionsResult = await PortMonitor.suggestionEngine.suggestAlternativePorts({
+      requestedPorts: ports,
+      protocol: normalizedProtocol,
+      maxSuggestions
     });
     
     logger.info(`📡 API: Suggestions result:`, JSON.stringify(suggestionsResult));
 
-    res.json({
-      success: true,
-      data: {
-        suggestions: suggestionsResult.suggestions || [],
-        original: suggestionsResult.original || ports,
-        timestamp: suggestionsResult.timestamp
-      }
-    });
+    return res.apiSuccess({
+      suggestions: suggestionsResult || [],
+      original: ports,
+      protocol: normalizedProtocol,
+      serviceType,
+      timestamp: new Date().toISOString()
+    }, 'Port alternatives suggested successfully');
   } catch (error) {
-    throw new ApiError(
+    logger.error('Failed to suggest alternatives:', error);
+    return res.apiError(
       `Failed to suggest alternatives: ${error.message}`,
       500,
       'SUGGEST_ALTERNATIVES_FAILED'
@@ -459,7 +465,7 @@ const getPortRecommendations = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    return res.apiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
   const {
@@ -470,21 +476,26 @@ const getPortRecommendations = asyncHandler(async (req, res) => {
     containerName
   } = req.body;
 
+  // Validate and normalize protocol
+  if (!protocolHandler.isValidProtocol(protocol)) {
+    return res.apiValidationError(['Protocol must be tcp, udp, or both']);
+  }
+
+  const normalizedProtocol = protocolHandler.normalizeProtocol(protocol);
+
   try {
     const recommendations = await PortMonitor.getPortRecommendations({
       requestedPorts,
       serviceType,
-      protocol,
+      protocol: normalizedProtocol,
       preferredRange,
       containerName
     });
 
-    res.json({
-      success: true,
-      data: recommendations
-    });
+    return res.apiSuccess(recommendations, 'Port recommendations generated successfully');
   } catch (error) {
-    throw new ApiError(
+    logger.error('Failed to get recommendations:', error);
+    return res.apiError(
       `Failed to get recommendations: ${error.message}`,
       500,
       'GET_RECOMMENDATIONS_FAILED'
@@ -501,25 +512,34 @@ const scanPortRange = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    return res.apiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
   const { startPort, endPort, protocol = 'tcp', server = 'localhost' } = req.body;
 
+  // Validation
+  const errors = [];
   if (!startPort || !endPort) {
-    throw new ApiError('Start and end ports are required', 400, 'MISSING_PORT_RANGE');
+    errors.push('Start and end ports are required');
   }
-
   if (startPort < 1 || endPort > 65535 || startPort >= endPort) {
-    throw new ApiError('Invalid port range', 400, 'INVALID_PORT_RANGE');
+    errors.push('Invalid port range');
+  }
+  if (endPort - startPort > 1000) {
+    errors.push('Port range too large (max 1000 ports)');
+  }
+  if (!protocolHandler.isValidProtocol(protocol)) {
+    errors.push('Protocol must be tcp, udp, or both');
   }
 
-  if (endPort - startPort > 1000) {
-    throw new ApiError('Port range too large (max 1000 ports)', 400, 'PORT_RANGE_TOO_LARGE');
+  if (errors.length > 0) {
+    return res.apiValidationError(errors);
   }
+
+  const normalizedProtocol = protocolHandler.normalizeProtocol(protocol);
 
   try {
-    const results = await PortMonitor.scanPortRange(startPort, endPort, protocol, server);
+    const results = await PortMonitor.scanPortRange(startPort, endPort, normalizedProtocol, server);
     const availablePorts = Object.entries(results)
       .filter(([_, available]) => available)
       .map(([port, _]) => parseInt(port));
@@ -531,22 +551,19 @@ const scanPortRange = asyncHandler(async (req, res) => {
       availabilityPercentage: Math.round((availablePorts.length / (endPort - startPort + 1)) * 100)
     };
 
-    res.json({
-      success: true,
-      data: {
-        results,
-        summary
-      },
-      meta: {
-        startPort,
-        endPort,
-        protocol,
-        server,
-        timestamp: new Date().toISOString()
-      }
+    return res.apiSuccess({
+      results,
+      summary
+    }, 'Port range scan completed successfully', {
+      startPort,
+      endPort,
+      protocol: normalizedProtocol,
+      server,
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
-    throw new ApiError(
+    logger.error('Failed to scan port range:', error);
+    return res.apiError(
       `Failed to scan port range: ${error.message}`,
       500,
       'PORT_SCAN_FAILED'
