@@ -959,12 +959,10 @@ class BetterSQLite {
       }
 
       // Create indexes for dns_records
-      await execWithRetry(`
-        CREATE INDEX IF NOT EXISTS idx_dns_records_provider ON dns_records(provider);
-        CREATE INDEX IF NOT EXISTS idx_dns_records_name ON dns_records(name);
-        CREATE INDEX IF NOT EXISTS idx_dns_records_is_orphaned ON dns_records(is_orphaned);
-        CREATE INDEX IF NOT EXISTS idx_dns_records_lastrefresh ON dns_records(last_refreshed);
-      `, 'dns_records indexes');
+      await execWithRetry(`CREATE INDEX IF NOT EXISTS idx_dns_records_provider ON dns_records(provider)`, 'dns_records provider index');
+      await execWithRetry(`CREATE INDEX IF NOT EXISTS idx_dns_records_name ON dns_records(name)`, 'dns_records name index');
+      await execWithRetry(`CREATE INDEX IF NOT EXISTS idx_dns_records_is_orphaned ON dns_records(is_orphaned)`, 'dns_records orphaned index');
+      await execWithRetry(`CREATE INDEX IF NOT EXISTS idx_dns_records_lastrefresh ON dns_records(last_refreshed)`, 'dns_records lastrefresh index');
 
       // Users table
       await execWithRetry(`
@@ -1035,12 +1033,10 @@ class BetterSQLite {
       `, 'dns_tracked_records table');
 
       // Create indexes for dns_tracked_records
-      await execWithRetry(`
-        CREATE INDEX IF NOT EXISTS idx_dns_tracked_provider ON dns_tracked_records(provider);
-        CREATE INDEX IF NOT EXISTS idx_dns_tracked_name ON dns_tracked_records(name);
-        CREATE INDEX IF NOT EXISTS idx_dns_tracked_type ON dns_tracked_records(type);
-        CREATE INDEX IF NOT EXISTS idx_dns_tracked_orphaned ON dns_tracked_records(is_orphaned);
-      `, 'dns_tracked_records indexes');
+      await execWithRetry(`CREATE INDEX IF NOT EXISTS idx_dns_tracked_provider ON dns_tracked_records(provider)`, 'dns_tracked_records provider index');
+      await execWithRetry(`CREATE INDEX IF NOT EXISTS idx_dns_tracked_name ON dns_tracked_records(name)`, 'dns_tracked_records name index');
+      await execWithRetry(`CREATE INDEX IF NOT EXISTS idx_dns_tracked_type ON dns_tracked_records(type)`, 'dns_tracked_records type index');
+      await execWithRetry(`CREATE INDEX IF NOT EXISTS idx_dns_tracked_orphaned ON dns_tracked_records(is_orphaned)`, 'dns_tracked_records orphaned index');
 
       // Only commit if we started the transaction
       if (!alreadyInTransaction) {

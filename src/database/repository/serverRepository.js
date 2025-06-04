@@ -47,13 +47,9 @@ class ServerRepository extends BaseRepository {
     await this.db.run(sql);
     
     // Create indexes for better performance
-    const indexSql = `
-      CREATE INDEX IF NOT EXISTS idx_servers_name ON ${this.tableName}(name);
-      CREATE INDEX IF NOT EXISTS idx_servers_ip ON ${this.tableName}(ip);
-      CREATE INDEX IF NOT EXISTS idx_servers_isHost ON ${this.tableName}(isHost);
-    `;
-    
-    await this.db.run(indexSql);
+    await this.db.run(`CREATE INDEX IF NOT EXISTS idx_servers_name ON ${this.tableName}(name)`);
+    await this.db.run(`CREATE INDEX IF NOT EXISTS idx_servers_ip ON ${this.tableName}(ip)`);
+    await this.db.run(`CREATE INDEX IF NOT EXISTS idx_servers_isHost ON ${this.tableName}(isHost)`);
     logger.debug('Servers table and indexes created/verified');
   }
 
