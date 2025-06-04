@@ -1055,16 +1055,14 @@ class PortMonitor {
         logger.debug(`📊 Scanning batch: ports ${batch[0]}-${batch[batch.length-1]} (${batch.length} ports)`);
         
         if (protocol === 'both') {
-          // Check both TCP and UDP - be more practical: port is available if EITHER TCP or UDP is available
+          // For troubleshooting: temporarily use TCP only for 'both' protocol to see if basic TCP checking works
+          logger.debug(`🔍 Checking batch TCP on server: ${server} (temporarily using TCP only for 'both' protocol)`);
           const tcpResults = await this.availabilityChecker.checkMultiplePorts(batch, 'tcp', server);
-          const udpResults = await this.availabilityChecker.checkMultiplePorts(batch, 'udp', server);
           
           for (const port of batch) {
             const tcpAvailable = tcpResults[port];
-            const udpAvailable = udpResults[port];
-            // More practical approach: available if either protocol is available
-            results[port] = tcpAvailable || udpAvailable;
-            logger.debug(`🔍 Port ${port}: TCP=${tcpAvailable}, UDP=${udpAvailable}, either=${results[port]}`);
+            results[port] = tcpAvailable;
+            logger.debug(`🔍 Port ${port}: TCP=${tcpAvailable}, final=${results[port]}`);
           }
         } else {
           try {

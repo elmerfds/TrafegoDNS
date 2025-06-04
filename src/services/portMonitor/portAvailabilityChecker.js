@@ -38,6 +38,8 @@ class PortAvailabilityChecker {
       logger.debug(`Docker detected: checking port ${port} on actual host IP ${targetHost} instead of ${host}`);
     }
     
+    logger.debug(`🔍 checkSinglePort: port=${port}, protocol=${protocol}, host=${host}, targetHost=${targetHost}, method=${this.preferredMethod}`);
+    
     const cacheKey = `${targetHost}:${port}:${protocol}`;
     const cached = this.cache.get(cacheKey);
     
@@ -321,26 +323,45 @@ class PortAvailabilityChecker {
   async _checkPortWithSocket(port, host, protocol) {
     if (protocol === 'udp') {
       // UDP ports are more complex to check, use system tools
-      return await this._checkPortWithSs(port, protocol);
+      logger.debug(`🔍 Checking UDP port ${port} on ${host} using system tools...`);
+      try {
+        const result = await this._checkPortWithSs(port, protocol);
+        logger.debug(`🔍 UDP port ${port} result: ${result ? 'available' : 'in use'}`);
+        return result;
+      } catch (error) {
+        logger.debug(`🔍 UDP port ${port} check failed: ${error.message}, falling back to netstat`);
+        try {
+          const result = await this._checkPortWithNetstat(port, protocol);
+          logger.debug(`🔍 UDP port ${port} netstat result: ${result ? 'available' : 'in use'}`);
+          return result;
+        } catch (netstatError) {
+          logger.debug(`🔍 UDP port ${port} netstat also failed: ${netstatError.message}, assuming available`);
+          return true; // Assume available if we can't check UDP
+        }
+      }
     }
 
+    logger.debug(`🔍 Checking TCP port ${port} on ${host} via socket...`);
     return new Promise((resolve) => {
       const socket = new net.Socket();
       
       const timeout = setTimeout(() => {
         socket.destroy();
+        logger.debug(`🔍 TCP port ${port} timeout, assuming available`);
         resolve(true); // If we can't connect, assume it's available
       }, this.connectionTimeout);
 
       socket.connect(port, host, () => {
         clearTimeout(timeout);
         socket.destroy();
+        logger.debug(`🔍 TCP port ${port} connected successfully, port is in use`);
         resolve(false); // Port is in use
       });
 
-      socket.on('error', () => {
+      socket.on('error', (err) => {
         clearTimeout(timeout);
         socket.destroy();
+        logger.debug(`🔍 TCP port ${port} connection error (${err.code}), port is available`);
         resolve(true); // Port is available
       });
     });
