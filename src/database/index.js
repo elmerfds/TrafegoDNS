@@ -29,6 +29,7 @@ const PortRepository = require('./repository/portRepository');
 const PortScanRepository = require('./repository/portScanRepository');
 const PortAlertRepository = require('./repository/portAlertRepository');
 const PortReservationRepository = require('./repository/portReservationRepository');
+const ServerRepository = require('./repository/serverRepository');
 
 // Database singleton
 let db = null;
@@ -121,6 +122,11 @@ async function initialize(migrate = true, options = {}) {
       if (shouldInitializeRepo('portReservation') && (!repositories.portReservation || options.force)) {
         repositories.portReservation = new PortReservationRepository(db);
       }
+      
+      // Server repository
+      if (shouldInitializeRepo('server') && (!repositories.server || options.force)) {
+        repositories.server = new ServerRepository(db);
+      }
     }
     
     // Initialize each repository if it has an initialize method
@@ -139,6 +145,7 @@ async function initialize(migrate = true, options = {}) {
       portScan: 3,      // Medium-low priority
       portAlert: 3,     // Medium-low priority
       portReservation: 3, // Medium-low priority
+      server: 3,        // Medium-low priority
       revokedToken: 2,  // Low priority
       auditLog: 1,      // Lowest priority
       activityLog: 1    // Lowest priority

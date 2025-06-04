@@ -493,19 +493,11 @@ class PortAvailabilityChecker {
           const lines = output.split('\n');
           logger.debug(`First few lines of netstat output:\n${lines.slice(0, 5).join('\n')}`);
           
-          // Look specifically for port 80 in the output
-          const port80Lines = lines.filter(line => line.includes(':80 ') || line.includes(':80\t'));
-          if (port80Lines.length > 0) {
-            logger.info(`🔍 Found port 80 references in netstat output:`);
-            port80Lines.forEach(line => logger.info(`   ${line.trim()}`));
-          } else {
-            logger.debug(`🔍 No port 80 references found in netstat output`);
-            // Show all LISTEN lines for debugging
-            const listenLines = lines.filter(line => line.includes('LISTEN') && line.trim());
-            if (listenLines.length > 0) {
-              logger.debug(`📝 All LISTEN lines in netstat:`);
-              listenLines.slice(0, 10).forEach(line => logger.debug(`   ${line.trim()}`));
-            }
+          // Show sample LISTEN lines for debugging
+          const listenLines = lines.filter(line => line.includes('LISTEN') && line.trim());
+          if (listenLines.length > 0) {
+            logger.debug(`📝 Sample LISTEN lines in netstat:`);
+            listenLines.slice(0, 10).forEach(line => logger.debug(`   ${line.trim()}`));
           }
         }
 
@@ -656,11 +648,6 @@ class PortAvailabilityChecker {
               service: this._identifyService(port)
             };
             ports.push(portInfo);
-            
-            // Log port 80 specifically
-            if (port === 80) {
-              logger.info(`✅ Parsed port 80 from netstat: ${JSON.stringify(portInfo)}`);
-            }
           }
           matched = true;
           break;
@@ -670,22 +657,10 @@ class PortAvailabilityChecker {
       if (!matched && trimmedLine.includes('LISTEN')) {
         // Debug log for unmatched LISTEN lines
         logger.debug(`Unmatched netstat LISTEN line: ${trimmedLine}`);
-        // Check if this line might contain port 80
-        if (trimmedLine.includes(':80 ')) {
-          logger.warn(`⚠️ Unmatched line contains port 80: ${trimmedLine}`);
-        }
       }
     }
 
     logger.info(`📊 Parsed ${ports.length} ports from netstat output`);
-    
-    // Log port 80 status
-    const port80 = ports.find(p => p.port === 80);
-    if (port80) {
-      logger.info(`✅ Port 80 found in parsed results`);
-    } else {
-      logger.warn(`⚠️ Port 80 NOT found in parsed results`);
-    }
     
     return ports;
   }
@@ -758,79 +733,17 @@ class PortAvailabilityChecker {
               service: this._identifyService(port)
             };
             ports.push(portInfo);
-            
-            // Log port 80 specifically
-            if (port === 80) {
-              logger.info(`✅ Parsed port 80 from ss: ${JSON.stringify(portInfo)}`);
-            }
           }
         } else {
           // Debug log for unmatched LISTEN/UNCONN lines
           logger.debug(`Unmatched ss ${parts[0]} line: ${trimmedLine}`);
-          // Check if this line might contain port 80
-          if (trimmedLine.includes(':80 ')) {
-            logger.warn(`⚠️ Unmatched line contains port 80: ${trimmedLine}`);
-          }
         }
       }
     }
 
     logger.info(`📊 Parsed ${ports.length} ports from ss output`);
     
-    // Log port 80 status
-    const port80 = ports.find(p => p.port === 80);
-    if (port80) {
-      logger.info(`✅ Port 80 found in parsed results`);
-    } else {
-      logger.warn(`⚠️ Port 80 NOT found in parsed results`);
-    }
-    
     return ports;
-  }
-
-  /**
-   * Debug netstat with various options to find port 80
-   * @private
-   */
-  async _debugNetstatForPort80() {
-    const { execSync } = require('child_process');
-    
-    logger.info(`🔍 Debugging netstat commands to find port 80...`);
-    
-    const testCommands = [
-      'netstat -ln',
-      'netstat -tlnp',
-      'netstat -tulnp',
-      'netstat -an | grep :80',
-      'netstat -an | grep LISTEN',
-      'ss -ln',
-      'ss -tlnp',
-      'lsof -i :80',
-      'netstat -rn', // Show routing table
-      'ip route show' // Show routing
-    ];
-    
-    for (const cmd of testCommands) {
-      try {
-        logger.debug(`🧪 Running: ${cmd}`);
-        const result = execSync(cmd, { encoding: 'utf8', timeout: 5000 });
-        
-        if (result.includes(':80')) {
-          logger.info(`✅ Found port 80 with command: ${cmd}`);
-          const lines = result.split('\n').filter(line => line.includes(':80'));
-          lines.forEach(line => logger.info(`   ${line.trim()}`));
-        } else {
-          logger.debug(`❌ No port 80 found with: ${cmd}`);
-          if (cmd.includes('netstat -ln')) {
-            // Show first few lines for context
-            const lines = result.split('\n').slice(0, 5);
-            logger.debug(`   First lines: ${lines.join(' | ')}`);
-          }
-        }
-      } catch (err) {
-        logger.debug(`❌ Command failed: ${cmd} - ${err.message}`);
-      }
-    }
   }
 
   /**
@@ -846,11 +759,6 @@ class PortAvailabilityChecker {
       if (server !== 'localhost' && server !== '127.0.0.1') {
         logger.warn(`Remote port scanning for ${server} not implemented yet`);
         return [];
-      }
-      
-      // Run debug commands if we're looking for port 80 specifically
-      if (this.isDocker) {
-        await this._debugNetstatForPort80();
       }
       
       // Get listening ports using standard methods
@@ -893,14 +801,6 @@ class PortAvailabilityChecker {
       const systemPorts = Array.from(portMap.values());
       
       logger.info(`📊 Returning ${systemPorts.length} total system ports`);
-      
-      // Check port 80 in final result
-      const finalPort80 = systemPorts.find(p => p.port === 80);
-      if (finalPort80) {
-        logger.info(`✅ Port 80 in final result: ${JSON.stringify(finalPort80)}`);
-      } else {
-        logger.warn(`⚠️ Port 80 NOT in final result`);
-      }
       
       return systemPorts;
     } catch (error) {
@@ -1016,7 +916,7 @@ class PortAvailabilityChecker {
       23: 'Telnet',
       25: 'SMTP',
       53: 'DNS',
-      80: 'HTTP/Unraid',  // Common for Unraid web interface
+      80: 'HTTP',
       110: 'POP3',
       143: 'IMAP',
       443: 'HTTPS',
@@ -1028,12 +928,10 @@ class PortAvailabilityChecker {
       993: 'IMAPS',
       995: 'POP3S',
       
-      // NAS and Server Management
-      8080: 'HTTP-Alt/Admin',
-      8443: 'HTTPS-Alt/Admin',
-      9000: 'Portainer/Admin',
-      7000: 'Unraid-Docker',
-      6901: 'Unraid-Nginx',
+      // Web and Server Management
+      8080: 'HTTP-Alt',
+      8443: 'HTTPS-Alt',
+      9000: 'Portainer',
       
       // Databases
       3306: 'MySQL',
@@ -1439,118 +1337,6 @@ class PortAvailabilityChecker {
     return false;
   }
 
-  /**
-   * Specifically test port 80 with enhanced detection methods
-   * @private
-   * @param {string} targetHost - Host to check
-   * @returns {Promise<Object|null>}
-   */
-  async _testPort80Specifically(targetHost) {
-    logger.info(`🔍 Testing port 80 specifically on ${targetHost}...`);
-    
-    // Method 1: Basic socket connection
-    const socketResult = await new Promise((resolve) => {
-      const socket = new net.Socket();
-      const timeout = setTimeout(() => {
-        socket.destroy();
-        logger.debug(`❌ Port 80 socket test timeout on ${targetHost}`);
-        resolve(false);
-      }, 2000);
-
-      socket.connect(80, targetHost, () => {
-        clearTimeout(timeout);
-        socket.destroy();
-        logger.info(`✅ Port 80 socket connection successful on ${targetHost}`);
-        resolve(true);
-      });
-
-      socket.on('error', (err) => {
-        clearTimeout(timeout);
-        socket.destroy();
-        if (err.code === 'ECONNREFUSED') {
-          logger.debug(`❌ Port 80 connection refused on ${targetHost} - port not in use`);
-        } else {
-          logger.debug(`❌ Port 80 socket error on ${targetHost}: ${err.code} - ${err.message}`);
-        }
-        resolve(false);
-      });
-    });
-
-    if (socketResult) {
-      // Method 2: Try to make an HTTP request to verify it's actually serving content
-      try {
-        const http = require('http');
-        const httpResult = await new Promise((resolve) => {
-          const req = http.request({
-            hostname: targetHost,
-            port: 80,
-            path: '/',
-            method: 'GET',
-            timeout: 3000
-          }, (res) => {
-            logger.info(`✅ Port 80 HTTP response on ${targetHost}: ${res.statusCode} ${res.statusMessage}`);
-            resolve({
-              status: res.statusCode,
-              headers: res.headers,
-              isHttp: true
-            });
-          });
-
-          req.on('error', (err) => {
-            logger.debug(`❌ Port 80 HTTP request failed on ${targetHost}: ${err.message}`);
-            resolve({ isHttp: false, error: err.message });
-          });
-
-          req.on('timeout', () => {
-            req.destroy();
-            logger.debug(`❌ Port 80 HTTP request timeout on ${targetHost}`);
-            resolve({ isHttp: false, error: 'timeout' });
-          });
-
-          req.end();
-        });
-
-        if (httpResult.isHttp) {
-          logger.info(`✅ Port 80 confirmed as HTTP server on ${targetHost}`);
-          return {
-            port: 80,
-            protocol: 'tcp',
-            service: `HTTP${httpResult.status ? `(${httpResult.status})` : ''}`,
-            pid: 'unknown',
-            address: targetHost,
-            source: 'http-verification',
-            httpStatus: httpResult.status,
-            isHttp: true
-          };
-        } else {
-          logger.info(`✅ Port 80 in use on ${targetHost} but not HTTP (${httpResult.error})`);
-          return {
-            port: 80,
-            protocol: 'tcp',
-            service: 'Non-HTTP Service',
-            pid: 'unknown',
-            address: targetHost,
-            source: 'socket-verification',
-            isHttp: false
-          };
-        }
-      } catch (httpErr) {
-        logger.debug(`HTTP verification failed for port 80: ${httpErr.message}`);
-        return {
-          port: 80,
-          protocol: 'tcp',
-          service: 'Unknown Service',
-          pid: 'unknown',
-          address: targetHost,
-          source: 'socket-verification',
-          isHttp: false
-        };
-      }
-    }
-
-    logger.debug(`❌ Port 80 not detected on ${targetHost}`);
-    return null;
-  }
 
   /**
    * Check common ports via socket connection
@@ -1572,7 +1358,7 @@ class PortAvailabilityChecker {
       // System services
       { port: 22, service: 'SSH' },
       { port: 53, service: 'DNS' },
-      { port: 80, service: 'HTTP/Unraid' },
+      { port: 80, service: 'HTTP' },
       { port: 443, service: 'HTTPS' },
       
       // Database services
@@ -1647,11 +1433,7 @@ class PortAvailabilityChecker {
               socket.connect(port, host, () => {
                 clearTimeout(timeout);
                 socket.destroy();
-                if (port === 80 || port === 22 || port === 443) {
-                  logger.info(`✅ Socket connected to port ${port} on ${host} - port is in use`);
-                } else {
-                  logger.debug(`✅ Socket connected to port ${port} on ${host} - port is in use`);
-                }
+                logger.debug(`✅ Socket connected to port ${port} on ${host} - port is in use`);
                 hostResolve(true);
               });
 
@@ -1660,20 +1442,11 @@ class PortAvailabilityChecker {
                 socket.destroy();
                 if (err.code === 'ECONNREFUSED') {
                   // Port is explicitly closed/available
-                  if (port === 80) {
-                    logger.debug(`❌ Port ${port} on ${host}: Connection refused (not in use)`);
-                  }
                   hostResolve(false);
                 } else if (err.code === 'ENOTFOUND' || err.code === 'EAI_AGAIN') {
                   // Host doesn't exist, try next
-                  if (port === 80) {
-                    logger.debug(`⚠️ Port ${port} on ${host}: Host not found (${err.code})`);
-                  }
                   hostResolve('skip');
                 } else {
-                  if (port === 80) {
-                    logger.debug(`❓ Port ${port} on ${host}: ${err.code}`);
-                  }
                   hostResolve(false);
                 }
               });
@@ -1743,45 +1516,6 @@ class PortAvailabilityChecker {
       logger.info(`📋 Detected ports: ${portList}`);
     } else {
       logger.warn(`⚠️ No ports detected via socket scan - host may not be accessible from container`);
-    }
-
-    // Check specifically for port 80 with enhanced detection
-    const port80 = detectedPorts.find(p => p.port === 80);
-    if (!port80) {
-      logger.warn(`⚠️ Port 80 NOT found via standard socket scan - running specific port 80 test...`);
-      
-      // Try specific port 80 detection
-      const port80Result = await this._testPort80Specifically(targetHost);
-      if (port80Result) {
-        logger.info(`✅ Port 80 detected via specific test!`);
-        detectedPorts.push(port80Result);
-      } else {
-        logger.warn(`⚠️ Port 80 NOT found even with specific test`);
-        
-        // Try alternative host addresses for port 80
-        const alternativeHosts = ['localhost', '127.0.0.1'];
-        if (targetHost !== 'localhost' && targetHost !== '127.0.0.1') {
-          alternativeHosts.push('172.17.0.1', 'host.docker.internal');
-        }
-        
-        for (const altHost of alternativeHosts) {
-          if (altHost === targetHost) continue;
-          
-          logger.debug(`🔍 Testing port 80 on alternative host: ${altHost}`);
-          const altPort80Result = await this._testPort80Specifically(altHost);
-          if (altPort80Result) {
-            logger.info(`✅ Port 80 found on alternative host ${altHost}!`);
-            detectedPorts.push({
-              ...altPort80Result,
-              address: server, // Keep original server name for consistency
-              source: `alt-host-${altHost}`
-            });
-            break;
-          }
-        }
-      }
-    } else {
-      logger.info(`✅ Port 80 found via standard socket scan!`);
     }
 
     return detectedPorts;

@@ -90,6 +90,9 @@ export default function PortMonitoring() {
   const [portSuggestions, setPortSuggestions] = useState<PortSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [portManagementEnabled, setPortManagementEnabled] = useState<boolean>(false);
+  const [setupMode, setSetupMode] = useState<boolean>(false);
+  const [setupHostIp, setSetupHostIp] = useState<string>('');
   
   // Form states
   const [portsToCheck, setPortsToCheck] = useState('');
@@ -100,9 +103,7 @@ export default function PortMonitoring() {
   const [selectedServer, setSelectedServer] = useState('host');
   const [customServerIp, setCustomServerIp] = useState('');
   const [portsInUse, setPortsInUse] = useState<PortInUse[]>([]);
-  const [servers, setServers] = useState<Server[]>([
-    { id: 'host', name: 'Host Server', ip: 'localhost', isHost: true }
-  ]);
+  const [servers, setServers] = useState<Server[]>([]);
   
   // Debug server state changes
   useEffect(() => {
@@ -156,13 +157,37 @@ export default function PortMonitoring() {
           : server
       ));
     }
-  }, [configData?.hostIp]);
+    
+    // Check if port management is enabled
+    if (configData?.portManagementEnabled !== undefined) {
+      setPortManagementEnabled(configData.portManagementEnabled);
+      if (!configData.portManagementEnabled) {
+        setSetupMode(true);
+        setSetupHostIp(configData.hostIp || '');
+      }
+    }
+  }, [configData?.hostIp, configData?.portManagementEnabled]);
   
   useEffect(() => {
     loadStatistics();
     loadReservations();
+    loadServers();
     loadHostConfiguration();
   }, []);
+
+  const loadServers = async () => {
+    try {
+      const response = await api.get('/servers');
+      if (response.data && response.data.data && response.data.data.servers) {
+        setServers(response.data.data.servers);
+        console.log('Loaded servers from API:', response.data.data.servers);
+      }
+    } catch (error) {
+      console.error('Failed to load servers:', error);
+      // Fallback to default host server if API fails
+      setServers([{ id: 'host', name: 'Host Server', ip: 'localhost', isHost: true }]);
+    }
+  };
 
   const loadHostConfiguration = async () => {
     try {
@@ -370,10 +395,9 @@ export default function PortMonitoring() {
     
     try {
       setAddingServer(true);
-      // Clear any existing errors first
       setError(null);
       
-      // Validate IP format - expanded regex to include more formats
+      // Validate IP format
       const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$|^localhost$|^host\.docker\.internal$|^127\.0\.0\.1$/;
       if (!ipRegex.test(newServerIp.trim())) {
         setError('Please enter a valid IP address format (e.g., 192.168.1.100)');
@@ -381,50 +405,38 @@ export default function PortMonitoring() {
         return;
       }
       
-      // Check if server already exists
-      const existingServer = servers.find(s => 
-        s.ip === newServerIp.trim() || 
-        s.name.toLowerCase() === newServerName.trim().toLowerCase()
-      );
-      
-      if (existingServer) {
-        setError('A server with this name or IP already exists');
-        console.log('Server already exists:', existingServer);
-        return;
-      }
-      
-      const newServer: Server = {
-        id: `server-${Date.now()}`,
+      // Create server via API
+      const response = await api.post('/servers', {
         name: newServerName.trim(),
         ip: newServerIp.trim(),
-        isHost: false
-      };
-      
-      console.log('Adding new server:', newServer);
-      setServers(prev => {
-        const updated = [...prev, newServer];
-        console.log('Updated servers list:', updated);
-        return updated;
+        description: `Custom server added via Port Management`
       });
       
-      // Clear form
-      setNewServerName('');
-      setNewServerIp('');
+      if (response.data && response.data.success) {
+        console.log('Server created successfully via API:', response.data.data.server);
+        
+        // Reload servers from API to get the updated list
+        await loadServers();
+        
+        // Clear form
+        setNewServerName('');
+        setNewServerIp('');
+        
+        console.log(`Successfully added server: ${newServerName} (${newServerIp})`);
+      } else {
+        throw new Error('Failed to create server: Invalid API response');
+      }
       
-      console.log('Server added successfully, form cleared');
-      
-      // Show success message
-      console.log(`Successfully added server: ${newServer.name} (${newServer.ip})`);
-      
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding server:', error);
-      setError('Failed to add server');
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to add server';
+      setError(errorMsg);
     } finally {
       setAddingServer(false);
     }
   };
 
-  const removeServer = (serverId: string) => {
+  const removeServer = async (serverId: string) => {
     // Don't allow removing the host server
     const serverToRemove = servers.find(s => s.id === serverId);
     if (serverToRemove?.isHost) {
@@ -432,11 +444,25 @@ export default function PortMonitoring() {
       return;
     }
     
-    setServers(prev => prev.filter(s => s.id !== serverId));
-    
-    // If the removed server was selected, switch back to host
-    if (selectedServer === serverId) {
-      setSelectedServer('host');
+    try {
+      setError(null);
+      
+      // Delete server via API
+      await api.delete(`/servers/${serverId}`);
+      console.log('Server deleted successfully via API:', serverId);
+      
+      // Reload servers from API to get the updated list
+      await loadServers();
+      
+      // If the removed server was selected, switch back to host
+      if (selectedServer === serverId) {
+        setSelectedServer('host');
+      }
+      
+    } catch (error: any) {
+      console.error('Error removing server:', error);
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to remove server';
+      setError(errorMsg);
     }
   };
 
@@ -444,6 +470,65 @@ export default function PortMonitoring() {
     const hostServer = servers.find(s => s.isHost);
     setEditHostIpValue(hostServer?.ip || 'localhost');
     setEditingHostIp(true);
+  };
+
+  const enablePortManagement = async () => {
+    if (!setupHostIp.trim()) {
+      setError('Please enter a valid host IP address');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await api.post('/config/port-management/enable', {
+        hostIp: setupHostIp.trim()
+      });
+      
+      if (response.data && response.data.status === 'success') {
+        setPortManagementEnabled(true);
+        setSetupMode(false);
+        
+        // Reload servers and other data
+        await loadServers();
+        await loadHostConfiguration();
+        
+        console.log('Port management enabled successfully');
+      } else {
+        throw new Error('Failed to enable port management');
+      }
+    } catch (error: any) {
+      console.error('Error enabling port management:', error);
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to enable port management';
+      setError(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const disablePortManagement = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await api.post('/config/port-management/disable');
+      
+      if (response.data && response.data.status === 'success') {
+        setPortManagementEnabled(false);
+        setSetupMode(true);
+        
+        console.log('Port management disabled successfully');
+      } else {
+        throw new Error('Failed to disable port management');
+      }
+    } catch (error: any) {
+      console.error('Error disabling port management:', error);
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to disable port management';
+      setError(errorMsg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const cancelEditingHostIp = () => {
@@ -839,6 +924,87 @@ export default function PortMonitoring() {
     }
   };
 
+  // Show setup screen if port management is disabled
+  if (setupMode && !portManagementEnabled) {
+    return (
+      <div className="space-y-6">
+        {error && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              Port Management Setup Required
+            </CardTitle>
+            <CardDescription>
+              Port management is currently disabled. To enable this feature, you need to configure the host server's IP address for accurate port scanning.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                <strong>Important:</strong> Without proper host IP configuration, the application can only scan ports within the Docker container's network, 
+                which may not reflect the actual ports in use on your host machine.
+              </AlertDescription>
+            </Alert>
+
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="setupHostIp">Host Server IP Address</Label>
+                <Input
+                  id="setupHostIp"
+                  value={setupHostIp}
+                  onChange={(e) => setSetupHostIp(e.target.value)}
+                  placeholder="e.g., 10.0.0.9, 192.168.1.100"
+                  className="mt-1"
+                />
+                <p className="text-sm text-muted-foreground mt-1">
+                  Enter the IP address of the host machine where TrafegoDNS is running. This should be accessible from within the Docker container.
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <Button 
+                  onClick={enablePortManagement}
+                  disabled={loading || !setupHostIp.trim()}
+                  className="flex-1"
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      Testing Connection...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Enable Port Management
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-6 p-4 bg-muted rounded-lg">
+              <h4 className="font-medium mb-2">How to find your host IP:</h4>
+              <ul className="text-sm space-y-1 text-muted-foreground">
+                <li>• Check your router's admin panel for connected devices</li>
+                <li>• Run <code className="bg-background px-1 rounded">ip addr show</code> or <code className="bg-background px-1 rounded">ifconfig</code> on the host machine</li>
+                <li>• For Docker Desktop: usually <code className="bg-background px-1 rounded">host.docker.internal</code></li>
+                <li>• For Docker Compose: check the gateway IP of your network</li>
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {error && (
@@ -846,6 +1012,21 @@ export default function PortMonitoring() {
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
+      )}
+
+      {/* Port Management Settings */}
+      {portManagementEnabled && (
+        <div className="flex justify-end">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={disablePortManagement}
+            className="text-red-600 hover:text-red-700"
+          >
+            <Settings className="h-4 w-4 mr-2" />
+            Disable Port Management
+          </Button>
+        </div>
       )}
 
       {/* Statistics Overview */}

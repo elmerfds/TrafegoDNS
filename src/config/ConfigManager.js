@@ -185,6 +185,9 @@ class ConfigManager {
     // Host IP for Docker containers (for port monitoring)
     this.hostIp = EnvironmentLoader.getString('HOST_IP') || EnvironmentLoader.getString('DOCKER_HOST_IP') || '';
     
+    // Port Management feature flag (disabled by default, requires admin setup)
+    this.portManagementEnabled = EnvironmentLoader.getBool('PORT_MANAGEMENT_ENABLED', false);
+    
     // Now that provider config is validated, set the default content if not provided
     if (!this.defaultContent && !process.env.DNS_DEFAULT_CONTENT) {
       this.defaultContent = this.getProviderDomain();
@@ -289,6 +292,9 @@ class ConfigManager {
     this._envConfig.apiTimeout = this.apiTimeout;
     this._envConfig.hostIp = this.hostIp;
     
+    // Feature flags
+    this._envConfig.portManagementEnabled = this.portManagementEnabled;
+    
     // Label settings
     this._envConfig.genericLabelPrefix = this.genericLabelPrefix;
     this._envConfig.traefikLabelPrefix = this.traefikLabelPrefix;
@@ -388,6 +394,9 @@ class ConfigManager {
         apiTimeout: this.apiTimeout,
         hostIp: this.hostIp,
         
+        // Feature flags
+        portManagementEnabled: this.portManagementEnabled,
+        
         // Label settings
         genericLabelPrefix: this.genericLabelPrefix,
         traefikLabelPrefix: this.traefikLabelPrefix,
@@ -474,6 +483,9 @@ class ConfigManager {
     if (settings.hostIp !== undefined) this.hostIp = settings.hostIp;
     if (settings.genericLabelPrefix !== undefined) this.genericLabelPrefix = settings.genericLabelPrefix;
     if (settings.traefikLabelPrefix !== undefined) this.traefikLabelPrefix = settings.traefikLabelPrefix;
+    
+    // Feature flags
+    if (settings.portManagementEnabled !== undefined) this.portManagementEnabled = settings.portManagementEnabled;
     if (settings.managedHostnames !== undefined) this.managedHostnames = settings.managedHostnames;
     if (settings.preservedHostnames !== undefined) this.preservedHostnames = settings.preservedHostnames;
     

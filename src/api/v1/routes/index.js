@@ -18,6 +18,7 @@ const pauseRoutes = require('./pauseRoutes');
 const userPreferencesRoutes = require('./userPreferencesRoutes');
 const dashboardLayoutsRoutes = require('./dashboardLayoutsRoutes');
 const portRoutes = require('./portRoutes');
+const serverRoutes = require('./serverRoutes');
 
 /**
  * Create router with dependencies
@@ -51,6 +52,9 @@ function createRoutes(dependencies = {}) {
 
   // Mount port routes
   router.use('/ports', portRoutes);
+  
+  // Mount server routes
+  router.use('/servers', serverRoutes);
 
   return router;
 }

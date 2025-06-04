@@ -73,6 +73,9 @@ const getConfig = asyncHandler(async (req, res) => {
       apiTimeout: ConfigManager.apiTimeout,
       hostIp: ConfigManager.hostIp || '',
       
+      // Feature flags
+      portManagementEnabled: ConfigManager.portManagementEnabled || false,
+      
       // Record defaults
       recordDefaults: ConfigManager.recordDefaults || {}
     };
@@ -677,6 +680,129 @@ const getSecretStatus = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * @desc    Enable port management feature with host IP validation
+ * @route   POST /api/v1/config/port-management/enable
+ * @access  Private/Admin
+ */
+const enablePortManagement = asyncHandler(async (req, res) => {
+  const { hostIp } = req.body;
+  const { ConfigManager, PortMonitor } = global.services || {};
+  
+  if (!ConfigManager) {
+    throw new ApiError('Config manager not initialized', 500, 'CONFIG_MANAGER_NOT_INITIALIZED');
+  }
+  
+  // Validate host IP is provided
+  if (!hostIp || !hostIp.trim()) {
+    throw new ApiError(
+      'Host IP address is required to enable port management',
+      400,
+      'VALIDATION_ERROR'
+    );
+  }
+  
+  // Validate IP format
+  const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$|^localhost$|^host\.docker\.internal$/;
+  if (!ipRegex.test(hostIp.trim())) {
+    throw new ApiError(
+      'Invalid IP address format',
+      400,
+      'VALIDATION_ERROR'
+    );
+  }
+  
+  try {
+    // Test connectivity to the provided IP
+    if (PortMonitor) {
+      const connectivityTest = await PortMonitor.availabilityChecker._testHostConnectivity(hostIp);
+      if (!connectivityTest) {
+        throw new ApiError(
+          'Cannot reach the provided host IP address. Please verify the IP is correct and accessible.',
+          400,
+          'HOST_UNREACHABLE'
+        );
+      }
+    }
+    
+    // Update configuration to enable port management and set host IP
+    const result = await ConfigManager.updateConfig({
+      portManagementEnabled: true,
+      hostIp: hostIp.trim()
+    });
+    
+    if (!result.success) {
+      throw new ApiError(
+        result.error || 'Failed to enable port management',
+        500,
+        'CONFIG_UPDATE_ERROR'
+      );
+    }
+    
+    // Update the port monitor if available
+    if (PortMonitor) {
+      await PortMonitor.availabilityChecker.setHostIp(hostIp.trim());
+    }
+    
+    res.json({
+      status: 'success',
+      data: {
+        message: 'Port management enabled successfully',
+        hostIp: hostIp.trim(),
+        portManagementEnabled: true
+      }
+    });
+  } catch (error) {
+    throw new ApiError(
+      `Failed to enable port management: ${error.message}`,
+      error.statusCode || 500,
+      error.code || 'PORT_MANAGEMENT_ENABLE_ERROR'
+    );
+  }
+});
+
+/**
+ * @desc    Disable port management feature
+ * @route   POST /api/v1/config/port-management/disable
+ * @access  Private/Admin
+ */
+const disablePortManagement = asyncHandler(async (req, res) => {
+  const { ConfigManager } = global.services || {};
+  
+  if (!ConfigManager) {
+    throw new ApiError('Config manager not initialized', 500, 'CONFIG_MANAGER_NOT_INITIALIZED');
+  }
+  
+  try {
+    // Update configuration to disable port management
+    const result = await ConfigManager.updateConfig({
+      portManagementEnabled: false
+    });
+    
+    if (!result.success) {
+      throw new ApiError(
+        result.error || 'Failed to disable port management',
+        500,
+        'CONFIG_UPDATE_ERROR'
+      );
+    }
+    
+    res.json({
+      status: 'success',
+      data: {
+        message: 'Port management disabled successfully',
+        portManagementEnabled: false
+      }
+    });
+  } catch (error) {
+    throw new ApiError(
+      `Failed to disable port management: ${error.message}`,
+      error.statusCode || 500,
+      error.code || 'PORT_MANAGEMENT_DISABLE_ERROR'
+    );
+  }
+});
+
 module.exports = {
   getConfig,
   updateConfig,
@@ -687,5 +813,7 @@ module.exports = {
   updateSecrets,
   testSecrets,
   getSecrets,
-  getSecretStatus
+  getSecretStatus,
+  enablePortManagement,
+  disablePortManagement
 };
