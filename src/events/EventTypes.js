@@ -70,15 +70,24 @@ module.exports = {
     PORT_SCAN_STARTED: 'port:scan:started',
     PORT_SCAN_COMPLETED: 'port:scan:completed',
     PORT_SCAN_FAILED: 'port:scan:failed',
+    PORT_SCAN_PROGRESS: 'port:scan:progress',
     PORT_CHANGED: 'port:changed',
     PORT_DISCOVERED: 'port:discovered',
     PORT_CLOSED: 'port:closed',
     PORT_ALERT_CREATED: 'port:alert:created',
     PORT_ALERT_ACKNOWLEDGED: 'port:alert:acknowledged',
+    PORT_ALERT_RESOLVED: 'port:alert:resolved',
     PORT_RESERVED: 'port:reserved',
     PORT_RELEASED: 'port:released',
+    PORT_RESERVATION_EXPIRED: 'port:reservation:expired',
     PORT_CONFLICT_DETECTED: 'port:conflict:detected',
     PORT_CONFLICT_RESOLVED: 'port:conflict:resolved',
+    PORT_STATISTICS_UPDATED: 'port:statistics:updated',
+    
+    // Server management events
+    SERVER_ADDED: 'server:added',
+    SERVER_REMOVED: 'server:removed',
+    SERVER_UPDATED: 'server:updated',
 
     // Status events
     STATUS_UPDATE: 'status:update',
