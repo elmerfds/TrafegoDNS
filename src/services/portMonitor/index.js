@@ -1039,8 +1039,12 @@ class PortMonitor {
    */
   async scanPortRange(startPort, endPort, protocol = 'tcp', server = 'localhost') {
     try {
+      logger.info(`🔍 Scanning port range ${startPort}-${endPort} (protocol: ${protocol}, server: ${server})`);
+      
       const results = {};
       const batchSize = 50;
+      let totalPorts = endPort - startPort + 1;
+      let processedPorts = 0;
       
       for (let port = startPort; port <= endPort; port += batchSize) {
         const batch = [];
@@ -1048,19 +1052,49 @@ class PortMonitor {
           batch.push(p);
         }
         
+        logger.debug(`📊 Scanning batch: ports ${batch[0]}-${batch[batch.length-1]} (${batch.length} ports)`);
+        
         if (protocol === 'both') {
-          // Check both TCP and UDP, port is available only if both are available
+          // Check both TCP and UDP - be more practical: port is available if EITHER TCP or UDP is available
           const tcpResults = await this.availabilityChecker.checkMultiplePorts(batch, 'tcp', server);
           const udpResults = await this.availabilityChecker.checkMultiplePorts(batch, 'udp', server);
           
           for (const port of batch) {
-            results[port] = tcpResults[port] && udpResults[port];
+            const tcpAvailable = tcpResults[port];
+            const udpAvailable = udpResults[port];
+            // More practical approach: available if either protocol is available
+            results[port] = tcpAvailable || udpAvailable;
+            logger.debug(`🔍 Port ${port}: TCP=${tcpAvailable}, UDP=${udpAvailable}, either=${results[port]}`);
           }
         } else {
-          const batchResults = await this.availabilityChecker.checkMultiplePorts(batch, protocol, server);
-          Object.assign(results, batchResults);
+          try {
+            const batchResults = await this.availabilityChecker.checkMultiplePorts(batch, protocol, server);
+            Object.assign(results, batchResults);
+            
+            // Log some sample results for debugging
+            const samplePorts = batch.slice(0, 3);
+            for (const port of samplePorts) {
+              logger.debug(`🔍 Port ${port} ${protocol}: ${batchResults[port] ? 'available' : 'in use'}`);
+            }
+          } catch (batchError) {
+            logger.error(`Failed to check batch ${batch[0]}-${batch[batch.length-1]}: ${batchError.message}`);
+            // Mark all ports in failed batch as unavailable
+            for (const port of batch) {
+              results[port] = false;
+            }
+          }
         }
+        
+        processedPorts += batch.length;
+        const progress = Math.round((processedPorts / totalPorts) * 100);
+        logger.debug(`📊 Progress: ${processedPorts}/${totalPorts} ports scanned (${progress}%)`);
       }
+      
+      // Count results for summary
+      const availableCount = Object.values(results).filter(available => available).length;
+      const unavailableCount = totalPorts - availableCount;
+      
+      logger.info(`📊 Port range scan complete: ${availableCount}/${totalPorts} ports available, ${unavailableCount} in use`);
       
       this.lastScanTime = new Date().toISOString();
       return results;

@@ -619,9 +619,27 @@ export default function PortMonitoring() {
         return;
       }
 
+      // Use the same server selection logic as other tabs
+      let serverIp = 'localhost';
+      if (selectedServer === 'custom') {
+        if (!customServerIp || !customServerIp.trim()) {
+          setError('Please select a server or enter a custom server IP before checking');
+          return;
+        }
+        serverIp = customServerIp.trim();
+      } else {
+        const server = servers.find(s => s.id === selectedServer);
+        if (server) {
+          serverIp = server.ip;
+        }
+      }
+
+      console.log(`Checking port availability for ports [${ports.join(', ')}] on server: ${serverIp}`);
+
       const response = await api.post('/ports/check-availability', {
         ports,
-        protocol
+        protocol,
+        server: serverIp
       });
 
       setPortCheckResults(response.data.data.ports);
@@ -692,10 +710,28 @@ export default function PortMonitoring() {
     setPortScanResults([]); // Clear previous results
 
     try {
+      // Use the same server selection logic as the "Ports in Use" tab
+      let serverIp = 'localhost';
+      if (selectedServer === 'custom') {
+        if (!customServerIp || !customServerIp.trim()) {
+          setError('Please select a server or enter a custom server IP before scanning');
+          return;
+        }
+        serverIp = customServerIp.trim();
+      } else {
+        const server = servers.find(s => s.id === selectedServer);
+        if (server) {
+          serverIp = server.ip;
+        }
+      }
+      
+      console.log(`Scanning port range ${start}-${end} on server: ${serverIp}`);
+      
       const response = await api.post('/ports/scan-range', {
         startPort: start,
         endPort: end,
-        protocol
+        protocol,
+        server: serverIp
       });
 
       const results = response.data.data.results;
@@ -1093,6 +1129,37 @@ export default function PortMonitoring() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Server Selection */}
+              <div>
+                <Label htmlFor="checkServerSelect">Server</Label>
+                <div className="flex space-x-2">
+                  <Select value={selectedServer} onValueChange={setSelectedServer}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {servers.map(server => (
+                        <SelectItem key={server.id} value={server.id}>
+                          {server.name} ({server.ip})
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="custom">Custom IP...</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {selectedServer === 'custom' && (
+                    <Input
+                      placeholder="Enter server IP"
+                      value={customServerIp}
+                      onChange={(e) => setCustomServerIp(e.target.value)}
+                      className="w-48"
+                    />
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Checking ports on {selectedServer === 'custom' ? (customServerIp || 'custom server') : servers.find(s => s.id === selectedServer)?.name || 'localhost'}
+                </div>
+              </div>
+              
               <div className="flex space-x-2">
                 <Input
                   placeholder="e.g., 3000, 8080, 9000"
@@ -1100,16 +1167,23 @@ export default function PortMonitoring() {
                   onChange={(e) => setPortsToCheck(e.target.value)}
                   className="flex-1"
                 />
-                <Select value={protocol} onValueChange={setProtocol}>
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="both">Both</SelectItem>
-                    <SelectItem value="tcp">TCP Only</SelectItem>
-                    <SelectItem value="udp">UDP Only</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex flex-col space-y-1">
+                  <Select value={protocol} onValueChange={setProtocol}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="both">Both</SelectItem>
+                      <SelectItem value="tcp">TCP Only</SelectItem>
+                      <SelectItem value="udp">UDP Only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {protocol === 'both' && (
+                    <div className="text-xs text-muted-foreground">
+                      Requires BOTH TCP and UDP to be free
+                    </div>
+                  )}
+                </div>
                 <Button onClick={checkPortAvailability} disabled={loading}>
                   <Search className="h-4 w-4 mr-2" />
                   Check
@@ -1166,6 +1240,37 @@ export default function PortMonitoring() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Server Selection */}
+              <div>
+                <Label htmlFor="scanServerSelect">Server</Label>
+                <div className="flex space-x-2">
+                  <Select value={selectedServer} onValueChange={setSelectedServer}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {servers.map(server => (
+                        <SelectItem key={server.id} value={server.id}>
+                          {server.name} ({server.ip})
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="custom">Custom IP...</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {selectedServer === 'custom' && (
+                    <Input
+                      placeholder="Enter server IP"
+                      value={customServerIp}
+                      onChange={(e) => setCustomServerIp(e.target.value)}
+                      className="w-48"
+                    />
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Scanning ports on {selectedServer === 'custom' ? (customServerIp || 'custom server') : servers.find(s => s.id === selectedServer)?.name || 'localhost'}
+                </div>
+              </div>
+              
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <Label htmlFor="startPort">Start Port</Label>
@@ -1198,9 +1303,14 @@ export default function PortMonitoring() {
                     <SelectContent>
                       <SelectItem value="tcp">TCP</SelectItem>
                       <SelectItem value="udp">UDP</SelectItem>
-                      <SelectItem value="both">Both</SelectItem>
+                      <SelectItem value="both">Both (shows ports available for either protocol)</SelectItem>
                     </SelectContent>
                   </Select>
+                  {protocol === 'both' && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      In range scan, ports are marked as available if EITHER TCP or UDP is free
+                    </div>
+                  )}
                 </div>
               </div>
               <Button onClick={scanPortRange} disabled={loading} className="w-full">
