@@ -311,18 +311,22 @@ const suggestAlternativePorts = asyncHandler(async (req, res) => {
   }
 
   try {
-    const suggestions = await PortMonitor.suggestAlternativePorts({
+    const suggestionsResult = await PortMonitor.suggestAlternativePorts({
       ports,
       protocol,
       serviceType,
       maxSuggestions,
       server
     });
+    
+    logger.info(`📡 API: Suggestions result:`, JSON.stringify(suggestionsResult));
 
     res.json({
       success: true,
       data: {
-        suggestions
+        suggestions: suggestionsResult.suggestions || [],
+        original: suggestionsResult.original || ports,
+        timestamp: suggestionsResult.timestamp
       }
     });
   } catch (error) {
