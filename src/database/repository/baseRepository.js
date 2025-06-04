@@ -88,9 +88,12 @@ class BaseRepository {
    * @returns {Promise<Object>} - Created entity
    */
   async create(data) {
-    const fields = Object.keys(data).filter(k => k !== 'id');
+    // Validate entity data
+    const validatedData = this.validateEntity(data, false);
+    
+    const fields = Object.keys(validatedData).filter(k => k !== 'id');
     const placeholders = fields.map(() => '?').join(', ');
-    const values = fields.map(field => data[field]);
+    const values = fields.map(field => validatedData[field]);
     
     const sql = `
       INSERT INTO ${this.tableName} (${fields.join(', ')})
@@ -100,7 +103,7 @@ class BaseRepository {
     const result = await this.db.run(sql, values);
     const id = result.lastID;
     
-    return { ...data, id };
+    return { ...validatedData, id };
   }
 
   /**
@@ -110,9 +113,12 @@ class BaseRepository {
    * @returns {Promise<Object>} - Updated entity
    */
   async update(id, data) {
-    const fields = Object.keys(data).filter(k => k !== 'id');
+    // Validate entity data
+    const validatedData = this.validateEntity(data, true);
+    
+    const fields = Object.keys(validatedData).filter(k => k !== 'id');
     const setClause = fields.map(field => `${field} = ?`).join(', ');
-    const values = [...fields.map(field => data[field]), id];
+    const values = [...fields.map(field => validatedData[field]), id];
     
     const sql = `
       UPDATE ${this.tableName}
@@ -121,7 +127,7 @@ class BaseRepository {
     `;
     
     await this.db.run(sql, values);
-    return { ...data, id };
+    return { ...validatedData, id };
   }
 
   /**
@@ -185,6 +191,132 @@ class BaseRepository {
    */
   async execute(sql, params = []) {
     return this.db.run(sql, params);
+  }
+
+  /**
+   * Run data consistency checks for this repository
+   * @param {Object} options - Check options
+   * @returns {Promise<Object>} - Consistency report
+   */
+  async runConsistencyChecks(options = {}) {
+    const { fixInconsistencies = false } = options;
+    
+    const report = {
+      tableName: this.tableName,
+      timestamp: new Date().toISOString(),
+      checks: [],
+      issues: [],
+      fixes: []
+    };
+
+    try {
+      // Basic data integrity checks
+      await this._checkBasicIntegrity(report, fixInconsistencies);
+      
+      // Table-specific checks (to be overridden by subclasses)
+      if (this._checkTableSpecific) {
+        await this._checkTableSpecific(report, fixInconsistencies);
+      }
+
+      return report;
+    } catch (error) {
+      report.error = error.message;
+      return report;
+    }
+  }
+
+  /**
+   * Basic integrity checks for all repositories
+   * @private
+   */
+  async _checkBasicIntegrity(report, fix = false) {
+    // Check for NULL IDs
+    const nullIds = await this.db.all(`SELECT COUNT(*) as count FROM ${this.tableName} WHERE id IS NULL`);
+    if (nullIds[0].count > 0) {
+      report.issues.push(`Found ${nullIds[0].count} records with NULL id`);
+      
+      if (fix) {
+        // Delete records with NULL id
+        const result = await this.db.run(`DELETE FROM ${this.tableName} WHERE id IS NULL`);
+        report.fixes.push(`Deleted ${result.changes} records with NULL id`);
+      }
+    }
+
+    // Check for empty string IDs
+    const emptyIds = await this.db.all(`SELECT COUNT(*) as count FROM ${this.tableName} WHERE id = ''`);
+    if (emptyIds[0].count > 0) {
+      report.issues.push(`Found ${emptyIds[0].count} records with empty id`);
+      
+      if (fix) {
+        // Delete records with empty id
+        const result = await this.db.run(`DELETE FROM ${this.tableName} WHERE id = ''`);
+        report.fixes.push(`Deleted ${result.changes} records with empty id`);
+      }
+    }
+
+    // Check for duplicate IDs
+    const duplicateIds = await this.db.all(`
+      SELECT id, COUNT(*) as count 
+      FROM ${this.tableName} 
+      GROUP BY id 
+      HAVING COUNT(*) > 1
+    `);
+    
+    if (duplicateIds.length > 0) {
+      report.issues.push(`Found ${duplicateIds.length} duplicate IDs`);
+      
+      if (fix) {
+        // Keep only the first occurrence of each duplicate ID
+        for (const dup of duplicateIds) {
+          const result = await this.db.run(`
+            DELETE FROM ${this.tableName} 
+            WHERE id = ? 
+            AND rowid NOT IN (
+              SELECT MIN(rowid) 
+              FROM ${this.tableName} 
+              WHERE id = ?
+            )
+          `, [dup.id, dup.id]);
+          
+          if (result.changes > 0) {
+            report.fixes.push(`Removed ${result.changes} duplicate records for id ${dup.id}`);
+          }
+        }
+      }
+    }
+
+    report.checks.push({
+      name: 'Basic Integrity',
+      passed: report.issues.length === 0,
+      issues: report.issues.length
+    });
+  }
+
+  /**
+   * Validate entity data before create/update
+   * @param {Object} data - Entity data
+   * @param {boolean} isUpdate - Whether this is an update operation
+   * @returns {Object} - Validated data
+   */
+  validateEntity(data, isUpdate = false) {
+    if (!data || typeof data !== 'object') {
+      throw new Error('Entity data must be an object');
+    }
+
+    // Remove undefined values
+    const validated = {};
+    Object.keys(data).forEach(key => {
+      if (data[key] !== undefined) {
+        validated[key] = data[key];
+      }
+    });
+
+    // Basic validation for common fields
+    if (validated.id !== undefined && (validated.id === '' || validated.id === null)) {
+      delete validated.id; // Let database generate ID
+    }
+
+    return validated;
   }
 
   /**

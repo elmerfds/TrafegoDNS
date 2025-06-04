@@ -1,5 +1,6 @@
 const BaseRepository = require('./baseRepository');
 const logger = require('../../utils/logger');
+const protocolHandler = require('../../utils/protocolHandler');
 
 /**
  * Repository for port monitoring operations
@@ -402,6 +403,315 @@ class PortRepository extends BaseRepository {
       logger.error('Failed to get port count:', error);
       throw error;
     }
+  }
+
+  /**
+   * Table-specific validation and consistency checks
+   * @private
+   */
+  async _checkTableSpecific(report, fix = false) {
+    // Valid protocol values
+    const validProtocols = ['tcp', 'udp', 'both'];
+    
+    // Valid status values
+    const validStatuses = ['open', 'closed', 'filtered', 'unknown', 'listening'];
+
+    try {
+      // Check 1: Port numbers are between 1 and 65535
+      const invalidPorts = await this.db.all(`
+        SELECT id, host, port, protocol 
+        FROM ${this.tableName} 
+        WHERE port < 1 OR port > 65535
+      `);
+      
+      if (invalidPorts.length > 0) {
+        report.issues.push(`Found ${invalidPorts.length} ports with invalid port numbers (must be 1-65535)`);
+        
+        if (fix) {
+          // Delete ports with invalid port numbers
+          const result = await this.db.run(`
+            DELETE FROM ${this.tableName} 
+            WHERE port < 1 OR port > 65535
+          `);
+          report.fixes.push(`Deleted ${result.changes} ports with invalid port numbers`);
+        }
+      }
+
+      // Check 2: Protocol values are valid
+      const invalidProtocols = await this.db.all(`
+        SELECT id, host, port, protocol 
+        FROM ${this.tableName} 
+        WHERE protocol NOT IN (${validProtocols.map(() => '?').join(', ')})
+      `, validProtocols);
+      
+      if (invalidProtocols.length > 0) {
+        report.issues.push(`Found ${invalidProtocols.length} ports with invalid protocol values`);
+        
+        if (fix) {
+          // Update invalid protocols to 'tcp' as default
+          const result = await this.db.run(`
+            UPDATE ${this.tableName} 
+            SET protocol = 'tcp', updated_at = CURRENT_TIMESTAMP
+            WHERE protocol NOT IN (${validProtocols.map(() => '?').join(', ')})
+          `, validProtocols);
+          report.fixes.push(`Fixed ${result.changes} ports with invalid protocol values (set to 'tcp')`);
+        }
+      }
+
+      // Check 3: Status values are valid
+      const invalidStatuses = await this.db.all(`
+        SELECT id, host, port, protocol, status 
+        FROM ${this.tableName} 
+        WHERE status NOT IN (${validStatuses.map(() => '?').join(', ')})
+      `, validStatuses);
+      
+      if (invalidStatuses.length > 0) {
+        report.issues.push(`Found ${invalidStatuses.length} ports with invalid status values`);
+        
+        if (fix) {
+          // Update invalid statuses to 'unknown' as default
+          const result = await this.db.run(`
+            UPDATE ${this.tableName} 
+            SET status = 'unknown', updated_at = CURRENT_TIMESTAMP
+            WHERE status NOT IN (${validStatuses.map(() => '?').join(', ')})
+          `, validStatuses);
+          report.fixes.push(`Fixed ${result.changes} ports with invalid status values (set to 'unknown')`);
+        }
+      }
+
+      // Check 4: Server references exist (if server_id is used)
+      const orphanedServerRefs = await this.db.all(`
+        SELECT p.id, p.host, p.port, p.protocol, p.server_id
+        FROM ${this.tableName} p
+        LEFT JOIN servers s ON p.server_id = s.id
+        WHERE p.server_id IS NOT NULL AND s.id IS NULL
+      `);
+      
+      if (orphanedServerRefs.length > 0) {
+        report.issues.push(`Found ${orphanedServerRefs.length} ports with non-existent server references`);
+        
+        if (fix) {
+          // Clear invalid server references
+          const result = await this.db.run(`
+            UPDATE ${this.tableName} 
+            SET server_id = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE server_id IS NOT NULL 
+            AND server_id NOT IN (SELECT id FROM servers)
+          `);
+          report.fixes.push(`Cleared ${result.changes} invalid server references`);
+        }
+      }
+
+      // Check 5: Port uniqueness constraints (host + port + protocol)
+      const duplicatePorts = await this.db.all(`
+        SELECT host, port, protocol, COUNT(*) as count 
+        FROM ${this.tableName} 
+        GROUP BY host, port, protocol 
+        HAVING COUNT(*) > 1
+      `);
+      
+      if (duplicatePorts.length > 0) {
+        report.issues.push(`Found ${duplicatePorts.length} sets of duplicate port entries (host + port + protocol)`);
+        
+        if (fix) {
+          // Keep only the newest record for each duplicate set
+          for (const dup of duplicatePorts) {
+            const result = await this.db.run(`
+              DELETE FROM ${this.tableName} 
+              WHERE host = ? AND port = ? AND protocol = ?
+              AND id NOT IN (
+                SELECT id FROM (
+                  SELECT id FROM ${this.tableName} 
+                  WHERE host = ? AND port = ? AND protocol = ?
+                  ORDER BY updated_at DESC, created_at DESC 
+                  LIMIT 1
+                ) latest
+              )
+            `, [dup.host, dup.port, dup.protocol, dup.host, dup.port, dup.protocol]);
+            
+            if (result.changes > 0) {
+              report.fixes.push(`Removed ${result.changes} duplicate entries for ${dup.host}:${dup.port}/${dup.protocol}`);
+            }
+          }
+        }
+      }
+
+      // Check 6: Timestamp consistency
+      const timestampIssues = await this.db.all(`
+        SELECT id, host, port, protocol, first_seen, last_seen, created_at, updated_at
+        FROM ${this.tableName} 
+        WHERE 
+          (last_seen < first_seen) OR
+          (updated_at < created_at) OR
+          (first_seen < created_at)
+      `);
+      
+      if (timestampIssues.length > 0) {
+        report.issues.push(`Found ${timestampIssues.length} ports with inconsistent timestamps`);
+        
+        if (fix) {
+          // Fix timestamp inconsistencies
+          for (const issue of timestampIssues) {
+            // Ensure logical timestamp order: created_at <= first_seen <= last_seen <= updated_at
+            const createdAt = issue.created_at;
+            const firstSeen = issue.first_seen < createdAt ? createdAt : issue.first_seen;
+            const lastSeen = issue.last_seen < firstSeen ? firstSeen : issue.last_seen;
+            const updatedAt = issue.updated_at < lastSeen ? lastSeen : issue.updated_at;
+            
+            const result = await this.db.run(`
+              UPDATE ${this.tableName} 
+              SET first_seen = ?, last_seen = ?, updated_at = ?
+              WHERE id = ?
+            `, [firstSeen, lastSeen, updatedAt, issue.id]);
+            
+            if (result.changes > 0) {
+              report.fixes.push(`Fixed timestamp consistency for port ${issue.host}:${issue.port}/${issue.protocol}`);
+            }
+          }
+        }
+      }
+
+      // Check 7: JSON field validation for labels
+      const invalidJsonLabels = await this.db.all(`
+        SELECT id, host, port, protocol, labels 
+        FROM ${this.tableName} 
+        WHERE labels IS NOT NULL AND labels != ''
+      `);
+      
+      let jsonParseErrors = 0;
+      for (const record of invalidJsonLabels) {
+        try {
+          if (record.labels) {
+            JSON.parse(record.labels);
+          }
+        } catch (error) {
+          jsonParseErrors++;
+          if (fix) {
+            // Reset invalid JSON to empty object
+            await this.db.run(`
+              UPDATE ${this.tableName} 
+              SET labels = '{}', updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `, [record.id]);
+          }
+        }
+      }
+      
+      if (jsonParseErrors > 0) {
+        report.issues.push(`Found ${jsonParseErrors} ports with invalid JSON in labels field`);
+        
+        if (fix) {
+          report.fixes.push(`Fixed ${jsonParseErrors} ports with invalid JSON labels (reset to empty object)`);
+        }
+      }
+
+      // Summary check
+      report.checks.push({
+        name: 'Port-Specific Validation',
+        passed: report.issues.length === 0,
+        issues: report.issues.length
+      });
+
+    } catch (error) {
+      logger.error('Error during port-specific consistency checks:', error);
+      report.issues.push(`Error during port validation: ${error.message}`);
+    }
+  }
+
+  /**
+   * Enhanced entity validation for ports
+   * @param {Object} data - Entity data
+   * @param {boolean} isUpdate - Whether this is an update operation
+   * @returns {Object} - Validated data
+   */
+  validateEntity(data, isUpdate = false) {
+    // Call parent validation first
+    const validated = super.validateEntity(data, isUpdate);
+
+    // Port-specific validation rules
+    if (validated.port !== undefined) {
+      const port = parseInt(validated.port);
+      if (isNaN(port) || port < 1 || port > 65535) {
+        throw new Error('Port number must be between 1 and 65535');
+      }
+      validated.port = port;
+    }
+
+    if (validated.protocol !== undefined) {
+      const validProtocols = ['tcp', 'udp', 'both'];
+      if (!validProtocols.includes(validated.protocol)) {
+        throw new Error(`Protocol must be one of: ${validProtocols.join(', ')}`);
+      }
+    }
+
+    if (validated.status !== undefined) {
+      const validStatuses = ['open', 'closed', 'filtered', 'unknown', 'listening'];
+      if (!validStatuses.includes(validated.status)) {
+        throw new Error(`Status must be one of: ${validStatuses.join(', ')}`);
+      }
+    }
+
+    if (validated.host !== undefined) {
+      if (!validated.host || typeof validated.host !== 'string' || validated.host.trim() === '') {
+        throw new Error('Host is required and must be a non-empty string');
+      }
+      validated.host = validated.host.trim();
+    }
+
+    // Validate JSON fields
+    if (validated.labels !== undefined) {
+      if (typeof validated.labels === 'string') {
+        try {
+          JSON.parse(validated.labels);
+        } catch (error) {
+          throw new Error('Labels must be valid JSON');
+        }
+      } else if (validated.labels !== null && typeof validated.labels === 'object') {
+        // Convert object to JSON string
+        validated.labels = JSON.stringify(validated.labels);
+      }
+    }
+
+    // Validate service name if provided
+    if (validated.service_name !== undefined && validated.service_name !== null) {
+      if (typeof validated.service_name !== 'string') {
+        throw new Error('Service name must be a string');
+      }
+      validated.service_name = validated.service_name.trim() || null;
+    }
+
+    // Validate service version if provided
+    if (validated.service_version !== undefined && validated.service_version !== null) {
+      if (typeof validated.service_version !== 'string') {
+        throw new Error('Service version must be a string');
+      }
+      validated.service_version = validated.service_version.trim() || null;
+    }
+
+    // Validate description if provided
+    if (validated.description !== undefined && validated.description !== null) {
+      if (typeof validated.description !== 'string') {
+        throw new Error('Description must be a string');
+      }
+      validated.description = validated.description.trim() || null;
+    }
+
+    // Validate container fields if provided
+    if (validated.container_id !== undefined && validated.container_id !== null) {
+      if (typeof validated.container_id !== 'string') {
+        throw new Error('Container ID must be a string');
+      }
+      validated.container_id = validated.container_id.trim() || null;
+    }
+
+    if (validated.container_name !== undefined && validated.container_name !== null) {
+      if (typeof validated.container_name !== 'string') {
+        throw new Error('Container name must be a string');
+      }
+      validated.container_name = validated.container_name.trim() || null;
+    }
+
+    return validated;
   }
 }
 

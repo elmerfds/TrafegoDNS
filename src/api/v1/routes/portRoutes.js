@@ -7,6 +7,7 @@ const router = express.Router();
 const { authenticate } = require('../middleware/authMiddleware');
 const ApiResponse = require('../../../utils/apiResponse');
 const { paginationMiddleware } = require('../middleware/paginationMiddleware');
+const { validate, validateRequestSize, sanitizeInputs } = require('../middleware/validationMiddleware');
 const {
   getPortsInUse,
   checkPortAvailability,
@@ -209,7 +210,14 @@ const {
  *       500:
  *         description: Server error
  */
-router.post('/check-availability', authenticate, ApiResponse.middleware, checkPortAvailability);
+router.post('/check-availability', 
+  authenticate, 
+  sanitizeInputs(),
+  validateRequestSize(),
+  validate('portAvailabilityCheck'),
+  ApiResponse.middleware, 
+  checkPortAvailability
+);
 
 /**
  * @swagger
@@ -236,7 +244,14 @@ router.post('/check-availability', authenticate, ApiResponse.middleware, checkPo
  *       500:
  *         description: Server error
  */
-router.post('/reserve', authenticate, ApiResponse.middleware, reservePorts);
+router.post('/reserve', 
+  authenticate, 
+  sanitizeInputs(),
+  validateRequestSize(),
+  validate('portReservation'),
+  ApiResponse.middleware, 
+  reservePorts
+);
 
 /**
  * @swagger
@@ -271,7 +286,14 @@ router.post('/reserve', authenticate, ApiResponse.middleware, reservePorts);
  *       500:
  *         description: Server error
  */
-router.delete('/reserve', authenticate, ApiResponse.middleware, releasePorts);
+router.delete('/reserve', 
+  authenticate, 
+  sanitizeInputs(),
+  validateRequestSize(),
+  validate('portReservationRelease'),
+  ApiResponse.middleware, 
+  releasePorts
+);
 
 /**
  * @swagger
@@ -296,7 +318,14 @@ router.delete('/reserve', authenticate, ApiResponse.middleware, releasePorts);
  *       500:
  *         description: Server error
  */
-router.post('/suggest-alternatives', authenticate, ApiResponse.middleware, suggestAlternativePorts);
+router.post('/suggest-alternatives', 
+  authenticate, 
+  sanitizeInputs(),
+  validateRequestSize(),
+  validate('portSuggestions'),
+  ApiResponse.middleware, 
+  suggestAlternativePorts
+);
 
 /**
  * @swagger
@@ -323,7 +352,14 @@ router.post('/suggest-alternatives', authenticate, ApiResponse.middleware, sugge
  *       500:
  *         description: Server error
  */
-router.post('/validate-deployment', authenticate, validateDeployment);
+router.post('/validate-deployment', 
+  authenticate, 
+  sanitizeInputs(),
+  validateRequestSize(),
+  validate('deploymentValidation'),
+  ApiResponse.middleware,
+  validateDeployment
+);
 
 /**
  * @swagger
@@ -362,7 +398,7 @@ router.post('/validate-deployment', authenticate, validateDeployment);
  *       500:
  *         description: Server error
  */
-router.get('/statistics', authenticate, getPortStatistics);
+router.get('/statistics', authenticate, ApiResponse.middleware, getPortStatistics);
 
 /**
  * @swagger
@@ -392,7 +428,14 @@ router.get('/statistics', authenticate, getPortStatistics);
  *       500:
  *         description: Server error
  */
-router.get('/reservations', authenticate, ApiResponse.middleware, paginationMiddleware(), getPortReservations);
+router.get('/reservations', 
+  authenticate, 
+  sanitizeInputs(),
+  validate('reservationQuery'),
+  ApiResponse.middleware, 
+  paginationMiddleware(), 
+  getPortReservations
+);
 
 /**
  * @swagger
@@ -435,7 +478,14 @@ router.get('/reservations', authenticate, ApiResponse.middleware, paginationMidd
  *       500:
  *         description: Server error
  */
-router.post('/recommendations', authenticate, ApiResponse.middleware, getPortRecommendations);
+router.post('/recommendations', 
+  authenticate, 
+  sanitizeInputs(),
+  validateRequestSize(),
+  validate('portRecommendations'),
+  ApiResponse.middleware, 
+  getPortRecommendations
+);
 
 /**
  * @swagger
@@ -485,7 +535,15 @@ router.post('/recommendations', authenticate, ApiResponse.middleware, getPortRec
  *       500:
  *         description: Server error
  */
-router.post('/scan-range', authenticate, ApiResponse.middleware, paginationMiddleware(), scanPortRange);
+router.post('/scan-range', 
+  authenticate, 
+  sanitizeInputs(),
+  validateRequestSize(),
+  validate('portScanRange'),
+  ApiResponse.middleware, 
+  paginationMiddleware(), 
+  scanPortRange
+);
 
 /**
  * @swagger
@@ -509,7 +567,14 @@ router.post('/scan-range', authenticate, ApiResponse.middleware, paginationMiddl
  *       500:
  *         description: Server error
  */
-router.get('/in-use', authenticate, ApiResponse.middleware, paginationMiddleware(), getPortsInUse);
+router.get('/in-use', 
+  authenticate, 
+  sanitizeInputs(),
+  validate('portListQuery'),
+  ApiResponse.middleware, 
+  paginationMiddleware(), 
+  getPortsInUse
+);
 
 /**
  * @swagger
@@ -549,7 +614,14 @@ router.get('/in-use', authenticate, ApiResponse.middleware, paginationMiddleware
  *       500:
  *         description: Server error
  */
-router.put('/:port/documentation', authenticate, updatePortDocumentation);
+router.put('/:port/documentation', 
+  authenticate, 
+  sanitizeInputs(),
+  validateRequestSize(),
+  validate('portDocumentationUpdate'),
+  ApiResponse.middleware,
+  updatePortDocumentation
+);
 
 /**
  * @swagger
@@ -596,6 +668,13 @@ router.put('/:port/documentation', authenticate, updatePortDocumentation);
  *       500:
  *         description: Server error
  */
-router.put('/:port/label', authenticate, updatePortServiceLabel);
+router.put('/:port/label', 
+  authenticate, 
+  sanitizeInputs(),
+  validateRequestSize(),
+  validate('portServiceLabelUpdate'),
+  ApiResponse.middleware,
+  updatePortServiceLabel
+);
 
 module.exports = router;
