@@ -75,15 +75,22 @@ app.use(createHttpsEnforcementMiddleware({
   excludePaths: ['/api/health', '/api/metrics']
 }));
 
-// IP blocking and burst protection
+// IP blocking and burst protection with configurable allowedIPs
+const allowedIPs = (process.env.ALLOWED_IPS || '').split(',').map(ip => ip.trim()).filter(ip => ip);
+const localNetworkIPs = ['127.0.0.1', '::1', '10.0.0.198']; // Add your specific IP
+const allAllowedIPs = [...allowedIPs, ...localNetworkIPs];
+
+logger.info(`Rate limiting configured with allowed IPs: ${allAllowedIPs.join(', ')}`);
+
 app.use(createIPBlockingMiddleware({
-  suspiciousThreshold: 5,
-  blockDuration: 24 * 60 * 60 * 1000 // 24 hours
+  allowedIPs: allAllowedIPs,
+  suspiciousThreshold: parseInt(process.env.RATE_LIMIT_SUSPICIOUS_THRESHOLD) || 10,
+  blockDuration: parseInt(process.env.RATE_LIMIT_BLOCK_DURATION) || (24 * 60 * 60 * 1000)
 }));
 app.use(createBurstProtectionMiddleware({
-  windowMs: 1000,
-  maxBurst: 15,
-  blockDuration: 60000
+  windowMs: parseInt(process.env.RATE_LIMIT_BURST_WINDOW) || 1000,
+  maxBurst: parseInt(process.env.RATE_LIMIT_BURST_MAX) || 25,
+  blockDuration: parseInt(process.env.RATE_LIMIT_BURST_BLOCK_DURATION) || 60000
 }));
 
 // Security headers
@@ -133,13 +140,14 @@ app.use(morgan('combined', {
 app.use(createRateLimitAuditMiddleware());
 app.use(createInputValidationAuditMiddleware());
 
-// Rate limiting with user awareness
+// Rate limiting with user awareness and configurable limits
 app.use(createUserAwareRateLimiter({
-  windowMs: 60 * 1000,
-  anonymousMax: 50,
-  authenticatedMax: 150,
-  premiumMax: 300,
-  bypassRoles: ['admin']
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || (60 * 1000),
+  anonymousMax: parseInt(process.env.RATE_LIMIT_ANONYMOUS_MAX) || 100,
+  authenticatedMax: parseInt(process.env.RATE_LIMIT_AUTHENTICATED_MAX) || 300,
+  premiumMax: parseInt(process.env.RATE_LIMIT_PREMIUM_MAX) || 500,
+  bypassRoles: ['admin'],
+  allowedIPs: allAllowedIPs // Use the same allowed IPs here
 }));
 
 // Debug logging for UI requests

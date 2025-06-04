@@ -84,6 +84,7 @@ function createUserAwareRateLimiter(options = {}) {
     authenticatedMax: 150, // Higher limit for authenticated users
     premiumMax: 300,     // Even higher for premium users
     bypassRoles: ['admin'], // Roles that bypass rate limiting
+    allowedIPs: [], // IPs that bypass rate limiting completely
     keyGenerator: (req) => {
       // Use user ID for authenticated users, IP for anonymous
       return req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`;
@@ -95,6 +96,11 @@ function createUserAwareRateLimiter(options = {}) {
   return rateLimit({
     windowMs: config.windowMs,
     max: (req) => {
+      // Bypass for allowed IPs
+      if (config.allowedIPs && config.allowedIPs.includes(req.ip)) {
+        return 0; // No limit for allowed IPs
+      }
+
       // Bypass for certain roles
       if (req.user?.role && config.bypassRoles.includes(req.user.role)) {
         return 0; // No limit
@@ -112,6 +118,10 @@ function createUserAwareRateLimiter(options = {}) {
     keyGenerator: config.keyGenerator,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => {
+      // Skip rate limiting entirely for allowed IPs
+      return config.allowedIPs && config.allowedIPs.includes(req.ip);
+    },
     handler: (req, res) => {
       const userType = req.user ? (req.user.premium ? 'premium' : 'authenticated') : 'anonymous';
       logger.warn(`Rate limit exceeded for ${userType} user: ${req.user?.username || req.ip}`);
@@ -264,6 +274,57 @@ function markIPSuspicious(ip, reason) {
 }
 
 /**
+ * Clear a blocked IP address
+ * @param {string} ip - IP address to unblock
+ * @returns {boolean} - True if IP was blocked and is now cleared
+ */
+function clearBlockedIP(ip) {
+  const wasBlocked = blockedIPs.has(ip);
+  blockedIPs.delete(ip);
+  suspiciousIPs.delete(ip);
+  
+  if (wasBlocked) {
+    logger.info(`Cleared blocked IP: ${ip}`);
+  }
+  
+  return wasBlocked;
+}
+
+/**
+ * Clear all blocked IPs
+ * @returns {number} - Number of IPs that were cleared
+ */
+function clearAllBlockedIPs() {
+  const count = blockedIPs.size;
+  blockedIPs.clear();
+  suspiciousIPs.clear();
+  
+  logger.info(`Cleared ${count} blocked IPs`);
+  return count;
+}
+
+/**
+ * Get current rate limiting status
+ * @returns {Object} - Status information
+ */
+function getRateLimitStatus() {
+  return {
+    blockedIPs: Array.from(blockedIPs),
+    suspiciousIPs: Array.from(suspiciousIPs.entries()).map(([ip, data]) => ({
+      ip,
+      count: data.count,
+      firstSeen: new Date(data.firstSeen).toISOString(),
+      reasons: data.reasons.map(r => ({
+        reason: r.reason,
+        timestamp: new Date(r.timestamp).toISOString()
+      }))
+    })),
+    totalBlocked: blockedIPs.size,
+    totalSuspicious: suspiciousIPs.size
+  };
+}
+
+/**
  * Port-specific rate limiter
  * Special limits for port management operations
  */
@@ -308,5 +369,8 @@ module.exports = {
   createUserAwareRateLimiter,
   createBurstProtectionMiddleware,
   createIPBlockingMiddleware,
-  markIPSuspicious
+  markIPSuspicious,
+  clearBlockedIP,
+  clearAllBlockedIPs,
+  getRateLimitStatus
 };

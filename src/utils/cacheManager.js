@@ -31,8 +31,8 @@ class CacheManager {
       errors: 0
     };
 
-    // Event emitter for cache events
-    this.eventBus = EventBus;
+    // Event emitter for cache events (create new instance)
+    this.eventBus = new EventBus();
 
     // Start cleanup interval
     this.cleanupTimer = setInterval(() => this.cleanup(), this.config.cleanupInterval);
@@ -69,11 +69,15 @@ class CacheManager {
 
     // Set up event listeners for invalidation
     if (cacheConfig.invalidateOn.length > 0) {
-      cacheConfig.invalidateOn.forEach(event => {
-        this.eventBus.on(event, (data) => {
-          this.invalidateByPattern(namespace, data.pattern || '*');
+      try {
+        cacheConfig.invalidateOn.forEach(event => {
+          this.eventBus.on(event, (data) => {
+            this.invalidateByPattern(namespace, data.pattern || '*');
+          });
         });
-      });
+      } catch (eventError) {
+        logger.warn(`Failed to setup event listeners for cache ${namespace}: ${eventError.message}`);
+      }
     }
 
     logger.debug(`Registered cache namespace: ${namespace}`, cacheConfig);

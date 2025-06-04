@@ -7,6 +7,11 @@ const os = require('os');
 const { ApiError } = require('../../../utils/apiError');
 const logger = require('../../../utils/logger');
 const EnvironmentLoader = require('../../../config/EnvironmentLoader');
+const { 
+  getRateLimitStatus, 
+  clearBlockedIP, 
+  clearAllBlockedIPs 
+} = require('../middleware/rateLimitMiddleware');
 
 /**
  * @desc    Get system status
@@ -458,9 +463,103 @@ const getEnvironment = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * @desc    Get rate limiting status
+ * @route   GET /api/v1/status/rate-limit
+ * @access  Private/Admin
+ */
+const getRateLimitingStatus = asyncHandler(async (req, res) => {
+  try {
+    const rateLimitStatus = getRateLimitStatus();
+    
+    res.json({
+      status: 'success',
+      data: {
+        ...rateLimitStatus,
+        configuration: {
+          message: 'Rate limiting is active with IP-based protection',
+          allowedIPs: ['127.0.0.1', '::1', '10.0.0.198'], // Show hardcoded allowed IPs
+          rateLimits: {
+            anonymous: '100 requests per minute',
+            authenticated: '300 requests per minute', 
+            premium: '500 requests per minute',
+            burstLimit: '25 requests per second'
+          }
+        }
+      }
+    });
+  } catch (error) {
+    logger.error(`Failed to get rate limiting status: ${error.message}`);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to retrieve rate limiting status'
+    });
+  }
+});
+
+/**
+ * @desc    Clear blocked IP address
+ * @route   DELETE /api/v1/status/rate-limit/blocked/:ip
+ * @access  Private/Admin
+ */
+const clearBlockedIPAddress = asyncHandler(async (req, res) => {
+  const { ip } = req.params;
+  
+  if (!ip) {
+    throw new ApiError(400, 'IP address is required');
+  }
+  
+  try {
+    const wasBlocked = clearBlockedIP(ip);
+    
+    logger.info(`Admin ${req.user?.username || 'unknown'} cleared blocked IP: ${ip}`);
+    
+    res.json({
+      status: 'success',
+      message: wasBlocked ? `IP ${ip} has been unblocked` : `IP ${ip} was not blocked`,
+      data: {
+        ip,
+        wasBlocked,
+        clearedAt: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    logger.error(`Failed to clear blocked IP ${ip}: ${error.message}`);
+    throw new ApiError(500, 'Failed to clear blocked IP');
+  }
+});
+
+/**
+ * @desc    Clear all blocked IPs
+ * @route   DELETE /api/v1/status/rate-limit/blocked
+ * @access  Private/Admin
+ */
+const clearAllBlockedIPsEndpoint = asyncHandler(async (req, res) => {
+  try {
+    const clearedCount = clearAllBlockedIPs();
+    
+    logger.info(`Admin ${req.user?.username || 'unknown'} cleared all blocked IPs (${clearedCount} total)`);
+    
+    res.json({
+      status: 'success',
+      message: `Cleared ${clearedCount} blocked IP addresses`,
+      data: {
+        clearedCount,
+        clearedAt: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    logger.error(`Failed to clear all blocked IPs: ${error.message}`);
+    throw new ApiError(500, 'Failed to clear blocked IPs');
+  }
+});
+
 module.exports = {
   getStatus,
   getMetrics,
   getLogs,
-  getEnvironment
+  getEnvironment,
+  getRateLimitingStatus,
+  clearBlockedIPAddress,
+  clearAllBlockedIPs: clearAllBlockedIPsEndpoint
 };

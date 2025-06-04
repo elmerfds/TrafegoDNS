@@ -48,9 +48,17 @@ class PortMonitor {
       keyPrefix: 'docs'
     });
     
-    // Initialize empty state in centralized cache
-    cacheManager.set('port_monitor_state', 'monitoredPorts', new Map());
-    cacheManager.set('port_monitor_state', 'portChanges', new Map());
+    // Initialize empty state in centralized cache and fallback properties
+    try {
+      cacheManager.set('port_monitor_state', 'monitoredPorts', new Map());
+      cacheManager.set('port_monitor_state', 'portChanges', new Map());
+    } catch (cacheError) {
+      logger.warn(`Failed to initialize cache, using fallback properties: ${cacheError.message}`);
+    }
+    
+    // Fallback properties in case cache fails
+    this._monitoredPortsFallback = new Map();
+    this._portChangesFallback = new Map();
     this.scanInterval = null;
     
     // Configuration
@@ -64,21 +72,41 @@ class PortMonitor {
     logger.info('PortMonitor initialized with centralized cache');
   }
 
-  // Helper methods for centralized cache operations
+  // Helper methods for centralized cache operations with fallbacks
   _getMonitoredPorts() {
-    return cacheManager.get('port_monitor_state', 'monitoredPorts') || new Map();
+    try {
+      return cacheManager.get('port_monitor_state', 'monitoredPorts') || new Map();
+    } catch (error) {
+      logger.warn(`Failed to get monitored ports from cache, using fallback: ${error.message}`);
+      return this._monitoredPortsFallback || new Map();
+    }
   }
 
   _setMonitoredPorts(ports) {
-    cacheManager.set('port_monitor_state', 'monitoredPorts', ports);
+    try {
+      cacheManager.set('port_monitor_state', 'monitoredPorts', ports);
+    } catch (error) {
+      logger.warn(`Failed to set monitored ports in cache, using fallback: ${error.message}`);
+      this._monitoredPortsFallback = ports;
+    }
   }
 
   _getPortChanges() {
-    return cacheManager.get('port_monitor_state', 'portChanges') || new Map();
+    try {
+      return cacheManager.get('port_monitor_state', 'portChanges') || new Map();
+    } catch (error) {
+      logger.warn(`Failed to get port changes from cache, using fallback: ${error.message}`);
+      return this._portChangesFallback || new Map();
+    }
   }
 
   _setPortChanges(changes) {
-    cacheManager.set('port_monitor_state', 'portChanges', changes);
+    try {
+      cacheManager.set('port_monitor_state', 'portChanges', changes);
+    } catch (error) {
+      logger.warn(`Failed to set port changes in cache, using fallback: ${error.message}`);
+      this._portChangesFallback = changes;
+    }
   }
 
   _getPortDocumentation() {
@@ -97,6 +125,23 @@ class PortMonitor {
     cacheManager.set('port_documentation', 'portLabels', labels);
   }
 
+  // Property accessors for backward compatibility
+  get monitoredPorts() {
+    return this._getMonitoredPorts();
+  }
+
+  set monitoredPorts(value) {
+    this._setMonitoredPorts(value);
+  }
+
+  get portChanges() {
+    return this._getPortChanges();
+  }
+
+  set portChanges(value) {
+    this._setPortChanges(value);
+  }
+
   /**
    * Initialize the port monitor
    * @returns {Promise<boolean>}
@@ -110,15 +155,26 @@ class PortMonitor {
       logger.info('Initializing PortMonitor service');
 
       // Initialize sub-modules
+      logger.debug('🔧 Initializing port reservation manager...');
       await this.reservationManager.initialize();
+      logger.debug('✅ Port reservation manager initialized');
+
+      logger.debug('🔧 Initializing Docker port integration...');
       await this.dockerIntegration.initialize();
+      logger.debug('✅ Docker port integration initialized');
 
       // Perform initial port scan
+      logger.debug('🔧 Performing initial port scan...');
       await this._performInitialScan();
+      logger.debug('✅ Initial port scan completed');
 
       // Start real-time monitoring if enabled
       if (this.enableRealTimeMonitoring) {
+        logger.debug('🔧 Starting real-time port monitoring...');
         this._startPortMonitoring();
+        logger.debug('✅ Real-time port monitoring started');
+      } else {
+        logger.debug('📋 Real-time port monitoring is disabled');
       }
 
       this.isInitialized = true;
@@ -134,6 +190,9 @@ class PortMonitor {
       return true;
     } catch (error) {
       logger.error(`Failed to initialize PortMonitor: ${error.message}`);
+      logger.error(`PortMonitor initialization stack trace: ${error.stack}`);
+      this.isInitialized = false;
+      this.isRunning = false;
       return false;
     }
   }
@@ -371,36 +430,6 @@ class PortMonitor {
     }
   }
 
-  /**
-   * Get port monitoring statistics
-   * @returns {Promise<Object>}
-   */
-  async getStatistics() {
-    try {
-      const stats = {
-        totalMonitoredPorts: this.monitoredPorts.size,
-        activeReservations: await this.reservationManager.getActiveReservationCount(),
-        availablePortsInRange: 0,
-        conflictsDetected: this.portChanges.size,
-        lastScanTime: this.lastScanTime,
-        monitoringEnabled: this.enableRealTimeMonitoring,
-        portRanges: this.portRanges,
-        excludedPorts: this.excludedPorts
-      };
-
-      // Calculate available ports in range
-      for (const range of this.portRanges) {
-        const portCount = range.end - range.start + 1;
-        stats.availablePortsInRange += portCount;
-      }
-      stats.availablePortsInRange -= this.excludedPorts.length;
-
-      return stats;
-    } catch (error) {
-      logger.error(`Failed to get port statistics: ${error.message}`);
-      throw error;
-    }
-  }
 
   /**
    * Stop the port monitor

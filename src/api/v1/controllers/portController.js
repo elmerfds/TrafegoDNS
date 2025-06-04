@@ -20,7 +20,11 @@ const getPortsInUse = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    throw new ApiError('Port monitor service not available', 500, 'PORT_MONITOR_NOT_AVAILABLE');
+  }
+  
+  if (!PortMonitor.isInitialized) {
+    throw new ApiError('Port monitor service is not initialized - check startup logs for initialization errors', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
   const { server = 'localhost' } = req.query;
@@ -66,7 +70,11 @@ const checkPortAvailability = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    throw new ApiError('Port monitor service not available', 500, 'PORT_MONITOR_NOT_AVAILABLE');
+  }
+  
+  if (!PortMonitor.isInitialized) {
+    throw new ApiError('Port monitor service is not initialized - check startup logs for initialization errors', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
   try {
@@ -163,7 +171,11 @@ const reservePorts = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    throw new ApiError('Port monitor service not available', 500, 'PORT_MONITOR_NOT_AVAILABLE');
+  }
+  
+  if (!PortMonitor.isInitialized) {
+    throw new ApiError('Port monitor service is not initialized - check startup logs for initialization errors', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
   try {
@@ -303,7 +315,11 @@ const releasePorts = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    throw new ApiError('Port monitor service not available', 500, 'PORT_MONITOR_NOT_AVAILABLE');
+  }
+  
+  if (!PortMonitor.isInitialized) {
+    throw new ApiError('Port monitor service is not initialized - check startup logs for initialization errors', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
   try {
@@ -394,7 +410,11 @@ const updatePortDocumentation = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    throw new ApiError('Port monitor service not available', 500, 'PORT_MONITOR_NOT_AVAILABLE');
+  }
+  
+  if (!PortMonitor.isInitialized) {
+    throw new ApiError('Port monitor service is not initialized - check startup logs for initialization errors', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
   const port = parseInt(req.params.port);
@@ -435,7 +455,11 @@ const updatePortServiceLabel = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    throw new ApiError('Port monitor service not available', 500, 'PORT_MONITOR_NOT_AVAILABLE');
+  }
+  
+  if (!PortMonitor.isInitialized) {
+    throw new ApiError('Port monitor service is not initialized - check startup logs for initialization errors', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
   const port = parseInt(req.params.port);
@@ -480,7 +504,11 @@ const suggestAlternativePorts = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    throw new ApiError('Port monitor service not available', 500, 'PORT_MONITOR_NOT_AVAILABLE');
+  }
+  
+  if (!PortMonitor.isInitialized) {
+    throw new ApiError('Port monitor service is not initialized - check startup logs for initialization errors', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
   try {
@@ -606,7 +634,11 @@ const validateDeployment = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    throw new ApiError('Port monitor service not available', 500, 'PORT_MONITOR_NOT_AVAILABLE');
+  }
+  
+  if (!PortMonitor.isInitialized) {
+    throw new ApiError('Port monitor service is not initialized - check startup logs for initialization errors', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
   try {
@@ -708,7 +740,11 @@ const getPortStatistics = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    throw new ApiError('Port monitor service not available', 500, 'PORT_MONITOR_NOT_AVAILABLE');
+  }
+  
+  if (!PortMonitor.isInitialized) {
+    throw new ApiError('Port monitor service is not initialized - check startup logs for initialization errors', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
   try {
@@ -765,7 +801,11 @@ const getPortReservations = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    throw new ApiError('Port monitor service not available', 500, 'PORT_MONITOR_NOT_AVAILABLE');
+  }
+  
+  if (!PortMonitor.isInitialized) {
+    throw new ApiError('Port monitor service is not initialized - check startup logs for initialization errors', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
   const { containerId, ports } = req.query;
@@ -814,7 +854,11 @@ const getPortRecommendations = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    return res.apiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    return res.apiError('Port monitor service not available', 500, 'PORT_MONITOR_NOT_AVAILABLE');
+  }
+  
+  if (!PortMonitor.isInitialized) {
+    return res.apiError('Port monitor service is not initialized - check startup logs for initialization errors', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
   const {
@@ -874,7 +918,11 @@ const scanPortRange = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    throw new ApiError('Port monitor service not available', 500, 'PORT_MONITOR_NOT_AVAILABLE');
+  }
+  
+  if (!PortMonitor.isInitialized) {
+    throw new ApiError('Port monitor service is not initialized - check startup logs for initialization errors', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
   try {
