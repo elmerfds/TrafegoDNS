@@ -1,10 +1,14 @@
 /**
  * DNS controller
- * Handles DNS record management endpoints
+ * Handles DNS record management endpoints with enhanced validation and error handling
  */
 const asyncHandler = require('express-async-handler');
 const { ApiError } = require('../../../utils/apiError');
 const logger = require('../../../utils/logger');
+const DataValidator = require('../../../utils/dataValidator');
+const { errorHandler, ValidationError, BusinessLogicError } = require('../../../utils/errorHandler');
+const { transactionManager } = require('../../../database/transactionManager');
+const { dataConsistencyService } = require('../../../services/dataConsistencyService');
 const { getPaginationParams, formatPaginatedResponse } = require('../utils/paginationUtils');
 
 /**

@@ -8,6 +8,33 @@ const { authenticate } = require('../middleware/authMiddleware');
 const ApiResponse = require('../../../utils/apiResponse');
 const { paginationMiddleware } = require('../middleware/paginationMiddleware');
 const { validate, validateRequestSize, sanitizeInputs } = require('../middleware/validationMiddleware');
+const { 
+  portOperationsLimiter, 
+  criticalOperationsLimiter,
+  createRateLimiter 
+} = require('../middleware/rateLimitMiddleware');
+
+// Create specialized rate limiters for different operations
+const scanLimiter = createRateLimiter({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 10, // 10 scans per 5 minutes
+  message: 'Too many port scans. Please wait before starting another scan.',
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      status: 'error',
+      message: 'Port scan rate limit exceeded',
+      error: 'SCAN_RATE_LIMIT_EXCEEDED',
+      retryAfter: 300
+    });
+  }
+});
+
+const reservationLimiter = createRateLimiter({
+  windowMs: 2 * 60 * 1000, // 2 minutes
+  max: 15, // 15 reservations per 2 minutes
+  message: 'Too many port reservations. Please wait before creating more reservations.'
+});
 const {
   getPortsInUse,
   checkPortAvailability,
@@ -212,6 +239,7 @@ const {
  */
 router.post('/check-availability', 
   authenticate, 
+  portOperationsLimiter,
   sanitizeInputs(),
   validateRequestSize(),
   validate('portAvailabilityCheck'),
@@ -246,6 +274,7 @@ router.post('/check-availability',
  */
 router.post('/reserve', 
   authenticate, 
+  reservationLimiter,
   sanitizeInputs(),
   validateRequestSize(),
   validate('portReservation'),
@@ -288,6 +317,7 @@ router.post('/reserve',
  */
 router.delete('/reserve', 
   authenticate, 
+  reservationLimiter,
   sanitizeInputs(),
   validateRequestSize(),
   validate('portReservationRelease'),
@@ -537,6 +567,7 @@ router.post('/recommendations',
  */
 router.post('/scan-range', 
   authenticate, 
+  scanLimiter,
   sanitizeInputs(),
   validateRequestSize(),
   validate('portScanRange'),

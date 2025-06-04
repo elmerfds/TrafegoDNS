@@ -1,9 +1,14 @@
 /**
  * Database Module
- * Central entry point for database operations
+ * Central entry point for database operations with enhanced features
  */
 const logger = require('../utils/logger');
 const connection = require('./connection');
+const { pool, ConnectionPool } = require('./connectionPool');
+const { dataIntegrityService, DataIntegrityService } = require('./dataIntegrityService');
+const { migrationRunner, MigrationRunner } = require('./migrationRunner');
+const ImprovedBaseRepository = require('./repository/improvedBaseRepository');
+const ImprovedPortRepository = require('./repository/improvedPortRepository');
 const { migrateDnsTables } = require('./migrations/dnsTablesMigration');
 const { addLastRefreshedToProviderCache } = require('./migrations/addLastRefreshedToProviderCache');
 const { ensureLastRefreshedColumn } = require('./migrations/ensureLastRefreshedColumn');
@@ -410,6 +415,17 @@ module.exports = {
   setForceInitialized,
   reinitializeAfterRecovery,
   close,
+  
+  // Enhanced features
+  pool,
+  ConnectionPool,
+  dataIntegrityService,
+  DataIntegrityService,
+  migrationRunner,
+  MigrationRunner,
+  ImprovedBaseRepository,
+  ImprovedPortRepository,
+  
   get db() {
     return db;
   },

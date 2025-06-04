@@ -5,6 +5,7 @@
 const logger = require('../../utils/logger');
 const { EventBus } = require('../../events/EventBus');
 const EventTypes = require('../../events/EventTypes');
+const { cacheManager } = require('../../utils/cacheManager');
 const PortAvailabilityChecker = require('./portAvailabilityChecker');
 const PortReservationManager = require('./portReservationManager');
 const PortConflictDetector = require('./portConflictDetector');
@@ -32,9 +33,24 @@ class PortMonitor {
       this.availabilityChecker.setHostIp(config.hostIp, false); // Don't validate during initialization
     }
     
-    // Port monitoring state
-    this.monitoredPorts = new Map();
-    this.portChanges = new Map();
+    // Register cache namespaces for port monitoring state
+    cacheManager.registerCache('port_monitor_state', {
+      ttl: 0, // No TTL for persistent state
+      maxSize: 5000,
+      invalidateOn: ['port:status_changed', 'monitoring:stopped'],
+      keyPrefix: 'monitor'
+    });
+    
+    cacheManager.registerCache('port_documentation', {
+      ttl: 0, // No TTL for persistent documentation
+      maxSize: 1000,
+      invalidateOn: ['documentation:updated'],
+      keyPrefix: 'docs'
+    });
+    
+    // Initialize empty state in centralized cache
+    cacheManager.set('port_monitor_state', 'monitoredPorts', new Map());
+    cacheManager.set('port_monitor_state', 'portChanges', new Map());
     this.scanInterval = null;
     
     // Configuration
@@ -44,6 +60,41 @@ class PortMonitor {
     this.excludedPorts = this._parseExcludedPorts(config.EXCLUDED_PORTS || '22,80,443');
     
     this._bindEvents();
+    
+    logger.info('PortMonitor initialized with centralized cache');
+  }
+
+  // Helper methods for centralized cache operations
+  _getMonitoredPorts() {
+    return cacheManager.get('port_monitor_state', 'monitoredPorts') || new Map();
+  }
+
+  _setMonitoredPorts(ports) {
+    cacheManager.set('port_monitor_state', 'monitoredPorts', ports);
+  }
+
+  _getPortChanges() {
+    return cacheManager.get('port_monitor_state', 'portChanges') || new Map();
+  }
+
+  _setPortChanges(changes) {
+    cacheManager.set('port_monitor_state', 'portChanges', changes);
+  }
+
+  _getPortDocumentation() {
+    return cacheManager.get('port_documentation', 'portDocs') || new Map();
+  }
+
+  _setPortDocumentation(docs) {
+    cacheManager.set('port_documentation', 'portDocs', docs);
+  }
+
+  _getPortLabels() {
+    return cacheManager.get('port_documentation', 'portLabels') || new Map();
+  }
+
+  _setPortLabels(labels) {
+    cacheManager.set('port_documentation', 'portLabels', labels);
   }
 
   /**

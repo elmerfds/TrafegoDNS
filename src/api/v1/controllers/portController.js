@@ -1,10 +1,15 @@
 /**
  * Port Controller
- * Handles port-related API requests
+ * Handles port-related API requests with enhanced validation and error handling
  */
 const asyncHandler = require('express-async-handler');
 const { ApiError } = require('../../../utils/apiError');
 const logger = require('../../../utils/logger');
+const DataValidator = require('../../../utils/dataValidator');
+const { errorHandler, ValidationError, BusinessLogicError } = require('../../../utils/errorHandler');
+const { transactionManager } = require('../../../database/transactionManager');
+const { dataConsistencyService } = require('../../../services/dataConsistencyService');
+const protocolHandler = require('../../../utils/protocolHandler');
 
 /**
  * @desc    Get ports currently in use
@@ -64,43 +69,88 @@ const checkPortAvailability = asyncHandler(async (req, res) => {
     throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
-  const { ports, protocol = 'both', server = 'localhost' } = req.body;
-
-  if (!ports || !Array.isArray(ports) || ports.length === 0) {
-    throw new ApiError('Ports array is required', 400, 'INVALID_PORTS');
-  }
-
-  // Validate port numbers
-  const invalidPorts = ports.filter(port => 
-    !Number.isInteger(port) || port < 1 || port > 65535
-  );
-
-  if (invalidPorts.length > 0) {
-    throw new ApiError(
-      `Invalid port numbers: ${invalidPorts.join(', ')}`, 
-      400, 
-      'INVALID_PORT_NUMBERS'
-    );
-  }
-
-  if (!['tcp', 'udp', 'both'].includes(protocol)) {
-    throw new ApiError('Protocol must be tcp, udp, or both', 400, 'INVALID_PROTOCOL');
-  }
-
   try {
-    const result = await PortMonitor.checkPortsAvailability(ports, protocol, server);
+    // Validate input data using comprehensive validator
+    const validationResult = DataValidator.validate(req.body, {
+      ports: {
+        required: true,
+        type: 'array',
+        validator: (value) => {
+          if (!Array.isArray(value) || value.length === 0) {
+            return 'Ports array is required and cannot be empty';
+          }
+          const invalidPorts = value.filter(port => 
+            !Number.isInteger(port) || port < 1 || port > 65535
+          );
+          if (invalidPorts.length > 0) {
+            return `Invalid port numbers: ${invalidPorts.join(', ')}`;
+          }
+          return true;
+        }
+      },
+      protocol: {
+        type: 'string',
+        enum: ['tcp', 'udp', 'both'],
+        sanitizer: (value) => (value || 'both').toLowerCase()
+      },
+      server: {
+        type: 'string',
+        sanitizer: (value) => (value || 'localhost').trim()
+      }
+    });
+
+    if (!validationResult.isValid) {
+      throw new ValidationError(
+        validationResult.errors.join(', '),
+        null,
+        'VALIDATION_FAILED'
+      );
+    }
+
+    const { ports, protocol, server } = validationResult.sanitizedData;
+
+    // Execute port availability check with error handling
+    const result = await errorHandler.executeWithRetry(
+      async () => {
+        return await PortMonitor.checkPortsAvailability(ports, protocol, server);
+      },
+      {
+        context: {
+          operation: 'port_availability_check',
+          ports,
+          protocol,
+          server,
+          userId: req.user?.id
+        }
+      }
+    );
     
     res.json({
       success: true,
+      data: result,
       timestamp: new Date().toISOString()
     });
+    
   } catch (error) {
-    logger.error('Failed to check port availability:', error);
-    return res.apiError(
-      `Failed to check port availability: ${error.message}`,
-      500,
-      'CHECK_AVAILABILITY_FAILED'
-    );
+    await errorHandler.handleError(error, {
+      operation: 'port_availability_check',
+      data: req.body,
+      userId: req.user?.id
+    });
+    
+    if (error instanceof ValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: 'VALIDATION_ERROR',
+        message: error.message
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      error: 'CHECK_AVAILABILITY_FAILED',
+      message: `Failed to check port availability: ${error.message}`
+    });
   }
 });
 
@@ -113,68 +163,134 @@ const reservePorts = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    return res.apiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
-
-  const { 
-    ports, 
-    containerId, 
-    protocol = 'tcp', 
-    duration = 3600,
-    metadata = {},
-    server = 'localhost'
-  } = req.body;
-
-  // Validation
-  const errors = [];
-  if (!ports || !Array.isArray(ports) || ports.length === 0) {
-    errors.push('Ports array is required');
-  }
-  if (!containerId) {
-    errors.push('Container ID is required');
-  }
-  if (!protocolHandler.isValidProtocol(protocol)) {
-    errors.push('Protocol must be tcp, udp, or both');
-  }
-
-  if (errors.length > 0) {
-    return res.apiValidationError(errors);
-  }
-
-  // Normalize protocol
-  const normalizedProtocol = protocolHandler.normalizeProtocol(protocol);
-
-  // Add user info to metadata
-  metadata.createdBy = req.user?.username || 'system';
-  metadata.createdAt = new Date().toISOString();
 
   try {
-    const result = await PortMonitor.reservePorts({
-      ports,
-      containerId,
-      protocol: normalizedProtocol,
-      duration,
-      metadata,
-      server
+    // Validate input data using comprehensive validator
+    const validationResult = DataValidator.validate(req.body, {
+      ports: {
+        required: true,
+        type: 'array',
+        validator: (value) => {
+          if (!Array.isArray(value) || value.length === 0) {
+            return 'Ports array is required and cannot be empty';
+          }
+          const invalidPorts = value.filter(port => 
+            !Number.isInteger(port) || port < 1 || port > 65535
+          );
+          if (invalidPorts.length > 0) {
+            return `Invalid port numbers: ${invalidPorts.join(', ')}`;
+          }
+          return true;
+        }
+      },
+      containerId: {
+        required: true,
+        type: 'string',
+        minLength: 1,
+        sanitizer: (value) => value.trim()
+      },
+      protocol: {
+        type: 'string',
+        enum: ['tcp', 'udp', 'both'],
+        sanitizer: (value) => (value || 'tcp').toLowerCase()
+      },
+      duration: {
+        type: 'integer',
+        min: 60, // Minimum 1 minute
+        max: 31536000, // Maximum 1 year
+        sanitizer: (value) => parseInt(value) || 3600
+      },
+      server: {
+        type: 'string',
+        sanitizer: (value) => (value || 'localhost').trim()
+      }
     });
 
+    if (!validationResult.isValid) {
+      throw new ValidationError(
+        validationResult.errors.join(', '),
+        null,
+        'VALIDATION_FAILED'
+      );
+    }
+
+    const validatedData = validationResult.sanitizedData;
+    
+    // Add user info to metadata
+    const metadata = {
+      ...req.body.metadata,
+      createdBy: req.user?.username || 'system',
+      createdAt: new Date().toISOString()
+    };
+
+    // Execute port reservation with consistency checks and transaction management
+    const result = await dataConsistencyService.executeWithConsistency(
+      'port_reserve',
+      async (transaction) => {
+        return await PortMonitor.reservePorts({
+          ...validatedData,
+          metadata
+        }, { transaction });
+      },
+      validatedData,
+      {
+        context: {
+          userId: req.user?.id,
+          operation: 'port_reservation',
+          metadata
+        }
+      }
+    );
+
     if (result.conflicts && result.conflicts.length > 0) {
-      return res.apiConflict('Some ports are already in use', {
-        conflicts: result.conflicts,
-        available: result.available || []
+      return res.status(409).json({
+        success: false,
+        error: 'PORT_CONFLICTS',
+        message: 'Some ports are already in use',
+        data: {
+          conflicts: result.conflicts,
+          available: result.available || []
+        }
       });
     }
 
-    return res.status(201).json(
-      ApiResponse.success(result, 'Ports reserved successfully')
-    );
+    return res.status(201).json({
+      success: true,
+      message: 'Ports reserved successfully',
+      data: result
+    });
+    
   } catch (error) {
-    logger.error('Failed to reserve ports:', error);
-    return res.apiError(
-      `Failed to reserve ports: ${error.message}`,
-      500,
-      'PORT_RESERVATION_FAILED'
-    );
+    await errorHandler.handleError(error, {
+      operation: 'port_reservation',
+      data: req.body,
+      userId: req.user?.id
+    });
+    
+    if (error instanceof ValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: 'VALIDATION_ERROR',
+        message: error.message
+      });
+    }
+    
+    if (error instanceof BusinessLogicError) {
+      return res.status(409).json({
+        success: false,
+        error: 'BUSINESS_LOGIC_ERROR',
+        message: error.message,
+        context: error.context
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      error: 'PORT_RESERVATION_FAILED',
+      message: `Failed to reserve ports: ${error.message}`
+    });
   }
 });
 
@@ -187,26 +303,85 @@ const releasePorts = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    return res.apiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
-  }
-
-  const { ports, containerId } = req.body;
-
-  if (!containerId) {
-    return res.apiValidationError(['Container ID is required']);
+    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
   try {
-    const result = await PortMonitor.releasePorts(containerId, ports);
-    
-    return res.apiSuccess(result, 'Ports released successfully');
-  } catch (error) {
-    logger.error('Failed to release ports:', error);
-    return res.apiError(
-      `Failed to release ports: ${error.message}`,
-      500,
-      'PORT_RELEASE_FAILED'
+    // Validate input data
+    const validationResult = DataValidator.validate(req.body, {
+      containerId: {
+        required: true,
+        type: 'string',
+        minLength: 1,
+        sanitizer: (value) => value.trim()
+      },
+      ports: {
+        type: 'array',
+        validator: (value) => {
+          if (value && Array.isArray(value)) {
+            const invalidPorts = value.filter(port => 
+              !Number.isInteger(port) || port < 1 || port > 65535
+            );
+            if (invalidPorts.length > 0) {
+              return `Invalid port numbers: ${invalidPorts.join(', ')}`;
+            }
+          }
+          return true;
+        }
+      }
+    });
+
+    if (!validationResult.isValid) {
+      throw new ValidationError(
+        validationResult.errors.join(', '),
+        null,
+        'VALIDATION_FAILED'
+      );
+    }
+
+    const { containerId, ports } = validationResult.sanitizedData;
+
+    // Execute port release with consistency checks and transaction management
+    const result = await dataConsistencyService.executeWithConsistency(
+      'port_release',
+      async (transaction) => {
+        return await PortMonitor.releasePorts(containerId, ports, { transaction });
+      },
+      { containerId, ports },
+      {
+        context: {
+          userId: req.user?.id,
+          operation: 'port_release'
+        }
+      }
     );
+    
+    return res.json({
+      success: true,
+      message: 'Ports released successfully',
+      data: result
+    });
+    
+  } catch (error) {
+    await errorHandler.handleError(error, {
+      operation: 'port_release',
+      data: req.body,
+      userId: req.user?.id
+    });
+    
+    if (error instanceof ValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: 'VALIDATION_ERROR',
+        message: error.message
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      error: 'PORT_RELEASE_FAILED',
+      message: `Failed to release ports: ${error.message}`
+    });
   }
 });
 
@@ -237,11 +412,17 @@ const updatePortDocumentation = asyncHandler(async (req, res) => {
       message: 'Port documentation updated successfully'
     });
   } catch (error) {
-    throw new ApiError(
-      `Failed to update documentation: ${error.message}`,
-      500,
-      'UPDATE_DOCUMENTATION_FAILED'
-    );
+    await errorHandler.handleError(error, {
+      operation: 'update_port_documentation',
+      port,
+      userId: req.user?.id
+    });
+    
+    return res.status(500).json({
+      success: false,
+      error: 'UPDATE_DOCUMENTATION_FAILED',
+      message: `Failed to update documentation: ${error.message}`
+    });
   }
 });
 
@@ -276,11 +457,17 @@ const updatePortServiceLabel = asyncHandler(async (req, res) => {
       message: 'Port service label updated successfully'
     });
   } catch (error) {
-    throw new ApiError(
-      `Failed to update service label: ${error.message}`,
-      500,
-      'UPDATE_SERVICE_LABEL_FAILED'
-    );
+    await errorHandler.handleError(error, {
+      operation: 'update_port_service_label',
+      port,
+      userId: req.user?.id
+    });
+    
+    return res.status(500).json({
+      success: false,
+      error: 'UPDATE_SERVICE_LABEL_FAILED',
+      message: `Failed to update service label: ${error.message}`
+    });
   }
 });
 
@@ -293,54 +480,120 @@ const suggestAlternativePorts = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    return res.apiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
-
-  const {
-    requestedPorts: ports,
-    protocol = 'tcp',
-    serviceType = 'custom',
-    maxSuggestions = 5,
-    server = 'localhost'
-  } = req.body;
-
-  logger.info(`📡 API: Suggest alternatives request: ports=${JSON.stringify(ports)}, protocol=${protocol}, serviceType=${serviceType}`);
-
-  if (!ports || !Array.isArray(ports) || ports.length === 0) {
-    return res.apiValidationError(['Ports array is required']);
-  }
-
-  // Validate and normalize protocol
-  if (!protocolHandler.isValidProtocol(protocol)) {
-    return res.apiValidationError(['Protocol must be tcp, udp, or both']);
-  }
-
-  const normalizedProtocol = protocolHandler.normalizeProtocol(protocol);
 
   try {
-    // Use the standardized method signature
-    const suggestionsResult = await PortMonitor.suggestionEngine.suggestAlternativePorts({
-      requestedPorts: ports,
-      protocol: normalizedProtocol,
+    // Validate input data using comprehensive validator
+    const validationResult = DataValidator.validate(req.body, {
+      requestedPorts: {
+        required: true,
+        type: 'array',
+        validator: (value) => {
+          if (!Array.isArray(value) || value.length === 0) {
+            return 'Requested ports array is required and cannot be empty';
+          }
+          const invalidPorts = value.filter(port => 
+            !Number.isInteger(port) || port < 1 || port > 65535
+          );
+          if (invalidPorts.length > 0) {
+            return `Invalid port numbers: ${invalidPorts.join(', ')}`;
+          }
+          return true;
+        }
+      },
+      protocol: {
+        type: 'string',
+        enum: ['tcp', 'udp', 'both'],
+        sanitizer: (value) => (value || 'tcp').toLowerCase()
+      },
+      serviceType: {
+        type: 'string',
+        sanitizer: (value) => (value || 'custom').toLowerCase().trim()
+      },
+      maxSuggestions: {
+        type: 'integer',
+        min: 1,
+        max: 20,
+        sanitizer: (value) => parseInt(value) || 5
+      },
+      server: {
+        type: 'string',
+        sanitizer: (value) => (value || 'localhost').trim()
+      }
+    });
+
+    if (!validationResult.isValid) {
+      throw new ValidationError(
+        validationResult.errors.join(', '),
+        null,
+        'VALIDATION_FAILED'
+      );
+    }
+
+    const { requestedPorts, protocol, serviceType, maxSuggestions, server } = validationResult.sanitizedData;
+
+    logger.info(`📡 API: Suggest alternatives request:`, {
+      ports: requestedPorts,
+      protocol,
+      serviceType,
       maxSuggestions
     });
-    
-    logger.info(`📡 API: Suggestions result:`, JSON.stringify(suggestionsResult));
 
-    return res.apiSuccess({
-      suggestions: suggestionsResult || [],
-      original: ports,
-      protocol: normalizedProtocol,
-      serviceType,
-      timestamp: new Date().toISOString()
-    }, 'Port alternatives suggested successfully');
-  } catch (error) {
-    logger.error('Failed to suggest alternatives:', error);
-    return res.apiError(
-      `Failed to suggest alternatives: ${error.message}`,
-      500,
-      'SUGGEST_ALTERNATIVES_FAILED'
+    // Execute port suggestion with error handling and retry
+    const suggestionsResult = await errorHandler.executeWithRetry(
+      async () => {
+        return await PortMonitor.suggestionEngine.suggestAlternativePorts({
+          requestedPorts,
+          protocol,
+          maxSuggestions
+        });
+      },
+      {
+        context: {
+          operation: 'port_suggestion',
+          requestedPorts,
+          protocol,
+          serviceType,
+          userId: req.user?.id
+        }
+      }
     );
+    
+    logger.info(`📡 API: Suggestions result:`, suggestionsResult);
+
+    return res.json({
+      success: true,
+      message: 'Port alternatives suggested successfully',
+      data: {
+        suggestions: suggestionsResult || [],
+        original: requestedPorts,
+        protocol,
+        serviceType,
+        timestamp: new Date().toISOString()
+      }
+    });
+    
+  } catch (error) {
+    await errorHandler.handleError(error, {
+      operation: 'port_suggestion',
+      data: req.body,
+      userId: req.user?.id
+    });
+    
+    if (error instanceof ValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: 'VALIDATION_ERROR',
+        message: error.message
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      error: 'SUGGEST_ALTERNATIVES_FAILED',
+      message: `Failed to suggest alternatives: ${error.message}`
+    });
   }
 });
 
@@ -356,32 +609,93 @@ const validateDeployment = asyncHandler(async (req, res) => {
     throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
 
-  const { ports, containerId, containerName, serviceType } = req.body;
-
-  if (!ports || !Array.isArray(ports) || ports.length === 0) {
-    throw new ApiError('Ports array is required', 400, 'INVALID_PORTS');
-  }
-
   try {
-    const validation = await PortMonitor.validateDeployment({
-      ports,
-      containerId,
-      containerName,
-      serviceType
+    // Validate input data using comprehensive validator
+    const validationResult = DataValidator.validate(req.body, {
+      ports: {
+        required: true,
+        type: 'array',
+        validator: (value) => {
+          if (!Array.isArray(value) || value.length === 0) {
+            return 'Ports array is required and cannot be empty';
+          }
+          const invalidPorts = value.filter(port => 
+            !Number.isInteger(port) || port < 1 || port > 65535
+          );
+          if (invalidPorts.length > 0) {
+            return `Invalid port numbers: ${invalidPorts.join(', ')}`;
+          }
+          return true;
+        }
+      },
+      containerId: {
+        type: 'string',
+        sanitizer: (value) => value ? value.trim() : value
+      },
+      containerName: {
+        type: 'string',
+        sanitizer: (value) => value ? value.trim() : value
+      },
+      serviceType: {
+        type: 'string',
+        sanitizer: (value) => value ? value.toLowerCase().trim() : 'custom'
+      }
     });
+
+    if (!validationResult.isValid) {
+      throw new ValidationError(
+        validationResult.errors.join(', '),
+        null,
+        'VALIDATION_FAILED'
+      );
+    }
+
+    const deploymentConfig = validationResult.sanitizedData;
+
+    // Execute deployment validation with consistency checks
+    const validation = await dataConsistencyService.executeWithConsistency(
+      'deployment_validate',
+      async (transaction) => {
+        return await PortMonitor.validateDeployment(deploymentConfig, { transaction });
+      },
+      deploymentConfig,
+      {
+        context: {
+          userId: req.user?.id,
+          operation: 'deployment_validation'
+        },
+        skipPostValidation: true // Validation operation doesn't modify data
+      }
+    );
 
     const statusCode = validation.isValid ? 200 : 409;
 
     res.status(statusCode).json({
       success: validation.isValid,
-      data: validation
+      data: validation,
+      timestamp: new Date().toISOString()
     });
+    
   } catch (error) {
-    throw new ApiError(
-      `Failed to validate deployment: ${error.message}`,
-      500,
-      'VALIDATE_DEPLOYMENT_FAILED'
-    );
+    await errorHandler.handleError(error, {
+      operation: 'deployment_validation',
+      data: req.body,
+      userId: req.user?.id
+    });
+    
+    if (error instanceof ValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: 'VALIDATION_ERROR',
+        message: error.message
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      error: 'VALIDATE_DEPLOYMENT_FAILED',
+      message: `Failed to validate deployment: ${error.message}`
+    });
   }
 });
 
@@ -398,18 +712,47 @@ const getPortStatistics = asyncHandler(async (req, res) => {
   }
 
   try {
-    const statistics = await PortMonitor.getStatistics();
+    // Execute statistics retrieval with error handling and caching
+    const statistics = await errorHandler.executeWithRetry(
+      async () => {
+        return await PortMonitor.getStatistics();
+      },
+      {
+        context: {
+          operation: 'port_statistics',
+          userId: req.user?.id
+        }
+      }
+    );
+    
+    // Add consistency metrics if available
+    const consistencyMetrics = dataConsistencyService.getMetrics();
+    const enhancedStatistics = {
+      ...statistics,
+      consistency: {
+        lastCheck: consistencyMetrics.lastCheck?.timestamp,
+        rulesViolated: consistencyMetrics.rulesViolated,
+        autoFixesApplied: consistencyMetrics.autoFixesApplied
+      },
+      timestamp: new Date().toISOString()
+    };
     
     res.json({
       success: true,
-      data: statistics
+      data: enhancedStatistics
     });
+    
   } catch (error) {
-    throw new ApiError(
-      `Failed to get port statistics: ${error.message}`,
-      500,
-      'GET_STATISTICS_FAILED'
-    );
+    await errorHandler.handleError(error, {
+      operation: 'port_statistics',
+      userId: req.user?.id
+    });
+    
+    return res.status(500).json({
+      success: false,
+      error: 'GET_STATISTICS_FAILED',
+      message: `Failed to get port statistics: ${error.message}`
+    });
   }
 });
 
@@ -448,11 +791,17 @@ const getPortReservations = asyncHandler(async (req, res) => {
       }
     });
   } catch (error) {
-    throw new ApiError(
-      `Failed to get reservations: ${error.message}`,
-      500,
-      'GET_RESERVATIONS_FAILED'
-    );
+    await errorHandler.handleError(error, {
+      operation: 'get_port_reservations',
+      query: req.query,
+      userId: req.user?.id
+    });
+    
+    return res.status(500).json({
+      success: false,
+      error: 'GET_RESERVATIONS_FAILED',
+      message: `Failed to get reservations: ${error.message}`
+    });
   }
 });
 
@@ -494,12 +843,25 @@ const getPortRecommendations = asyncHandler(async (req, res) => {
 
     return res.apiSuccess(recommendations, 'Port recommendations generated successfully');
   } catch (error) {
-    logger.error('Failed to get recommendations:', error);
-    return res.apiError(
-      `Failed to get recommendations: ${error.message}`,
-      500,
-      'GET_RECOMMENDATIONS_FAILED'
-    );
+    await errorHandler.handleError(error, {
+      operation: 'port_recommendations',
+      data: req.body,
+      userId: req.user?.id
+    });
+    
+    if (error instanceof ValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: 'VALIDATION_ERROR',
+        message: error.message
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      error: 'GET_RECOMMENDATIONS_FAILED',
+      message: `Failed to get recommendations: ${error.message}`
+    });
   }
 });
 
@@ -512,34 +874,73 @@ const scanPortRange = asyncHandler(async (req, res) => {
   const { PortMonitor } = global.services || {};
   
   if (!PortMonitor) {
-    return res.apiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+    throw new ApiError('Port monitor not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
   }
-
-  const { startPort, endPort, protocol = 'tcp', server = 'localhost' } = req.body;
-
-  // Validation
-  const errors = [];
-  if (!startPort || !endPort) {
-    errors.push('Start and end ports are required');
-  }
-  if (startPort < 1 || endPort > 65535 || startPort >= endPort) {
-    errors.push('Invalid port range');
-  }
-  if (endPort - startPort > 1000) {
-    errors.push('Port range too large (max 1000 ports)');
-  }
-  if (!protocolHandler.isValidProtocol(protocol)) {
-    errors.push('Protocol must be tcp, udp, or both');
-  }
-
-  if (errors.length > 0) {
-    return res.apiValidationError(errors);
-  }
-
-  const normalizedProtocol = protocolHandler.normalizeProtocol(protocol);
 
   try {
-    const results = await PortMonitor.scanPortRange(startPort, endPort, normalizedProtocol, server);
+    // Validate input data using comprehensive validator
+    const validationResult = DataValidator.validate(req.body, {
+      startPort: {
+        required: true,
+        type: 'port',
+        sanitizer: (value) => parseInt(value)
+      },
+      endPort: {
+        required: true,
+        type: 'port',
+        sanitizer: (value) => parseInt(value)
+      },
+      protocol: {
+        type: 'string',
+        enum: ['tcp', 'udp', 'both'],
+        sanitizer: (value) => (value || 'tcp').toLowerCase()
+      },
+      server: {
+        type: 'string',
+        sanitizer: (value) => (value || 'localhost').trim()
+      }
+    }, {
+      // Custom validation for port range
+      validator: (data) => {
+        const { startPort, endPort } = data;
+        if (startPort >= endPort) {
+          return 'Start port must be less than end port';
+        }
+        if (endPort - startPort > 1000) {
+          return 'Port range too large (max 1000 ports)';
+        }
+        return true;
+      }
+    });
+
+    if (!validationResult.isValid) {
+      throw new ValidationError(
+        validationResult.errors.join(', '),
+        null,
+        'VALIDATION_FAILED'
+      );
+    }
+
+    const { startPort, endPort, protocol, server } = validationResult.sanitizedData;
+
+    // Execute port range scan with error handling
+    const results = await errorHandler.executeWithRetry(
+      async () => {
+        return await PortMonitor.scanPortRange(startPort, endPort, protocol, server);
+      },
+      {
+        context: {
+          operation: 'port_range_scan',
+          startPort,
+          endPort,
+          protocol,
+          server,
+          userId: req.user?.id
+        },
+        maxRetries: 1 // Reduce retries for potentially long-running operations
+      }
+    );
+    
     const availablePorts = Object.entries(results)
       .filter(([_, available]) => available)
       .map(([port, _]) => parseInt(port));
@@ -551,23 +952,42 @@ const scanPortRange = asyncHandler(async (req, res) => {
       availabilityPercentage: Math.round((availablePorts.length / (endPort - startPort + 1)) * 100)
     };
 
-    return res.apiSuccess({
-      results,
-      summary
-    }, 'Port range scan completed successfully', {
-      startPort,
-      endPort,
-      protocol: normalizedProtocol,
-      server,
-      timestamp: new Date().toISOString()
+    return res.json({
+      success: true,
+      message: 'Port range scan completed successfully',
+      data: {
+        results,
+        summary,
+        metadata: {
+          startPort,
+          endPort,
+          protocol,
+          server,
+          timestamp: new Date().toISOString()
+        }
+      }
     });
+    
   } catch (error) {
-    logger.error('Failed to scan port range:', error);
-    return res.apiError(
-      `Failed to scan port range: ${error.message}`,
-      500,
-      'PORT_SCAN_FAILED'
-    );
+    await errorHandler.handleError(error, {
+      operation: 'port_range_scan',
+      data: req.body,
+      userId: req.user?.id
+    });
+    
+    if (error instanceof ValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: 'VALIDATION_ERROR',
+        message: error.message
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      error: 'PORT_SCAN_FAILED',
+      message: `Failed to scan port range: ${error.message}`
+    });
   }
 });
 

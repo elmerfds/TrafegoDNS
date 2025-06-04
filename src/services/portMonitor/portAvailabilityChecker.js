@@ -7,15 +7,22 @@ const { spawn } = require('child_process');
 const logger = require('../../utils/logger');
 const protocolHandler = require('../../utils/protocolHandler');
 const { PortCheckError, wrapPortError } = require('../../utils/portError');
+const { cacheManager } = require('../../utils/cacheManager');
 
 class PortAvailabilityChecker {
   constructor(config) {
     this.config = config;
     this.connectionTimeout = config.PORT_CHECK_TIMEOUT || 1000; // 1 second
     this.preferredMethod = config.PORT_CHECK_METHOD || 'socket'; // socket, netstat, ss
-    this.cache = new Map();
-    this.cacheTimeout = config.PORT_CACHE_TIMEOUT || 5000; // 5 seconds
     this.isDocker = require('fs').existsSync('/.dockerenv');
+    
+    // Register cache namespace for port availability
+    cacheManager.registerCache('port_availability', {
+      ttl: config.PORT_CACHE_TIMEOUT || 5000, // 5 seconds
+      maxSize: 2000,
+      invalidateOn: ['port:status_changed', 'system:port_scan'],
+      keyPrefix: 'availability'
+    });
     
     // Check for manually configured host IP
     this.hostIp = config.HOST_IP || config.DOCKER_HOST_IP || process.env.HOST_IP || process.env.DOCKER_HOST_IP || null;
@@ -23,6 +30,8 @@ class PortAvailabilityChecker {
     if (this.hostIp) {
       logger.info(`🔧 Using manually configured host IP: ${this.hostIp}`);
     }
+    
+    logger.info('PortAvailabilityChecker initialized with centralized cache');
   }
 
   /**
@@ -66,10 +75,10 @@ class PortAvailabilityChecker {
     logger.debug(`🔍 checkSinglePort: port=${port}, protocol=${protocol}, host=${host}, targetHost=${targetHost}, method=${this.preferredMethod}`);
     
     const cacheKey = `${targetHost}:${port}:${protocol}`;
-    const cached = this.cache.get(cacheKey);
+    const cached = cacheManager.get('port_availability', cacheKey);
     
-    if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
-      return cached.available;
+    if (cached !== null) {
+      return cached;
     }
 
     try {
@@ -97,10 +106,9 @@ class PortAvailabilityChecker {
           break;
       }
 
-      // Cache the result
-      this.cache.set(cacheKey, {
-        available,
-        timestamp: Date.now()
+      // Cache the result in centralized cache
+      cacheManager.set('port_availability', cacheKey, available, {
+        tags: [`host:${targetHost}`, `port:${port}`, `protocol:${protocol}`, 'availability_check']
       });
 
       return available;
@@ -345,7 +353,8 @@ class PortAvailabilityChecker {
    * Clear the availability cache
    */
   clearCache() {
-    this.cache.clear();
+    cacheManager.clear('port_availability');
+    logger.debug('Cleared port availability cache');
   }
 
   /**
@@ -353,23 +362,11 @@ class PortAvailabilityChecker {
    * @returns {Object}
    */
   getCacheStats() {
-    const now = Date.now();
-    let validEntries = 0;
-    let expiredEntries = 0;
-
-    for (const [key, value] of this.cache.entries()) {
-      if (now - value.timestamp < this.cacheTimeout) {
-        validEntries++;
-      } else {
-        expiredEntries++;
-      }
-    }
-
+    const stats = cacheManager.getStats('port_availability');
     return {
-      totalEntries: this.cache.size,
-      validEntries,
-      expiredEntries,
-      cacheTimeout: this.cacheTimeout
+      namespace: 'port_availability',
+      ...stats.namespaces.port_availability || {},
+      globalMetrics: stats.metrics
     };
   }
 

@@ -14,6 +14,8 @@ import { Progress } from './ui/progress';
 import { AlertTriangle, CheckCircle, XCircle, Search, Settings, Activity, Wifi, WifiOff, Plus, Server, Clock, Lock, X } from 'lucide-react';
 import { useSocket } from '../hooks/useSocket';
 import { api } from '../lib/api';
+import { usePortStore, usePortsData, useReservationsData, useServersData, usePortStatistics } from '../store/portStore';
+import type { PortReservation } from '../types/port';
 
 interface PortStatus {
   port: number;
@@ -22,16 +24,6 @@ interface PortStatus {
   reservedBy?: string;
   reservedUntil?: string;
   protocol: string;
-}
-
-interface PortReservation {
-  id: number;
-  port: number;
-  container_id: string;
-  protocol: string;
-  expires_at: string;
-  metadata: Record<string, any>;
-  created_at: string;
 }
 
 interface PortConflict {
@@ -47,16 +39,7 @@ interface PortSuggestion {
   alternatives: number[];
 }
 
-interface PortStatistics {
-  totalMonitoredPorts: number;
-  activeReservations: number;
-  availablePortsInRange: number;
-  conflictsDetected: number;
-  lastScanTime: string;
-  monitoringEnabled: boolean;
-  portRanges: Array<{ start: number; end: number }>;
-  excludedPorts: number[];
-}
+// Remove old PortStatistics interface - using the one from types/port.ts
 
 interface PortInUse {
   port: number;
@@ -83,13 +66,32 @@ interface Server {
 }
 
 export default function PortMonitoring() {
-  const [statistics, setStatistics] = useState<PortStatistics | null>(null);
-  const [reservations, setReservations] = useState<PortReservation[]>([]);
+  // Zustand store hooks
+  const { statistics, loading: statsLoading, error: statsError } = usePortStatistics();
+  const { reservations, loading: reservationsLoading, error: reservationsError } = useReservationsData();
+  const { servers, selectedServer, loading: serversLoading, error: serversError } = useServersData();
+  const {
+    fetchStatistics,
+    fetchReservations,
+    fetchServers,
+    setSelectedServer,
+    createReservation,
+    releaseReservation,
+    refreshAll,
+    clearErrors
+  } = usePortStore();
+  
+  // Local state for UI interactions
   const [portCheckResults, setPortCheckResults] = useState<PortStatus[]>([]);
   const [portScanResults, setPortScanResults] = useState<PortStatus[]>([]);
   const [portSuggestions, setPortSuggestions] = useState<PortSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Update error state when store errors change
+  useEffect(() => {
+    setError(statsError || reservationsError || serversError);
+  }, [statsError, reservationsError, serversError]);
   const [portManagementEnabled, setPortManagementEnabled] = useState<boolean>(false);
   const [setupMode, setSetupMode] = useState<boolean>(false);
   const [setupHostIp, setSetupHostIp] = useState<string>('');
@@ -100,10 +102,8 @@ export default function PortMonitoring() {
   const [scanStartPort, setScanStartPort] = useState('3000');
   const [scanEndPort, setScanEndPort] = useState('3100');
   const [serviceType, setServiceType] = useState('web');
-  const [selectedServer, setSelectedServer] = useState('host');
   const [customServerIp, setCustomServerIp] = useState('');
   const [portsInUse, setPortsInUse] = useState<PortInUse[]>([]);
-  const [servers, setServers] = useState<Server[]>([]);
   
   // Debug server state changes
   useEffect(() => {
@@ -137,6 +137,15 @@ export default function PortMonitoring() {
   // Real-time updates
   const { socket, isConnected } = useSocket();
   
+  // Real-time status updates for UI feedback
+  useEffect(() => {
+    if (isConnected) {
+      console.debug('WebSocket connected - real-time updates active');
+    } else {
+      console.debug('WebSocket disconnected - using polling fallback');
+    }
+  }, [isConnected]);
+  
   // Watch for config changes to sync host IP
   const { data: configData } = useQuery({
     queryKey: ['config'],
@@ -151,11 +160,8 @@ export default function PortMonitoring() {
   useEffect(() => {
     if (configData?.hostIp) {
       console.log('PortMonitoring: Config changed, updating host IP to:', configData.hostIp);
-      setServers(prev => prev.map(server => 
-        server.isHost 
-          ? { ...server, ip: configData.hostIp }
-          : server
-      ));
+      // Server updates are now handled by the Zustand store
+      fetchServers();
     }
     
     // Check if port management is enabled
@@ -166,28 +172,17 @@ export default function PortMonitoring() {
         setSetupHostIp(configData.hostIp || '');
       }
     }
-  }, [configData?.hostIp, configData?.portManagementEnabled]);
+  }, [configData?.hostIp, configData?.portManagementEnabled, fetchServers]);
   
   useEffect(() => {
-    loadStatistics();
-    loadReservations();
-    loadServers();
+    // Load initial data using Zustand store
+    fetchStatistics();
+    fetchReservations();
+    fetchServers();
     loadHostConfiguration();
-  }, []);
+  }, [fetchStatistics, fetchReservations, fetchServers]);
 
-  const loadServers = async () => {
-    try {
-      const response = await api.get('/servers');
-      if (response.data && response.data.data && response.data.data.servers) {
-        setServers(response.data.data.servers);
-        console.log('Loaded servers from API:', response.data.data.servers);
-      }
-    } catch (error) {
-      console.error('Failed to load servers:', error);
-      // Fallback to default host server if API fails
-      setServers([{ id: 'host', name: 'Host Server', ip: 'localhost', isHost: true }]);
-    }
-  };
+  // Remove loadServers - now handled by Zustand store
 
   const loadHostConfiguration = async () => {
     try {
@@ -198,11 +193,8 @@ export default function PortMonitoring() {
       
       // Update the host server IP with the configured value
       if (config.hostIp) {
-        setServers(prev => prev.map(server => 
-          server.isHost 
-            ? { ...server, ip: config.hostIp }
-            : server
-        ));
+        // Server updates are now handled by Zustand store
+        await fetchServers();
         console.log('PortMonitoring: Updated host server IP to:', config.hostIp);
       }
     } catch (error) {
@@ -269,61 +261,14 @@ export default function PortMonitoring() {
     }
   }, [portsInUse, searchTerm]);
 
-  useEffect(() => {
-    if (socket && isConnected) {
-      // Subscribe to port monitoring events
-      socket.emit('subscribe', 'port:changed');
-      socket.emit('subscribe', 'port:reserved');
-      socket.emit('subscribe', 'port:released');
-      socket.emit('subscribe', 'port:conflict:detected');
-      socket.emit('subscribe', 'port:scan:completed');
+  // WebSocket events are now handled automatically by the WebSocket service
+  // The service connects WebSocket events to the port store, so we don't need
+  // manual event handling here anymore. The store will automatically update
+  // and components will re-render with fresh data.
 
-      socket.on('event', (event: any) => {
-        handlePortEvent(event);
-      });
+  // Remove loadStatistics - now handled by Zustand store
 
-      return () => {
-        socket.off('event');
-      };
-    }
-  }, [socket, isConnected]);
-
-  const handlePortEvent = (event: any) => {
-    const { type, data } = event;
-    
-    switch (type) {
-      case 'port:changed':
-      case 'port:reserved':
-      case 'port:released':
-        loadReservations();
-        loadStatistics();
-        break;
-      case 'port:conflict:detected':
-        setError(`Port conflict detected: ${data.description}`);
-        break;
-      case 'port:scan:completed':
-        loadStatistics();
-        break;
-    }
-  };
-
-  const loadStatistics = async () => {
-    try {
-      const response = await api.get('/ports/statistics');
-      setStatistics(response.data.data);
-    } catch (error) {
-      console.error('Failed to load port statistics:', error);
-    }
-  };
-
-  const loadReservations = async () => {
-    try {
-      const response = await api.get('/ports/reservations');
-      setReservations(response.data.data.reservations);
-    } catch (error) {
-      console.error('Failed to load port reservations:', error);
-    }
-  };
+  // Remove loadReservations - now handled by Zustand store
 
   const loadPortsInUse = async () => {
     console.log('loadPortsInUse called with selectedServer:', selectedServer, 'customServerIp:', customServerIp);
@@ -416,7 +361,7 @@ export default function PortMonitoring() {
         console.log('Server created successfully via API:', response.data.data.server);
         
         // Reload servers from API to get the updated list
-        await loadServers();
+        await fetchServers();
         
         // Clear form
         setNewServerName('');
@@ -452,7 +397,7 @@ export default function PortMonitoring() {
       console.log('Server deleted successfully via API:', serverId);
       
       // Reload servers from API to get the updated list
-      await loadServers();
+      await fetchServers();
       
       // If the removed server was selected, switch back to host
       if (selectedServer === serverId) {
@@ -491,7 +436,7 @@ export default function PortMonitoring() {
         setSetupMode(false);
         
         // Reload servers and other data
-        await loadServers();
+        await fetchServers();
         await loadHostConfiguration();
         
         console.log('Port management enabled successfully');
@@ -561,12 +506,8 @@ export default function PortMonitoring() {
       });
       console.log('API response:', response.data);
 
-      // Update the local servers state
-      setServers(prev => prev.map(server => 
-        server.isHost 
-          ? { ...server, ip: editHostIpValue.trim() }
-          : server
-      ));
+      // Refresh servers to get updated host IP
+      await fetchServers();
 
       setEditingHostIp(false);
       setEditHostIpValue('');
@@ -590,7 +531,7 @@ export default function PortMonitoring() {
     }
   };
 
-  const createReservation = async () => {
+  const handleCreateReservation = async () => {
     if (!reservationPort || !reservationContainerId) {
       setError('Port and Container ID are required');
       return;
@@ -622,10 +563,10 @@ export default function PortMonitoring() {
           break;
       }
 
-      await api.post('/ports/reserve', {
+      await createReservation({
         ports: [parseInt(reservationPort)],
-        containerId: reservationContainerId,
-        protocol: protocol === 'both' ? 'tcp' : protocol,
+        container_id: reservationContainerId,
+        protocol: (protocol === 'both' ? 'tcp' : protocol) as 'tcp' | 'udp' | 'both',
         duration: durationInSeconds,
         metadata: {
           notes: reservationNotes,
@@ -641,7 +582,6 @@ export default function PortMonitoring() {
       setReservationDurationValue('1');
       setReservationDurationType('hours');
       setReservationNotes('');
-      loadReservations();
     } catch (error: any) {
       setError(error.response?.data?.message || 'Failed to create reservation');
     } finally {
@@ -908,16 +848,9 @@ export default function PortMonitoring() {
     return new Date(dateString).toLocaleString();
   };
 
-  const releaseReservation = async (reservation: PortReservation) => {
+  const handleReleaseReservation = async (reservation: PortReservation) => {
     try {
-      await api.delete('/ports/reserve', {
-        data: {
-          ports: [reservation.port],
-          containerId: reservation.container_id
-        }
-      });
-      loadReservations();
-      loadStatistics();
+      await releaseReservation(reservation.id);
     } catch (error) {
       console.error('Failed to release reservation:', error);
       setError('Failed to release reservation');
@@ -1038,7 +971,7 @@ export default function PortMonitoring() {
               <Activity className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{statistics.totalMonitoredPorts}</div>
+              <div className="text-2xl font-bold">{Object.values(statistics.ports.byStatus).reduce((a, b) => a + b, 0)}</div>
             </CardContent>
           </Card>
 
@@ -1048,7 +981,7 @@ export default function PortMonitoring() {
               <Settings className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{statistics.activeReservations}</div>
+              <div className="text-2xl font-bold">{reservations.filter(r => r.status === 'active').length}</div>
             </CardContent>
           </Card>
 
@@ -1058,28 +991,22 @@ export default function PortMonitoring() {
               <CheckCircle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{statistics.availablePortsInRange}</div>
+              <div className="text-2xl font-bold">{statistics.ports.byStatus.closed || 0}</div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Monitoring Status</CardTitle>
-              {statistics.monitoringEnabled ? (
-                <Wifi className="h-4 w-4 text-green-500" />
-              ) : (
-                <WifiOff className="h-4 w-4 text-red-500" />
-              )}
+              <Wifi className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
               <div className="text-sm">
-                {statistics.monitoringEnabled ? 'Active' : 'Inactive'}
+                Active
               </div>
-              {statistics.lastScanTime && (
-                <div className="text-xs text-muted-foreground">
-                  Last scan: {formatDate(statistics.lastScanTime)}
-                </div>
-              )}
+              <div className="text-xs text-muted-foreground">
+                Recent activity: {statistics.ports.recentActivity}
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -1108,7 +1035,7 @@ export default function PortMonitoring() {
                 <div>
                   <Label htmlFor="serverSelect">Server</Label>
                   <div className="flex space-x-2">
-                    <Select value={selectedServer} onValueChange={setSelectedServer}>
+                    <Select value={selectedServer || ''} onValueChange={setSelectedServer}>
                       <SelectTrigger className="w-48">
                         <SelectValue />
                       </SelectTrigger>
@@ -1314,7 +1241,7 @@ export default function PortMonitoring() {
               <div>
                 <Label htmlFor="checkServerSelect">Server</Label>
                 <div className="flex space-x-2">
-                  <Select value={selectedServer} onValueChange={setSelectedServer}>
+                  <Select value={selectedServer || ''} onValueChange={setSelectedServer}>
                     <SelectTrigger className="w-48">
                       <SelectValue />
                     </SelectTrigger>
@@ -1425,7 +1352,7 @@ export default function PortMonitoring() {
               <div>
                 <Label htmlFor="scanServerSelect">Server</Label>
                 <div className="flex space-x-2">
-                  <Select value={selectedServer} onValueChange={setSelectedServer}>
+                  <Select value={selectedServer || ''} onValueChange={setSelectedServer}>
                     <SelectTrigger className="w-48">
                       <SelectValue />
                     </SelectTrigger>
@@ -1602,14 +1529,14 @@ export default function PortMonitoring() {
                           <span className="font-mono text-sm font-bold">
                             {reservation.port}/{reservation.protocol}
                           </span>
-                          {getReservationStatusBadge(reservation.expires_at)}
+                          {reservation.expires_at && getReservationStatusBadge(reservation.expires_at)}
                         </div>
                         <div className="flex items-center text-sm text-muted-foreground">
                           <Clock className="h-3 w-3 mr-1" />
                           {reservation.expires_at === '9999-12-31T23:59:59.999Z' ? (
                             'Permanent reservation'
                           ) : (
-                            `Expires: ${formatDate(reservation.expires_at)}`
+                            reservation.expires_at ? `Expires: ${formatDate(reservation.expires_at)}` : 'No expiration'
                           )}
                         </div>
                       </div>
@@ -1626,7 +1553,7 @@ export default function PortMonitoring() {
                           size="sm" 
                           variant="outline" 
                           className="h-6 px-2 text-xs text-red-600 hover:text-red-700 border-red-200 hover:border-red-300 ml-2"
-                          onClick={() => releaseReservation(reservation)}
+                          onClick={() => handleReleaseReservation(reservation)}
                         >
                           <X className="h-3 w-3 mr-1" />Release
                         </Button>
@@ -1986,7 +1913,7 @@ export default function PortMonitoring() {
             <Button variant="outline" onClick={() => setShowReservationDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={createReservation} disabled={loading}>
+            <Button onClick={handleCreateReservation} disabled={loading}>
               Create Reservation
             </Button>
           </div>

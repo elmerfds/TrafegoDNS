@@ -1,9 +1,10 @@
 /**
  * SQLite Database Connection Manager
- * A simplified approach to database connections that's more reliable
+ * Enhanced with connection pooling and transaction support
  */
 const logger = require('../utils/logger');
 const sqliteCore = require('./sqlite-core');
+const { pool } = require('./connectionPool');
 
 // Singleton connection
 let isInitialized = false;
@@ -27,17 +28,25 @@ async function initialize() {
   // Start initialization
   initializationPromise = (async () => {
     try {
-      logger.info('Initializing database connection with optimized approach');
-      const success = await sqliteCore.initialize();
+      logger.info('Initializing database connection with connection pooling');
       
-      if (success) {
-        isInitialized = true;
-        logger.info('Database successfully initialized with optimized approach');
-        return true;
-      } else {
-        logger.error('Failed to initialize database with optimized approach');
+      // Initialize core SQLite connection
+      const coreSuccess = await sqliteCore.initialize();
+      if (!coreSuccess) {
+        logger.error('Failed to initialize SQLite core');
         return false;
       }
+      
+      // Initialize connection pool
+      const poolSuccess = await pool.initialize();
+      if (!poolSuccess) {
+        logger.error('Failed to initialize connection pool');
+        return false;
+      }
+      
+      isInitialized = true;
+      logger.info('Database successfully initialized with connection pooling');
+      return true;
     } catch (error) {
       logger.error(`Error initializing database: ${error.message}`);
       return false;
@@ -71,15 +80,31 @@ function getConnection() {
 }
 
 /**
+ * Get the connection pool
+ * @returns {Object} Connection pool
+ */
+function getPool() {
+  if (!isInitialized) {
+    logger.warn('Attempting to get connection pool before initialization');
+  }
+  
+  return pool;
+}
+
+/**
  * Close the database connection
  * @returns {Promise<boolean>} Success status
  */
 async function close() {
   try {
     if (isInitialized) {
+      // Shutdown connection pool first
+      await pool.shutdown();
+      
+      // Then close the core connection
       sqliteCore.close();
       isInitialized = false;
-      logger.info('Database connection closed');
+      logger.info('Database connection and pool closed');
     }
     
     return true;
@@ -93,5 +118,6 @@ module.exports = {
   initialize,
   isInitialized: getInitializationStatus,
   db: sqliteCore,
+  pool: getPool,
   close
 };

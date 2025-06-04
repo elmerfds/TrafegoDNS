@@ -44,6 +44,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useToast } from '../hooks/use-toast';
+import { usePortStore, usePortsData, useAlertsData, useScansData, usePortStatistics } from '../store/portStore';
 import type { 
   Port, 
   PortAlert, 
@@ -57,17 +58,39 @@ import type {
 
 export default function PortMonitoring() {
   const [activeTab, setActiveTab] = useState('overview');
-  const [ports, setPorts] = useState<Port[]>([]);
-  const [alerts, setAlerts] = useState<PortAlert[]>([]);
-  const [scans, setScans] = useState<PortScan[]>([]);
-  const [statistics, setStatistics] = useState<PortStatistics | null>(null);
+  
+  // Zustand store hooks
+  const { ports, loading: portsLoading, error: portsError } = usePortsData();
+  const { alerts, loading: alertsLoading, error: alertsError } = useAlertsData();
+  const { scans, loading: scansLoading, error: scansError } = useScansData();
+  const { statistics, loading: statsLoading, error: statsError } = usePortStatistics();
+  
+  const {
+    fetchPorts,
+    fetchAlerts,
+    fetchScans,
+    fetchStatistics,
+    startPortScan,
+    acknowledgeAlert,
+    updatePortFilters,
+    updateAlertFilters,
+    updateScanFilters
+  } = usePortStore();
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Filters
-  const [portFilters, setPortFilters] = useState<PortFilters>({ page: 1, limit: 50 });
-  const [alertFilters, setAlertFilters] = useState<AlertFilters>({ page: 1, limit: 20 });
-  const [scanFilters, setScanFilters] = useState<ScanFilters>({ page: 1, limit: 20 });
+  // Update error and loading states
+  useEffect(() => {
+    setError(portsError || alertsError || scansError || statsError);
+    setLoading(portsLoading || alertsLoading || scansLoading || statsLoading);
+  }, [portsError, alertsError, scansError, statsError, portsLoading, alertsLoading, scansLoading, statsLoading]);
+  
+  // Filters - now managed by Zustand store
+  const { filters } = usePortStore();
+  const portFilters = filters.ports;
+  const alertFilters = filters.alerts;
+  const scanFilters = filters.scans;
   
   // Scan dialog
   const [showScanDialog, setShowScanDialog] = useState(false);
@@ -80,80 +103,29 @@ export default function PortMonitoring() {
   const { toast } = useToast();
 
   useEffect(() => {
-    loadInitialData();
-  }, []);
+    // Load initial data using Zustand store
+    fetchStatistics();
+    fetchAlerts({ limit: 5, acknowledged: false });
+    setLoading(false);
+  }, [fetchStatistics, fetchAlerts]);
 
   useEffect(() => {
     if (activeTab === 'ports') {
-      loadPorts();
+      fetchPorts();
     } else if (activeTab === 'alerts') {
-      loadAlerts();
+      fetchAlerts();
     } else if (activeTab === 'scans') {
-      loadScans();
+      fetchScans();
     }
-  }, [activeTab, portFilters, alertFilters, scanFilters]);
+  }, [activeTab, portFilters, alertFilters, scanFilters, fetchPorts, fetchAlerts, fetchScans]);
 
-  const loadInitialData = async () => {
-    try {
-      setLoading(true);
-      const stats = await api.get('/api/v1/ports/statistics');
-      setStatistics(stats.data);
-      
-      // Load recent alerts
-      const recentAlerts = await api.get('/api/v1/ports/alerts', {
-        params: { limit: 5, acknowledged: false }
-      });
-      setAlerts(recentAlerts.data.data || []);
-      
-    } catch (err) {
-      console.error('Error loading initial data:', err);
-      setError('Failed to load port monitoring data');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Remove loadInitialData - now handled by Zustand store
 
-  const loadPorts = async () => {
-    try {
-      const response = await api.get('/api/v1/ports', { params: portFilters });
-      setPorts(response.data.data || []);
-    } catch (err) {
-      console.error('Error loading ports:', err);
-      toast({
-        title: "Error",
-        description: "Failed to load ports",
-        variant: "destructive"
-      });
-    }
-  };
+  // Remove loadPorts - now handled by Zustand store
 
-  const loadAlerts = async () => {
-    try {
-      const response = await api.get('/api/v1/ports/alerts', { params: alertFilters });
-      setAlerts(response.data.data || []);
-    } catch (err) {
-      console.error('Error loading alerts:', err);
-      toast({
-        title: "Error",
-        description: "Failed to load alerts",
-        variant: "destructive"
-      });
-    }
-  };
+  // Remove loadAlerts - now handled by Zustand store
 
-  const loadScans = async () => {
-    try {
-      const response = await api.get('/api/v1/ports/scans', { params: scanFilters });
-      setScans(response.data.data || []);
-    } catch (err) {
-      console.error('Error loading scans:', err);
-      toast({
-        title: "Error",
-        description: "Failed to load scans",
-        variant: "destructive"
-      });
-    }
-  };
+  // Remove loadScans - now handled by Zustand store
 
   const handleScan = async () => {
     if (!scanRequest.host) {
@@ -167,7 +139,18 @@ export default function PortMonitoring() {
 
     try {
       setScanning(true);
-      await api.post('/api/v1/ports/scan', scanRequest);
+      
+      // Convert port_range and protocols to the format expected by the store
+      const [startPort, endPort] = scanRequest.port_range?.includes('-') 
+        ? scanRequest.port_range.split('-').map(p => parseInt(p.trim()))
+        : [1, 1000];
+      
+      await startPortScan({
+        server_id: 'default', // This would need to be determined based on the host
+        startPort,
+        endPort,
+        protocol: scanRequest.protocols?.[0] || 'tcp'
+      });
       
       toast({
         title: "Success",
@@ -176,11 +159,6 @@ export default function PortMonitoring() {
       
       setShowScanDialog(false);
       setScanRequest({ host: '', port_range: '1-1000' });
-      
-      // Refresh scans if on scans tab
-      if (activeTab === 'scans') {
-        setTimeout(loadScans, 1000);
-      }
       
     } catch (err) {
       console.error('Error starting scan:', err);
@@ -194,18 +172,14 @@ export default function PortMonitoring() {
     }
   };
 
-  const acknowledgeAlert = async (alertId: number) => {
+  const handleAcknowledgeAlert = async (alertId: string) => {
     try {
-      await api.put(`/api/v1/ports/alerts/${alertId}/acknowledge`);
+      await acknowledgeAlert(alertId);
       
       toast({
         title: "Success",
         description: "Alert acknowledged",
       });
-      
-      // Refresh alerts
-      loadAlerts();
-      loadInitialData(); // Refresh statistics
       
     } catch (err) {
       console.error('Error acknowledging alert:', err);
@@ -392,7 +366,7 @@ export default function PortMonitoring() {
                         <div>
                           <p className="font-medium">{alert.title}</p>
                           <p className="text-sm text-muted-foreground">
-                            {alert.host}:{alert.port} - {alert.description}
+                            {alert.server_id}:{alert.port} - {alert.description}
                           </p>
                         </div>
                       </div>
@@ -401,7 +375,7 @@ export default function PortMonitoring() {
                         <Button 
                           size="sm" 
                           variant="outline"
-                          onClick={() => acknowledgeAlert(alert.id)}
+                          onClick={() => handleAcknowledgeAlert(alert.id)}
                         >
                           Acknowledge
                         </Button>
@@ -466,7 +440,7 @@ export default function PortMonitoring() {
               </div>
               <Select
                 value={portFilters.status || 'all'}
-                onValueChange={(value) => setPortFilters({ ...portFilters, status: value === 'all' ? undefined : value })}
+                onValueChange={(value) => updatePortFilters({ status: value === 'all' ? undefined : value })}
               >
                 <SelectTrigger className="w-32">
                   <SelectValue placeholder="Status" />
@@ -480,7 +454,7 @@ export default function PortMonitoring() {
               </Select>
               <Select
                 value={portFilters.protocol || 'all'}
-                onValueChange={(value) => setPortFilters({ ...portFilters, protocol: value === 'all' ? undefined : value })}
+                onValueChange={(value) => updatePortFilters({ protocol: value === 'all' ? undefined : value })}
               >
                 <SelectTrigger className="w-32">
                   <SelectValue placeholder="Protocol" />
@@ -529,15 +503,15 @@ export default function PortMonitoring() {
                     </TableRow>
                   ) : (
                     ports.map((port, index) => (
-                      <TableRow key={port.id || `${port.host}-${port.port}-${index}`}>
-                        <TableCell className="font-medium">{port.host}</TableCell>
+                      <TableRow key={port.id || `${port.server_id}-${port.port}-${index}`}>
+                        <TableCell className="font-medium">{port.server_name || port.server_id}</TableCell>
                         <TableCell className="font-mono">{port.port}</TableCell>
                         <TableCell>{port.protocol.toUpperCase()}</TableCell>
                         <TableCell>{getStatusBadge(port.status)}</TableCell>
                         <TableCell>
-                          {port.service_name || port.service ? (
+                          {port.service_name ? (
                             <div>
-                              <div className="font-medium">{port.service_name || port.service}</div>
+                              <div className="font-medium">{port.service_name}</div>
                               {port.service_version && (
                                 <div className="text-sm text-muted-foreground">{port.service_version}</div>
                               )}
@@ -580,7 +554,7 @@ export default function PortMonitoring() {
           <div className="flex items-center space-x-2">
             <Select
               value={alertFilters.severity || 'all'}
-              onValueChange={(value) => setAlertFilters({ ...alertFilters, severity: value === 'all' ? undefined : value })}
+              onValueChange={(value) => updateAlertFilters({ severity: value === 'all' ? undefined : value })}
             >
               <SelectTrigger className="w-40">
                 <SelectValue placeholder="Severity" />
@@ -595,10 +569,7 @@ export default function PortMonitoring() {
             </Select>
             <Select
               value={alertFilters.acknowledged?.toString() || 'all'}
-              onValueChange={(value) => setAlertFilters({ 
-                ...alertFilters, 
-                acknowledged: value === 'all' ? undefined : value === 'true' 
-              })}
+              onValueChange={(value) => updateAlertFilters({ acknowledged: value === 'all' ? undefined : value === 'true' })}
             >
               <SelectTrigger className="w-40">
                 <SelectValue placeholder="Status" />
@@ -637,7 +608,7 @@ export default function PortMonitoring() {
                       </TableCell>
                       <TableCell>{getSeverityBadge(alert.severity)}</TableCell>
                       <TableCell className="font-mono">
-                        {alert.host}:{alert.port}
+                        {alert.server_id}:{alert.port}
                       </TableCell>
                       <TableCell>{alert.alert_type.replace('_', ' ')}</TableCell>
                       <TableCell>
@@ -655,7 +626,7 @@ export default function PortMonitoring() {
                           <Button 
                             variant="outline" 
                             size="sm"
-                            onClick={() => acknowledgeAlert(alert.id)}
+                            onClick={() => handleAcknowledgeAlert(alert.id)}
                           >
                             Acknowledge
                           </Button>
@@ -675,7 +646,7 @@ export default function PortMonitoring() {
             <div className="flex items-center space-x-2">
               <Select
                 value={scanFilters.status || 'all'}
-                onValueChange={(value) => setScanFilters({ ...scanFilters, status: value === 'all' ? undefined : value })}
+                onValueChange={(value) => updateScanFilters({ status: value === 'all' ? undefined : value })}
               >
                 <SelectTrigger className="w-40">
                   <SelectValue placeholder="Status" />
@@ -690,7 +661,7 @@ export default function PortMonitoring() {
               </Select>
               <Select
                 value={scanFilters.scan_type || 'all'}
-                onValueChange={(value) => setScanFilters({ ...scanFilters, scan_type: value === 'all' ? undefined : value })}
+                onValueChange={(value) => updateScanFilters({ scan_type: value === 'all' ? undefined : value })}
               >
                 <SelectTrigger className="w-40">
                   <SelectValue placeholder="Type" />
