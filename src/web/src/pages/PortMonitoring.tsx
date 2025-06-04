@@ -273,10 +273,26 @@ export default function PortMonitoring() {
   }
 
   if (error) {
+    const isPortMonitorError = error.includes('Port monitor not initialized');
+    
     return (
-      <Alert variant="destructive">
+      <Alert variant={isPortMonitorError ? "default" : "destructive"}>
         <AlertTriangle className="h-4 w-4" />
-        <AlertDescription>{error}</AlertDescription>
+        <AlertDescription>
+          {isPortMonitorError ? (
+            <div className="space-y-2">
+              <p>Port monitoring is not yet initialized. This usually happens when:</p>
+              <ul className="list-disc list-inside text-sm space-y-1">
+                <li>The port management feature was just enabled</li>
+                <li>The application is still starting up</li>
+                <li>There are database initialization issues</li>
+              </ul>
+              <p className="text-sm">Please check the application logs and try refreshing in a moment.</p>
+            </div>
+          ) : (
+            error
+          )}
+        </AlertDescription>
       </Alert>
     );
   }

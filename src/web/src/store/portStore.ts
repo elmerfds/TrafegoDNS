@@ -138,6 +138,7 @@ interface PortActions {
   // Utility actions
   refreshAll: () => Promise<void>;
   clearErrors: () => void;
+  resetInitializationErrors: () => void;
   resetState: () => void;
 
   // Real-time updates
@@ -218,6 +219,13 @@ export const usePortStore = create<PortStore>()(
 
         // Port actions
         fetchPorts: async (filters?: PortFilters) => {
+          const currentState = get();
+          
+          // Skip if port monitor is not initialized to avoid spam
+          if (currentState.errors.ports === 'Port monitor not initialized') {
+            return;
+          }
+
           set(state => {
             state.loading.ports = true;
             state.errors.ports = null;
@@ -236,10 +244,16 @@ export const usePortStore = create<PortStore>()(
               state.loading.ports = false;
             });
           } catch (error: any) {
+            const errorMessage = error.response?.data?.message || 'Failed to fetch ports';
             set(state => {
-              state.errors.ports = error.response?.data?.message || 'Failed to fetch ports';
+              state.errors.ports = errorMessage;
               state.loading.ports = false;
             });
+            
+            // Don't retry if port monitor is not initialized
+            if (errorMessage.includes('Port monitor not initialized')) {
+              console.warn('Port monitor not initialized - stopping ports polling');
+            }
           }
         },
 
@@ -413,6 +427,13 @@ export const usePortStore = create<PortStore>()(
 
         // Reservation actions
         fetchReservations: async (filters?: ReservationFilters) => {
+          const currentState = get();
+          
+          // Skip if port monitor is not initialized to avoid spam
+          if (currentState.errors.reservations === 'Port monitor not initialized') {
+            return;
+          }
+
           set(state => {
             state.loading.reservations = true;
             state.errors.reservations = null;
@@ -431,10 +452,16 @@ export const usePortStore = create<PortStore>()(
               state.loading.reservations = false;
             });
           } catch (error: any) {
+            const errorMessage = error.response?.data?.message || 'Failed to fetch reservations';
             set(state => {
-              state.errors.reservations = error.response?.data?.message || 'Failed to fetch reservations';
+              state.errors.reservations = errorMessage;
               state.loading.reservations = false;
             });
+            
+            // Don't retry if port monitor is not initialized
+            if (errorMessage.includes('Port monitor not initialized')) {
+              console.warn('Port monitor not initialized - stopping reservations polling');
+            }
           }
         },
 
@@ -512,6 +539,13 @@ export const usePortStore = create<PortStore>()(
 
         // Statistics actions
         fetchStatistics: async () => {
+          const currentState = get();
+          
+          // Skip if port monitor is not initialized to avoid spam
+          if (currentState.errors.statistics === 'Port monitor not initialized') {
+            return;
+          }
+
           set(state => {
             state.loading.statistics = true;
             state.errors.statistics = null;
@@ -526,10 +560,16 @@ export const usePortStore = create<PortStore>()(
               state.loading.statistics = false;
             });
           } catch (error: any) {
+            const errorMessage = error.response?.data?.message || 'Failed to fetch statistics';
             set(state => {
-              state.errors.statistics = error.response?.data?.message || 'Failed to fetch statistics';
+              state.errors.statistics = errorMessage;
               state.loading.statistics = false;
             });
+            
+            // Don't retry if port monitor is not initialized
+            if (errorMessage.includes('Port monitor not initialized')) {
+              console.warn('Port monitor not initialized - stopping statistics polling');
+            }
           }
         },
 
@@ -568,6 +608,17 @@ export const usePortStore = create<PortStore>()(
               servers: null,
               statistics: null
             };
+          });
+        },
+
+        // Reset initialization errors to allow retrying
+        resetInitializationErrors: () => {
+          set(state => {
+            Object.keys(state.errors).forEach(key => {
+              if (state.errors[key as keyof typeof state.errors] === 'Port monitor not initialized') {
+                state.errors[key as keyof typeof state.errors] = null;
+              }
+            });
           });
         },
 
