@@ -94,7 +94,13 @@ export default function PortMonitoring() {
   
   // Scan dialog
   const [showScanDialog, setShowScanDialog] = useState(false);
-  const [scanRequest, setScanRequest] = useState<PortScanRequest>({ host: '', port_range: '1-1000' });
+  const [scanRequest, setScanRequest] = useState<PortScanRequest>({ 
+    host: '', 
+    port_range: '1-1000', 
+    startPort: 1, 
+    endPort: 1000, 
+    protocol: 'tcp' 
+  });
   const [scanning, setScanning] = useState(false);
   
   // Search states
@@ -158,7 +164,13 @@ export default function PortMonitoring() {
       });
       
       setShowScanDialog(false);
-      setScanRequest({ host: '', port_range: '1-1000' });
+      setScanRequest({ 
+        host: '', 
+        port_range: '1-1000', 
+        startPort: 1, 
+        endPort: 1000, 
+        protocol: 'tcp' 
+      });
       
     } catch (err) {
       console.error('Error starting scan:', err);

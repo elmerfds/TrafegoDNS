@@ -92,13 +92,17 @@ export function PortScanDialog({
       required: true,
       min: 1,
       max: 65535,
-      custom: (value: string, formData: FormData) => {
+      custom: (value: string, formData?: FormData) => {
         const num = parseInt(value);
-        const startPort = parseInt(formData.get('startPort') as string);
-        
         if (isNaN(num)) return 'End port must be a valid number';
-        if (num <= startPort) return 'End port must be greater than start port';
-        if (num - startPort > 10000) return 'Port range too large (max 10,000 ports)';
+        
+        if (formData) {
+          const startPort = parseInt(formData.get('startPort') as string);
+          if (!isNaN(startPort)) {
+            if (num <= startPort) return 'End port must be greater than start port';
+            if (num - startPort > 10000) return 'Port range too large (max 10,000 ports)';
+          }
+        }
         
         return null;
       }
@@ -126,10 +130,10 @@ export function PortScanDialog({
     const scanRequest: PortScanRequest = {
       startPort: parseInt(formData.get('startPort') as string),
       endPort: parseInt(formData.get('endPort') as string),
-      protocol: formData.get('protocol') as string,
+      protocol: formData.get('protocol') as 'tcp' | 'udp' | 'both',
       server: formData.get('server') as string,
-      timeout: parseInt(formData.get('timeout') as string),
-      concurrency: parseInt(formData.get('concurrency') as string)
+      timeout: parseInt(formData.get('timeout') as string) || 1000,
+      concurrency: parseInt(formData.get('concurrency') as string) || 50
     };
 
     const totalPorts = scanRequest.endPort - scanRequest.startPort + 1;
@@ -155,7 +159,7 @@ export function PortScanDialog({
         onDownloadProgress: (progressEvent) => {
           // Simulate progress based on time (real implementation would need WebSocket or SSE)
           const elapsed = Date.now() - scanProgress.startTime!.getTime();
-          const estimatedTotal = (scanRequest.timeout * totalPorts) / scanRequest.concurrency;
+          const estimatedTotal = ((scanRequest.timeout || 1000) * totalPorts) / (scanRequest.concurrency || 50);
           const percentage = Math.min((elapsed / estimatedTotal) * 100, 95);
           const current = Math.floor((percentage / 100) * totalPorts);
           
