@@ -197,7 +197,7 @@ export function PortsInUseTab({
 
   const handleCheckStatus = async (port: Port) => {
     try {
-      const response = await api.post('/api/v1/ports/check-availability', {
+      const response = await api.post('/ports/check-availability', {
         ports: [port.port],
         protocol: port.protocol,
         server: selectedServer
@@ -215,7 +215,7 @@ export function PortsInUseTab({
   const handleBulkCheckStatus = async (ports: Port[]) => {
     try {
       const portNumbers = ports.map(p => p.port);
-      const response = await api.post('/api/v1/ports/check-availability', {
+      const response = await api.post('/ports/check-availability', {
         ports: portNumbers,
         protocol: 'both', // Check both protocols for bulk operation
         server: selectedServer

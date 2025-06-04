@@ -90,7 +90,7 @@ export function ServerSelector({
     
     try {
       // Simple health check - in a real app this might be a specific health endpoint
-      const response = await api.get('/api/v1/status', {
+      const response = await api.get('/status', {
         baseURL: server.port ? `http://${server.host}:${server.port}` : undefined,
         timeout: 5000
       });

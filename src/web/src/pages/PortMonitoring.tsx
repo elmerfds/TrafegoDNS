@@ -205,7 +205,7 @@ export default function PortMonitoring() {
 
   const exportPorts = async (format: 'json' | 'csv' = 'json') => {
     try {
-      const response = await api.get('/api/v1/ports/export', {
+      const response = await api.get('/ports/export', {
         params: { format, ...portFilters },
         responseType: 'blob'
       });

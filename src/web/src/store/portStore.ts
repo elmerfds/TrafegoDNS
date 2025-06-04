@@ -225,7 +225,7 @@ export const usePortStore = create<PortStore>()(
 
           try {
             const queryParams = { ...get().filters.ports, ...filters };
-            const response = await api.get<ApiResponse<PaginatedResponse<Port>>>('/api/v1/ports/in-use', {
+            const response = await api.get<ApiResponse<PaginatedResponse<Port>>>('/ports/in-use', {
               params: queryParams
             });
 
@@ -245,7 +245,7 @@ export const usePortStore = create<PortStore>()(
 
         fetchPortById: async (id: string) => {
           try {
-            const response = await api.get<ApiResponse<Port>>(`/api/v1/ports/${id}`);
+            const response = await api.get<ApiResponse<Port>>(`/ports/${id}`);
             return response.data.data;
           } catch (error: any) {
             console.error('Failed to fetch port:', error);
@@ -280,7 +280,7 @@ export const usePortStore = create<PortStore>()(
 
           try {
             const queryParams = { ...get().filters.alerts, ...filters };
-            const response = await api.get<ApiResponse<PaginatedResponse<PortAlert>>>('/api/v1/ports/alerts', {
+            const response = await api.get<ApiResponse<PaginatedResponse<PortAlert>>>('/ports/alerts', {
               params: queryParams
             });
 
@@ -300,7 +300,7 @@ export const usePortStore = create<PortStore>()(
 
         acknowledgeAlert: async (alertId: string) => {
           try {
-            await api.post(`/api/v1/ports/alerts/${alertId}/acknowledge`);
+            await api.post(`/ports/alerts/${alertId}/acknowledge`);
             
             // Update the alert in the state
             set(state => {
@@ -319,7 +319,7 @@ export const usePortStore = create<PortStore>()(
 
         resolveAlert: async (alertId: string) => {
           try {
-            await api.post(`/api/v1/ports/alerts/${alertId}/resolve`);
+            await api.post(`/ports/alerts/${alertId}/resolve`);
             
             // Update the alert in the state
             set(state => {
@@ -351,7 +351,7 @@ export const usePortStore = create<PortStore>()(
 
           try {
             const queryParams = { ...get().filters.scans, ...filters };
-            const response = await api.get<ApiResponse<PaginatedResponse<PortScan>>>('/api/v1/ports/scans', {
+            const response = await api.get<ApiResponse<PaginatedResponse<PortScan>>>('/ports/scans', {
               params: queryParams
             });
 
@@ -371,7 +371,7 @@ export const usePortStore = create<PortStore>()(
 
         startPortScan: async (scanRequest) => {
           try {
-            const response = await api.post<ApiResponse<PortScan>>('/api/v1/ports/scan-range', scanRequest);
+            const response = await api.post<ApiResponse<PortScan>>('/ports/scan-range', scanRequest);
             
             // Add the new scan to the state
             set(state => {
@@ -389,7 +389,7 @@ export const usePortStore = create<PortStore>()(
 
         cancelScan: async (scanId: string) => {
           try {
-            await api.post(`/api/v1/ports/scans/${scanId}/cancel`);
+            await api.post(`/ports/scans/${scanId}/cancel`);
             
             // Update the scan status in the state
             set(state => {
@@ -420,7 +420,7 @@ export const usePortStore = create<PortStore>()(
 
           try {
             const queryParams = { ...get().filters.reservations, ...filters };
-            const response = await api.get<ApiResponse<PaginatedResponse<PortReservation>>>('/api/v1/ports/reservations', {
+            const response = await api.get<ApiResponse<PaginatedResponse<PortReservation>>>('/ports/reservations', {
               params: queryParams
             });
 
@@ -440,7 +440,7 @@ export const usePortStore = create<PortStore>()(
 
         createReservation: async (reservationData) => {
           try {
-            const response = await api.post<ApiResponse<PortReservation>>('/api/v1/ports/reserve', reservationData);
+            const response = await api.post<ApiResponse<PortReservation>>('/ports/reserve', reservationData);
             
             // Add the new reservation to the state
             set(state => {
@@ -458,7 +458,7 @@ export const usePortStore = create<PortStore>()(
 
         releaseReservation: async (reservationId: string) => {
           try {
-            await api.delete(`/api/v1/ports/reservations/${reservationId}`);
+            await api.delete(`/ports/reservations/${reservationId}`);
             
             // Update the reservation status in the state
             set(state => {
@@ -489,7 +489,7 @@ export const usePortStore = create<PortStore>()(
           });
 
           try {
-            const response = await api.get<ApiResponse<Server[]>>('/api/v1/servers');
+            const response = await api.get<ApiResponse<Server[]>>('/servers');
 
             set(state => {
               state.servers = response.data.data;
@@ -518,7 +518,7 @@ export const usePortStore = create<PortStore>()(
           });
 
           try {
-            const response = await api.get<ApiResponse<PortStatistics>>('/api/v1/ports/statistics');
+            const response = await api.get<ApiResponse<PortStatistics>>('/ports/statistics');
 
             set(state => {
               state.statistics = response.data.data;
@@ -549,7 +549,7 @@ export const usePortStore = create<PortStore>()(
         // Port suggestions
         suggestAlternativePorts: async (options) => {
           try {
-            const response = await api.post<ApiResponse<any>>('/api/v1/ports/suggest-alternatives', options);
+            const response = await api.post<ApiResponse<any>>('/ports/suggest-alternatives', options);
             // For now, just log the suggestions. In a full implementation,
             // you might want to store these in the state
             console.log('Port suggestions:', response.data.data);

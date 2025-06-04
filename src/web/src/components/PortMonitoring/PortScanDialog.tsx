@@ -154,7 +154,7 @@ export function PortScanDialog({
 
     try {
       // Start the scan
-      const response = await api.post('/api/v1/ports/scan-range', scanRequest, {
+      const response = await api.post('/ports/scan-range', scanRequest, {
         signal: controller.signal,
         onDownloadProgress: (progressEvent) => {
           // Simulate progress based on time (real implementation would need WebSocket or SSE)

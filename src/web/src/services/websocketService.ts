@@ -19,30 +19,19 @@ export const WEBSOCKET_EVENTS = {
   // Alert events
   PORT_ALERT_CREATED: 'port:alert:created',
   PORT_ALERT_ACKNOWLEDGED: 'port:alert:acknowledged',
-  PORT_ALERT_RESOLVED: 'port:alert:resolved',
   
   // Scan events
   PORT_SCAN_STARTED: 'port:scan:started',
   PORT_SCAN_COMPLETED: 'port:scan:completed',
   PORT_SCAN_FAILED: 'port:scan:failed',
-  PORT_SCAN_PROGRESS: 'port:scan:progress',
   
   // Reservation events
   PORT_RESERVED: 'port:reserved',
   PORT_RELEASED: 'port:released',
-  RESERVATION_EXPIRED: 'port:reservation:expired',
   
   // Conflict events
   PORT_CONFLICT_DETECTED: 'port:conflict:detected',
-  PORT_CONFLICT_RESOLVED: 'port:conflict:resolved',
-  
-  // Statistics events
-  PORT_STATISTICS_UPDATED: 'port:statistics:updated',
-  
-  // Server events
-  SERVER_ADDED: 'server:added',
-  SERVER_REMOVED: 'server:removed',
-  SERVER_UPDATED: 'server:updated'
+  PORT_CONFLICT_RESOLVED: 'port:conflict:resolved'
 } as const;
 
 /**
@@ -243,9 +232,8 @@ export class WebSocketService {
    */
   private processEventGroup(type: string, events: PortEvent[]): void {
     // For some event types, we only need the latest event
-    const latestOnlyEvents = [
-      WEBSOCKET_EVENTS.PORT_STATISTICS_UPDATED,
-      WEBSOCKET_EVENTS.PORT_SCAN_PROGRESS
+    const latestOnlyEvents: string[] = [
+      // Reserved for future use
     ];
 
     if (latestOnlyEvents.includes(type as any)) {
@@ -276,7 +264,6 @@ export class WebSocketService {
 
         case WEBSOCKET_EVENTS.PORT_ALERT_CREATED:
         case WEBSOCKET_EVENTS.PORT_ALERT_ACKNOWLEDGED:
-        case WEBSOCKET_EVENTS.PORT_ALERT_RESOLVED:
           if (event.data && this.isValidAlert(event.data)) {
             store.handleAlertUpdate(event.data as PortAlert);
           }
@@ -290,35 +277,16 @@ export class WebSocketService {
           }
           break;
 
-        case WEBSOCKET_EVENTS.PORT_SCAN_PROGRESS:
-          this.handleScanProgress(event.data as ScanProgressEvent);
-          break;
-
         case WEBSOCKET_EVENTS.PORT_RESERVED:
         case WEBSOCKET_EVENTS.PORT_RELEASED:
-        case WEBSOCKET_EVENTS.RESERVATION_EXPIRED:
           if (event.data && this.isValidReservation(event.data)) {
             store.handleReservationUpdate(event.data as PortReservation);
-          }
-          break;
-
-        case WEBSOCKET_EVENTS.PORT_STATISTICS_UPDATED:
-          if (event.data) {
-            // Update statistics in store
-            store.fetchStatistics();
           }
           break;
 
         case WEBSOCKET_EVENTS.PORT_CONFLICT_DETECTED:
         case WEBSOCKET_EVENTS.PORT_CONFLICT_RESOLVED:
           this.handleConflictEvent(event);
-          break;
-
-        case WEBSOCKET_EVENTS.SERVER_ADDED:
-        case WEBSOCKET_EVENTS.SERVER_REMOVED:
-        case WEBSOCKET_EVENTS.SERVER_UPDATED:
-          // Refresh servers list
-          store.fetchServers();
           break;
 
         default:
