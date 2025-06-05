@@ -192,6 +192,7 @@ export function CustomizableDashboard() {
   const [showQuickReservation, setShowQuickReservation] = useState(false)
   const [reservationPort, setReservationPort] = useState('')
   const [reservationContainer, setReservationContainer] = useState('')
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   
   // Port monitoring data
   const { statistics: portStats, loading: portStatsLoading } = usePortStatistics()
@@ -237,15 +238,24 @@ export function CustomizableDashboard() {
       const response = await api.put(`/user/dashboard-layouts/${encodeURIComponent(name)}`, { layout })
       return response.data
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
+      console.log('Layout saved successfully:', variables.name)
       toast({
         title: 'Layout saved',
-        description: 'Your dashboard layout has been saved successfully.',
+        description: `Layout "${variables.name}" saved successfully.`,
       })
       queryClient.invalidateQueries({ queryKey: ['dashboard-layouts'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard-layouts-active'] })
       setShowSaveDialog(false)
       setNewLayoutName('')
+      
+      // If this was an auto-created layout, set it as active
+      if (variables.name === 'My Dashboard' && (!activeLayoutData?.data?.name || activeLayoutData.data.name === 'default')) {
+        console.log('Setting new layout as active:', variables.name)
+        setActiveLayoutMutation.mutate(variables.name)
+      }
+      
+      setHasUnsavedChanges(false)
     },
     onError: () => {
       toast({
@@ -378,9 +388,9 @@ export function CustomizableDashboard() {
       if (widgetId.startsWith('port-')) {
         return {
           w: isLarge ? 6 : isMedium ? 5 : 6,
-          h: isLarge ? 8 : isMedium ? 8 : 10,
-          minH: 6,
-          minW: isLarge ? 4 : isMedium ? 3 : 6
+          h: isLarge ? 10 : isMedium ? 10 : 12,
+          minH: isLarge ? 8 : isMedium ? 8 : 10,
+          minW: isLarge ? 4 : isMedium ? 4 : 6
         }
       }
       
@@ -397,8 +407,8 @@ export function CustomizableDashboard() {
       // Default size for other widgets
       return {
         w: isLarge ? 4 : isMedium ? 5 : 6,
-        h: 6,
-        minH: 4,
+        h: isLarge ? 8 : isMedium ? 8 : 10,
+        minH: isLarge ? 6 : isMedium ? 6 : 8,
         minW: isLarge ? 3 : isMedium ? 3 : 6
       }
     }
@@ -439,12 +449,14 @@ export function CustomizableDashboard() {
       }
       
       // Add the widget
-      layout.push({
+      const newWidget = {
         i: widgetId,
         x,
         y,
         ...widgetSize
-      })
+      }
+      console.log(`Adding widget ${widgetId} to ${breakpoint}:`, newWidget)
+      layout.push(newWidget)
     })
     
     setLayouts(newLayouts)
@@ -453,19 +465,24 @@ export function CustomizableDashboard() {
       updated.delete(widgetId)
       return updated
     })
+    setHasUnsavedChanges(true)
     
     // Auto-save the layout after adding a widget
     setTimeout(() => {
-      const currentLayoutName = activeLayoutData?.data?.name || 'default'
-      if (currentLayoutName !== 'default') {
+      const currentLayoutName = activeLayoutData?.data?.name
+      console.log('Auto-saving widget addition:', { widgetId, currentLayoutName, layouts: newLayouts })
+      
+      if (currentLayoutName && currentLayoutName !== 'default') {
         // Update existing layout
+        console.log('Updating existing layout:', currentLayoutName)
         saveLayoutMutation.mutate({ name: currentLayoutName, layout: newLayouts })
       } else {
         // Create a new "My Dashboard" layout to persist changes
         const autoLayoutName = 'My Dashboard'
+        console.log('Creating new layout:', autoLayoutName)
         saveLayoutMutation.mutate({ name: autoLayoutName, layout: newLayouts })
       }
-    }, 500)
+    }, 1000)
     
     toast({
       title: 'Widget added',
@@ -482,6 +499,7 @@ export function CustomizableDashboard() {
     
     setLayouts(newLayouts)
     setHiddenWidgets(prev => new Set([...prev, widgetId]))
+    setHasUnsavedChanges(true)
     
     // Auto-save the layout after removing a widget
     setTimeout(() => {
@@ -1717,6 +1735,22 @@ export function CustomizableDashboard() {
           </p>
         </div>
         <div className="flex gap-2">
+          {/* Unsaved changes indicator and save button */}
+          {hasUnsavedChanges && (
+            <Button 
+              variant="default" 
+              size="sm"
+              onClick={() => {
+                const currentLayoutName = activeLayoutData?.data?.name || 'My Dashboard'
+                saveLayoutMutation.mutate({ name: currentLayoutName, layout: layouts })
+              }}
+              className="bg-orange-500 hover:bg-orange-600"
+            >
+              <Save className="h-4 w-4 mr-2" />
+              Save Changes
+            </Button>
+          )}
+          
           {/* Layout selector */}
           <Select 
             value={activeLayoutData?.data?.name || 'default'}
@@ -2023,7 +2057,7 @@ export function CustomizableDashboard() {
         cols={{ lg: 12, md: 10, sm: 6 }}
         isDraggable={isEditMode}
         isResizable={isEditMode}
-        rowHeight={40}
+        rowHeight={60}
         margin={[12, 8]}
         containerPadding={[0, 0]}
         compactType={isEditMode ? null : "vertical"}
