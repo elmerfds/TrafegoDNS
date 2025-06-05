@@ -186,6 +186,13 @@ export function CustomizableDashboard() {
   const [showWidgetDialog, setShowWidgetDialog] = useState(false)
   const [hiddenWidgets, setHiddenWidgets] = useState<Set<string>>(new Set())
   
+  // Port widget interaction states
+  const [quickPortCheck, setQuickPortCheck] = useState('')
+  const [portCheckLoading, setPortCheckLoading] = useState(false)
+  const [showQuickReservation, setShowQuickReservation] = useState(false)
+  const [reservationPort, setReservationPort] = useState('')
+  const [reservationContainer, setReservationContainer] = useState('')
+  
   // Port monitoring data
   const { statistics: portStats, loading: portStatsLoading } = usePortStatistics()
   const { reservations, loading: reservationsLoading } = useReservationsData()
@@ -567,6 +574,89 @@ export function CustomizableDashboard() {
       description: 'Dashboard layout has been reset to default.',
     })
     setIsEditMode(false)
+  }
+
+  // Port widget API functions
+  const quickCheckPort = async () => {
+    if (!quickPortCheck.trim()) return
+    
+    setPortCheckLoading(true)
+    try {
+      const response = await api.post('/ports/check-availability', {
+        ports: [parseInt(quickPortCheck)],
+        protocol: 'tcp',
+        server: 'localhost'
+      })
+      
+      const result = response.data.data.ports[0]
+      toast({
+        title: `Port ${quickPortCheck}`,
+        description: result.available ? 'Available ✅' : 'In Use ❌',
+        variant: result.available ? 'default' : 'destructive'
+      })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to check port',
+        variant: 'destructive'
+      })
+    } finally {
+      setPortCheckLoading(false)
+    }
+  }
+
+  const createQuickReservation = async () => {
+    if (!reservationPort.trim() || !reservationContainer.trim()) return
+    
+    try {
+      await api.post('/ports/reserve', {
+        ports: [parseInt(reservationPort)],
+        container_id: reservationContainer,
+        protocol: 'tcp',
+        duration: 3600, // 1 hour
+        server: 'localhost'
+      })
+      
+      toast({
+        title: 'Port Reserved',
+        description: `Port ${reservationPort} reserved for ${reservationContainer}`,
+      })
+      
+      setShowQuickReservation(false)
+      setReservationPort('')
+      setReservationContainer('')
+      
+      // Refresh reservations data
+      fetchReservations()
+    } catch (error: any) {
+      toast({
+        title: 'Reservation Failed',
+        description: error.response?.data?.message || 'Failed to create reservation',
+        variant: 'destructive'
+      })
+    }
+  }
+
+  const releaseReservation = async (reservationId: string) => {
+    try {
+      await api.delete(`/ports/reserve`, {
+        data: { reservationId }
+      })
+      
+      toast({
+        title: 'Reservation Released',
+        description: 'Port reservation has been released',
+      })
+      
+      // Refresh reservations data
+      fetchReservations()
+    } catch (error: any) {
+      toast({
+        title: 'Release Failed',
+        description: error.response?.data?.message || 'Failed to release reservation',
+        variant: 'destructive'
+      })
+    }
   }
 
   const compactLayout = () => {
@@ -1147,15 +1237,37 @@ export function CustomizableDashboard() {
                       {portStats?.systemPortsInUse || portStats?.ports?.byStatus?.open || 0}
                     </span>
                   </div>
-                  <div className="pt-2">
+                  <div className="pt-2 space-y-2">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Port #"
+                        value={quickPortCheck}
+                        onChange={(e) => setQuickPortCheck(e.target.value)}
+                        className="flex-1 h-8 text-xs"
+                        onKeyDown={(e) => e.key === 'Enter' && quickCheckPort()}
+                      />
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="h-8 px-2"
+                        onClick={quickCheckPort}
+                        disabled={portCheckLoading || !quickPortCheck.trim()}
+                      >
+                        {portCheckLoading ? (
+                          <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Search className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      className="w-full"
+                      className="w-full h-8 text-xs"
                       onClick={() => navigate('/port-management')}
                     >
-                      <Monitor className="h-4 w-4 mr-2" />
-                      View Details
+                      <Monitor className="h-3 w-3 mr-1" />
+                      Full View
                     </Button>
                   </div>
                 </>
@@ -1190,22 +1302,80 @@ export function CustomizableDashboard() {
                   <div className="space-y-2">
                     {Array.isArray(reservations) && reservations.slice(0, 3).map((reservation) => (
                       <div key={reservation.id} className="flex items-center justify-between p-2 border rounded text-xs">
-                        <span className="font-mono">{reservation.port}/{reservation.protocol}</span>
-                        <Badge variant="secondary" className="text-xs">
-                          {reservation.container_id?.substring(0, 8)}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono">{reservation.port}/{reservation.protocol}</span>
+                          <Badge variant="secondary" className="text-xs">
+                            {reservation.container_id?.substring(0, 8)}
+                          </Badge>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                          onClick={() => releaseReservation(reservation.id)}
+                          title="Release reservation"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
                       </div>
                     ))}
                   </div>
-                  <div className="pt-2">
+                  <div className="pt-2 space-y-2">
+                    {!showQuickReservation ? (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="w-full h-8 text-xs"
+                        onClick={() => setShowQuickReservation(true)}
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        Quick Reserve
+                      </Button>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex gap-1">
+                          <Input
+                            placeholder="Port"
+                            value={reservationPort}
+                            onChange={(e) => setReservationPort(e.target.value)}
+                            className="flex-1 h-7 text-xs"
+                          />
+                          <Input
+                            placeholder="Container"
+                            value={reservationContainer}
+                            onChange={(e) => setReservationContainer(e.target.value)}
+                            className="flex-1 h-7 text-xs"
+                          />
+                        </div>
+                        <div className="flex gap-1">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="flex-1 h-7 text-xs"
+                            onClick={createQuickReservation}
+                            disabled={!reservationPort.trim() || !reservationContainer.trim()}
+                          >
+                            Reserve
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-7 px-2"
+                            onClick={() => setShowQuickReservation(false)}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      className="w-full"
+                      className="w-full h-8 text-xs"
                       onClick={() => navigate('/port-management?tab=reservations')}
                     >
-                      <Lock className="h-4 w-4 mr-2" />
-                      Manage Reservations
+                      <Lock className="h-3 w-3 mr-1" />
+                      Full View
                     </Button>
                   </div>
                 </>
@@ -1240,7 +1410,7 @@ export function CustomizableDashboard() {
                   {portStats?.monitoringEnabled ? 'Active' : 'Disabled'}
                 </Badge>
               </div>
-              <div className="pt-2">
+              <div className="pt-2 space-y-2">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-muted-foreground">Range Health</span>
                   <span className="text-sm font-medium">
@@ -1251,6 +1421,26 @@ export function CustomizableDashboard() {
                   value={portStats?.availablePortsInRange ? Math.round((portStats.availablePortsInRange / (portStats.totalMonitoredPorts || 1)) * 100) : 0} 
                   className="h-2"
                 />
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full h-8 text-xs"
+                  onClick={() => {
+                    fetchStatistics()
+                    toast({
+                      title: 'Statistics Refreshed',
+                      description: 'Port availability data updated',
+                    })
+                  }}
+                  disabled={portStatsLoading}
+                >
+                  {portStatsLoading ? (
+                    <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin mr-1" />
+                  ) : (
+                    <Activity className="h-3 w-3 mr-1" />
+                  )}
+                  Refresh
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -1269,52 +1459,68 @@ export function CustomizableDashboard() {
             <CardContent className="flex-1 space-y-4 overflow-y-auto">
               <div className="space-y-2">
                 <div className="text-sm text-muted-foreground">Common Port Checks</div>
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="text-xs"
-                    onClick={() => navigate('/port-management?tab=check&ports=80,443')}
-                  >
-                    Web (80,443)
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="text-xs"
-                    onClick={() => navigate('/port-management?tab=check&ports=3000,8080')}
-                  >
-                    Dev (3000,8080)
-                  </Button>
-                </div>
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="text-xs"
-                    onClick={() => navigate('/port-management?tab=check&ports=5432,3306')}
-                  >
-                    DB (5432,3306)
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="text-xs"
-                    onClick={() => navigate('/port-management?tab=scan')}
-                  >
-                    Range Scan
-                  </Button>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Web', ports: [80, 443], icon: Globe },
+                    { label: 'Dev', ports: [3000, 8080], icon: Activity },
+                    { label: 'DB', ports: [5432, 3306], icon: Database },
+                    { label: 'SSH/FTP', ports: [22, 21], icon: Server }
+                  ].map(({ label, ports, icon: Icon }) => (
+                    <Button 
+                      key={label}
+                      variant="outline" 
+                      size="sm" 
+                      className="text-xs h-8 flex flex-col gap-1 p-2"
+                      onClick={async () => {
+                        setPortCheckLoading(true)
+                        try {
+                          const response = await api.post('/ports/check-availability', {
+                            ports,
+                            protocol: 'tcp',
+                            server: 'localhost'
+                          })
+                          
+                          const available = response.data.data.ports.filter((p: any) => p.available).length
+                          const total = ports.length
+                          
+                          toast({
+                            title: `${label} Ports`,
+                            description: `${available}/${total} available`,
+                            variant: available === total ? 'default' : 'destructive'
+                          })
+                        } catch (error) {
+                          toast({
+                            title: 'Check Failed',
+                            description: `Failed to check ${label} ports`,
+                            variant: 'destructive'
+                          })
+                        } finally {
+                          setPortCheckLoading(false)
+                        }
+                      }}
+                      disabled={portCheckLoading}
+                    >
+                      {portCheckLoading ? (
+                        <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <>
+                          <Icon className="h-3 w-3" />
+                          <span>{label}</span>
+                        </>
+                      )}
+                    </Button>
+                  ))}
                 </div>
               </div>
               <div className="pt-2">
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  className="w-full"
+                  className="w-full h-8 text-xs"
                   onClick={() => navigate('/port-management?tab=check')}
                 >
-                  <Search className="h-4 w-4 mr-2" />
-                  Port Checker
+                  <Search className="h-3 w-3 mr-1" />
+                  Advanced Scan
                 </Button>
               </div>
             </CardContent>
