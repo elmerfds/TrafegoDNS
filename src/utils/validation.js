@@ -57,7 +57,19 @@ class Validator {
   static validatePortArray(ports, field = 'ports', options = {}) {
     const { maxLength = 50, minLength = 1 } = options;
 
+    console.log(`[VALIDATION DEBUG] validatePortArray called:`, {
+      ports,
+      field,
+      options,
+      isArray: Array.isArray(ports),
+      type: typeof ports
+    });
+
     if (!Array.isArray(ports)) {
+      console.log(`[VALIDATION ERROR] Port array validation failed - not an array:`, {
+        ports,
+        type: typeof ports
+      });
       throw new ValidationError(`${field} must be an array`, field, ports, 'INVALID_TYPE');
     }
 
@@ -162,19 +174,41 @@ class Validator {
    * @returns {string} Valid protocol
    */
   static validateProtocol(protocol, field = 'protocol') {
+    console.log(`[VALIDATION DEBUG] validateProtocol called:`, {
+      protocol,
+      field,
+      type: typeof protocol,
+      isNull: protocol === null,
+      isUndefined: protocol === undefined
+    });
+
     if (protocol === null || protocol === undefined) {
+      console.log(`[VALIDATION DEBUG] Protocol is null/undefined, returning default 'tcp'`);
       return 'tcp'; // Default protocol
     }
 
     if (typeof protocol !== 'string') {
+      console.log(`[VALIDATION ERROR] Protocol validation failed - not a string:`, {
+        protocol,
+        type: typeof protocol
+      });
       throw new ValidationError(`${field} must be a string`, field, protocol, 'INVALID_TYPE');
     }
 
     if (!protocolHandler.isValidProtocol(protocol)) {
+      console.log(`[VALIDATION ERROR] Protocol validation failed - invalid protocol:`, {
+        protocol,
+        validProtocols: ['tcp', 'udp', 'both']
+      });
       throw new ValidationError(`${field} must be one of: tcp, udp, both`, field, protocol, 'INVALID_PROTOCOL');
     }
 
-    return protocolHandler.normalizeProtocol(protocol);
+    const normalized = protocolHandler.normalizeProtocol(protocol);
+    console.log(`[VALIDATION DEBUG] Protocol validated successfully:`, {
+      original: protocol,
+      normalized
+    });
+    return normalized;
   }
 
   /**
@@ -486,8 +520,15 @@ function createValidationMiddleware(schema) {
     const errors = [];
 
     try {
+      console.log(`[VALIDATION DEBUG] ${req.method} ${req.url}`, {
+        body: req.body,
+        query: req.query,
+        params: req.params
+      });
+
       // Validate body
       if (schema.body) {
+        console.log(`[VALIDATION DEBUG] Validating body with schema keys:`, Object.keys(schema.body));
         req.validatedBody = validateObjectSchema(req.body || {}, schema.body, 'body');
       }
 
@@ -513,6 +554,13 @@ function createValidationMiddleware(schema) {
           requestMethod: req.method,
           requestUrl: req.url
         });
+        console.log(`[VALIDATION ERROR]`, {
+          field: error.field,
+          value: error.value,
+          message: error.message,
+          code: error.code,
+          requestBody: req.body
+        });
         return res.apiValidationError([error.message], 'Input validation failed');
       }
       
@@ -532,16 +580,34 @@ function createValidationMiddleware(schema) {
 function validateObjectSchema(obj, schema, context = 'object') {
   const validated = {};
 
+  console.log(`[VALIDATION DEBUG] validateObjectSchema for ${context}:`, {
+    obj,
+    schemaKeys: Object.keys(schema)
+  });
+
   for (const [key, rules] of Object.entries(schema)) {
     try {
       const value = obj[key];
       
+      console.log(`[VALIDATION DEBUG] Validating field ${key}:`, {
+        value,
+        valueType: typeof value,
+        hasValidator: !!rules.validator,
+        options: rules.options
+      });
+      
       if (rules.validator) {
         validated[key] = rules.validator(value, `${context}.${key}`, rules.options || {});
+        console.log(`[VALIDATION DEBUG] Field ${key} validated successfully:`, validated[key]);
       } else {
         validated[key] = value;
       }
     } catch (error) {
+      console.log(`[VALIDATION ERROR] Field ${key} failed validation:`, {
+        error: error.message,
+        value: obj[key],
+        valueType: typeof obj[key]
+      });
       if (error instanceof ValidationError) {
         throw error;
       }
