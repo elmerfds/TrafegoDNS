@@ -411,11 +411,11 @@ export default function PortMonitoring() {
               <CardDescription>Latest security alerts requiring attention</CardDescription>
             </CardHeader>
             <CardContent>
-              {alerts.length === 0 ? (
+              {!alerts || alerts.length === 0 ? (
                 <p className="text-muted-foreground text-center py-4">No recent alerts</p>
               ) : (
                 <div className="space-y-2">
-                  {alerts.slice(0, 5).map((alert) => (
+                  {(alerts || []).slice(0, 5).map((alert) => (
                     <div key={alert.id} className="flex items-center justify-between p-3 border rounded">
                       <div className="flex items-center space-x-3">
                         <Shield className="h-4 w-4 text-orange-500" />
@@ -551,14 +551,14 @@ export default function PortMonitoring() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {ports.length === 0 ? (
+                  {!ports || ports.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                         {searchTerm ? `No ports found matching "${searchTerm}"` : 'No ports found'}
                       </TableCell>
                     </TableRow>
                   ) : (
-                    ports.map((port, index) => (
+                    (ports || []).map((port, index) => (
                       <TableRow key={port.id || `${port.server_id}-${port.port}-${index}`}>
                         <TableCell className="font-medium">{port.server_name || port.server_id}</TableCell>
                         <TableCell className="font-mono">{port.port}</TableCell>
@@ -654,7 +654,7 @@ export default function PortMonitoring() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {alerts.map((alert) => (
+                  {(alerts || []).map((alert) => (
                     <TableRow key={alert.id}>
                       <TableCell>
                         <div>
@@ -753,7 +753,7 @@ export default function PortMonitoring() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {scans.map((scan) => (
+                  {(scans || []).map((scan) => (
                     <TableRow key={scan.id}>
                       <TableCell className="font-medium">{scan.host}</TableCell>
                       <TableCell>{scan.scan_type}</TableCell>
