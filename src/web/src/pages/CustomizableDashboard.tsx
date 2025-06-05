@@ -118,7 +118,7 @@ const availableWidgets = [
   { id: 'port-alerts', name: 'Port Alerts', category: 'Ports', icon: AlertCircle, description: 'Port-related security alerts' },
   { id: 'server-status', name: 'Server Status', category: 'Ports', icon: Server, description: 'Monitored servers status' },
   { id: 'port-activity', name: 'Port Activity', category: 'Ports', icon: Monitor, description: 'Recent port activity and changes' },
-  { id: 'port-recommendations', name: 'Port Recommendations', category: 'Ports', icon: Eye, description: 'Port usage recommendations' }
+  { id: 'port-suggestions', name: 'Port Suggestions', category: 'Ports', icon: Eye, description: 'Quick port suggestions for common services' }
 ]
 
 // Default layouts for different breakpoints with minimal gaps
@@ -193,6 +193,7 @@ export function CustomizableDashboard() {
   const [reservationPort, setReservationPort] = useState('')
   const [reservationContainer, setReservationContainer] = useState('')
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [layoutKey, setLayoutKey] = useState(0)
   
   // Port monitoring data
   const { statistics: portStats, loading: portStatsLoading } = usePortStatistics()
@@ -384,8 +385,16 @@ export function CustomizableDashboard() {
       const isLarge = breakpoint === 'lg'
       const isMedium = breakpoint === 'md'
       
-      // Port widgets need more space for their content
+      // Port widgets need more space for their content, except suggestions
       if (widgetId.startsWith('port-')) {
+        if (widgetId === 'port-suggestions') {
+          return {
+            w: isLarge ? 4 : isMedium ? 5 : 6,
+            h: isLarge ? 6 : isMedium ? 7 : 8,
+            minH: isLarge ? 5 : isMedium ? 6 : 7,
+            minW: isLarge ? 3 : isMedium ? 4 : 6
+          }
+        }
         return {
           w: isLarge ? 6 : isMedium ? 5 : 6,
           h: isLarge ? 10 : isMedium ? 10 : 12,
@@ -459,13 +468,25 @@ export function CustomizableDashboard() {
       layout.push(newWidget)
     })
     
+    console.log('Setting new layouts after adding widget:', newLayouts)
     setLayouts(newLayouts)
     setHiddenWidgets(prev => {
       const updated = new Set(prev)
       updated.delete(widgetId)
+      console.log('Updated hidden widgets after adding:', updated)
       return updated
     })
     setHasUnsavedChanges(true)
+    
+    // Force a re-render by incrementing layoutKey
+    setLayoutKey(prev => prev + 1)
+    
+    // Force a re-render by logging visible widgets
+    setTimeout(() => {
+      console.log('Visible widgets after addition:', getVisibleWidgets())
+      console.log('Current layouts after addition:', newLayouts)
+      console.log('Current hiddenWidgets set:', hiddenWidgets)
+    }, 100)
     
     // Auto-save the layout after adding a widget
     setTimeout(() => {
@@ -522,7 +543,13 @@ export function CustomizableDashboard() {
 
   const getVisibleWidgets = () => {
     const currentLayout = layouts.lg || []
-    return currentLayout.map((item: Layout) => item.i).filter((id: string) => !hiddenWidgets.has(id))
+    console.log('getVisibleWidgets - current layout lg:', currentLayout)
+    console.log('getVisibleWidgets - hiddenWidgets:', hiddenWidgets)
+    const widgetIds = currentLayout.map((item: Layout) => item.i)
+    console.log('getVisibleWidgets - all widget IDs in layout:', widgetIds)
+    const visibleIds = widgetIds.filter((id: string) => !hiddenWidgets.has(id))
+    console.log('getVisibleWidgets - visible widget IDs:', visibleIds)
+    return visibleIds
   }
 
   const getAvailableWidgets = () => {
@@ -1686,36 +1713,39 @@ export function CustomizableDashboard() {
           </Card>
         )
 
-      case 'port-recommendations':
+      case 'port-suggestions':
         return (
           <Card className="h-full flex flex-col overflow-hidden">
             <CardHeader className="flex-shrink-0">
               <CardTitle className="flex items-center gap-2">
                 <Eye className="h-5 w-5" />
-                Port Recommendations
+                Port Suggestions
               </CardTitle>
-              <CardDescription>Port usage recommendations</CardDescription>
+              <CardDescription>Quick port suggestions for common services</CardDescription>
             </CardHeader>
-            <CardContent className="flex-1 space-y-4 overflow-y-auto">
-              <div className="space-y-2">
-                <div className="text-sm text-muted-foreground">Quick Suggestions</div>
-                <div className="space-y-1">
-                  <div className="text-xs text-green-600">✓ Ports 3000-3010 available</div>
-                  <div className="text-xs text-blue-600">ℹ Consider port 8080 for web services</div>
-                  <div className="text-xs text-orange-600">⚠ Port 80 commonly in use</div>
-                </div>
+            <CardContent className="flex-1 space-y-3 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: 'Web Dev', ports: '3000-3010', color: 'text-green-600' },
+                  { label: 'API', ports: '8000-8010', color: 'text-blue-600' },
+                  { label: 'Alt HTTP', ports: '8080-8090', color: 'text-purple-600' },
+                  { label: 'Custom', ports: '9000+', color: 'text-orange-600' }
+                ].map(({ label, ports, color }) => (
+                  <div key={label} className="p-2 border rounded text-center">
+                    <div className="text-xs font-medium">{label}</div>
+                    <div className={`text-xs ${color} font-mono`}>{ports}</div>
+                  </div>
+                ))}
               </div>
-              <div className="pt-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="w-full"
-                  onClick={() => navigate('/port-management?tab=suggestions')}
-                >
-                  <Eye className="h-4 w-4 mr-2" />
-                  Get Suggestions
-                </Button>
-              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full h-8 text-xs"
+                onClick={() => navigate('/port-management?tab=suggestions')}
+              >
+                <Eye className="h-3 w-3 mr-1" />
+                Advanced Suggestions
+              </Button>
             </CardContent>
           </Card>
         )
@@ -1846,7 +1876,11 @@ export function CustomizableDashboard() {
                               </div>
                               <Button
                                 size="sm"
-                                onClick={() => addWidget(widget.id)}
+                                onClick={() => {
+                                  console.log('Add widget button clicked for:', widget.id)
+                                  addWidget(widget.id)
+                                  console.log('Add widget function completed for:', widget.id)
+                                }}
                                 className="ml-2"
                               >
                                 <Plus className="h-3 w-3 mr-1" />
@@ -2042,14 +2076,36 @@ export function CustomizableDashboard() {
 
       {isEditMode && (
         <Alert>
-          <AlertDescription>
-            <span className="font-medium">Edit Mode:</span> Drag widgets to rearrange, resize by dragging corners. 
-            Click "Save Layout" when done.
+          <AlertDescription className="flex items-center justify-between">
+            <span>
+              <span className="font-medium">Edit Mode:</span> Drag widgets to rearrange, resize by dragging corners, or add new widgets.
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowWidgetDialog(true)}
+              className="ml-4"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Widget
+            </Button>
           </AlertDescription>
         </Alert>
       )}
 
+      {/* Debug info */}
+      {isEditMode && (
+        <div className="text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded">
+          <div>Debug: Visible widgets = {getVisibleWidgets().join(', ')}</div>
+          <div>Hidden widgets = {Array.from(hiddenWidgets).join(', ')}</div>
+          <div>Layout key = {layoutKey}</div>
+          <div>Total layouts = {Object.keys(layouts).length}</div>
+          <div>LG layout items = {layouts.lg?.length || 0}</div>
+        </div>
+      )}
+
       <ResponsiveGridLayout
+        key={layoutKey}
         className="layout"
         layouts={layouts}
         onLayoutChange={handleLayoutChange}
@@ -2069,8 +2125,13 @@ export function CustomizableDashboard() {
         useCSSTransforms={true}
       >
         {getVisibleWidgets().map(widgetId => {
+          console.log('Rendering widget:', widgetId)
           const widget = renderWidget(widgetId)
-          if (!widget) return null
+          if (!widget) {
+            console.log('Widget returned null for ID:', widgetId)
+            return null
+          }
+          console.log('Widget rendered successfully for ID:', widgetId)
           
           return (
             <div key={widgetId} className={isEditMode ? 'dashboard-item-edit h-full' : 'h-full'}>
