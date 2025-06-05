@@ -207,7 +207,7 @@ class PortAvailabilityChecker {
             ports = await this._getListeningPortsWithSs(protocol);
           } catch (ssError) {
             if (ssError.message.includes('ENOENT') || ssError.message.includes('ss') || ssError.message.includes('not found')) {
-              logger.warn('ss command not found, falling back to netstat');
+              logger.debug('ss command not found, using netstat instead (this is normal in Alpine containers)');
               usedMethod = 'netstat (fallback)';
               ports = await this._getListeningPortsWithNetstat(protocol);
             } else {
@@ -635,7 +635,12 @@ class PortAvailabilityChecker {
       });
 
       ss.on('error', (error) => {
-        logger.error(`ss command failed: ${error.message}`);
+        // Log as warning since we have a netstat fallback
+        if (error.code === 'ENOENT') {
+          logger.debug(`ss command not found, will fall back to netstat`);
+        } else {
+          logger.warn(`ss command failed: ${error.message}`);
+        }
         reject(error);
       });
       
