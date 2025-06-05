@@ -689,7 +689,7 @@ export default function PortMonitoring() {
         serverIp = customServerIp.trim();
       } else {
         const server = Array.isArray(servers) ? servers.find(s => s.id === selectedServer) : undefined;
-        if (server) {
+        if (server && server.ip) {
           serverIp = server.ip;
         }
       }
@@ -780,7 +780,7 @@ export default function PortMonitoring() {
         serverIp = customServerIp.trim();
       } else {
         const server = Array.isArray(servers) ? servers.find(s => s.id === selectedServer) : undefined;
-        if (server) {
+        if (server && server.ip) {
           serverIp = server.ip;
         }
       }
@@ -1006,7 +1006,7 @@ export default function PortMonitoring() {
               <Activity className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{statistics.ports?.byStatus ? Object.values(statistics.ports.byStatus).reduce((a, b) => a + b, 0) : 0}</div>
+              <div className="text-2xl font-bold">{statistics.totalMonitoredPorts || (statistics.ports?.byStatus ? Object.values(statistics.ports.byStatus).reduce((a, b) => a + b, 0) : 0)}</div>
             </CardContent>
           </Card>
 
@@ -1016,7 +1016,7 @@ export default function PortMonitoring() {
               <Settings className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{Array.isArray(reservations) ? reservations.filter(r => r.status === 'active').length : 0}</div>
+              <div className="text-2xl font-bold">{statistics.activeReservations || (Array.isArray(reservations) ? reservations.filter(r => r.status === 'active').length : 0)}</div>
             </CardContent>
           </Card>
 
@@ -1026,7 +1026,7 @@ export default function PortMonitoring() {
               <CheckCircle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{statistics.ports?.byStatus?.closed || 0}</div>
+              <div className="text-2xl font-bold">{statistics.availablePortsInRange || statistics.ports?.byStatus?.closed || 0}</div>
             </CardContent>
           </Card>
 

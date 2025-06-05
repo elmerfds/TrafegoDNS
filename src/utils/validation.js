@@ -498,6 +498,15 @@ function createValidationMiddleware(schema) {
       next();
     } catch (error) {
       if (error instanceof ValidationError) {
+        logger.error('Validation error details:', {
+          field: error.field,
+          value: error.value,
+          message: error.message,
+          code: error.code,
+          requestBody: req.body,
+          requestMethod: req.method,
+          requestUrl: req.url
+        });
         return res.apiValidationError([error.message], 'Input validation failed');
       }
       
