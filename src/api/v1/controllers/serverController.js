@@ -22,11 +22,8 @@ const getServers = asyncHandler(async (req, res) => {
       // Try to get host IP from ConfigManager first (most current)
       try {
         const { ConfigManager } = global.services || {};
-        if (ConfigManager) {
-          const config = ConfigManager.getConfig();
-          if (config.hostIp) {
-            hostIp = config.hostIp;
-          }
+        if (ConfigManager && ConfigManager.hostIp) {
+          hostIp = ConfigManager.hostIp;
         }
       } catch (configError) {
         logger.debug(`Could not get host IP from config: ${configError.message}`);
@@ -62,11 +59,8 @@ const getServers = asyncHandler(async (req, res) => {
     // Try to get host IP from ConfigManager first (most current)
     try {
       const { ConfigManager } = global.services || {};
-      if (ConfigManager) {
-        const config = ConfigManager.getConfig();
-        if (config.hostIp) {
-          hostIp = config.hostIp;
-        }
+      if (ConfigManager && ConfigManager.hostIp) {
+        hostIp = ConfigManager.hostIp;
       }
     } catch (configError) {
       logger.debug(`Could not get host IP from config: ${configError.message}`);

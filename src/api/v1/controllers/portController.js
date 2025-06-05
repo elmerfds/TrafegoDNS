@@ -748,6 +748,8 @@ const getPortStatistics = asyncHandler(async (req, res) => {
   }
 
   try {
+    logger.info(`📊 API: Fetching port statistics for user ${req.user?.username || 'unknown'}`);
+    
     // Execute statistics retrieval with error handling and caching
     const statistics = await errorHandler.executeWithRetry(
       async () => {
@@ -760,6 +762,8 @@ const getPortStatistics = asyncHandler(async (req, res) => {
         }
       }
     );
+    
+    logger.info(`📊 API: Retrieved statistics - monitored: ${statistics.totalMonitoredPorts}, available: ${statistics.availablePortsInRange}, reservations: ${statistics.activeReservations}`);
     
     // Add consistency metrics if available
     const consistencyMetrics = dataConsistencyService.getMetrics();

@@ -242,8 +242,8 @@ router.post('/check-availability',
   portOperationsLimiter,
   sanitizeInputs(),
   validateRequestSize(),
+  ApiResponse.middleware,
   validate('portAvailabilityCheck'),
-  ApiResponse.middleware, 
   checkPortAvailability
 );
 
@@ -277,8 +277,8 @@ router.post('/reserve',
   reservationLimiter,
   sanitizeInputs(),
   validateRequestSize(),
+  ApiResponse.middleware,
   validate('portReservation'),
-  ApiResponse.middleware, 
   reservePorts
 );
 
@@ -320,8 +320,8 @@ router.delete('/reserve',
   reservationLimiter,
   sanitizeInputs(),
   validateRequestSize(),
+  ApiResponse.middleware,
   validate('portReservationRelease'),
-  ApiResponse.middleware, 
   releasePorts
 );
 
@@ -352,8 +352,8 @@ router.post('/suggest-alternatives',
   authenticate, 
   sanitizeInputs(),
   validateRequestSize(),
+  ApiResponse.middleware,
   validate('portSuggestions'),
-  ApiResponse.middleware, 
   suggestAlternativePorts
 );
 
@@ -386,8 +386,8 @@ router.post('/validate-deployment',
   authenticate, 
   sanitizeInputs(),
   validateRequestSize(),
-  validate('deploymentValidation'),
   ApiResponse.middleware,
+  validate('deploymentValidation'),
   validateDeployment
 );
 
@@ -461,8 +461,8 @@ router.get('/statistics', authenticate, ApiResponse.middleware, getPortStatistic
 router.get('/reservations', 
   authenticate, 
   sanitizeInputs(),
+  ApiResponse.middleware,
   validate('reservationQuery'),
-  ApiResponse.middleware, 
   paginationMiddleware(), 
   getPortReservations
 );
@@ -512,8 +512,8 @@ router.post('/recommendations',
   authenticate, 
   sanitizeInputs(),
   validateRequestSize(),
+  ApiResponse.middleware,
   validate('portRecommendations'),
-  ApiResponse.middleware, 
   getPortRecommendations
 );
 
@@ -570,8 +570,8 @@ router.post('/scan-range',
   scanLimiter,
   sanitizeInputs(),
   validateRequestSize(),
+  ApiResponse.middleware,
   validate('portScanRange'),
-  ApiResponse.middleware, 
   paginationMiddleware(), 
   scanPortRange
 );
@@ -601,8 +601,8 @@ router.post('/scan-range',
 router.get('/in-use', 
   authenticate, 
   sanitizeInputs(),
+  ApiResponse.middleware,
   validate('portListQuery'),
-  ApiResponse.middleware, 
   paginationMiddleware(), 
   getPortsInUse
 );
@@ -649,8 +649,8 @@ router.put('/:port/documentation',
   authenticate, 
   sanitizeInputs(),
   validateRequestSize(),
-  validate('portDocumentationUpdate'),
   ApiResponse.middleware,
+  validate('portDocumentationUpdate'),
   updatePortDocumentation
 );
 
@@ -703,8 +703,8 @@ router.put('/:port/label',
   authenticate, 
   sanitizeInputs(),
   validateRequestSize(),
-  validate('portServiceLabelUpdate'),
   ApiResponse.middleware,
+  validate('portServiceLabelUpdate'),
   updatePortServiceLabel
 );
 

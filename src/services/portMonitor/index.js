@@ -530,17 +530,32 @@ class PortMonitor {
         }
       }
 
+      logger.info(`📊 Preparing to scan ${allPorts.length} ports in configured ranges`);
+
+      // Pre-populate monitored ports with pending status to provide immediate statistics
+      const currentTime = new Date().toISOString();
+      for (const port of allPorts) {
+        this.monitoredPorts.set(port, {
+          available: true, // Assume available until checked
+          lastChecked: null,
+          status: 'pending'
+        });
+      }
+
+      logger.info(`📊 Pre-populated ${this.monitoredPorts.size} ports for monitoring`);
+
       // Check availability in batches to avoid overwhelming the system
       const batchSize = 100;
       for (let i = 0; i < allPorts.length; i += batchSize) {
         const batch = allPorts.slice(i, i + batchSize);
         const results = await this.availabilityChecker.checkMultiplePorts(batch);
         
-        // Store results
+        // Update results
         for (const [port, available] of Object.entries(results)) {
           this.monitoredPorts.set(parseInt(port), {
             available,
-            lastChecked: new Date().toISOString()
+            lastChecked: new Date().toISOString(),
+            status: 'checked'
           });
         }
       }
@@ -1055,16 +1070,58 @@ class PortMonitor {
       const reservations = await this.reservationManager.getActiveReservations();
       const monitoredPorts = this.monitoredPorts.size;
       
-      return {
+      let availablePortsInRange = 0;
+      let systemPortsInUse = 0;
+      
+      if (monitoredPorts > 0) {
+        // If we have monitored ports data, use it
+        availablePortsInRange = await this._countAvailablePorts();
+      } else {
+        // If no monitored ports yet, try to get basic system port info
+        try {
+          const systemPorts = await this.availabilityChecker.getSystemPortsInUse('localhost');
+          systemPortsInUse = systemPorts.length;
+          
+          // Calculate estimated available ports in range based on system ports
+          const totalPortsInRange = this.portRanges.reduce((total, range) => {
+            return total + (range.end - range.start + 1) - this.excludedPorts.filter(p => p >= range.start && p <= range.end).length;
+          }, 0);
+          
+          // Rough estimate: assume most ports in range are available
+          const systemPortsInRange = systemPorts.filter(p => {
+            return this.portRanges.some(range => p.port >= range.start && p.port <= range.end) && 
+                   !this.excludedPorts.includes(p.port);
+          }).length;
+          
+          availablePortsInRange = Math.max(0, totalPortsInRange - systemPortsInRange);
+        } catch (error) {
+          logger.debug(`Could not get system ports for statistics: ${error.message}`);
+        }
+      }
+      
+      const stats = {
         totalMonitoredPorts: monitoredPorts,
         activeReservations: reservations.length,
-        availablePortsInRange: await this._countAvailablePorts(),
+        availablePortsInRange: availablePortsInRange,
         conflictsDetected: this.conflictDetector.getRecentConflictsCount(),
         lastScanTime: this.lastScanTime || null,
         monitoringEnabled: this.enableRealTimeMonitoring,
         portRanges: this.portRanges,
-        excludedPorts: this.excludedPorts
+        excludedPorts: this.excludedPorts,
+        isInitialized: this.isInitialized,
+        isRunning: this.isRunning,
+        systemPortsInUse: systemPortsInUse
       };
+      
+      logger.debug(`📊 Port statistics: monitored=${stats.totalMonitoredPorts}, available=${stats.availablePortsInRange}, reservations=${stats.activeReservations}, system=${stats.systemPortsInUse}, initialized=${stats.isInitialized}, running=${stats.isRunning}`);
+      
+      // Add diagnostic info if all stats are zero
+      if (stats.totalMonitoredPorts === 0 && stats.activeReservations === 0 && stats.availablePortsInRange === 0) {
+        logger.warn(`📊 All port statistics are zero - this may indicate: 1) Initial scan not completed yet, 2) No port monitoring configured, or 3) Service initialization issue`);
+        logger.info(`📊 Port ranges configured: ${JSON.stringify(stats.portRanges)}, Excluded: ${JSON.stringify(stats.excludedPorts)}`);
+      }
+      
+      return stats;
     } catch (error) {
       logger.error(`Failed to get statistics: ${error.message}`);
       throw error;
