@@ -695,12 +695,22 @@ export default function PortMonitoring() {
       }
 
       console.log(`Checking port availability for ports [${ports.join(', ')}] on server: ${serverIp}`);
-
-      const response = await api.post('/ports/check-availability', {
+      
+      const requestBody = {
         ports,
         protocol,
         server: serverIp
+      };
+      
+      console.log('[PORT CHECKER DEBUG] Sending request:', requestBody);
+      console.log('[PORT CHECKER DEBUG] Server details:', {
+        selectedServer,
+        customServerIp,
+        serverFromList: Array.isArray(servers) ? servers.find(s => s.id === selectedServer) : undefined,
+        allServers: servers
       });
+
+      const response = await api.post('/ports/check-availability', requestBody);
 
       setPortCheckResults(response.data.data.ports);
     } catch (error: any) {
