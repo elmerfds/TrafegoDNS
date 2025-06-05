@@ -78,6 +78,9 @@ export function ServerSelector({
   allowCustom = true,
   className = ''
 }: ServerSelectorProps) {
+  // Ensure servers is always an array to prevent "a.find is not a function" errors
+  const safeServers = Array.isArray(servers) ? servers : DEFAULT_SERVERS;
+  
   const [isAddingServer, setIsAddingServer] = useState(false);
   const [checkingServers, setCheckingServers] = useState<Set<string>>(new Set());
   
@@ -117,11 +120,11 @@ export function ServerSelector({
   const checkAllServers = async () => {
     if (!onServersChange) return;
     
-    setCheckingServers(new Set(servers.map(s => s.id)));
+    setCheckingServers(new Set(safeServers.map(s => s.id)));
     
     try {
       const updatedServers = await Promise.all(
-        servers.map(async (server) => {
+        safeServers.map(async (server) => {
           try {
             return await checkServerStatus(server);
           } catch (error) {
@@ -146,14 +149,14 @@ export function ServerSelector({
   const checkSingleServer = async (serverId: string) => {
     if (!onServersChange) return;
     
-    const server = servers.find(s => s.id === serverId);
+    const server = safeServers.find(s => s.id === serverId);
     if (!server) return;
     
     setCheckingServers(prev => new Set([...prev, serverId]));
     
     try {
       const updatedServer = await checkServerStatus(server);
-      const updatedServers = servers.map(s => 
+      const updatedServers = safeServers.map(s => 
         s.id === serverId ? updatedServer : s
       );
       
@@ -191,7 +194,7 @@ export function ServerSelector({
     };
     
     // Check if server already exists
-    if (servers.some(s => s.id === newServer.id)) {
+    if (safeServers.some(s => s.id === newServer.id)) {
       toast({
         title: 'Server already exists',
         description: 'A server with this host and port already exists.',
@@ -201,7 +204,7 @@ export function ServerSelector({
     }
     
     // Add server and check its status
-    const updatedServers = [...servers, newServer];
+    const updatedServers = [...safeServers, newServer];
     onServersChange(updatedServers);
     
     // Check the new server's status
@@ -227,10 +230,10 @@ export function ServerSelector({
   const removeServer = (serverId: string) => {
     if (!onServersChange) return;
     
-    const server = servers.find(s => s.id === serverId);
+    const server = safeServers.find(s => s.id === serverId);
     if (!server) return;
     
-    const updatedServers = servers.filter(s => s.id !== serverId);
+    const updatedServers = safeServers.filter(s => s.id !== serverId);
     onServersChange(updatedServers);
     
     // If the removed server was selected, select the first available server
@@ -276,12 +279,12 @@ export function ServerSelector({
 
   // Auto-check servers on mount
   useEffect(() => {
-    if (servers.length > 0 && onServersChange) {
+    if (safeServers.length > 0 && onServersChange) {
       checkAllServers();
     }
   }, []); // Only run on mount
 
-  const selectedServerInfo = servers.find(s => s.id === selectedServer);
+  const selectedServerInfo = safeServers.find(s => s.id === selectedServer);
 
   return (
     <div className={`space-y-4 ${className}`}>
@@ -308,7 +311,7 @@ export function ServerSelector({
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {servers.map((server) => (
+              {safeServers.map((server) => (
                 <SelectItem key={server.id} value={server.id}>
                   <div className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-2">
