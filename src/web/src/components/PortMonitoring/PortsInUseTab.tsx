@@ -214,7 +214,7 @@ export function PortsInUseTab({
 
   const handleBulkCheckStatus = async (ports: Port[]) => {
     try {
-      const portNumbers = ports.map(p => p.port);
+      const portNumbers = (ports || []).map(p => p.port);
       const response = await api.post('/ports/check-availability', {
         ports: portNumbers,
         protocol: 'both', // Check both protocols for bulk operation
@@ -236,7 +236,7 @@ export function PortsInUseTab({
     try {
       // Create CSV data
       const csvHeaders = ['Port', 'Protocol', 'Status', 'Service', 'Container', 'Description', 'Last Seen'];
-      const csvRows = ports.map(port => [
+      const csvRows = (ports || []).map(port => [
         port.port,
         port.protocol,
         port.status,
@@ -295,7 +295,7 @@ export function PortsInUseTab({
 
   // Filter data based on current filters
   const filteredPorts = useMemo(() => {
-    return ports.filter(port => {
+    return (ports || []).filter(port => {
       // Search filter
       if (filters.search) {
         const searchLower = filters.search.toLowerCase();
@@ -324,13 +324,13 @@ export function PortsInUseTab({
 
   // Get summary statistics
   const summary = useMemo(() => {
-    const total = filteredPorts.length;
-    const byStatus = filteredPorts.reduce((acc, port) => {
+    const total = (filteredPorts || []).length;
+    const byStatus = (filteredPorts || []).reduce((acc, port) => {
       acc[port.status] = (acc[port.status] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
-    const byProtocol = filteredPorts.reduce((acc, port) => {
+    const byProtocol = (filteredPorts || []).reduce((acc, port) => {
       acc[port.protocol] = (acc[port.protocol] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);

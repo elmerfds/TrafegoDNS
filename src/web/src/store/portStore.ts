@@ -238,8 +238,8 @@ export const usePortStore = create<PortStore>()(
             });
 
             set(state => {
-              state.ports = response.data.data.items;
-              state.pagination.ports = response.data.data.pagination;
+              state.ports = response.data?.data?.items || [];
+              state.pagination.ports = response.data?.data?.pagination || { page: 1, limit: 20, total: 0, pages: 0 };
               state.lastUpdated.ports = Date.now();
               state.loading.ports = false;
             });
@@ -299,8 +299,8 @@ export const usePortStore = create<PortStore>()(
             });
 
             set(state => {
-              state.alerts = response.data.data.items;
-              state.pagination.alerts = response.data.data.pagination;
+              state.alerts = response.data?.data?.items || [];
+              state.pagination.alerts = response.data?.data?.pagination || { page: 1, limit: 20, total: 0, pages: 0 };
               state.lastUpdated.alerts = Date.now();
               state.loading.alerts = false;
             });
@@ -370,8 +370,8 @@ export const usePortStore = create<PortStore>()(
             });
 
             set(state => {
-              state.scans = response.data.data.items;
-              state.pagination.scans = response.data.data.pagination;
+              state.scans = response.data?.data?.items || [];
+              state.pagination.scans = response.data?.data?.pagination || { page: 1, limit: 20, total: 0, pages: 0 };
               state.lastUpdated.scans = Date.now();
               state.loading.scans = false;
             });
@@ -446,8 +446,8 @@ export const usePortStore = create<PortStore>()(
             });
 
             set(state => {
-              state.reservations = response.data.data.items;
-              state.pagination.reservations = response.data.data.pagination;
+              state.reservations = response.data?.data?.items || [];
+              state.pagination.reservations = response.data?.data?.pagination || { page: 1, limit: 20, total: 0, pages: 0 };
               state.lastUpdated.reservations = Date.now();
               state.loading.reservations = false;
             });
@@ -519,7 +519,7 @@ export const usePortStore = create<PortStore>()(
             const response = await api.get<ApiResponse<Server[]>>('/servers');
 
             set(state => {
-              state.servers = response.data.data;
+              state.servers = response.data?.data || [];
               state.lastUpdated.servers = Date.now();
               state.loading.servers = false;
             });
@@ -555,7 +555,7 @@ export const usePortStore = create<PortStore>()(
             const response = await api.get<ApiResponse<PortStatistics>>('/ports/statistics');
 
             set(state => {
-              state.statistics = response.data.data;
+              state.statistics = response.data?.data || null;
               state.lastUpdated.statistics = Date.now();
               state.loading.statistics = false;
             });
@@ -629,7 +629,7 @@ export const usePortStore = create<PortStore>()(
         // Real-time update handlers
         handlePortUpdate: (port: Port) => {
           set(state => {
-            const index = state.ports.findIndex((p: Port) => p.id === port.id);
+            const index = (state.ports || []).findIndex((p: Port) => p.id === port.id);
             if (index >= 0) {
               state.ports[index] = port;
             } else {

@@ -286,7 +286,7 @@ export default function PortMonitoring() {
         serverIp = customServerIp.trim();
         console.log('Using custom server IP:', serverIp);
       } else {
-        const server = servers.find(s => s.id === selectedServer);
+        const server = (servers || []).find(s => s.id === selectedServer);
         if (server) {
           serverIp = server.ip;
           console.log('Found server from list:', server);
@@ -653,7 +653,7 @@ export default function PortMonitoring() {
         }
         serverIp = customServerIp.trim();
       } else {
-        const server = servers.find(s => s.id === selectedServer);
+        const server = (servers || []).find(s => s.id === selectedServer);
         if (server) {
           serverIp = server.ip;
         }
@@ -744,7 +744,7 @@ export default function PortMonitoring() {
         }
         serverIp = customServerIp.trim();
       } else {
-        const server = servers.find(s => s.id === selectedServer);
+        const server = (servers || []).find(s => s.id === selectedServer);
         if (server) {
           serverIp = server.ip;
         }
@@ -981,7 +981,7 @@ export default function PortMonitoring() {
               <Settings className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{reservations.filter(r => r.status === 'active').length}</div>
+              <div className="text-2xl font-bold">{(reservations || []).filter(r => r.status === 'active').length}</div>
             </CardContent>
           </Card>
 
@@ -1040,7 +1040,7 @@ export default function PortMonitoring() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {servers.map(server => (
+                        {(servers || []).map(server => (
                           <SelectItem key={server.id} value={server.id}>
                             {server.name} ({server.ip})
                           </SelectItem>
@@ -1246,7 +1246,7 @@ export default function PortMonitoring() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {servers.map(server => (
+                      {(servers || []).map(server => (
                         <SelectItem key={server.id} value={server.id}>
                           {server.name} ({server.ip})
                         </SelectItem>
@@ -1357,7 +1357,7 @@ export default function PortMonitoring() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {servers.map(server => (
+                      {(servers || []).map(server => (
                         <SelectItem key={server.id} value={server.id}>
                           {server.name} ({server.ip})
                         </SelectItem>
@@ -1440,8 +1440,8 @@ export default function PortMonitoring() {
                   <h4 className="font-medium">Scan Results:</h4>
                   <div className="text-sm text-muted-foreground mb-2">
                     {(() => {
-                      const availableCount = portScanResults.filter(p => p.available).length;
-                      const totalCount = portScanResults.length;
+                      const availableCount = (portScanResults || []).filter(p => p.available).length;
+                      const totalCount = (portScanResults || []).length;
                       const percentage = Math.round((availableCount / totalCount) * 100);
                       return `${availableCount}/${totalCount} ports available (${percentage}%)`;
                     })()}
@@ -1450,7 +1450,7 @@ export default function PortMonitoring() {
                   {/* Combined Results Section */}
                   <div className="space-y-2">
                     <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
-                      {portScanResults.map((port) => (
+                      {(portScanResults || []).map((port) => (
                         <div key={`${port.port}-${port.protocol}`} className="p-3 border rounded space-y-2">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-3">
@@ -1490,7 +1490,7 @@ export default function PortMonitoring() {
                     </div>
                   </div>
                   
-                  {portScanResults.length === 0 && (
+                  {(portScanResults || []).length === 0 && (
                     <div className="text-center py-4 text-muted-foreground">
                       No results to display
                     </div>
@@ -1516,13 +1516,13 @@ export default function PortMonitoring() {
               </Button>
             </CardHeader>
             <CardContent>
-              {reservations.length === 0 ? (
+              {(reservations || []).length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   No active port reservations
                 </div>
               ) : (
                 <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 400px)' }}>
-                  {reservations.map((reservation) => (
+                  {(reservations || []).map((reservation) => (
                     <div key={reservation.id} className="p-3 border rounded space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
@@ -1645,7 +1645,7 @@ export default function PortMonitoring() {
                 <div className="space-y-2">
                   <h4 className="font-medium">Configured Servers</h4>
                   <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
-                    {servers.length > 0 ? servers.map(server => (
+                    {(servers || []).length > 0 ? (servers || []).map(server => (
                       <div key={server.id} className="flex items-center justify-between p-3 border rounded">
                         <div className="flex items-center space-x-3">
                           <Server className="h-4 w-4" />

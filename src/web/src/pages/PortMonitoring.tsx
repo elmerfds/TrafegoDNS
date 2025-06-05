@@ -148,7 +148,7 @@ export default function PortMonitoring() {
       
       // Convert port_range and protocols to the format expected by the store
       const [startPort, endPort] = scanRequest.port_range?.includes('-') 
-        ? scanRequest.port_range.split('-').map(p => parseInt(p.trim()))
+        ? (scanRequest.port_range || '1-1000').split('-').map(p => parseInt(p.trim()))
         : [1, 1000];
       
       await startPortScan({
