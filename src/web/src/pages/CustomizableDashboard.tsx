@@ -362,12 +362,44 @@ export function CustomizableDashboard() {
   const addWidget = (widgetId: string) => {
     const newLayouts = { ...layouts }
     
-    // Find a good position for the new widget
-    const defaultSize = { w: 4, h: 6, minH: 4, minW: 3 }
+    // Define widget-specific sizes for better initial display
+    const getWidgetSize = (breakpoint: string) => {
+      const isLarge = breakpoint === 'lg'
+      const isMedium = breakpoint === 'md'
+      
+      // Port widgets need more space for their content
+      if (widgetId.startsWith('port-')) {
+        return {
+          w: isLarge ? 6 : isMedium ? 5 : 6,
+          h: isLarge ? 8 : isMedium ? 8 : 10,
+          minH: 6,
+          minW: isLarge ? 4 : isMedium ? 3 : 6
+        }
+      }
+      
+      // Stats widget needs full width
+      if (widgetId === 'stats') {
+        return {
+          w: isLarge ? 12 : isMedium ? 10 : 6,
+          h: 4,
+          minH: 3,
+          minW: isLarge ? 6 : isMedium ? 5 : 6
+        }
+      }
+      
+      // Default size for other widgets
+      return {
+        w: isLarge ? 4 : isMedium ? 5 : 6,
+        h: 6,
+        minH: 4,
+        minW: isLarge ? 3 : isMedium ? 3 : 6
+      }
+    }
     
     Object.keys(newLayouts).forEach(breakpoint => {
       const layout = newLayouts[breakpoint]
       const cols = breakpoint === 'lg' ? 12 : breakpoint === 'md' ? 10 : 6
+      const widgetSize = getWidgetSize(breakpoint)
       
       // Find the lowest available position
       let x = 0
@@ -381,10 +413,10 @@ export function CustomizableDashboard() {
       x = 0
       
       // Check if there's space in the current row
-      while (x <= cols - defaultSize.w) {
+      while (x <= cols - widgetSize.w) {
         const hasCollision = layout.some((item: Layout) => 
-          x < item.x + item.w && x + defaultSize.w > item.x && 
-          y < item.y + item.h && y + defaultSize.h > item.y
+          x < item.x + item.w && x + widgetSize.w > item.x && 
+          y < item.y + item.h && y + widgetSize.h > item.y
         )
         
         if (!hasCollision) {
@@ -393,7 +425,7 @@ export function CustomizableDashboard() {
         x += 1
         
         // If we reach the end of the row, move to next row
-        if (x > cols - defaultSize.w) {
+        if (x > cols - widgetSize.w) {
           x = 0
           y = maxY + 1
         }
@@ -404,7 +436,7 @@ export function CustomizableDashboard() {
         i: widgetId,
         x,
         y,
-        ...defaultSize
+        ...widgetSize
       })
     })
     
@@ -414,6 +446,19 @@ export function CustomizableDashboard() {
       updated.delete(widgetId)
       return updated
     })
+    
+    // Auto-save the layout after adding a widget
+    setTimeout(() => {
+      const currentLayoutName = activeLayoutData?.data?.name || 'default'
+      if (currentLayoutName !== 'default') {
+        // Update existing layout
+        saveLayoutMutation.mutate({ name: currentLayoutName, layout: newLayouts })
+      } else {
+        // Create a new "My Dashboard" layout to persist changes
+        const autoLayoutName = 'My Dashboard'
+        saveLayoutMutation.mutate({ name: autoLayoutName, layout: newLayouts })
+      }
+    }, 500)
     
     toast({
       title: 'Widget added',
@@ -430,6 +475,19 @@ export function CustomizableDashboard() {
     
     setLayouts(newLayouts)
     setHiddenWidgets(prev => new Set([...prev, widgetId]))
+    
+    // Auto-save the layout after removing a widget
+    setTimeout(() => {
+      const currentLayoutName = activeLayoutData?.data?.name || 'default'
+      if (currentLayoutName !== 'default') {
+        // Update existing layout
+        saveLayoutMutation.mutate({ name: currentLayoutName, layout: newLayouts })
+      } else {
+        // Create a new "My Dashboard" layout to persist changes
+        const autoLayoutName = 'My Dashboard'
+        saveLayoutMutation.mutate({ name: autoLayoutName, layout: newLayouts })
+      }
+    }, 500)
     
     toast({
       title: 'Widget removed',
@@ -1072,9 +1130,9 @@ export function CustomizableDashboard() {
               ) : (
                 <>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Monitored Ports</span>
+                    <span className="text-sm text-muted-foreground">Range Size</span>
                     <span className="text-lg font-bold">
-                      {portStats?.totalMonitoredPorts || (portStats?.ports?.byStatus ? Object.values(portStats.ports.byStatus).reduce((a, b) => a + b, 0) : 0)}
+                      {portStats?.totalMonitoredPorts || 0}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -1086,7 +1144,7 @@ export function CustomizableDashboard() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">In Use</span>
                     <span className="text-lg font-bold text-red-600">
-                      {portStats?.ports?.byStatus?.open || 0}
+                      {portStats?.systemPortsInUse || portStats?.ports?.byStatus?.open || 0}
                     </span>
                   </div>
                   <div className="pt-2">

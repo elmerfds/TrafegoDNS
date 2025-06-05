@@ -1557,7 +1557,7 @@ export default function PortMonitoring() {
                   </div>
 
                   {/* Filter Controls */}
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-muted rounded-lg">
                     <div>
                       <Label htmlFor="statusFilter">Status</Label>
                       <Select value={scanResultsFilter} onValueChange={setScanResultsFilter}>
