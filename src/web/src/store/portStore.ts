@@ -318,7 +318,7 @@ export const usePortStore = create<PortStore>()(
             
             // Update the alert in the state
             set(state => {
-              const alert = state.alerts.find((a: PortAlert) => a.id === alertId);
+              const alert = (state.alerts || []).find((a: PortAlert) => a.id === alertId);
               if (alert) {
                 alert.acknowledged = true;
                 alert.acknowledged_at = new Date().toISOString();
@@ -337,7 +337,7 @@ export const usePortStore = create<PortStore>()(
             
             // Update the alert in the state
             set(state => {
-              const alert = state.alerts.find((a: PortAlert) => a.id === alertId);
+              const alert = (state.alerts || []).find((a: PortAlert) => a.id === alertId);
               if (alert) {
                 alert.resolved = true;
                 alert.resolved_at = new Date().toISOString();
@@ -407,7 +407,7 @@ export const usePortStore = create<PortStore>()(
             
             // Update the scan status in the state
             set(state => {
-              const scan = state.scans.find((s: PortScan) => s.id === scanId);
+              const scan = (state.scans || []).find((s: PortScan) => s.id === scanId);
               if (scan) {
                 scan.status = 'cancelled';
               }
@@ -489,7 +489,7 @@ export const usePortStore = create<PortStore>()(
             
             // Update the reservation status in the state
             set(state => {
-              const reservation = state.reservations.find((r: PortReservation) => r.id === reservationId);
+              const reservation = (state.reservations || []).find((r: PortReservation) => r.id === reservationId);
               if (reservation) {
                 reservation.status = 'released';
                 reservation.released_at = new Date().toISOString();
@@ -629,7 +629,8 @@ export const usePortStore = create<PortStore>()(
         // Real-time update handlers
         handlePortUpdate: (port: Port) => {
           set(state => {
-            const index = (state.ports || []).findIndex((p: Port) => p.id === port.id);
+            if (!state.ports) state.ports = [];
+            const index = state.ports.findIndex((p: Port) => p.id === port.id);
             if (index >= 0) {
               state.ports[index] = port;
             } else {
@@ -640,6 +641,7 @@ export const usePortStore = create<PortStore>()(
 
         handleAlertUpdate: (alert: PortAlert) => {
           set(state => {
+            if (!state.alerts) state.alerts = [];
             const index = state.alerts.findIndex((a: PortAlert) => a.id === alert.id);
             if (index >= 0) {
               state.alerts[index] = alert;
@@ -651,6 +653,7 @@ export const usePortStore = create<PortStore>()(
 
         handleScanUpdate: (scan: PortScan) => {
           set(state => {
+            if (!state.scans) state.scans = [];
             const index = state.scans.findIndex((s: PortScan) => s.id === scan.id);
             if (index >= 0) {
               state.scans[index] = scan;
@@ -662,6 +665,7 @@ export const usePortStore = create<PortStore>()(
 
         handleReservationUpdate: (reservation: PortReservation) => {
           set(state => {
+            if (!state.reservations) state.reservations = [];
             const index = state.reservations.findIndex((r: PortReservation) => r.id === reservation.id);
             if (index >= 0) {
               state.reservations[index] = reservation;

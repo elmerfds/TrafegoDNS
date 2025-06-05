@@ -383,7 +383,7 @@ export default function PortMonitoring() {
 
   const removeServer = async (serverId: string) => {
     // Don't allow removing the host server
-    const serverToRemove = servers.find(s => s.id === serverId);
+    const serverToRemove = (servers || []).find(s => s.id === serverId);
     if (serverToRemove?.isHost) {
       setError('Cannot remove the host server');
       return;
@@ -412,7 +412,7 @@ export default function PortMonitoring() {
   };
 
   const startEditingHostIp = () => {
-    const hostServer = servers.find(s => s.isHost);
+    const hostServer = (servers || []).find(s => s.isHost);
     setEditHostIpValue(hostServer?.ip || 'localhost');
     setEditingHostIp(true);
   };
@@ -593,7 +593,7 @@ export default function PortMonitoring() {
     try {
       await api.put(`/ports/${port}/documentation`, {
         documentation,
-        server: selectedServer === 'custom' ? customServerIp : servers.find(s => s.id === selectedServer)?.ip
+        server: selectedServer === 'custom' ? customServerIp : (servers || []).find(s => s.id === selectedServer)?.ip
       });
       loadPortsInUse();
     } catch (error) {
@@ -605,7 +605,7 @@ export default function PortMonitoring() {
     try {
       await api.put(`/ports/${port}/label`, {
         serviceLabel,
-        server: selectedServer === 'custom' ? customServerIp : servers.find(s => s.id === selectedServer)?.ip,
+        server: selectedServer === 'custom' ? customServerIp : (servers || []).find(s => s.id === selectedServer)?.ip,
         protocol
       });
       loadPortsInUse();
@@ -1027,7 +1027,7 @@ export default function PortMonitoring() {
             <CardHeader>
               <CardTitle>Ports Currently in Use</CardTitle>
               <CardDescription>
-                All ports in use on {selectedServer === 'custom' ? customServerIp : servers.find(s => s.id === selectedServer)?.name || 'Host'}
+                All ports in use on {selectedServer === 'custom' ? customServerIp : (servers || []).find(s => s.id === selectedServer)?.name || 'Host'}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1264,7 +1264,7 @@ export default function PortMonitoring() {
                   )}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">
-                  Checking ports on {selectedServer === 'custom' ? (customServerIp || 'custom server') : servers.find(s => s.id === selectedServer)?.name || 'localhost'}
+                  Checking ports on {selectedServer === 'custom' ? (customServerIp || 'custom server') : (servers || []).find(s => s.id === selectedServer)?.name || 'localhost'}
                 </div>
               </div>
               
@@ -1375,7 +1375,7 @@ export default function PortMonitoring() {
                   )}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">
-                  Scanning ports on {selectedServer === 'custom' ? (customServerIp || 'custom server') : servers.find(s => s.id === selectedServer)?.name || 'localhost'}
+                  Scanning ports on {selectedServer === 'custom' ? (customServerIp || 'custom server') : (servers || []).find(s => s.id === selectedServer)?.name || 'localhost'}
                 </div>
               </div>
               
@@ -1770,7 +1770,7 @@ export default function PortMonitoring() {
                     <div>Form values: {newServerName} / {newServerIp}</div>
                     <div>Button disabled: {(!newServerName.trim() || !newServerIp.trim() || addingServer).toString()}</div>
                     <div>Config hostIp: {configData?.hostIp || 'none'}</div>
-                    <div>Host server IP: {servers.find(s => s.isHost)?.ip || 'none'}</div>
+                    <div>Host server IP: {(servers || []).find(s => s.isHost)?.ip || 'none'}</div>
                   </div>
                 </div>
               </div>
