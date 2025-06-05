@@ -68,6 +68,20 @@ export interface PortScan {
 }
 
 export interface PortStatistics {
+  // Legacy flat structure for backward compatibility
+  totalMonitoredPorts?: number;
+  activeReservations?: number;
+  availablePortsInRange?: number;
+  conflictsDetected?: number;
+  lastScanTime?: string | null;
+  monitoringEnabled?: boolean;
+  portRanges?: Array<{ start: number; end: number }>;
+  excludedPorts?: number[];
+  isInitialized?: boolean;
+  isRunning?: boolean;
+  systemPortsInUse?: number;
+  
+  // Nested structure
   ports?: {
     byStatus?: Record<string, number>;
     byProtocol?: Record<string, number>;
