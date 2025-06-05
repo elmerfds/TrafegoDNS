@@ -27,7 +27,16 @@ import {
   Edit2,
   Check,
   X,
-  Layout as LayoutIcon
+  Layout as LayoutIcon,
+  Network,
+  Lock,
+  Search,
+  Monitor,
+  Wifi,
+  AlertCircle,
+  Clock,
+  Database,
+  Eye
 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -37,6 +46,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { RecentActivity } from '@/components/RecentActivity'
 import { PauseControls } from '@/components/PauseControls'
 import { useToast } from '@/components/ui/use-toast'
+import { usePortStore, usePortStatistics, useReservationsData, useServersData } from '@/store/portStore'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -82,6 +92,35 @@ import '@/styles/dashboard.css'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
+// Available widgets definition
+const availableWidgets = [
+  // Core System Widgets
+  { id: 'stats', name: 'System Statistics', category: 'Core', icon: Activity, description: 'Key system metrics and statistics' },
+  { id: 'alerts', name: 'System Alerts', category: 'Core', icon: AlertTriangle, description: 'Important system alerts and warnings' },
+  { id: 'system-overview', name: 'System Overview', category: 'Core', icon: Shield, description: 'System version, mode, and configuration' },
+  { id: 'service-health', name: 'Service Health', category: 'Core', icon: Activity, description: 'Status of core services' },
+  { id: 'system-resources', name: 'System Resources', category: 'Core', icon: Cpu, description: 'CPU, memory, and disk usage' },
+  { id: 'pause-controls', name: 'Pause Controls', category: 'Core', icon: Settings, description: 'System pause and resume controls' },
+  { id: 'recent-activity', name: 'Recent Activity', category: 'Core', icon: Clock, description: 'Latest system activity and events' },
+  
+  // DNS & Networking Widgets  
+  { id: 'dns-health', name: 'DNS Health', category: 'DNS', icon: Globe, description: 'DNS provider status and health' },
+  { id: 'container-monitoring', name: 'Container Monitoring', category: 'DNS', icon: Container, description: 'Docker container status' },
+  { id: 'provider-status', name: 'Provider Status', category: 'DNS', icon: Link2, description: 'DNS provider connection status' },
+  { id: 'issues-monitoring', name: 'Issues Monitoring', category: 'DNS', icon: AlertTriangle, description: 'System issues and monitoring' },
+  { id: 'quick-actions', name: 'Quick Actions', category: 'DNS', icon: Settings, description: 'Common DNS management actions' },
+  
+  // Port Management Widgets
+  { id: 'port-statistics', name: 'Port Statistics', category: 'Ports', icon: Network, description: 'Port monitoring statistics and overview' },
+  { id: 'port-reservations', name: 'Port Reservations', category: 'Ports', icon: Lock, description: 'Active port reservations' },
+  { id: 'port-availability', name: 'Port Availability', category: 'Ports', icon: Wifi, description: 'Real-time port availability status' },
+  { id: 'port-scanner', name: 'Quick Port Scanner', category: 'Ports', icon: Search, description: 'Quick port scanning widget' },
+  { id: 'port-alerts', name: 'Port Alerts', category: 'Ports', icon: AlertCircle, description: 'Port-related security alerts' },
+  { id: 'server-status', name: 'Server Status', category: 'Ports', icon: Server, description: 'Monitored servers status' },
+  { id: 'port-activity', name: 'Port Activity', category: 'Ports', icon: Monitor, description: 'Recent port activity and changes' },
+  { id: 'port-recommendations', name: 'Port Recommendations', category: 'Ports', icon: Eye, description: 'Port usage recommendations' }
+]
+
 // Default layouts for different breakpoints with minimal gaps
 const defaultLayouts = {
   lg: [
@@ -93,10 +132,12 @@ const defaultLayouts = {
     { i: 'dns-health', x: 0, y: 12, w: 4, h: 6, minH: 4, minW: 3 },
     { i: 'container-monitoring', x: 4, y: 12, w: 4, h: 6, minH: 4, minW: 3 },
     { i: 'quick-actions', x: 8, y: 12, w: 4, h: 6, minH: 4, minW: 3 },
-    { i: 'pause-controls', x: 0, y: 18, w: 4, h: 7, minH: 6, minW: 3 },
-    { i: 'recent-activity', x: 4, y: 18, w: 8, h: 5, minH: 4, minW: 4 },
-    { i: 'provider-status', x: 0, y: 25, w: 6, h: 6, minH: 4, minW: 3 },
-    { i: 'issues-monitoring', x: 6, y: 25, w: 6, h: 6, minH: 4, minW: 3 },
+    { i: 'port-statistics', x: 0, y: 18, w: 6, h: 6, minH: 4, minW: 3 },
+    { i: 'port-reservations', x: 6, y: 18, w: 6, h: 6, minH: 4, minW: 3 },
+    { i: 'pause-controls', x: 0, y: 24, w: 4, h: 7, minH: 6, minW: 3 },
+    { i: 'recent-activity', x: 4, y: 24, w: 8, h: 5, minH: 4, minW: 4 },
+    { i: 'provider-status', x: 0, y: 31, w: 6, h: 6, minH: 4, minW: 3 },
+    { i: 'issues-monitoring', x: 6, y: 31, w: 6, h: 6, minH: 4, minW: 3 },
   ],
   md: [
     { i: 'stats', x: 0, y: 0, w: 10, h: 6, minH: 4, minW: 5 },
@@ -138,6 +179,21 @@ export function CustomizableDashboard() {
   const [newLayoutName, setNewLayoutName] = useState('')
   const [editingLayoutName, setEditingLayoutName] = useState<string | null>(null)
   const [newName, setNewName] = useState('')
+  const [showWidgetDialog, setShowWidgetDialog] = useState(false)
+  const [hiddenWidgets, setHiddenWidgets] = useState<Set<string>>(new Set())
+  
+  // Port monitoring data
+  const { statistics: portStats, loading: portStatsLoading } = usePortStatistics()
+  const { reservations, loading: reservationsLoading } = useReservationsData()
+  const { servers, loading: serversLoading } = useServersData()
+  const { fetchStatistics, fetchReservations, fetchServers } = usePortStore()
+  
+  // Load port monitoring data
+  useEffect(() => {
+    fetchStatistics()
+    fetchReservations()
+    fetchServers()
+  }, [fetchStatistics, fetchReservations, fetchServers])
   
   // Load all saved layouts
   const { data: savedLayoutsData } = useQuery({
@@ -296,6 +352,95 @@ export function CustomizableDashboard() {
   const handleLayoutChange = (currentLayout: Layout[], allLayouts: any) => {
     // Always update layouts to maintain state
     setLayouts(allLayouts)
+  }
+
+  // Widget management functions
+  const addWidget = (widgetId: string) => {
+    const newLayouts = { ...layouts }
+    
+    // Find a good position for the new widget
+    const defaultSize = { w: 4, h: 6, minH: 4, minW: 3 }
+    
+    Object.keys(newLayouts).forEach(breakpoint => {
+      const layout = newLayouts[breakpoint]
+      const cols = breakpoint === 'lg' ? 12 : breakpoint === 'md' ? 10 : 6
+      
+      // Find the lowest available position
+      let x = 0
+      let y = 0
+      
+      // Calculate the maximum Y position
+      const maxY = Math.max(...layout.map(item => item.y + item.h), 0)
+      
+      // Try to place at the bottom
+      y = maxY
+      x = 0
+      
+      // Check if there's space in the current row
+      while (x <= cols - defaultSize.w) {
+        const hasCollision = layout.some(item => 
+          x < item.x + item.w && x + defaultSize.w > item.x && 
+          y < item.y + item.h && y + defaultSize.h > item.y
+        )
+        
+        if (!hasCollision) {
+          break
+        }
+        x += 1
+        
+        // If we reach the end of the row, move to next row
+        if (x > cols - defaultSize.w) {
+          x = 0
+          y = maxY + 1
+        }
+      }
+      
+      // Add the widget
+      layout.push({
+        i: widgetId,
+        x,
+        y,
+        ...defaultSize
+      })
+    })
+    
+    setLayouts(newLayouts)
+    setHiddenWidgets(prev => {
+      const updated = new Set(prev)
+      updated.delete(widgetId)
+      return updated
+    })
+    
+    toast({
+      title: 'Widget added',
+      description: 'Widget has been added to your dashboard.',
+    })
+  }
+
+  const removeWidget = (widgetId: string) => {
+    const newLayouts = { ...layouts }
+    
+    Object.keys(newLayouts).forEach(breakpoint => {
+      newLayouts[breakpoint] = newLayouts[breakpoint].filter(item => item.i !== widgetId)
+    })
+    
+    setLayouts(newLayouts)
+    setHiddenWidgets(prev => new Set([...prev, widgetId]))
+    
+    toast({
+      title: 'Widget removed',
+      description: 'Widget has been removed from your dashboard.',
+    })
+  }
+
+  const getVisibleWidgets = () => {
+    const currentLayout = layouts.lg || []
+    return currentLayout.map(item => item.i).filter(id => !hiddenWidgets.has(id))
+  }
+
+  const getAvailableWidgets = () => {
+    const visibleWidgets = new Set(getVisibleWidgets())
+    return availableWidgets.filter(widget => !visibleWidgets.has(widget.id))
   }
 
   const saveCurrentLayout = (name: string) => {
