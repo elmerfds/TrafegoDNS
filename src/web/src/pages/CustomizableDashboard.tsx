@@ -148,10 +148,12 @@ const defaultLayouts = {
     { i: 'dns-health', x: 0, y: 21, w: 5, h: 6, minH: 4, minW: 3 },
     { i: 'container-monitoring', x: 5, y: 21, w: 5, h: 6, minH: 4, minW: 3 },
     { i: 'quick-actions', x: 0, y: 27, w: 10, h: 6, minH: 4, minW: 5 },
-    { i: 'pause-controls', x: 0, y: 33, w: 10, h: 7, minH: 6, minW: 5 },
-    { i: 'recent-activity', x: 0, y: 40, w: 10, h: 5, minH: 4, minW: 5 },
-    { i: 'provider-status', x: 0, y: 45, w: 5, h: 6, minH: 4, minW: 3 },
-    { i: 'issues-monitoring', x: 5, y: 45, w: 5, h: 6, minH: 4, minW: 3 },
+    { i: 'port-statistics', x: 0, y: 33, w: 5, h: 6, minH: 4, minW: 3 },
+    { i: 'port-reservations', x: 5, y: 33, w: 5, h: 6, minH: 4, minW: 3 },
+    { i: 'pause-controls', x: 0, y: 39, w: 10, h: 7, minH: 6, minW: 5 },
+    { i: 'recent-activity', x: 0, y: 46, w: 10, h: 5, minH: 4, minW: 5 },
+    { i: 'provider-status', x: 0, y: 51, w: 5, h: 6, minH: 4, minW: 3 },
+    { i: 'issues-monitoring', x: 5, y: 51, w: 5, h: 6, minH: 4, minW: 3 },
   ],
   sm: [
     { i: 'stats', x: 0, y: 0, w: 6, h: 12, minH: 8, minW: 6 },
@@ -162,10 +164,12 @@ const defaultLayouts = {
     { i: 'dns-health', x: 0, y: 33, w: 6, h: 6, minH: 5, minW: 6 },
     { i: 'container-monitoring', x: 0, y: 39, w: 6, h: 6, minH: 5, minW: 6 },
     { i: 'quick-actions', x: 0, y: 45, w: 6, h: 6, minH: 5, minW: 6 },
-    { i: 'pause-controls', x: 0, y: 51, w: 6, h: 8, minH: 7, minW: 6 },
-    { i: 'recent-activity', x: 0, y: 59, w: 6, h: 5, minH: 4, minW: 6 },
-    { i: 'provider-status', x: 0, y: 64, w: 6, h: 6, minH: 5, minW: 6 },
-    { i: 'issues-monitoring', x: 0, y: 70, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'port-statistics', x: 0, y: 51, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'port-reservations', x: 0, y: 57, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'pause-controls', x: 0, y: 63, w: 6, h: 8, minH: 7, minW: 6 },
+    { i: 'recent-activity', x: 0, y: 71, w: 6, h: 5, minH: 4, minW: 6 },
+    { i: 'provider-status', x: 0, y: 76, w: 6, h: 6, minH: 5, minW: 6 },
+    { i: 'issues-monitoring', x: 0, y: 82, w: 6, h: 6, minH: 5, minW: 6 },
   ]
 }
 
@@ -173,7 +177,7 @@ export function CustomizableDashboard() {
   const navigate = useNavigate()
   const { toast } = useToast()
   const queryClient = useQueryClient()
-  const [layouts, setLayouts] = useState<any>(defaultLayouts)
+  const [layouts, setLayouts] = useState<{ [breakpoint: string]: Layout[] }>(defaultLayouts)
   const [isEditMode, setIsEditMode] = useState(false)
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [newLayoutName, setNewLayoutName] = useState('')
@@ -222,7 +226,7 @@ export function CustomizableDashboard() {
   
   // Mutation for saving a new layout
   const saveLayoutMutation = useMutation({
-    mutationFn: async ({ name, layout }: { name: string, layout: any }) => {
+    mutationFn: async ({ name, layout }: { name: string, layout: { [breakpoint: string]: Layout[] } }) => {
       const response = await api.put(`/user/dashboard-layouts/${encodeURIComponent(name)}`, { layout })
       return response.data
     },
@@ -349,7 +353,7 @@ export function CustomizableDashboard() {
     },
   ]
 
-  const handleLayoutChange = (currentLayout: Layout[], allLayouts: any) => {
+  const handleLayoutChange = (currentLayout: Layout[], allLayouts: { [breakpoint: string]: Layout[] }) => {
     // Always update layouts to maintain state
     setLayouts(allLayouts)
   }
@@ -370,7 +374,7 @@ export function CustomizableDashboard() {
       let y = 0
       
       // Calculate the maximum Y position
-      const maxY = Math.max(...layout.map(item => item.y + item.h), 0)
+      const maxY = Math.max(...layout.map((item: Layout) => item.y + item.h), 0)
       
       // Try to place at the bottom
       y = maxY
@@ -378,7 +382,7 @@ export function CustomizableDashboard() {
       
       // Check if there's space in the current row
       while (x <= cols - defaultSize.w) {
-        const hasCollision = layout.some(item => 
+        const hasCollision = layout.some((item: Layout) => 
           x < item.x + item.w && x + defaultSize.w > item.x && 
           y < item.y + item.h && y + defaultSize.h > item.y
         )
@@ -421,7 +425,7 @@ export function CustomizableDashboard() {
     const newLayouts = { ...layouts }
     
     Object.keys(newLayouts).forEach(breakpoint => {
-      newLayouts[breakpoint] = newLayouts[breakpoint].filter(item => item.i !== widgetId)
+      newLayouts[breakpoint] = newLayouts[breakpoint].filter((item: Layout) => item.i !== widgetId)
     })
     
     setLayouts(newLayouts)
@@ -435,7 +439,7 @@ export function CustomizableDashboard() {
 
   const getVisibleWidgets = () => {
     const currentLayout = layouts.lg || []
-    return currentLayout.map(item => item.i).filter(id => !hiddenWidgets.has(id))
+    return currentLayout.map((item: Layout) => item.i).filter((id: string) => !hiddenWidgets.has(id))
   }
 
   const getAvailableWidgets = () => {
@@ -514,7 +518,7 @@ export function CustomizableDashboard() {
     Object.keys(compactedLayouts).forEach(breakpoint => {
       if (compactedLayouts[breakpoint] && Array.isArray(compactedLayouts[breakpoint])) {
         // Sort all widgets by Y position then X position
-        const sortedWidgets = [...compactedLayouts[breakpoint]].sort((a: any, b: any) => {
+        const sortedWidgets = [...compactedLayouts[breakpoint]].sort((a: Layout, b: Layout) => {
           if (a.y === b.y) return a.x - b.x
           return a.y - b.y
         })
@@ -523,7 +527,7 @@ export function CustomizableDashboard() {
         const occupiedSpaces = new Map<string, boolean>()
         
         // Place each widget in the first available position
-        sortedWidgets.forEach((widget: any) => {
+        sortedWidgets.forEach((widget: Layout) => {
           let placed = false
           let testY = 0
           
@@ -1050,6 +1054,390 @@ export function CustomizableDashboard() {
           </Card>
         )
 
+      case 'port-statistics':
+        return (
+          <Card className="h-full flex flex-col overflow-hidden">
+            <CardHeader className="flex-shrink-0">
+              <CardTitle className="flex items-center gap-2">
+                <Network className="h-5 w-5" />
+                Port Statistics
+              </CardTitle>
+              <CardDescription>Port monitoring overview and metrics</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 space-y-4 overflow-y-auto">
+              {portStatsLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Monitored Ports</span>
+                    <span className="text-lg font-bold">
+                      {portStats?.totalMonitoredPorts || (portStats?.ports?.byStatus ? Object.values(portStats.ports.byStatus).reduce((a, b) => a + b, 0) : 0)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Available</span>
+                    <span className="text-lg font-bold text-green-600">
+                      {portStats?.availablePortsInRange || portStats?.ports?.byStatus?.closed || 0}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">In Use</span>
+                    <span className="text-lg font-bold text-red-600">
+                      {portStats?.ports?.byStatus?.open || 0}
+                    </span>
+                  </div>
+                  <div className="pt-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full"
+                      onClick={() => navigate('/port-management')}
+                    >
+                      <Monitor className="h-4 w-4 mr-2" />
+                      View Details
+                    </Button>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )
+
+      case 'port-reservations':
+        return (
+          <Card className="h-full flex flex-col overflow-hidden">
+            <CardHeader className="flex-shrink-0">
+              <CardTitle className="flex items-center gap-2">
+                <Lock className="h-5 w-5" />
+                Port Reservations
+              </CardTitle>
+              <CardDescription>Active port reservations</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 space-y-4 overflow-y-auto">
+              {reservationsLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Active Reservations</span>
+                    <span className="text-lg font-bold">
+                      {Array.isArray(reservations) ? reservations.filter(r => r.status === 'active').length : 0}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {Array.isArray(reservations) && reservations.slice(0, 3).map((reservation) => (
+                      <div key={reservation.id} className="flex items-center justify-between p-2 border rounded text-xs">
+                        <span className="font-mono">{reservation.port}/{reservation.protocol}</span>
+                        <Badge variant="secondary" className="text-xs">
+                          {reservation.container_id?.substring(0, 8)}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="pt-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full"
+                      onClick={() => navigate('/port-management?tab=reservations')}
+                    >
+                      <Lock className="h-4 w-4 mr-2" />
+                      Manage Reservations
+                    </Button>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )
+
+      case 'port-availability':
+        return (
+          <Card className="h-full flex flex-col overflow-hidden">
+            <CardHeader className="flex-shrink-0">
+              <CardTitle className="flex items-center gap-2">
+                <Wifi className="h-5 w-5" />
+                Port Availability
+              </CardTitle>
+              <CardDescription>Real-time port availability status</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 space-y-4 overflow-y-auto">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Available Ports</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-bold text-green-600">
+                    {portStats?.availablePortsInRange || 0}
+                  </span>
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Monitoring Status</span>
+                <Badge variant={portStats?.monitoringEnabled ? 'default' : 'destructive'}>
+                  {portStats?.monitoringEnabled ? 'Active' : 'Disabled'}
+                </Badge>
+              </div>
+              <div className="pt-2">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-muted-foreground">Range Health</span>
+                  <span className="text-sm font-medium">
+                    {portStats?.availablePortsInRange ? Math.round((portStats.availablePortsInRange / (portStats.totalMonitoredPorts || 1)) * 100) : 0}%
+                  </span>
+                </div>
+                <Progress 
+                  value={portStats?.availablePortsInRange ? Math.round((portStats.availablePortsInRange / (portStats.totalMonitoredPorts || 1)) * 100) : 0} 
+                  className="h-2"
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )
+
+      case 'port-scanner':
+        return (
+          <Card className="h-full flex flex-col overflow-hidden">
+            <CardHeader className="flex-shrink-0">
+              <CardTitle className="flex items-center gap-2">
+                <Search className="h-5 w-5" />
+                Quick Port Scanner
+              </CardTitle>
+              <CardDescription>Scan ports for availability</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 space-y-4 overflow-y-auto">
+              <div className="space-y-2">
+                <div className="text-sm text-muted-foreground">Common Port Checks</div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-xs"
+                    onClick={() => navigate('/port-management?tab=check&ports=80,443')}
+                  >
+                    Web (80,443)
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-xs"
+                    onClick={() => navigate('/port-management?tab=check&ports=3000,8080')}
+                  >
+                    Dev (3000,8080)
+                  </Button>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-xs"
+                    onClick={() => navigate('/port-management?tab=check&ports=5432,3306')}
+                  >
+                    DB (5432,3306)
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-xs"
+                    onClick={() => navigate('/port-management?tab=scan')}
+                  >
+                    Range Scan
+                  </Button>
+                </div>
+              </div>
+              <div className="pt-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full"
+                  onClick={() => navigate('/port-management?tab=check')}
+                >
+                  <Search className="h-4 w-4 mr-2" />
+                  Port Checker
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )
+
+      case 'port-alerts':
+        return (
+          <Card className="h-full flex flex-col overflow-hidden">
+            <CardHeader className="flex-shrink-0">
+              <CardTitle className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5" />
+                Port Alerts
+              </CardTitle>
+              <CardDescription>Port-related security alerts</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 space-y-4 overflow-y-auto">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Total Alerts</span>
+                <span className="text-lg font-bold">
+                  {portStats?.alerts?.total || 0}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Unacknowledged</span>
+                <span className="text-lg font-bold text-orange-600">
+                  {portStats?.alerts?.unacknowledged || 0}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Recent Activity</span>
+                <span className="text-sm font-medium">
+                  {portStats?.alerts?.recent || 0} in 24h
+                </span>
+              </div>
+              <div className="pt-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full"
+                  onClick={() => navigate('/port-management?tab=alerts')}
+                >
+                  <AlertCircle className="h-4 w-4 mr-2" />
+                  View Alerts
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )
+
+      case 'server-status':
+        return (
+          <Card className="h-full flex flex-col overflow-hidden">
+            <CardHeader className="flex-shrink-0">
+              <CardTitle className="flex items-center gap-2">
+                <Server className="h-5 w-5" />
+                Server Status
+              </CardTitle>
+              <CardDescription>Monitored servers status</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 space-y-4 overflow-y-auto">
+              {serversLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Total Servers</span>
+                    <span className="text-lg font-bold">
+                      {Array.isArray(servers) ? servers.length : 0}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {Array.isArray(servers) && servers.slice(0, 3).map((server) => (
+                      <div key={server.id} className="flex items-center justify-between p-2 border rounded text-xs">
+                        <div className="flex items-center gap-2">
+                          <Server className="h-3 w-3" />
+                          <span className="font-medium">{server.name}</span>
+                        </div>
+                        <Badge variant={server.isHost ? 'default' : 'outline'} className="text-xs">
+                          {server.isHost ? 'Host' : 'Remote'}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="pt-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full"
+                      onClick={() => navigate('/port-management?tab=servers')}
+                    >
+                      <Server className="h-4 w-4 mr-2" />
+                      Manage Servers
+                    </Button>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )
+
+      case 'port-activity':
+        return (
+          <Card className="h-full flex flex-col overflow-hidden">
+            <CardHeader className="flex-shrink-0">
+              <CardTitle className="flex items-center gap-2">
+                <Monitor className="h-5 w-5" />
+                Port Activity
+              </CardTitle>
+              <CardDescription>Recent port activity and changes</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 space-y-4 overflow-y-auto">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Recent Scans</span>
+                <span className="text-lg font-bold">
+                  {portStats?.scans?.recentScans || 0}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Port Changes</span>
+                <span className="text-lg font-bold">
+                  {portStats?.ports?.recentActivity || 0}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Avg Scan Time</span>
+                <span className="text-sm font-medium">
+                  {portStats?.scans?.averageDuration ? `${portStats.scans.averageDuration}ms` : 'N/A'}
+                </span>
+              </div>
+              <div className="pt-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full"
+                  onClick={() => navigate('/port-management?tab=activity')}
+                >
+                  <Clock className="h-4 w-4 mr-2" />
+                  View Activity
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )
+
+      case 'port-recommendations':
+        return (
+          <Card className="h-full flex flex-col overflow-hidden">
+            <CardHeader className="flex-shrink-0">
+              <CardTitle className="flex items-center gap-2">
+                <Eye className="h-5 w-5" />
+                Port Recommendations
+              </CardTitle>
+              <CardDescription>Port usage recommendations</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 space-y-4 overflow-y-auto">
+              <div className="space-y-2">
+                <div className="text-sm text-muted-foreground">Quick Suggestions</div>
+                <div className="space-y-1">
+                  <div className="text-xs text-green-600">✓ Ports 3000-3010 available</div>
+                  <div className="text-xs text-blue-600">ℹ Consider port 8080 for web services</div>
+                  <div className="text-xs text-orange-600">⚠ Port 80 commonly in use</div>
+                </div>
+              </div>
+              <div className="pt-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full"
+                  onClick={() => navigate('/port-management?tab=suggestions')}
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  Get Suggestions
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )
+
       default:
         return null
     }
@@ -1121,6 +1509,99 @@ export function CustomizableDashboard() {
               ))}
             </SelectContent>
           </Select>
+          
+          {/* Widget Management */}
+          <Dialog open={showWidgetDialog} onOpenChange={setShowWidgetDialog}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Widgets
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Manage Dashboard Widgets</DialogTitle>
+                <DialogDescription>
+                  Add or remove widgets from your dashboard. Drag widgets in edit mode to rearrange them.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-6">
+                {/* Available Widgets by Category */}
+                {['Core', 'DNS', 'Ports'].map(category => {
+                  const categoryWidgets = getAvailableWidgets().filter(w => w.category === category);
+                  if (categoryWidgets.length === 0) return null;
+                  
+                  return (
+                    <div key={category} className="space-y-3">
+                      <h3 className="font-medium text-lg">{category} Widgets</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {categoryWidgets.map((widget) => {
+                          const IconComponent = widget.icon;
+                          return (
+                            <div key={widget.id} className="flex items-start justify-between p-3 border rounded-lg hover:bg-accent/50">
+                              <div className="flex items-start gap-3 flex-1">
+                                <IconComponent className="h-5 w-5 mt-0.5 text-muted-foreground" />
+                                <div className="flex-1">
+                                  <div className="font-medium">{widget.name}</div>
+                                  <div className="text-sm text-muted-foreground">{widget.description}</div>
+                                </div>
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={() => addWidget(widget.id)}
+                                className="ml-2"
+                              >
+                                <Plus className="h-3 w-3 mr-1" />
+                                Add
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+                
+                {/* Currently Visible Widgets */}
+                <div className="space-y-3">
+                  <h3 className="font-medium text-lg">Current Widgets</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {getVisibleWidgets().map((widgetId) => {
+                      const widget = availableWidgets.find(w => w.id === widgetId);
+                      if (!widget) return null;
+                      
+                      const IconComponent = widget.icon;
+                      return (
+                        <div key={widget.id} className="flex items-start justify-between p-3 border rounded-lg bg-muted/30">
+                          <div className="flex items-start gap-3 flex-1">
+                            <IconComponent className="h-5 w-5 mt-0.5 text-muted-foreground" />
+                            <div className="flex-1">
+                              <div className="font-medium">{widget.name}</div>
+                              <div className="text-sm text-muted-foreground">{widget.description}</div>
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => removeWidget(widget.id)}
+                            className="ml-2 text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            Remove
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowWidgetDialog(false)}>
+                  Done
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           
           {/* Settings dropdown */}
           <DropdownMenu>
@@ -1289,7 +1770,7 @@ export function CustomizableDashboard() {
         resizeHandles={['se', 's', 'e', 'w', 'sw']}
         useCSSTransforms={true}
       >
-        {['stats', 'alerts', 'system-overview', 'service-health', 'system-resources', 'dns-health', 'container-monitoring', 'quick-actions', 'pause-controls', 'recent-activity', 'provider-status', 'issues-monitoring'].map(widgetId => {
+        {getVisibleWidgets().map(widgetId => {
           const widget = renderWidget(widgetId)
           if (!widget) return null
           
@@ -1301,6 +1782,19 @@ export function CustomizableDashboard() {
                   <span className="text-xs font-medium capitalize text-foreground">
                     {widgetId.replace(/-/g, ' ')}
                   </span>
+                  <div className="ml-auto">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeWidget(widgetId);
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
               )}
               <div className={isEditMode ? 'pt-10 h-full overflow-hidden' : 'h-full overflow-hidden'}>
