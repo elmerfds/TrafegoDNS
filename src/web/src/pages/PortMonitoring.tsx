@@ -329,10 +329,10 @@ export default function PortMonitoring() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {statistics.ports.byStatus ? Object.values(statistics.ports.byStatus).reduce((a, b) => a + b, 0) : 0}
+                    {statistics.ports?.byStatus ? Object.values(statistics.ports.byStatus).reduce((a, b) => a + b, 0) : 0}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {statistics.ports.byStatus?.open || 0} open, {statistics.ports.byStatus?.closed || 0} closed
+                    {statistics.ports?.byStatus?.open || 0} open, {statistics.ports?.byStatus?.closed || 0} closed
                   </p>
                 </CardContent>
               </Card>
@@ -343,9 +343,9 @@ export default function PortMonitoring() {
                   <AlertTriangle className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{statistics.alerts.unacknowledged || 0}</div>
+                  <div className="text-2xl font-bold">{statistics.alerts?.unacknowledged || 0}</div>
                   <p className="text-xs text-muted-foreground">
-                    {statistics.alerts.bySeverity?.critical || 0} critical, {statistics.alerts.bySeverity?.high || 0} high
+                    {statistics.alerts?.bySeverity?.critical || 0} critical, {statistics.alerts?.bySeverity?.high || 0} high
                   </p>
                 </CardContent>
               </Card>
@@ -356,9 +356,9 @@ export default function PortMonitoring() {
                   <Activity className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{statistics.scans.recentScans || 0}</div>
+                  <div className="text-2xl font-bold">{statistics.scans?.recentScans || 0}</div>
                   <p className="text-xs text-muted-foreground">
-                    Avg: {statistics.scans.averageDuration ? Math.round(statistics.scans.averageDuration / 1000) : 0}s duration
+                    Avg: {statistics.scans?.averageDuration ? Math.round(statistics.scans.averageDuration / 1000) : 0}s duration
                   </p>
                 </CardContent>
               </Card>
@@ -369,7 +369,7 @@ export default function PortMonitoring() {
                   <Clock className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{statistics.ports.recentActivity || 0}</div>
+                  <div className="text-2xl font-bold">{statistics.ports?.recentActivity || 0}</div>
                   <p className="text-xs text-muted-foreground">Port changes (24h)</p>
                 </CardContent>
               </Card>
@@ -452,7 +452,7 @@ export default function PortMonitoring() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {statistics.ports.topServices.slice(0, 5).map((service, index) => (
+                    {(statistics.ports?.topServices || []).slice(0, 5).map((service, index) => (
                       <div key={index} className="flex justify-between items-center">
                         <span className="font-medium">{service.service_name || 'Unknown'}</span>
                         <Badge variant="secondary">{service.count}</Badge>
@@ -468,7 +468,7 @@ export default function PortMonitoring() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {statistics.ports.topHosts.slice(0, 5).map((host, index) => (
+                    {(statistics.ports?.topHosts || []).slice(0, 5).map((host, index) => (
                       <div key={index} className="flex justify-between items-center">
                         <span className="font-medium">{host.host}</span>
                         <Badge variant="secondary">{host.port_count} ports</Badge>

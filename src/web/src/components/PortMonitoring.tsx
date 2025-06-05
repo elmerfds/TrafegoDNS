@@ -971,7 +971,7 @@ export default function PortMonitoring() {
               <Activity className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{Object.values(statistics.ports.byStatus).reduce((a, b) => a + b, 0)}</div>
+              <div className="text-2xl font-bold">{statistics.ports?.byStatus ? Object.values(statistics.ports.byStatus).reduce((a, b) => a + b, 0) : 0}</div>
             </CardContent>
           </Card>
 
@@ -991,7 +991,7 @@ export default function PortMonitoring() {
               <CheckCircle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{statistics.ports.byStatus.closed || 0}</div>
+              <div className="text-2xl font-bold">{statistics.ports?.byStatus?.closed || 0}</div>
             </CardContent>
           </Card>
 
@@ -1005,7 +1005,7 @@ export default function PortMonitoring() {
                 Active
               </div>
               <div className="text-xs text-muted-foreground">
-                Recent activity: {statistics.ports.recentActivity}
+                Recent activity: {statistics.ports?.recentActivity || 0}
               </div>
             </CardContent>
           </Card>

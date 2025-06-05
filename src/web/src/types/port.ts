@@ -68,32 +68,32 @@ export interface PortScan {
 }
 
 export interface PortStatistics {
-  ports: {
-    byStatus: Record<string, number>;
-    byProtocol: Record<string, number>;
-    topServices: Array<{
+  ports?: {
+    byStatus?: Record<string, number>;
+    byProtocol?: Record<string, number>;
+    topServices?: Array<{
       service_name: string;
       count: number;
     }>;
-    topHosts: Array<{
+    topHosts?: Array<{
       host: string;
       port_count: number;
     }>;
-    recentActivity: number;
+    recentActivity?: number;
   };
-  scans: {
-    total: number;
-    byStatus: Record<string, number>;
-    byType: Record<string, number>;
-    recentScans: number;
-    averageDuration: number;
+  scans?: {
+    total?: number;
+    byStatus?: Record<string, number>;
+    byType?: Record<string, number>;
+    recentScans?: number;
+    averageDuration?: number;
   };
-  alerts: {
-    total: number;
-    unacknowledged: number;
-    bySeverity: Record<string, number>;
-    byType: Record<string, number>;
-    recent: number;
+  alerts?: {
+    total?: number;
+    unacknowledged?: number;
+    bySeverity?: Record<string, number>;
+    byType?: Record<string, number>;
+    recent?: number;
   };
 }
 
