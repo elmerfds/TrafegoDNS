@@ -123,7 +123,13 @@ export default function PortMonitoring() {
   
   // Search and filter states
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Range scanner filter states
+  const [scanResultsFilter, setScanResultsFilter] = useState('all'); // 'all', 'available', 'in-use'
+  const [scanPortSearch, setScanPortSearch] = useState('');
+  const [scanRangeFilter, setScanRangeFilter] = useState({ min: '', max: '' });
   const [filteredPortsInUse, setFilteredPortsInUse] = useState<PortInUse[]>([]);
+  const [filteredScanResults, setFilteredScanResults] = useState<PortStatus[]>([]);
   
   // Label override states
   const [editingLabelPort, setEditingLabelPort] = useState<number | null>(null);
@@ -288,6 +294,51 @@ export default function PortMonitoring() {
       setFilteredPortsInUse(filtered);
     }
   }, [portsInUse, searchTerm]);
+
+  // Filter scan results based on filters
+  useEffect(() => {
+    if (!Array.isArray(portScanResults)) {
+      setFilteredScanResults([]);
+      return;
+    }
+
+    let filtered = [...portScanResults];
+
+    // Filter by availability status
+    if (scanResultsFilter === 'available') {
+      filtered = filtered.filter(port => port.available);
+    } else if (scanResultsFilter === 'in-use') {
+      filtered = filtered.filter(port => !port.available);
+    }
+
+    // Filter by port number search
+    if (scanPortSearch.trim()) {
+      const searchNum = parseInt(scanPortSearch.trim());
+      if (!isNaN(searchNum)) {
+        filtered = filtered.filter(port => 
+          port.port.toString().includes(scanPortSearch.trim()) ||
+          port.port === searchNum
+        );
+      } else {
+        // If not a number, search in the port string representation
+        filtered = filtered.filter(port => 
+          port.port.toString().includes(scanPortSearch.trim().toLowerCase())
+        );
+      }
+    }
+
+    // Filter by port range
+    if (scanRangeFilter.min.trim() || scanRangeFilter.max.trim()) {
+      const minPort = scanRangeFilter.min.trim() ? parseInt(scanRangeFilter.min.trim()) : 1;
+      const maxPort = scanRangeFilter.max.trim() ? parseInt(scanRangeFilter.max.trim()) : 65535;
+      
+      if (!isNaN(minPort) && !isNaN(maxPort)) {
+        filtered = filtered.filter(port => port.port >= minPort && port.port <= maxPort);
+      }
+    }
+
+    setFilteredScanResults(filtered);
+  }, [portScanResults, scanResultsFilter, scanPortSearch, scanRangeFilter]);
 
   // WebSocket events are now handled automatically by the WebSocket service
   // The service connects WebSocket events to the port store, so we don't need
@@ -1482,20 +1533,101 @@ export default function PortMonitoring() {
 
               {portScanResults.length > 0 && (
                 <div className="space-y-4 mt-4">
-                  <h4 className="font-medium">Scan Results:</h4>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-medium">Scan Results:</h4>
+                      {(scanResultsFilter !== 'all' || scanPortSearch.trim() || scanRangeFilter.min.trim() || scanRangeFilter.max.trim()) && (
+                        <Badge variant="secondary" className="text-xs">
+                          Filtered
+                        </Badge>
+                      )}
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => {
+                        setScanResultsFilter('all');
+                        setScanPortSearch('');
+                        setScanRangeFilter({ min: '', max: '' });
+                      }}
+                      disabled={scanResultsFilter === 'all' && !scanPortSearch.trim() && !scanRangeFilter.min.trim() && !scanRangeFilter.max.trim()}
+                    >
+                      Clear Filters
+                    </Button>
+                  </div>
+
+                  {/* Filter Controls */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
+                    <div>
+                      <Label htmlFor="statusFilter">Status</Label>
+                      <Select value={scanResultsFilter} onValueChange={setScanResultsFilter}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Ports</SelectItem>
+                          <SelectItem value="available">Available Only</SelectItem>
+                          <SelectItem value="in-use">In Use Only</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="portSearch">Port Search</Label>
+                      <Input
+                        id="portSearch"
+                        placeholder="e.g., 3000, 80"
+                        value={scanPortSearch}
+                        onChange={(e) => setScanPortSearch(e.target.value)}
+                      />
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="minRange">Min Port</Label>
+                      <Input
+                        id="minRange"
+                        type="number"
+                        placeholder="Min"
+                        value={scanRangeFilter.min}
+                        onChange={(e) => setScanRangeFilter(prev => ({ ...prev, min: e.target.value }))}
+                        min="1"
+                        max="65535"
+                      />
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="maxRange">Max Port</Label>
+                      <Input
+                        id="maxRange"
+                        type="number"
+                        placeholder="Max"
+                        value={scanRangeFilter.max}
+                        onChange={(e) => setScanRangeFilter(prev => ({ ...prev, max: e.target.value }))}
+                        min="1"
+                        max="65535"
+                      />
+                    </div>
+                  </div>
+
                   <div className="text-sm text-muted-foreground mb-2">
                     {(() => {
-                      const availableCount = Array.isArray(portScanResults) ? portScanResults.filter(p => p.available).length : 0;
-                      const totalCount = Array.isArray(portScanResults) ? portScanResults.length : 0;
-                      const percentage = Math.round((availableCount / totalCount) * 100);
-                      return `${availableCount}/${totalCount} ports available (${percentage}%)`;
+                      const availableCount = Array.isArray(filteredScanResults) ? filteredScanResults.filter(p => p.available).length : 0;
+                      const totalCount = Array.isArray(filteredScanResults) ? filteredScanResults.length : 0;
+                      const originalTotal = Array.isArray(portScanResults) ? portScanResults.length : 0;
+                      const percentage = totalCount > 0 ? Math.round((availableCount / totalCount) * 100) : 0;
+                      
+                      if (totalCount < originalTotal) {
+                        return `Showing ${totalCount} of ${originalTotal} ports | ${availableCount} available (${percentage}%)`;
+                      } else {
+                        return `${availableCount}/${totalCount} ports available (${percentage}%)`;
+                      }
                     })()}
                   </div>
                   
                   {/* Combined Results Section */}
                   <div className="space-y-2">
                     <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
-                      {Array.isArray(portScanResults) ? portScanResults.map((port) => (
+                      {Array.isArray(filteredScanResults) ? filteredScanResults.map((port) => (
                         <div key={`${port.port}-${port.protocol}`} className="p-3 border rounded space-y-2">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-3">
@@ -1535,9 +1667,12 @@ export default function PortMonitoring() {
                     </div>
                   </div>
                   
-                  {(!Array.isArray(portScanResults) || portScanResults.length === 0) && (
+                  {(!Array.isArray(filteredScanResults) || filteredScanResults.length === 0) && (
                     <div className="text-center py-4 text-muted-foreground">
-                      No results to display
+                      {Array.isArray(portScanResults) && portScanResults.length > 0 
+                        ? 'No ports match the current filters' 
+                        : 'No results to display'
+                      }
                     </div>
                   )}
                 </div>
