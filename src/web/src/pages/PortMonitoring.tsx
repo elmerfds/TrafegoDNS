@@ -689,7 +689,7 @@ export default function PortMonitoring() {
                         )}
                       </TableCell>
                     </TableRow>
-                  )) : null
+                  )) : null}
                 </TableBody>
               </Table>
             </CardContent>
@@ -774,7 +774,7 @@ export default function PortMonitoring() {
                       </TableCell>
                       <TableCell>{scan.created_by}</TableCell>
                     </TableRow>
-                  )) : null
+                  )) : null}
                 </TableBody>
               </Table>
             </CardContent>

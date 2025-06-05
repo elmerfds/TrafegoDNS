@@ -1486,7 +1486,7 @@ export default function PortMonitoring() {
                             </div>
                           </div>
                         </div>
-                      ))}
+                      )) : null}
                     </div>
                   </div>
                   
@@ -1559,7 +1559,7 @@ export default function PortMonitoring() {
                         </Button>
                       </div>
                     </div>
-                  ))}
+                  )) : null}
                 </div>
               )}
             </CardContent>
