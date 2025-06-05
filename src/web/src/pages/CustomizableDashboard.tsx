@@ -91,6 +91,13 @@ import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import '@/styles/dashboard.css'
 
+// Extend window for timeout storage
+declare global {
+  interface Window {
+    layoutSaveTimeout?: NodeJS.Timeout;
+  }
+}
+
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
 // Available widgets definition
@@ -277,20 +284,37 @@ export function CustomizableDashboard() {
   // Mutation for deleting a layout
   const deleteLayoutMutation = useMutation({
     mutationFn: async (name: string) => {
+      console.log('Attempting to delete layout:', name)
+      
+      // If trying to delete the active layout, switch to default first
+      if (activeLayoutData?.data?.name === name) {
+        console.log('Layout is active, switching to default first')
+        try {
+          await api.put('/user/dashboard-layouts/default/set-active')
+          console.log('Successfully switched to default layout')
+        } catch (error) {
+          console.log('Failed to switch to default, continuing with delete...')
+        }
+      }
+      
       const response = await api.delete(`/user/dashboard-layouts/${encodeURIComponent(name)}`)
       return response.data
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
+      console.log('Layout deleted successfully:', variables)
       toast({
         title: 'Layout deleted',
         description: 'The layout has been deleted successfully.',
       })
       queryClient.invalidateQueries({ queryKey: ['dashboard-layouts'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-layouts-active'] })
     },
-    onError: () => {
+    onError: (error: any, variables) => {
+      console.error('Delete layout error:', error, 'for layout:', variables)
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to delete layout.'
       toast({
         title: 'Error',
-        description: 'Failed to delete layout.',
+        description: errorMessage,
         variant: 'destructive',
       })
     },
@@ -381,27 +405,46 @@ export function CustomizableDashboard() {
   const handleLayoutChange = (currentLayout: Layout[], allLayouts: { [breakpoint: string]: Layout[] }) => {
     // Always update layouts to maintain state
     setLayouts(allLayouts)
+    setHasUnsavedChanges(true)
+    
+    // Auto-save layout changes after a short delay (debounced)
+    if (isEditMode) {
+      clearTimeout(window.layoutSaveTimeout)
+      window.layoutSaveTimeout = setTimeout(() => {
+        const currentLayoutName = activeLayoutData?.data?.name
+        console.log('Auto-saving layout changes:', { currentLayoutName, layouts: allLayouts })
+        
+        if (currentLayoutName && currentLayoutName !== 'default') {
+          // Update existing layout
+          saveLayoutMutation.mutate({ name: currentLayoutName, layout: allLayouts })
+        } else {
+          // Create a new "My Dashboard" layout to persist changes
+          const autoLayoutName = 'My Dashboard'
+          saveLayoutMutation.mutate({ name: autoLayoutName, layout: allLayouts })
+        }
+      }, 2000) // 2 second delay to avoid too many saves
+    }
   }
 
   // Function to get layouts with adjusted minimum constraints for edit mode
   const getLayoutsForRendering = () => {
-    if (!isEditMode) return layouts
-
-    // In edit mode, reduce minimum constraints to allow more flexible resizing
-    const editModeLayouts = { ...layouts }
+    const currentLayouts = { ...layouts }
     
-    Object.keys(editModeLayouts).forEach(breakpoint => {
-      if (editModeLayouts[breakpoint]) {
-        editModeLayouts[breakpoint] = editModeLayouts[breakpoint].map((item: Layout) => ({
+    // Always reduce minimum constraints to allow flexible resizing
+    // This ensures saved small sizes are preserved even when not in edit mode
+    Object.keys(currentLayouts).forEach(breakpoint => {
+      if (currentLayouts[breakpoint]) {
+        currentLayouts[breakpoint] = currentLayouts[breakpoint].map((item: Layout) => ({
           ...item,
-          // Reduce minimum constraints significantly in edit mode
-          minW: Math.min(item.minW || 1, 2), // Allow minimum width of 2 (or original if smaller)
-          minH: Math.min(item.minH || 1, 2), // Allow minimum height of 2 (or original if smaller)
+          // In edit mode: allow very small sizes (minW: 1, minH: 1)
+          // In normal mode: still allow reasonably small sizes (minW: 2, minH: 2) to preserve user choices
+          minW: isEditMode ? 1 : Math.min(item.minW || 2, 2),
+          minH: isEditMode ? 1 : Math.min(item.minH || 2, 2),
         }))
       }
     })
     
-    return editModeLayouts
+    return currentLayouts
   }
 
   // Widget management functions
@@ -922,26 +965,62 @@ export function CustomizableDashboard() {
         )
 
       case 'alerts':
-        return orphaned && orphaned.count > 0 ? (
-          <Alert className="border-orange-200 bg-orange-50 dark:bg-orange-950/30 h-full">
-            <AlertTriangle className="h-4 w-4 text-orange-600" />
-            <AlertTitle className="text-orange-800 dark:text-orange-200">Orphaned Records Detected</AlertTitle>
-            <AlertDescription className="space-y-2">
-              <p className="text-orange-700 dark:text-orange-300">
-                There are {orphaned.count} orphaned DNS records that may need attention.
-              </p>
-              <Button 
-                variant="outline" 
-                size="sm"
-                className="border-orange-300 text-orange-700 hover:bg-orange-100 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-900/50"
-                onClick={() => navigate('/orphaned-records')}
-              >
-                <AlertTriangle className="h-3 w-3 mr-2" />
-                View Orphaned Records
-              </Button>
-            </AlertDescription>
-          </Alert>
-        ) : null
+        // In normal mode, only show if there are alerts. In edit mode, always show.
+        if (!isEditMode && (!orphaned || orphaned.count === 0)) {
+          return null
+        }
+        
+        return (
+          <Card className="h-full flex flex-col overflow-hidden">
+            <CardHeader className="flex-shrink-0">
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                System Alerts
+              </CardTitle>
+              <CardDescription>Important system alerts and warnings</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-y-auto">
+              {orphaned && orphaned.count > 0 ? (
+                <Alert className="border-orange-200 bg-orange-50 dark:bg-orange-950/30">
+                  <AlertTriangle className="h-4 w-4 text-orange-600" />
+                  <AlertTitle className="text-orange-800 dark:text-orange-200">Orphaned Records Detected</AlertTitle>
+                  <AlertDescription className="space-y-2">
+                    <p className="text-orange-700 dark:text-orange-300">
+                      There are {orphaned.count} orphaned DNS records that may need attention.
+                    </p>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className="border-orange-300 text-orange-700 hover:bg-orange-100 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-900/50"
+                      onClick={() => navigate('/orphaned-records')}
+                    >
+                      <AlertTriangle className="h-3 w-3 mr-2" />
+                      View Orphaned Records
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-center space-y-3">
+                  <CheckCircle className="h-12 w-12 text-green-500" />
+                  <div>
+                    <h3 className="font-medium text-green-700 dark:text-green-300">All Clear!</h3>
+                    <p className="text-sm text-green-600 dark:text-green-400">
+                      No system alerts at this time
+                    </p>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Last checked: {new Date().toLocaleTimeString()}
+                  </div>
+                  {isEditMode && (
+                    <div className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                      (Hidden in normal mode when no alerts)
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )
 
       case 'system-overview':
         return (
@@ -1391,21 +1470,31 @@ export function CustomizableDashboard() {
               ) : (
                 <>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Range Size</span>
+                    <span className="text-sm text-muted-foreground">Monitored Range</span>
                     <span className="text-lg font-bold">
                       {portStats?.totalMonitoredPorts || 0}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Available</span>
-                    <span className="text-lg font-bold text-green-600">
-                      {portStats?.availablePortsInRange || portStats?.ports?.byStatus?.closed || 0}
+                    <span className="text-sm text-muted-foreground">Ports in Use</span>
+                    <span className="text-lg font-bold text-red-600">
+                      {portStats?.systemPortsInUse || portStats?.ports?.byStatus?.open || 0}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">In Use</span>
-                    <span className="text-lg font-bold text-red-600">
-                      {portStats?.systemPortsInUse || portStats?.ports?.byStatus?.open || 0}
+                    <span className="text-sm text-muted-foreground">Available</span>
+                    <span className="text-lg font-bold text-green-600">
+                      {(() => {
+                        const total = portStats?.totalMonitoredPorts || 0;
+                        const inUse = portStats?.systemPortsInUse || portStats?.ports?.byStatus?.open || 0;
+                        return Math.max(0, total - inUse);
+                      })()}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Active Reservations</span>
+                    <span className="text-lg font-bold text-blue-600">
+                      {portStats?.activeReservations || (Array.isArray(reservations) ? reservations.filter(r => r.status === 'active').length : 0)}
                     </span>
                   </div>
                   <div className="pt-2 space-y-2">
