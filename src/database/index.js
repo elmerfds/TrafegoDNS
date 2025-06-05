@@ -20,6 +20,8 @@ const { up: createUserPreferencesTable } = require('./migrations/createUserPrefe
 const createDashboardLayoutsTable = require('./migrations/createDashboardLayoutsTable');
 const { createPortMonitoringTables } = require('./migrations/createPortMonitoringTables');
 const createPortReservationsTable = require('./migrations/createPortReservationsTable');
+const createServersTable = require('./migrations/createServersTable');
+const addServerToPortReservations = require('./migrations/addServerToPortReservations');
 
 // Import repositories
 const UserRepository = require('./repository/userRepository');
@@ -240,6 +242,22 @@ async function initialize(migrate = true, options = {}) {
         logger.info('Port reservations table ready');
       } catch (portReservationsError) {
         logger.error(`Failed to create port reservations table: ${portReservationsError.message}`);
+      }
+      
+      try {
+        // Create servers table
+        await createServersTable.up(db);
+        logger.info('Servers table ready');
+      } catch (serversError) {
+        logger.error(`Failed to create servers table: ${serversError.message}`);
+      }
+      
+      try {
+        // Add server column to port reservations
+        await addServerToPortReservations.up(db);
+        logger.info('Port reservations server column migration completed');
+      } catch (serverColumnError) {
+        logger.error(`Failed to add server column to port reservations: ${serverColumnError.message}`);
       }
     }
     

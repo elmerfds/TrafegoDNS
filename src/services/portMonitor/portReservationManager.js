@@ -51,7 +51,7 @@ class PortReservationManager {
    * @param {Object} metadata - Additional metadata
    * @returns {Promise<Array<Object>>}
    */
-  async createReservations(ports, containerId, protocol = 'tcp', duration = null, metadata = {}) {
+  async createReservations(ports, containerId, protocol = 'tcp', duration = null, metadata = {}, server = 'host') {
     if (!this.isInitialized) {
       throw new Error('Port Reservation Manager not initialized');
     }
@@ -96,6 +96,7 @@ class PortReservationManager {
           port,
           container_id: containerId,
           protocol,
+          server_id: server,
           expires_at: expiresAt,
           metadata: {
             ...metadata,
@@ -312,14 +313,15 @@ class PortReservationManager {
       containerId,
       protocol = 'tcp',
       duration = null,
-      metadata = {}
+      metadata = {},
+      server = 'host'
     } = options;
 
     if (!port || !containerId) {
       throw new Error('Port and container ID are required');
     }
 
-    const reservations = await this.createReservations([port], containerId, protocol, duration, metadata);
+    const reservations = await this.createReservations([port], containerId, protocol, duration, metadata, server);
     return reservations[0];
   }
 

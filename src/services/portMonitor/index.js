@@ -912,7 +912,8 @@ class PortMonitor {
             containerId,
             protocol,
             duration,
-            metadata
+            metadata,
+            server
           });
           results.reserved.push(reservation);
         }

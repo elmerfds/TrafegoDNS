@@ -31,6 +31,7 @@ class PortReservationRepository extends BaseRepository {
       port,
       container_id,
       protocol = 'tcp',
+      server_id = 'host',
       expires_at,
       metadata = {},
       created_by = 'system'
@@ -40,6 +41,7 @@ class PortReservationRepository extends BaseRepository {
       port,
       container_id,
       protocol,
+      server_id,
       expires_at,
       metadata: JSON.stringify(metadata),
       created_by,
@@ -53,9 +55,10 @@ class PortReservationRepository extends BaseRepository {
   /**
    * Get active reservations for specific ports
    * @param {Array<number>} ports - Ports to check
+   * @param {string} serverId - Server ID to filter by (optional)
    * @returns {Promise<Array<Object>>}
    */
-  async getActiveReservations(ports = []) {
+  async getActiveReservations(ports = [], serverId = null) {
     const now = new Date().toISOString();
     let whereClause = 'expires_at > ?';
     let params = [now];
@@ -64,6 +67,11 @@ class PortReservationRepository extends BaseRepository {
       const placeholders = ports.map(() => '?').join(',');
       whereClause += ` AND port IN (${placeholders})`;
       params.push(...ports);
+    }
+
+    if (serverId) {
+      whereClause += ' AND server_id = ?';
+      params.push(serverId);
     }
 
     const sql = `
@@ -233,18 +241,27 @@ class PortReservationRepository extends BaseRepository {
    * Check if a port is reserved
    * @param {number} port - Port to check
    * @param {string} protocol - Protocol
+   * @param {string} serverId - Server ID (optional)
    * @returns {Promise<Object|null>}
    */
-  async getPortReservation(port, protocol = 'tcp') {
+  async getPortReservation(port, protocol = 'tcp', serverId = null) {
     const now = new Date().toISOString();
+    let whereClause = 'port = ? AND protocol = ? AND expires_at > ?';
+    let params = [port, protocol, now];
+
+    if (serverId) {
+      whereClause += ' AND server_id = ?';
+      params.push(serverId);
+    }
+
     const sql = `
       SELECT * FROM ${this.tableName}
-      WHERE port = ? AND protocol = ? AND expires_at > ?
+      WHERE ${whereClause}
       ORDER BY created_at DESC
       LIMIT 1
     `;
 
-    const reservation = await this.db.get(sql, [port, protocol, now]);
+    const reservation = await this.db.get(sql, params);
     
     if (reservation) {
       return {

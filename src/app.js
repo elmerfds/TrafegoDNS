@@ -281,7 +281,8 @@ async function start() {
       TraefikMonitor: config.operationMode.toLowerCase() !== 'direct' ? monitor : null,
       DirectDNSManager: config.operationMode.toLowerCase() === 'direct' ? monitor : null,
       ConfigManager: config,
-      PortMonitor: portMonitor
+      PortMonitor: portMonitor,
+      database: database
     };
 
     // Initialize all services

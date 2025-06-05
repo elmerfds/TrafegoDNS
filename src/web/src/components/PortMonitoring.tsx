@@ -173,6 +173,21 @@ export default function PortMonitoring() {
       }
     }
   }, [configData?.hostIp, configData?.portManagementEnabled, fetchServers]);
+
+  // Set default selected server when servers are loaded
+  useEffect(() => {
+    if (Array.isArray(servers) && servers.length > 0 && !selectedServer) {
+      // Find host server or default to first server
+      const hostServer = servers.find(s => s.isHost || s.id === 'host');
+      if (hostServer) {
+        setSelectedServer(hostServer.id);
+        console.log('PortMonitoring: Set default server to host:', hostServer);
+      } else {
+        setSelectedServer(servers[0].id);
+        console.log('PortMonitoring: Set default server to first:', servers[0]);
+      }
+    }
+  }, [servers, selectedServer, setSelectedServer]);
   
   useEffect(() => {
     // Load initial data using Zustand store
@@ -180,6 +195,9 @@ export default function PortMonitoring() {
     fetchReservations();
     fetchServers();
     loadHostConfiguration();
+    
+    // Debug: log server loading
+    console.log('PortMonitoring: Loading initial data...');
   }, [fetchStatistics, fetchReservations, fetchServers]);
 
   // Remove loadServers - now handled by Zustand store
@@ -568,6 +586,7 @@ export default function PortMonitoring() {
         container_id: reservationContainerId,
         protocol: (protocol === 'both' ? 'tcp' : protocol) as 'tcp' | 'udp' | 'both',
         duration: durationInSeconds,
+        server: selectedServer === 'custom' ? customServerIp : (Array.isArray(servers) ? servers.find(s => s.id === selectedServer)?.ip : undefined),
         metadata: {
           notes: reservationNotes,
           createdBy: 'user',
@@ -1819,6 +1838,30 @@ export default function PortMonitoring() {
                   <SelectItem value="both">Both</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label htmlFor="reservationServer">Server</Label>
+              <Select value={selectedServer || 'host'} onValueChange={setSelectedServer}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.isArray(servers) ? servers.map(server => (
+                    <SelectItem key={server.id} value={server.id}>
+                      {server.name} ({server.ip})
+                    </SelectItem>
+                  )) : null}
+                  <SelectItem value="custom">Custom IP...</SelectItem>
+                </SelectContent>
+              </Select>
+              {selectedServer === 'custom' && (
+                <Input
+                  placeholder="Enter server IP"
+                  value={customServerIp}
+                  onChange={(e) => setCustomServerIp(e.target.value)}
+                  className="mt-2"
+                />
+              )}
             </div>
             <div>
               <Label htmlFor="reservationDuration">Duration</Label>

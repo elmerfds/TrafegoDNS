@@ -516,14 +516,17 @@ export const usePortStore = create<PortStore>()(
           });
 
           try {
-            const response = await api.get<ApiResponse<Server[]>>('/servers');
+            const response = await api.get<ApiResponse<{ servers: Server[] }>>('/servers');
+            console.log('fetchServers API response:', response.data);
 
             set(state => {
-              state.servers = response.data?.data || [];
+              // The API returns { success: true, data: { servers: [...] } }
+              state.servers = response.data?.data?.servers || [];
               state.lastUpdated.servers = Date.now();
               state.loading.servers = false;
             });
           } catch (error: any) {
+            console.error('fetchServers error:', error);
             set(state => {
               state.errors.servers = error.response?.data?.message || 'Failed to fetch servers';
               state.loading.servers = false;
