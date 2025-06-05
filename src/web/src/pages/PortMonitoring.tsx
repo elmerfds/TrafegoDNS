@@ -415,7 +415,7 @@ export default function PortMonitoring() {
                 <p className="text-muted-foreground text-center py-4">No recent alerts</p>
               ) : (
                 <div className="space-y-2">
-                  {(alerts || []).slice(0, 5).map((alert) => (
+                  {Array.isArray(alerts) ? alerts.slice(0, 5).map((alert) => (
                     <div key={alert.id} className="flex items-center justify-between p-3 border rounded">
                       <div className="flex items-center space-x-3">
                         <Shield className="h-4 w-4 text-orange-500" />
@@ -437,7 +437,7 @@ export default function PortMonitoring() {
                         </Button>
                       </div>
                     </div>
-                  ))}
+                  )) : null}
                 </div>
               )}
             </CardContent>
@@ -452,12 +452,12 @@ export default function PortMonitoring() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {(statistics.ports?.topServices || []).slice(0, 5).map((service, index) => (
+                    {Array.isArray(statistics.ports?.topServices) ? statistics.ports.topServices.slice(0, 5).map((service, index) => (
                       <div key={index} className="flex justify-between items-center">
                         <span className="font-medium">{service.service_name || 'Unknown'}</span>
                         <Badge variant="secondary">{service.count}</Badge>
                       </div>
-                    ))}
+                    )) : null}
                   </div>
                 </CardContent>
               </Card>
@@ -468,12 +468,12 @@ export default function PortMonitoring() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {(statistics.ports?.topHosts || []).slice(0, 5).map((host, index) => (
+                    {Array.isArray(statistics.ports?.topHosts) ? statistics.ports.topHosts.slice(0, 5).map((host, index) => (
                       <div key={index} className="flex justify-between items-center">
                         <span className="font-medium">{host.host}</span>
                         <Badge variant="secondary">{host.port_count} ports</Badge>
                       </div>
-                    ))}
+                    )) : null}
                   </div>
                 </CardContent>
               </Card>
@@ -558,7 +558,7 @@ export default function PortMonitoring() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    (ports || []).map((port, index) => (
+                    Array.isArray(ports) ? ports.map((port, index) => (
                       <TableRow key={port.id || `${port.server_id}-${port.port}-${index}`}>
                         <TableCell className="font-medium">{port.server_name || port.server_id}</TableCell>
                         <TableCell className="font-mono">{port.port}</TableCell>
@@ -597,7 +597,7 @@ export default function PortMonitoring() {
                           </Button>
                         </TableCell>
                       </TableRow>
-                    ))
+                    )) : null
                   )}
                 </TableBody>
               </Table>
@@ -654,7 +654,7 @@ export default function PortMonitoring() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(alerts || []).map((alert) => (
+                  {Array.isArray(alerts) ? alerts.map((alert) => (
                     <TableRow key={alert.id}>
                       <TableCell>
                         <div>
@@ -689,7 +689,7 @@ export default function PortMonitoring() {
                         )}
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )) : null
                 </TableBody>
               </Table>
             </CardContent>
@@ -753,7 +753,7 @@ export default function PortMonitoring() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(scans || []).map((scan) => (
+                  {Array.isArray(scans) ? scans.map((scan) => (
                     <TableRow key={scan.id}>
                       <TableCell className="font-medium">{scan.host}</TableCell>
                       <TableCell>{scan.scan_type}</TableCell>
@@ -774,7 +774,7 @@ export default function PortMonitoring() {
                       </TableCell>
                       <TableCell>{scan.created_by}</TableCell>
                     </TableRow>
-                  ))}
+                  )) : null
                 </TableBody>
               </Table>
             </CardContent>

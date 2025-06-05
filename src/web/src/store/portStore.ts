@@ -318,7 +318,7 @@ export const usePortStore = create<PortStore>()(
             
             // Update the alert in the state
             set(state => {
-              const alert = (state.alerts || []).find((a: PortAlert) => a.id === alertId);
+              const alert = Array.isArray(state.alerts) ? state.alerts.find((a: PortAlert) => a.id === alertId) : undefined;
               if (alert) {
                 alert.acknowledged = true;
                 alert.acknowledged_at = new Date().toISOString();
@@ -337,7 +337,7 @@ export const usePortStore = create<PortStore>()(
             
             // Update the alert in the state
             set(state => {
-              const alert = (state.alerts || []).find((a: PortAlert) => a.id === alertId);
+              const alert = Array.isArray(state.alerts) ? state.alerts.find((a: PortAlert) => a.id === alertId) : undefined;
               if (alert) {
                 alert.resolved = true;
                 alert.resolved_at = new Date().toISOString();
@@ -407,7 +407,7 @@ export const usePortStore = create<PortStore>()(
             
             // Update the scan status in the state
             set(state => {
-              const scan = (state.scans || []).find((s: PortScan) => s.id === scanId);
+              const scan = Array.isArray(state.scans) ? state.scans.find((s: PortScan) => s.id === scanId) : undefined;
               if (scan) {
                 scan.status = 'cancelled';
               }
@@ -489,7 +489,7 @@ export const usePortStore = create<PortStore>()(
             
             // Update the reservation status in the state
             set(state => {
-              const reservation = (state.reservations || []).find((r: PortReservation) => r.id === reservationId);
+              const reservation = Array.isArray(state.reservations) ? state.reservations.find((r: PortReservation) => r.id === reservationId) : undefined;
               if (reservation) {
                 reservation.status = 'released';
                 reservation.released_at = new Date().toISOString();
@@ -630,7 +630,7 @@ export const usePortStore = create<PortStore>()(
         handlePortUpdate: (port: Port) => {
           set(state => {
             if (!state.ports) state.ports = [];
-            const index = state.ports.findIndex((p: Port) => p.id === port.id);
+            const index = Array.isArray(state.ports) ? state.ports.findIndex((p: Port) => p.id === port.id) : -1;
             if (index >= 0) {
               state.ports[index] = port;
             } else {
@@ -642,7 +642,7 @@ export const usePortStore = create<PortStore>()(
         handleAlertUpdate: (alert: PortAlert) => {
           set(state => {
             if (!state.alerts) state.alerts = [];
-            const index = state.alerts.findIndex((a: PortAlert) => a.id === alert.id);
+            const index = Array.isArray(state.alerts) ? state.alerts.findIndex((a: PortAlert) => a.id === alert.id) : -1;
             if (index >= 0) {
               state.alerts[index] = alert;
             } else {
@@ -654,7 +654,7 @@ export const usePortStore = create<PortStore>()(
         handleScanUpdate: (scan: PortScan) => {
           set(state => {
             if (!state.scans) state.scans = [];
-            const index = state.scans.findIndex((s: PortScan) => s.id === scan.id);
+            const index = Array.isArray(state.scans) ? state.scans.findIndex((s: PortScan) => s.id === scan.id) : -1;
             if (index >= 0) {
               state.scans[index] = scan;
             } else {
@@ -666,7 +666,7 @@ export const usePortStore = create<PortStore>()(
         handleReservationUpdate: (reservation: PortReservation) => {
           set(state => {
             if (!state.reservations) state.reservations = [];
-            const index = state.reservations.findIndex((r: PortReservation) => r.id === reservation.id);
+            const index = Array.isArray(state.reservations) ? state.reservations.findIndex((r: PortReservation) => r.id === reservation.id) : -1;
             if (index >= 0) {
               state.reservations[index] = reservation;
             } else {

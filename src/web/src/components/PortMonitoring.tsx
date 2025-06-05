@@ -286,7 +286,7 @@ export default function PortMonitoring() {
         serverIp = customServerIp.trim();
         console.log('Using custom server IP:', serverIp);
       } else {
-        const server = (servers || []).find(s => s.id === selectedServer);
+        const server = Array.isArray(servers) ? servers.find(s => s.id === selectedServer) : undefined;
         if (server) {
           serverIp = server.ip;
           console.log('Found server from list:', server);
@@ -383,7 +383,7 @@ export default function PortMonitoring() {
 
   const removeServer = async (serverId: string) => {
     // Don't allow removing the host server
-    const serverToRemove = (servers || []).find(s => s.id === serverId);
+    const serverToRemove = Array.isArray(servers) ? servers.find(s => s.id === serverId) : undefined;
     if (serverToRemove?.isHost) {
       setError('Cannot remove the host server');
       return;
@@ -412,7 +412,7 @@ export default function PortMonitoring() {
   };
 
   const startEditingHostIp = () => {
-    const hostServer = (servers || []).find(s => s.isHost);
+    const hostServer = Array.isArray(servers) ? servers.find(s => s.isHost) : undefined;
     setEditHostIpValue(hostServer?.ip || 'localhost');
     setEditingHostIp(true);
   };
@@ -593,7 +593,7 @@ export default function PortMonitoring() {
     try {
       await api.put(`/ports/${port}/documentation`, {
         documentation,
-        server: selectedServer === 'custom' ? customServerIp : (servers || []).find(s => s.id === selectedServer)?.ip
+        server: selectedServer === 'custom' ? customServerIp : (Array.isArray(servers) ? servers.find(s => s.id === selectedServer)?.ip : undefined)
       });
       loadPortsInUse();
     } catch (error) {
@@ -605,7 +605,7 @@ export default function PortMonitoring() {
     try {
       await api.put(`/ports/${port}/label`, {
         serviceLabel,
-        server: selectedServer === 'custom' ? customServerIp : (servers || []).find(s => s.id === selectedServer)?.ip,
+        server: selectedServer === 'custom' ? customServerIp : (Array.isArray(servers) ? servers.find(s => s.id === selectedServer)?.ip : undefined),
         protocol
       });
       loadPortsInUse();
@@ -653,7 +653,7 @@ export default function PortMonitoring() {
         }
         serverIp = customServerIp.trim();
       } else {
-        const server = (servers || []).find(s => s.id === selectedServer);
+        const server = Array.isArray(servers) ? servers.find(s => s.id === selectedServer) : undefined;
         if (server) {
           serverIp = server.ip;
         }
@@ -744,7 +744,7 @@ export default function PortMonitoring() {
         }
         serverIp = customServerIp.trim();
       } else {
-        const server = (servers || []).find(s => s.id === selectedServer);
+        const server = Array.isArray(servers) ? servers.find(s => s.id === selectedServer) : undefined;
         if (server) {
           serverIp = server.ip;
         }
@@ -981,7 +981,7 @@ export default function PortMonitoring() {
               <Settings className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{(reservations || []).filter(r => r.status === 'active').length}</div>
+              <div className="text-2xl font-bold">{Array.isArray(reservations) ? reservations.filter(r => r.status === 'active').length : 0}</div>
             </CardContent>
           </Card>
 
@@ -1027,7 +1027,7 @@ export default function PortMonitoring() {
             <CardHeader>
               <CardTitle>Ports Currently in Use</CardTitle>
               <CardDescription>
-                All ports in use on {selectedServer === 'custom' ? customServerIp : (servers || []).find(s => s.id === selectedServer)?.name || 'Host'}
+                All ports in use on {selectedServer === 'custom' ? customServerIp : (Array.isArray(servers) ? servers.find(s => s.id === selectedServer)?.name : undefined) || 'Host'}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1040,11 +1040,11 @@ export default function PortMonitoring() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {(servers || []).map(server => (
+                        {Array.isArray(servers) ? servers.map(server => (
                           <SelectItem key={server.id} value={server.id}>
                             {server.name} ({server.ip})
                           </SelectItem>
-                        ))}
+                        )) : null}
                         <SelectItem value="custom">Custom IP...</SelectItem>
                       </SelectContent>
                     </Select>
@@ -1246,11 +1246,11 @@ export default function PortMonitoring() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {(servers || []).map(server => (
+                      {Array.isArray(servers) ? servers.map(server => (
                         <SelectItem key={server.id} value={server.id}>
                           {server.name} ({server.ip})
                         </SelectItem>
-                      ))}
+                      )) : null}
                       <SelectItem value="custom">Custom IP...</SelectItem>
                     </SelectContent>
                   </Select>
@@ -1264,7 +1264,7 @@ export default function PortMonitoring() {
                   )}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">
-                  Checking ports on {selectedServer === 'custom' ? (customServerIp || 'custom server') : (servers || []).find(s => s.id === selectedServer)?.name || 'localhost'}
+                  Checking ports on {selectedServer === 'custom' ? (customServerIp || 'custom server') : (Array.isArray(servers) ? servers.find(s => s.id === selectedServer)?.name : undefined) || 'localhost'}
                 </div>
               </div>
               
@@ -1357,11 +1357,11 @@ export default function PortMonitoring() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {(servers || []).map(server => (
+                      {Array.isArray(servers) ? servers.map(server => (
                         <SelectItem key={server.id} value={server.id}>
                           {server.name} ({server.ip})
                         </SelectItem>
-                      ))}
+                      )) : null}
                       <SelectItem value="custom">Custom IP...</SelectItem>
                     </SelectContent>
                   </Select>
@@ -1375,7 +1375,7 @@ export default function PortMonitoring() {
                   )}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">
-                  Scanning ports on {selectedServer === 'custom' ? (customServerIp || 'custom server') : (servers || []).find(s => s.id === selectedServer)?.name || 'localhost'}
+                  Scanning ports on {selectedServer === 'custom' ? (customServerIp || 'custom server') : (Array.isArray(servers) ? servers.find(s => s.id === selectedServer)?.name : undefined) || 'localhost'}
                 </div>
               </div>
               
@@ -1440,8 +1440,8 @@ export default function PortMonitoring() {
                   <h4 className="font-medium">Scan Results:</h4>
                   <div className="text-sm text-muted-foreground mb-2">
                     {(() => {
-                      const availableCount = (portScanResults || []).filter(p => p.available).length;
-                      const totalCount = (portScanResults || []).length;
+                      const availableCount = Array.isArray(portScanResults) ? portScanResults.filter(p => p.available).length : 0;
+                      const totalCount = Array.isArray(portScanResults) ? portScanResults.length : 0;
                       const percentage = Math.round((availableCount / totalCount) * 100);
                       return `${availableCount}/${totalCount} ports available (${percentage}%)`;
                     })()}
@@ -1450,7 +1450,7 @@ export default function PortMonitoring() {
                   {/* Combined Results Section */}
                   <div className="space-y-2">
                     <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
-                      {(portScanResults || []).map((port) => (
+                      {Array.isArray(portScanResults) ? portScanResults.map((port) => (
                         <div key={`${port.port}-${port.protocol}`} className="p-3 border rounded space-y-2">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-3">
@@ -1490,7 +1490,7 @@ export default function PortMonitoring() {
                     </div>
                   </div>
                   
-                  {(portScanResults || []).length === 0 && (
+                  {(!Array.isArray(portScanResults) || portScanResults.length === 0) && (
                     <div className="text-center py-4 text-muted-foreground">
                       No results to display
                     </div>
@@ -1516,13 +1516,13 @@ export default function PortMonitoring() {
               </Button>
             </CardHeader>
             <CardContent>
-              {(reservations || []).length === 0 ? (
+              {(!Array.isArray(reservations) || reservations.length === 0) ? (
                 <div className="text-center py-8 text-muted-foreground">
                   No active port reservations
                 </div>
               ) : (
                 <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 400px)' }}>
-                  {(reservations || []).map((reservation) => (
+                  {Array.isArray(reservations) ? reservations.map((reservation) => (
                     <div key={reservation.id} className="p-3 border rounded space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
@@ -1645,7 +1645,7 @@ export default function PortMonitoring() {
                 <div className="space-y-2">
                   <h4 className="font-medium">Configured Servers</h4>
                   <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
-                    {(servers || []).length > 0 ? (servers || []).map(server => (
+                    {Array.isArray(servers) && servers.length > 0 ? servers.map(server => (
                       <div key={server.id} className="flex items-center justify-between p-3 border rounded">
                         <div className="flex items-center space-x-3">
                           <Server className="h-4 w-4" />
@@ -1770,7 +1770,7 @@ export default function PortMonitoring() {
                     <div>Form values: {newServerName} / {newServerIp}</div>
                     <div>Button disabled: {(!newServerName.trim() || !newServerIp.trim() || addingServer).toString()}</div>
                     <div>Config hostIp: {configData?.hostIp || 'none'}</div>
-                    <div>Host server IP: {(servers || []).find(s => s.isHost)?.ip || 'none'}</div>
+                    <div>Host server IP: {Array.isArray(servers) ? servers.find(s => s.id === 'host' || s.isHost)?.ip || 'none' : 'none'}</div>
                   </div>
                 </div>
               </div>

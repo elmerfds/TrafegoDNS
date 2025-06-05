@@ -214,7 +214,7 @@ export function PortsInUseTab({
 
   const handleBulkCheckStatus = async (ports: Port[]) => {
     try {
-      const portNumbers = (ports || []).map(p => p.port);
+      const portNumbers = Array.isArray(ports) ? ports.map(p => p.port) : [];
       const response = await api.post('/ports/check-availability', {
         ports: portNumbers,
         protocol: 'both', // Check both protocols for bulk operation
@@ -236,7 +236,7 @@ export function PortsInUseTab({
     try {
       // Create CSV data
       const csvHeaders = ['Port', 'Protocol', 'Status', 'Service', 'Container', 'Description', 'Last Seen'];
-      const csvRows = (ports || []).map(port => [
+      const csvRows = Array.isArray(ports) ? ports.map(port => [
         port.port,
         port.protocol,
         port.status,
@@ -244,7 +244,7 @@ export function PortsInUseTab({
         port.container_name || 'N/A',
         port.description || '',
         port.last_seen ? new Date(port.last_seen).toISOString() : ''
-      ]);
+      ]) : [];
 
       const csvContent = [
         csvHeaders.join(','),
@@ -295,7 +295,7 @@ export function PortsInUseTab({
 
   // Filter data based on current filters
   const filteredPorts = useMemo(() => {
-    return (ports || []).filter(port => {
+    return Array.isArray(ports) ? ports.filter(port => {
       // Search filter
       if (filters.search) {
         const searchLower = filters.search.toLowerCase();
@@ -319,21 +319,21 @@ export function PortsInUseTab({
       }
 
       return true;
-    });
+    }) : [];
   }, [ports, filters]);
 
   // Get summary statistics
   const summary = useMemo(() => {
-    const total = (filteredPorts || []).length;
-    const byStatus = (filteredPorts || []).reduce((acc, port) => {
+    const total = Array.isArray(filteredPorts) ? filteredPorts.length : 0;
+    const byStatus = Array.isArray(filteredPorts) ? filteredPorts.reduce((acc, port) => {
       acc[port.status] = (acc[port.status] || 0) + 1;
       return acc;
-    }, {} as Record<string, number>);
+    }, {} as Record<string, number>) : {};
 
-    const byProtocol = (filteredPorts || []).reduce((acc, port) => {
+    const byProtocol = Array.isArray(filteredPorts) ? filteredPorts.reduce((acc, port) => {
       acc[port.protocol] = (acc[port.protocol] || 0) + 1;
       return acc;
-    }, {} as Record<string, number>);
+    }, {} as Record<string, number>) : {};
 
     return { total, byStatus, byProtocol };
   }, [filteredPorts]);
