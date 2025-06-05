@@ -186,6 +186,7 @@ export function CustomizableDashboard() {
   const [newName, setNewName] = useState('')
   const [showWidgetDialog, setShowWidgetDialog] = useState(false)
   const [hiddenWidgets, setHiddenWidgets] = useState<Set<string>>(new Set())
+  const [layoutToDelete, setLayoutToDelete] = useState<string | null>(null)
   
   // Port widget interaction states
   const [quickPortCheck, setQuickPortCheck] = useState('')
@@ -380,6 +381,27 @@ export function CustomizableDashboard() {
   const handleLayoutChange = (currentLayout: Layout[], allLayouts: { [breakpoint: string]: Layout[] }) => {
     // Always update layouts to maintain state
     setLayouts(allLayouts)
+  }
+
+  // Function to get layouts with adjusted minimum constraints for edit mode
+  const getLayoutsForRendering = () => {
+    if (!isEditMode) return layouts
+
+    // In edit mode, reduce minimum constraints to allow more flexible resizing
+    const editModeLayouts = { ...layouts }
+    
+    Object.keys(editModeLayouts).forEach(breakpoint => {
+      if (editModeLayouts[breakpoint]) {
+        editModeLayouts[breakpoint] = editModeLayouts[breakpoint].map((item: Layout) => ({
+          ...item,
+          // Reduce minimum constraints significantly in edit mode
+          minW: Math.min(item.minW || 1, 2), // Allow minimum width of 2 (or original if smaller)
+          minH: Math.min(item.minH || 1, 2), // Allow minimum height of 2 (or original if smaller)
+        }))
+      }
+    })
+    
+    return editModeLayouts
   }
 
   // Widget management functions
@@ -1598,80 +1620,75 @@ export function CustomizableDashboard() {
       case 'port-scanner':
         return (
           <Card className="h-full flex flex-col overflow-hidden">
-            <CardHeader className="flex-shrink-0">
-              <CardTitle className="flex items-center gap-2">
-                <Search className="h-5 w-5" />
+            <CardHeader className="flex-shrink-0 pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Search className="h-4 w-4" />
                 Quick Port Scanner
               </CardTitle>
-              <CardDescription>Scan ports for availability</CardDescription>
+              <CardDescription className="text-xs">Scan common port groups</CardDescription>
             </CardHeader>
-            <CardContent className="flex-1 space-y-4 overflow-y-auto">
-              <div className="space-y-2">
-                <div className="text-sm text-muted-foreground">Common Port Checks</div>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { label: 'Web', ports: [80, 443], icon: Globe },
-                    { label: 'Dev', ports: [3000, 8080], icon: Activity },
-                    { label: 'DB', ports: [5432, 3306], icon: Database },
-                    { label: 'SSH/FTP', ports: [22, 21], icon: Server }
-                  ].map(({ label, ports, icon: Icon }) => (
-                    <Button 
-                      key={label}
-                      variant="outline" 
-                      size="sm" 
-                      className="text-xs h-8 flex flex-col gap-1 p-2"
-                      onClick={async () => {
-                        setPortCheckLoading(true)
-                        try {
-                          const response = await api.post('/ports/check-availability', {
-                            ports,
-                            protocol: 'tcp',
-                            server: 'localhost'
-                          })
-                          
-                          const available = response.data.data.ports.filter((p: any) => p.available).length
-                          const total = ports.length
-                          
-                          toast({
-                            title: `${label} Ports`,
-                            description: `${available}/${total} available`,
-                            variant: available === total ? 'default' : 'destructive'
-                          })
-                        } catch (error) {
-                          toast({
-                            title: 'Check Failed',
-                            description: `Failed to check ${label} ports`,
-                            variant: 'destructive'
-                          })
-                        } finally {
-                          setPortCheckLoading(false)
-                        }
-                      }}
-                      disabled={portCheckLoading}
-                    >
-                      {portCheckLoading ? (
-                        <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <>
-                          <Icon className="h-3 w-3" />
-                          <span>{label}</span>
-                        </>
-                      )}
-                    </Button>
-                  ))}
-                </div>
+            <CardContent className="flex-1 space-y-3 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: 'Web', ports: [80, 443], icon: Globe },
+                  { label: 'Dev', ports: [3000, 8080], icon: Activity },
+                  { label: 'DB', ports: [5432, 3306], icon: Database },
+                  { label: 'SSH/FTP', ports: [22, 21], icon: Server }
+                ].map(({ label, ports, icon: Icon }) => (
+                  <Button 
+                    key={label}
+                    variant="outline" 
+                    size="sm" 
+                    className="text-xs h-7 flex items-center gap-1 p-2"
+                    onClick={async () => {
+                      setPortCheckLoading(true)
+                      try {
+                        const response = await api.post('/ports/check-availability', {
+                          ports,
+                          protocol: 'tcp',
+                          server: 'localhost'
+                        })
+                        
+                        const available = response.data.data.ports.filter((p: any) => p.available).length
+                        const total = ports.length
+                        
+                        toast({
+                          title: `${label} Ports`,
+                          description: `${available}/${total} available`,
+                          variant: available === total ? 'default' : 'destructive'
+                        })
+                      } catch (error) {
+                        toast({
+                          title: 'Check Failed',
+                          description: `Failed to check ${label} ports`,
+                          variant: 'destructive'
+                        })
+                      } finally {
+                        setPortCheckLoading(false)
+                      }
+                    }}
+                    disabled={portCheckLoading}
+                  >
+                    {portCheckLoading ? (
+                      <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Icon className="h-3 w-3" />
+                        <span>{label}</span>
+                      </>
+                    )}
+                  </Button>
+                ))}
               </div>
-              <div className="pt-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="w-full h-8 text-xs"
-                  onClick={() => navigate('/port-management?tab=check')}
-                >
-                  <Search className="h-3 w-3 mr-1" />
-                  Advanced Scan
-                </Button>
-              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full h-7 text-xs"
+                onClick={() => navigate('/port-management?tab=check')}
+              >
+                <Search className="h-3 w-3 mr-1" />
+                Advanced Scan
+              </Button>
             </CardContent>
           </Card>
         )
@@ -2192,35 +2209,17 @@ export function CustomizableDashboard() {
                         >
                           <Edit2 className="h-3 w-3" />
                         </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0 text-destructive hover:text-destructive"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete Layout</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Are you sure you want to delete the layout "{layout.name}"? This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => deleteLayoutMutation.mutate(layout.name)}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                              >
-                                Delete
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setLayoutToDelete(layout.name)
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -2257,8 +2256,18 @@ export function CustomizableDashboard() {
         </Alert>
       )}
 
-      {/* Debug info */}
+      {/* Edit mode tips */}
       {isEditMode && (
+        <Alert className="bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+          <AlertDescription className="text-blue-800 dark:text-blue-200 text-sm">
+            <strong>Edit Mode Tips:</strong> You can resize widgets smaller than their normal minimum size. 
+            Drag corners to resize, drag titles to move. Some widgets work better when compact!
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Debug info */}
+      {isEditMode && process.env.NODE_ENV === 'development' && (
         <div className="text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded">
           <div>Debug: Visible widgets = {getVisibleWidgets().join(', ')}</div>
           <div>Hidden widgets = {Array.from(hiddenWidgets).join(', ')}</div>
@@ -2271,7 +2280,7 @@ export function CustomizableDashboard() {
       <ResponsiveGridLayout
         key={layoutKey}
         className="layout"
-        layouts={layouts}
+        layouts={getLayoutsForRendering()}
         onLayoutChange={handleLayoutChange}
         breakpoints={{ lg: 1200, md: 996, sm: 768 }}
         cols={{ lg: 12, md: 10, sm: 6 }}
@@ -2287,6 +2296,7 @@ export function CustomizableDashboard() {
         transformScale={1}
         resizeHandles={['se', 's', 'e', 'w', 'sw']}
         useCSSTransforms={true}
+        allowOverlap={isEditMode}
       >
         {getVisibleWidgets().map(widgetId => {
           console.log('Rendering widget:', widgetId)
@@ -2327,6 +2337,32 @@ export function CustomizableDashboard() {
           )
         })}
       </ResponsiveGridLayout>
+
+      {/* Delete Layout Confirmation Dialog */}
+      <AlertDialog open={!!layoutToDelete} onOpenChange={() => setLayoutToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Layout</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the layout "{layoutToDelete}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setLayoutToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (layoutToDelete) {
+                  deleteLayoutMutation.mutate(layoutToDelete)
+                  setLayoutToDelete(null)
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
