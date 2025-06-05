@@ -36,7 +36,8 @@ import {
   AlertCircle,
   Clock,
   Database,
-  Eye
+  Eye,
+  Copy
 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -118,7 +119,7 @@ const availableWidgets = [
   { id: 'port-alerts', name: 'Port Alerts', category: 'Ports', icon: AlertCircle, description: 'Port-related security alerts' },
   { id: 'server-status', name: 'Server Status', category: 'Ports', icon: Server, description: 'Monitored servers status' },
   { id: 'port-activity', name: 'Port Activity', category: 'Ports', icon: Monitor, description: 'Recent port activity and changes' },
-  { id: 'port-suggestions', name: 'Port Suggestions', category: 'Ports', icon: Eye, description: 'Quick port suggestions for common services' }
+  { id: 'port-suggestions', name: 'Port Generator', category: 'Ports', icon: Eye, description: 'Generate available ports for different service types' }
 ]
 
 // Default layouts for different breakpoints with minimal gaps
@@ -194,6 +195,11 @@ export function CustomizableDashboard() {
   const [reservationContainer, setReservationContainer] = useState('')
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [layoutKey, setLayoutKey] = useState(0)
+  
+  // Port suggestions widget states
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
+  const [suggestedPort, setSuggestedPort] = useState<number | null>(null)
+  const [suggestionServiceType, setSuggestionServiceType] = useState('web')
   
   // Port monitoring data
   const { statistics: portStats, loading: portStatsLoading } = usePortStatistics()
@@ -699,6 +705,104 @@ export function CustomizableDashboard() {
       toast({
         title: 'Release Failed',
         description: error.response?.data?.message || 'Failed to release reservation',
+        variant: 'destructive'
+      })
+    }
+  }
+
+  // Port suggestions functions
+  const generateRandomPort = async () => {
+    setSuggestionsLoading(true)
+    try {
+      // Generate a random port in a reasonable range (3000-9999)
+      const randomPort = Math.floor(Math.random() * (9999 - 3000 + 1)) + 3000
+      
+      // Check if it's available
+      const response = await api.post('/ports/check-availability', {
+        ports: [randomPort],
+        protocol: 'tcp',
+        server: 'localhost'
+      })
+      
+      const result = response.data.data.ports[0]
+      if (result.available) {
+        setSuggestedPort(randomPort)
+        toast({
+          title: 'Port Suggestion',
+          description: `Port ${randomPort} is available!`,
+        })
+      } else {
+        // Try again with a different random port
+        generateRandomPort()
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to generate port suggestion',
+        variant: 'destructive'
+      })
+    } finally {
+      setSuggestionsLoading(false)
+    }
+  }
+
+  const generateServiceTypePort = async () => {
+    setSuggestionsLoading(true)
+    try {
+      // Define port ranges for different service types
+      const serviceRanges = {
+        web: { start: 3000, end: 3999 },
+        api: { start: 8000, end: 8999 },
+        database: { start: 5000, end: 5999 },
+        cache: { start: 6000, end: 6999 },
+        monitoring: { start: 9000, end: 9999 },
+        development: { start: 4000, end: 4999 }
+      }
+      
+      const range = serviceRanges[suggestionServiceType as keyof typeof serviceRanges] || serviceRanges.web
+      
+      // Try to find an available port in the service type range
+      for (let attempts = 0; attempts < 10; attempts++) {
+        const port = Math.floor(Math.random() * (range.end - range.start + 1)) + range.start
+        
+        const response = await api.post('/ports/check-availability', {
+          ports: [port],
+          protocol: 'tcp',
+          server: 'localhost'
+        })
+        
+        const result = response.data.data.ports[0]
+        if (result.available) {
+          setSuggestedPort(port)
+          toast({
+            title: 'Port Suggestion',
+            description: `Port ${port} is available for ${suggestionServiceType} services!`,
+          })
+          break
+        }
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to generate port suggestion',
+        variant: 'destructive'
+      })
+    } finally {
+      setSuggestionsLoading(false)
+    }
+  }
+
+  const copyPortToClipboard = async (port: number) => {
+    try {
+      await navigator.clipboard.writeText(port.toString())
+      toast({
+        title: 'Copied!',
+        description: `Port ${port} copied to clipboard`,
+      })
+    } catch (error) {
+      toast({
+        title: 'Copy Failed',
+        description: 'Failed to copy port to clipboard',
         variant: 'destructive'
       })
     }
@@ -1719,33 +1823,93 @@ export function CustomizableDashboard() {
             <CardHeader className="flex-shrink-0">
               <CardTitle className="flex items-center gap-2">
                 <Eye className="h-5 w-5" />
-                Port Suggestions
+                Port Generator
               </CardTitle>
-              <CardDescription>Quick port suggestions for common services</CardDescription>
+              <CardDescription>Generate available ports for your services</CardDescription>
             </CardHeader>
             <CardContent className="flex-1 space-y-3 overflow-y-auto">
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { label: 'Web Dev', ports: '3000-3010', color: 'text-green-600' },
-                  { label: 'API', ports: '8000-8010', color: 'text-blue-600' },
-                  { label: 'Alt HTTP', ports: '8080-8090', color: 'text-purple-600' },
-                  { label: 'Custom', ports: '9000+', color: 'text-orange-600' }
-                ].map(({ label, ports, color }) => (
-                  <div key={label} className="p-2 border rounded text-center">
-                    <div className="text-xs font-medium">{label}</div>
-                    <div className={`text-xs ${color} font-mono`}>{ports}</div>
-                  </div>
-                ))}
+              {/* Random Port Generator */}
+              <div className="space-y-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full h-8 text-xs"
+                  onClick={generateRandomPort}
+                  disabled={suggestionsLoading}
+                >
+                  {suggestionsLoading ? (
+                    <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin mr-1" />
+                  ) : (
+                    <Activity className="h-3 w-3 mr-1" />
+                  )}
+                  Random Available Port
+                </Button>
               </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full h-8 text-xs"
-                onClick={() => navigate('/port-management?tab=suggestions')}
-              >
-                <Eye className="h-3 w-3 mr-1" />
-                Advanced Suggestions
-              </Button>
+
+              {/* Service Type Generator */}
+              <div className="space-y-2">
+                <div className="flex gap-1">
+                  <Select value={suggestionServiceType} onValueChange={setSuggestionServiceType}>
+                    <SelectTrigger className="h-8 text-xs flex-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="web">Web (3000s)</SelectItem>
+                      <SelectItem value="api">API (8000s)</SelectItem>
+                      <SelectItem value="database">Database (5000s)</SelectItem>
+                      <SelectItem value="cache">Cache (6000s)</SelectItem>
+                      <SelectItem value="monitoring">Monitor (9000s)</SelectItem>
+                      <SelectItem value="development">Dev (4000s)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-8 px-2"
+                    onClick={generateServiceTypePort}
+                    disabled={suggestionsLoading}
+                  >
+                    {suggestionsLoading ? (
+                      <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Search className="h-3 w-3" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Suggested Port Display */}
+              {suggestedPort && (
+                <div className="p-3 border rounded bg-green-50 dark:bg-green-950/30 space-y-2">
+                  <div className="text-center">
+                    <div className="text-xs text-green-600 dark:text-green-400">Suggested Port</div>
+                    <div className="text-2xl font-bold font-mono text-green-700 dark:text-green-300">
+                      {suggestedPort}
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="flex-1 h-6 text-xs"
+                      onClick={() => copyPortToClipboard(suggestedPort)}
+                    >
+                      Copy
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="flex-1 h-6 text-xs"
+                      onClick={() => {
+                        setReservationPort(suggestedPort.toString())
+                        setShowQuickReservation(true)
+                      }}
+                    >
+                      Reserve
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )
