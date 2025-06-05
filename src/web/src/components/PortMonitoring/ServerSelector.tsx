@@ -57,15 +57,9 @@ export interface ServerSelectorProps {
 
 const DEFAULT_SERVERS: ServerInfo[] = [
   {
-    id: 'localhost',
-    name: 'Local Server',
+    id: 'host',
+    name: 'Host Server',
     host: 'localhost',
-    status: 'unknown'
-  },
-  {
-    id: '127.0.0.1',
-    name: 'Local IP',
-    host: '127.0.0.1',
     status: 'unknown'
   }
 ];

@@ -85,16 +85,20 @@ class ServerRepository extends BaseRepository {
         data.id = this._generateId();
       }
 
-      // Ensure required timestamps
-      const now = new Date().toISOString();
-      data.createdAt = data.createdAt || now;
-      data.updatedAt = data.updatedAt || now;
+      // Ensure all values are properly typed for SQLite
+      const serverData = {
+        id: data.id,
+        name: String(data.name || ''),
+        ip: String(data.ip || ''),
+        description: data.description ? String(data.description) : null,
+        isHost: data.isHost ? 1 : 0,
+        createdBy: data.createdBy ? String(data.createdBy) : null,
+        createdAt: String(data.createdAt || new Date().toISOString()),
+        updatedAt: String(data.updatedAt || new Date().toISOString())
+      };
 
-      // Ensure isHost is set correctly
-      data.isHost = data.isHost || false;
-
-      const result = await super.create(data);
-      logger.info(`Created server: ${data.name} (${data.ip})`);
+      const result = await super.create(serverData);
+      logger.info(`Created server: ${serverData.name} (${serverData.ip})`);
       return result;
     } catch (error) {
       logger.error(`Failed to create server: ${error.message}`);
@@ -110,10 +114,20 @@ class ServerRepository extends BaseRepository {
    */
   async update(id, data) {
     try {
-      // Ensure updated timestamp
-      data.updatedAt = new Date().toISOString();
+      // Ensure all values are properly typed for SQLite
+      const serverData = {};
+      
+      if (data.name !== undefined) serverData.name = String(data.name);
+      if (data.ip !== undefined) serverData.ip = String(data.ip);
+      if (data.description !== undefined) serverData.description = data.description ? String(data.description) : null;
+      if (data.isHost !== undefined) serverData.isHost = data.isHost ? 1 : 0;
+      if (data.createdBy !== undefined) serverData.createdBy = data.createdBy ? String(data.createdBy) : null;
+      if (data.updatedBy !== undefined) serverData.updatedBy = data.updatedBy ? String(data.updatedBy) : null;
+      
+      // Always update the timestamp
+      serverData.updatedAt = String(new Date().toISOString());
 
-      const result = await super.update(id, data);
+      const result = await super.update(id, serverData);
       logger.info(`Updated server: ${id}`);
       return result;
     } catch (error) {

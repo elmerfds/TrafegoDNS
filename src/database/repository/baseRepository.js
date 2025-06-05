@@ -303,11 +303,24 @@ class BaseRepository {
       throw new Error('Entity data must be an object');
     }
 
-    // Remove undefined values
+    // Remove undefined values and ensure proper typing for SQLite
     const validated = {};
     Object.keys(data).forEach(key => {
       if (data[key] !== undefined) {
-        validated[key] = data[key];
+        const value = data[key];
+        
+        // Convert booleans to numbers for SQLite (0 = false, 1 = true)
+        if (typeof value === 'boolean') {
+          validated[key] = value ? 1 : 0;
+        }
+        // Ensure strings, numbers, and null are passed as-is
+        else if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint') {
+          validated[key] = value;
+        }
+        // Convert other types to strings
+        else {
+          validated[key] = String(value);
+        }
       }
     });
 

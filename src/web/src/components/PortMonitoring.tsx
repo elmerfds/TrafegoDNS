@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -66,6 +66,8 @@ interface Server {
 }
 
 export default function PortMonitoring() {
+  const queryClient = useQueryClient();
+  
   // Zustand store hooks
   const { statistics, loading: statsLoading, error: statsError } = usePortStatistics();
   const { reservations, loading: reservationsLoading, error: reservationsError } = useReservationsData();
@@ -173,6 +175,14 @@ export default function PortMonitoring() {
       }
     }
   }, [configData?.hostIp, configData?.portManagementEnabled, fetchServers]);
+
+  // Also refresh servers whenever the config data changes (including initial load)
+  useEffect(() => {
+    if (configData) {
+      console.log('PortMonitoring: Config data loaded/changed, refreshing servers');
+      fetchServers();
+    }
+  }, [configData, fetchServers]);
 
   // Set default selected server when servers are loaded
   useEffect(() => {
@@ -457,6 +467,9 @@ export default function PortMonitoring() {
         await fetchServers();
         await loadHostConfiguration();
         
+        // Invalidate config cache to ensure UI updates with new host IP
+        queryClient.invalidateQueries({ queryKey: ['config'] });
+        
         console.log('Port management enabled successfully');
       } else {
         throw new Error('Failed to enable port management');
@@ -529,6 +542,9 @@ export default function PortMonitoring() {
 
       setEditingHostIp(false);
       setEditHostIpValue('');
+      
+      // Invalidate config cache to ensure UI updates
+      queryClient.invalidateQueries({ queryKey: ['config'] });
       
       // Reload ports if host server is selected
       if (selectedServer === 'host') {
@@ -1267,7 +1283,7 @@ export default function PortMonitoring() {
                     <SelectContent>
                       {Array.isArray(servers) ? servers.map(server => (
                         <SelectItem key={server.id} value={server.id}>
-                          {server.name} ({server.ip})
+                          {server.isHost ? `Host Server (${server.ip})` : `${server.name} (${server.ip})`}
                         </SelectItem>
                       )) : null}
                       <SelectItem value="custom">Custom IP...</SelectItem>
@@ -1378,7 +1394,7 @@ export default function PortMonitoring() {
                     <SelectContent>
                       {Array.isArray(servers) ? servers.map(server => (
                         <SelectItem key={server.id} value={server.id}>
-                          {server.name} ({server.ip})
+                          {server.isHost ? `Host Server (${server.ip})` : `${server.name} (${server.ip})`}
                         </SelectItem>
                       )) : null}
                       <SelectItem value="custom">Custom IP...</SelectItem>
@@ -1848,7 +1864,7 @@ export default function PortMonitoring() {
                 <SelectContent>
                   {Array.isArray(servers) ? servers.map(server => (
                     <SelectItem key={server.id} value={server.id}>
-                      {server.name} ({server.ip})
+                      {server.isHost ? `Host Server (${server.ip})` : `${server.name} (${server.ip})`}
                     </SelectItem>
                   )) : null}
                   <SelectItem value="custom">Custom IP...</SelectItem>

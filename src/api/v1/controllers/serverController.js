@@ -17,6 +17,26 @@ const getServers = asyncHandler(async (req, res) => {
     
     if (!database?.repositories?.server) {
       // If no database repository, return default host server only
+      let hostIp = 'localhost'; // Default fallback
+      
+      // Try to get host IP from ConfigManager first (most current)
+      try {
+        const { ConfigManager } = global.services || {};
+        if (ConfigManager) {
+          const config = ConfigManager.getConfig();
+          if (config.hostIp) {
+            hostIp = config.hostIp;
+          }
+        }
+      } catch (configError) {
+        logger.debug(`Could not get host IP from config: ${configError.message}`);
+      }
+      
+      // If no config hostIp, fallback to environment variables
+      if (hostIp === 'localhost') {
+        hostIp = process.env.HOST_IP || process.env.DOCKER_HOST_IP || 'localhost';
+      }
+      
       return res.json({
         success: true,
         data: {
@@ -24,7 +44,7 @@ const getServers = asyncHandler(async (req, res) => {
             {
               id: 'host',
               name: 'Host Server',
-              ip: process.env.HOST_IP || process.env.DOCKER_HOST_IP || 'localhost',
+              ip: hostIp,
               isHost: true,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
@@ -36,28 +56,35 @@ const getServers = asyncHandler(async (req, res) => {
 
     const servers = await database.repositories.server.findAll();
     
-    // Always include the host server
-    const hostServer = {
-      id: 'host',
-      name: 'Host Server',
-      ip: process.env.HOST_IP || process.env.DOCKER_HOST_IP || 'localhost',
-      isHost: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    // Get host IP from config if available
+    // Always include the host server with current configuration
+    let hostIp = 'localhost'; // Default fallback
+    
+    // Try to get host IP from ConfigManager first (most current)
     try {
       const { ConfigManager } = global.services || {};
       if (ConfigManager) {
         const config = ConfigManager.getConfig();
         if (config.hostIp) {
-          hostServer.ip = config.hostIp;
+          hostIp = config.hostIp;
         }
       }
     } catch (configError) {
       logger.debug(`Could not get host IP from config: ${configError.message}`);
     }
+    
+    // If no config hostIp, fallback to environment variables
+    if (hostIp === 'localhost') {
+      hostIp = process.env.HOST_IP || process.env.DOCKER_HOST_IP || 'localhost';
+    }
+
+    const hostServer = {
+      id: 'host',
+      name: 'Host Server',
+      ip: hostIp,
+      isHost: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
 
     const allServers = [hostServer, ...servers];
 
