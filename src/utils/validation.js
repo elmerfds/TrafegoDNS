@@ -243,9 +243,17 @@ class Validator {
    * Validate hostname
    * @param {any} hostname - Hostname to validate
    * @param {string} field - Field name for error reporting
+   * @param {Object} options - Validation options
    * @returns {string} Valid hostname
    */
-  static validateHostname(hostname, field = 'hostname') {
+  static validateHostname(hostname, field = 'hostname', options = {}) {
+    const { required = true } = options;
+    
+    // If field is not required and value is empty, return undefined
+    if (!required && (!hostname || hostname === '')) {
+      return undefined;
+    }
+    
     if (!hostname || typeof hostname !== 'string') {
       throw new ValidationError(`${field} must be a valid string`, field, hostname, 'INVALID_TYPE');
     }
