@@ -1,8 +1,9 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import React from 'react'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { 
   Activity, 
   Globe, 
@@ -538,7 +539,7 @@ export const PortStatisticsWidget = ({ isEditMode, onRemove, data }: WidgetProps
 }
 
 // Export all widgets as a map for easy lookup
-export const widgetComponents = {
+export const widgetComponents: Record<string, React.ComponentType<WidgetProps>> = {
   'stats': SystemStatsWidget,
   'alerts': SystemAlertsWidget,
   'system-overview': SystemOverviewWidget,

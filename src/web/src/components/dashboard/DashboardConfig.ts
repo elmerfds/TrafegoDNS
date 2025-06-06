@@ -147,7 +147,8 @@ export const generateDefaultLayouts = () => {
     const config = widgetConfig[widgetId]
     if (!config) return
     
-    const { h, minH } = config.defaultSize
+    const { h } = config.defaultSize
+    const { minH } = config.minSize
     
     // All widgets take full width on mobile
     layouts.sm.push({ 

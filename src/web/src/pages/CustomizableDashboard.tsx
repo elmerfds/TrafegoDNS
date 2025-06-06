@@ -3,8 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Responsive, WidthProvider, Layout } from 'react-grid-layout'
 import type { SavedLayout, DashboardLayout } from '@/types/dashboard'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { 
   Save,
   RotateCcw,
@@ -15,8 +18,33 @@ import {
   Check,
   X,
   Layout as LayoutIcon,
-  Copy
+  Copy,
+  Activity,
+  Globe,
+  Container,
+  Link2,
+  Server,
+  AlertTriangle,
+  CheckCircle,
+  TrendingUp,
+  Shield,
+  Cpu,
+  HardDrive,
+  GripVertical,
+  Minimize2,
+  Network,
+  Lock,
+  Search,
+  Monitor,
+  Wifi,
+  AlertCircle,
+  Clock,
+  Database,
+  Eye
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { RecentActivity } from '@/components/RecentActivity'
+import { PauseControls } from '@/components/PauseControls'
 import { useToast } from '@/components/ui/use-toast'
 import { usePortStore, usePortStatistics, useReservationsData, useServersData } from '@/store/portStore'
 import {
@@ -861,9 +889,9 @@ export function CustomizableDashboard() {
     let widgetData = {}
     if (key === 'port-statistics') {
       widgetData = {
-        totalPorts: portStats?.totalPorts || 0,
-        availablePorts: portStats?.availablePorts || 0,
-        usedPorts: portStats?.usedPorts || 0,
+        totalPorts: portStats?.totalMonitoredPorts || 0,
+        availablePorts: portStats?.availablePortsInRange || 0,
+        usedPorts: portStats?.systemPortsInUse || 0,
         reservedPorts: reservations?.length || 0
       }
     }
