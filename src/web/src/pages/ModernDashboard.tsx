@@ -45,13 +45,45 @@ import {
   systemStatsDefinition 
 } from '@/components/dashboard/widgets/SystemStatsWidget'
 import { 
+  SystemAlertsWidget, 
+  systemAlertsDefinition 
+} from '@/components/dashboard/widgets/SystemAlertsWidget'
+import { 
+  SystemResourcesWidget, 
+  systemResourcesDefinition 
+} from '@/components/dashboard/widgets/SystemResourcesWidget'
+import { 
   DNSHealthWidget, 
   dnsHealthDefinition 
 } from '@/components/dashboard/widgets/DNSHealthWidget'
 import { 
+  ContainerMonitoringWidget, 
+  containerMonitoringDefinition 
+} from '@/components/dashboard/widgets/ContainerMonitoringWidget'
+import { 
   PortMonitoringWidget, 
   portMonitoringDefinition 
 } from '@/components/dashboard/widgets/PortMonitoringWidget'
+import { 
+  StatusOverviewWidget, 
+  statusOverviewDefinition 
+} from '@/components/dashboard/widgets/StatusOverviewWidget'
+import { 
+  QuickActionsWidget, 
+  quickActionsDefinition 
+} from '@/components/dashboard/widgets/QuickActionsWidget'
+import { 
+  PortCheckerWidget, 
+  portCheckerDefinition 
+} from '@/components/dashboard/widgets/PortCheckerWidget'
+import { 
+  PortSuggestionsWidget, 
+  portSuggestionsDefinition 
+} from '@/components/dashboard/widgets/PortSuggestionsWidget'
+import { 
+  PortAlertsWidget, 
+  portAlertsDefinition 
+} from '@/components/dashboard/widgets/PortAlertsWidget'
 
 // Styles
 import 'react-grid-layout/css/styles.css'
@@ -71,9 +103,17 @@ const responsiveConfig = {
 
 // Widget registry setup
 const availableWidgets = [
+  { definition: statusOverviewDefinition, component: StatusOverviewWidget },
   { definition: systemStatsDefinition, component: SystemStatsWidget },
+  { definition: systemAlertsDefinition, component: SystemAlertsWidget },
+  { definition: systemResourcesDefinition, component: SystemResourcesWidget },
+  { definition: quickActionsDefinition, component: QuickActionsWidget },
   { definition: dnsHealthDefinition, component: DNSHealthWidget },
-  { definition: portMonitoringDefinition, component: PortMonitoringWidget }
+  { definition: containerMonitoringDefinition, component: ContainerMonitoringWidget },
+  { definition: portMonitoringDefinition, component: PortMonitoringWidget },
+  { definition: portCheckerDefinition, component: PortCheckerWidget },
+  { definition: portSuggestionsDefinition, component: PortSuggestionsWidget },
+  { definition: portAlertsDefinition, component: PortAlertsWidget }
 ]
 
 function AddWidgetDialog() {
@@ -250,28 +290,48 @@ function DashboardGrid() {
     hiddenWidgets,
     isEditing,
     updateLayout,
-    removeWidget
+    removeWidget,
+    currentLayout
   } = useDashboard()
   const registry = useWidgetRegistry()
   
-  // Get current layouts from context
-  const [layouts, setLayouts] = useState({
-    lg: [],
-    md: [],
-    sm: []
-  })
+  // Get current layouts from context - use defaultLayouts as fallback
+  const getCurrentLayouts = () => {
+    if (currentLayout?.layout) {
+      return currentLayout.layout as unknown as Record<string, Layout[]>
+    }
+    return {
+      lg: [
+        { i: 'status-overview', x: 0, y: 0, w: 12, h: 6, minW: 8, minH: 4 },
+        { i: 'system-stats', x: 0, y: 6, w: 12, h: 4, minW: 6, minH: 3 },
+        { i: 'dns-health', x: 0, y: 10, w: 4, h: 8, minW: 3, minH: 6 },
+        { i: 'port-monitoring', x: 4, y: 10, w: 8, h: 8, minW: 4, minH: 6 }
+      ],
+      md: [
+        { i: 'status-overview', x: 0, y: 0, w: 10, h: 6, minW: 6, minH: 4 },
+        { i: 'system-stats', x: 0, y: 6, w: 10, h: 4, minW: 5, minH: 3 },
+        { i: 'dns-health', x: 0, y: 10, w: 5, h: 8, minW: 3, minH: 6 },
+        { i: 'port-monitoring', x: 5, y: 10, w: 5, h: 8, minW: 3, minH: 6 }
+      ],
+      sm: [
+        { i: 'status-overview', x: 0, y: 0, w: 4, h: 6, minW: 4, minH: 4 },
+        { i: 'system-stats', x: 0, y: 6, w: 4, h: 4, minW: 4, minH: 3 },
+        { i: 'dns-health', x: 0, y: 10, w: 4, h: 8, minW: 4, minH: 6 },
+        { i: 'port-monitoring', x: 0, y: 18, w: 4, h: 8, minW: 4, minH: 6 }
+      ]
+    }
+  }
 
   const visibleWidgets = widgets.filter(id => !hiddenWidgets.has(id))
 
-  const handleLayoutChange = (layout: any, allLayouts: any) => {
-    setLayouts(allLayouts)
+  const handleLayoutChange = (layout: Layout[], allLayouts: Record<string, Layout[]>) => {
     updateLayout(allLayouts)
   }
 
   return (
     <ResponsiveGridLayout
       className="layout"
-      layouts={layouts}
+      layouts={getCurrentLayouts()}
       onLayoutChange={handleLayoutChange}
       breakpoints={responsiveConfig.breakpoints}
       cols={responsiveConfig.cols}

@@ -21,22 +21,25 @@ interface DashboardProviderProps {
   children: React.ReactNode
 }
 
-// Default responsive configuration
+// Default responsive configuration with status overview at top
 const defaultLayouts: Record<string, Layout[]> = {
   lg: [
-    { i: 'system-stats', x: 0, y: 0, w: 12, h: 4, minW: 6, minH: 3 },
-    { i: 'dns-health', x: 0, y: 4, w: 4, h: 6, minW: 3, minH: 4 },
-    { i: 'port-monitoring', x: 4, y: 4, w: 6, h: 6, minW: 4, minH: 5 }
+    { i: 'status-overview', x: 0, y: 0, w: 12, h: 6, minW: 8, minH: 4 },
+    { i: 'system-stats', x: 0, y: 6, w: 12, h: 4, minW: 6, minH: 3 },
+    { i: 'dns-health', x: 0, y: 10, w: 4, h: 8, minW: 3, minH: 6 },
+    { i: 'port-monitoring', x: 4, y: 10, w: 8, h: 8, minW: 4, minH: 6 }
   ],
   md: [
-    { i: 'system-stats', x: 0, y: 0, w: 10, h: 4, minW: 5, minH: 3 },
-    { i: 'dns-health', x: 0, y: 4, w: 5, h: 6, minW: 3, minH: 4 },
-    { i: 'port-monitoring', x: 5, y: 4, w: 5, h: 6, minW: 3, minH: 5 }
+    { i: 'status-overview', x: 0, y: 0, w: 10, h: 6, minW: 6, minH: 4 },
+    { i: 'system-stats', x: 0, y: 6, w: 10, h: 4, minW: 5, minH: 3 },
+    { i: 'dns-health', x: 0, y: 10, w: 5, h: 8, minW: 3, minH: 6 },
+    { i: 'port-monitoring', x: 5, y: 10, w: 5, h: 8, minW: 3, minH: 6 }
   ],
   sm: [
-    { i: 'system-stats', x: 0, y: 0, w: 4, h: 4, minW: 4, minH: 3 },
-    { i: 'dns-health', x: 0, y: 4, w: 4, h: 6, minW: 4, minH: 4 },
-    { i: 'port-monitoring', x: 0, y: 10, w: 4, h: 6, minW: 4, minH: 5 }
+    { i: 'status-overview', x: 0, y: 0, w: 4, h: 6, minW: 4, minH: 4 },
+    { i: 'system-stats', x: 0, y: 6, w: 4, h: 4, minW: 4, minH: 3 },
+    { i: 'dns-health', x: 0, y: 10, w: 4, h: 8, minW: 4, minH: 6 },
+    { i: 'port-monitoring', x: 0, y: 18, w: 4, h: 8, minW: 4, minH: 6 }
   ]
 }
 
@@ -45,7 +48,7 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
   const queryClient = useQueryClient()
   
   // State
-  const [widgets, setWidgets] = useState<string[]>(['system-stats', 'dns-health', 'port-monitoring'])
+  const [widgets, setWidgets] = useState<string[]>(['status-overview', 'system-stats', 'dns-health', 'port-monitoring'])
   const [hiddenWidgets, setHiddenWidgets] = useState<Set<string>>(new Set())
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -191,14 +194,16 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
     setIsEditing(editing)
     if (!editing && hasUnsavedChanges) {
       // Auto-save when exiting edit mode
-      saveLayout()
+      const layoutName = activeLayoutData?.data?.name || 'My Dashboard'
+      setIsSaving(true)
+      saveLayoutMutation.mutate({ name: layoutName, layout: currentLayouts })
     }
-  }, [hasUnsavedChanges, saveLayout])
+  }, [hasUnsavedChanges, activeLayoutData, currentLayouts, saveLayoutMutation])
 
   const resetLayout = useCallback(() => {
     setCurrentLayouts(defaultLayouts)
     setHiddenWidgets(new Set())
-    setWidgets(['system-stats', 'dns-health', 'port-monitoring'])
+    setWidgets(['status-overview', 'system-stats', 'dns-health', 'port-monitoring'])
     setHasUnsavedChanges(true)
   }, [])
 
