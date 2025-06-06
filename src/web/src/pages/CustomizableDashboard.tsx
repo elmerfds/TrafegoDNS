@@ -3,49 +3,20 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Responsive, WidthProvider, Layout } from 'react-grid-layout'
 import type { SavedLayout, DashboardLayout } from '@/types/dashboard'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { 
-  Activity, 
-  Globe, 
-  Container, 
-  Link2, 
-  Server,
-  AlertTriangle,
-  CheckCircle,
-  TrendingUp,
-  Shield,
-  Cpu,
-  HardDrive,
-  GripVertical,
   Save,
   RotateCcw,
   Settings,
-  Minimize2,
   Plus,
   Trash2,
   Edit2,
   Check,
   X,
   Layout as LayoutIcon,
-  Network,
-  Lock,
-  Search,
-  Monitor,
-  Wifi,
-  AlertCircle,
-  Clock,
-  Database,
-  Eye,
   Copy
 } from 'lucide-react'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
-import { useNavigate } from 'react-router-dom'
-import { formatDistanceToNow } from 'date-fns'
-import { RecentActivity } from '@/components/RecentActivity'
-import { PauseControls } from '@/components/PauseControls'
 import { useToast } from '@/components/ui/use-toast'
 import { usePortStore, usePortStatistics, useReservationsData, useServersData } from '@/store/portStore'
 import {
@@ -86,6 +57,16 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 
+// Import dashboard components and configuration
+import { widgetComponents } from '@/components/dashboard/DashboardWidgets'
+import { 
+  availableWidgets, 
+  widgetConfig, 
+  generateDefaultLayouts, 
+  responsiveConfig, 
+  gridConfig 
+} from '@/components/dashboard/DashboardConfig'
+
 // Import CSS for react-grid-layout
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
@@ -100,86 +81,8 @@ declare global {
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
-// Available widgets definition
-const availableWidgets = [
-  // Core System Widgets
-  { id: 'stats', name: 'System Statistics', category: 'Core', icon: Activity, description: 'Key system metrics and statistics' },
-  { id: 'alerts', name: 'System Alerts', category: 'Core', icon: AlertTriangle, description: 'Important system alerts and warnings' },
-  { id: 'system-overview', name: 'System Overview', category: 'Core', icon: Shield, description: 'System version, mode, and configuration' },
-  { id: 'service-health', name: 'Service Health', category: 'Core', icon: Activity, description: 'Status of core services' },
-  { id: 'system-resources', name: 'System Resources', category: 'Core', icon: Cpu, description: 'CPU, memory, and disk usage' },
-  { id: 'pause-controls', name: 'Pause Controls', category: 'Core', icon: Settings, description: 'System pause and resume controls' },
-  { id: 'recent-activity', name: 'Recent Activity', category: 'Core', icon: Clock, description: 'Latest system activity and events' },
-  
-  // DNS & Networking Widgets  
-  { id: 'dns-health', name: 'DNS Health', category: 'DNS', icon: Globe, description: 'DNS provider status and health' },
-  { id: 'container-monitoring', name: 'Container Monitoring', category: 'DNS', icon: Container, description: 'Docker container status' },
-  { id: 'provider-status', name: 'Provider Status', category: 'DNS', icon: Link2, description: 'DNS provider connection status' },
-  { id: 'issues-monitoring', name: 'Issues Monitoring', category: 'DNS', icon: AlertTriangle, description: 'System issues and monitoring' },
-  { id: 'quick-actions', name: 'Quick Actions', category: 'DNS', icon: Settings, description: 'Common DNS management actions' },
-  
-  // Port Management Widgets
-  { id: 'port-statistics', name: 'Port Statistics', category: 'Ports', icon: Network, description: 'Port monitoring statistics and overview' },
-  { id: 'port-reservations', name: 'Port Reservations', category: 'Ports', icon: Lock, description: 'Active port reservations' },
-  { id: 'port-availability', name: 'Port Availability', category: 'Ports', icon: Wifi, description: 'Real-time port availability status' },
-  { id: 'port-scanner', name: 'Quick Port Scanner', category: 'Ports', icon: Search, description: 'Quick port scanning widget' },
-  { id: 'port-alerts', name: 'Port Alerts', category: 'Ports', icon: AlertCircle, description: 'Port-related security alerts' },
-  { id: 'server-status', name: 'Server Status', category: 'Ports', icon: Server, description: 'Monitored servers status' },
-  { id: 'port-activity', name: 'Port Activity', category: 'Ports', icon: Monitor, description: 'Recent port activity and changes' },
-  { id: 'port-suggestions', name: 'Port Generator', category: 'Ports', icon: Eye, description: 'Generate available ports for different service types' }
-]
-
-// Default layouts for different breakpoints with minimal gaps
-const defaultLayouts = {
-  lg: [
-    { i: 'stats', x: 0, y: 0, w: 12, h: 4, minH: 3, minW: 6 },
-    { i: 'alerts', x: 0, y: 4, w: 12, h: 2, minH: 2, minW: 6 },
-    { i: 'system-overview', x: 0, y: 6, w: 4, h: 6, minH: 4, minW: 3 },
-    { i: 'service-health', x: 4, y: 6, w: 4, h: 6, minH: 4, minW: 3 },
-    { i: 'system-resources', x: 8, y: 6, w: 4, h: 6, minH: 4, minW: 3 },
-    { i: 'dns-health', x: 0, y: 12, w: 4, h: 6, minH: 4, minW: 3 },
-    { i: 'container-monitoring', x: 4, y: 12, w: 4, h: 6, minH: 4, minW: 3 },
-    { i: 'quick-actions', x: 8, y: 12, w: 4, h: 6, minH: 4, minW: 3 },
-    { i: 'port-statistics', x: 0, y: 18, w: 6, h: 6, minH: 4, minW: 3 },
-    { i: 'port-reservations', x: 6, y: 18, w: 6, h: 6, minH: 4, minW: 3 },
-    { i: 'pause-controls', x: 0, y: 24, w: 4, h: 7, minH: 6, minW: 3 },
-    { i: 'recent-activity', x: 4, y: 24, w: 8, h: 5, minH: 4, minW: 4 },
-    { i: 'provider-status', x: 0, y: 31, w: 6, h: 6, minH: 4, minW: 3 },
-    { i: 'issues-monitoring', x: 6, y: 31, w: 6, h: 6, minH: 4, minW: 3 },
-  ],
-  md: [
-    { i: 'stats', x: 0, y: 0, w: 10, h: 6, minH: 4, minW: 5 },
-    { i: 'alerts', x: 0, y: 6, w: 10, h: 3, minH: 2, minW: 5 },
-    { i: 'system-overview', x: 0, y: 9, w: 5, h: 6, minH: 4, minW: 3 },
-    { i: 'service-health', x: 5, y: 9, w: 5, h: 6, minH: 4, minW: 3 },
-    { i: 'system-resources', x: 0, y: 15, w: 10, h: 6, minH: 4, minW: 5 },
-    { i: 'dns-health', x: 0, y: 21, w: 5, h: 6, minH: 4, minW: 3 },
-    { i: 'container-monitoring', x: 5, y: 21, w: 5, h: 6, minH: 4, minW: 3 },
-    { i: 'quick-actions', x: 0, y: 27, w: 10, h: 6, minH: 4, minW: 5 },
-    { i: 'port-statistics', x: 0, y: 33, w: 5, h: 6, minH: 4, minW: 3 },
-    { i: 'port-reservations', x: 5, y: 33, w: 5, h: 6, minH: 4, minW: 3 },
-    { i: 'pause-controls', x: 0, y: 39, w: 10, h: 7, minH: 6, minW: 5 },
-    { i: 'recent-activity', x: 0, y: 46, w: 10, h: 5, minH: 4, minW: 5 },
-    { i: 'provider-status', x: 0, y: 51, w: 5, h: 6, minH: 4, minW: 3 },
-    { i: 'issues-monitoring', x: 5, y: 51, w: 5, h: 6, minH: 4, minW: 3 },
-  ],
-  sm: [
-    { i: 'stats', x: 0, y: 0, w: 6, h: 12, minH: 8, minW: 6 },
-    { i: 'alerts', x: 0, y: 12, w: 6, h: 3, minH: 2, minW: 6 },
-    { i: 'system-overview', x: 0, y: 15, w: 6, h: 6, minH: 5, minW: 6 },
-    { i: 'service-health', x: 0, y: 21, w: 6, h: 6, minH: 5, minW: 6 },
-    { i: 'system-resources', x: 0, y: 27, w: 6, h: 6, minH: 5, minW: 6 },
-    { i: 'dns-health', x: 0, y: 33, w: 6, h: 6, minH: 5, minW: 6 },
-    { i: 'container-monitoring', x: 0, y: 39, w: 6, h: 6, minH: 5, minW: 6 },
-    { i: 'quick-actions', x: 0, y: 45, w: 6, h: 6, minH: 5, minW: 6 },
-    { i: 'port-statistics', x: 0, y: 51, w: 6, h: 6, minH: 5, minW: 6 },
-    { i: 'port-reservations', x: 0, y: 57, w: 6, h: 6, minH: 5, minW: 6 },
-    { i: 'pause-controls', x: 0, y: 63, w: 6, h: 8, minH: 7, minW: 6 },
-    { i: 'recent-activity', x: 0, y: 71, w: 6, h: 5, minH: 4, minW: 6 },
-    { i: 'provider-status', x: 0, y: 76, w: 6, h: 6, minH: 5, minW: 6 },
-    { i: 'issues-monitoring', x: 0, y: 82, w: 6, h: 6, minH: 5, minW: 6 },
-  ]
-}
+// Generate default layouts using the configuration
+const defaultLayouts = generateDefaultLayouts()
 
 export function CustomizableDashboard() {
   const navigate = useNavigate()
@@ -405,10 +308,10 @@ export function CustomizableDashboard() {
   const handleLayoutChange = (currentLayout: Layout[], allLayouts: { [breakpoint: string]: Layout[] }) => {
     // Always update layouts to maintain state
     setLayouts(allLayouts)
-    setHasUnsavedChanges(true)
     
     // Auto-save layout changes after a short delay (debounced)
     if (isEditMode) {
+      setHasUnsavedChanges(true)
       clearTimeout(window.layoutSaveTimeout)
       window.layoutSaveTimeout = setTimeout(() => {
         const currentLayoutName = activeLayoutData?.data?.name
@@ -451,51 +354,51 @@ export function CustomizableDashboard() {
   const addWidget = (widgetId: string) => {
     const newLayouts = { ...layouts }
     
-    // Define widget-specific sizes for better initial display
+    // Get widget configuration
     const getWidgetSize = (breakpoint: string) => {
-      const isLarge = breakpoint === 'lg'
-      const isMedium = breakpoint === 'md'
-      
-      // Port widgets need more space for their content, except suggestions
-      if (widgetId.startsWith('port-')) {
-        if (widgetId === 'port-suggestions') {
-          return {
-            w: isLarge ? 4 : isMedium ? 5 : 6,
-            h: isLarge ? 6 : isMedium ? 7 : 8,
-            minH: isLarge ? 5 : isMedium ? 6 : 7,
-            minW: isLarge ? 3 : isMedium ? 4 : 6
-          }
-        }
+      const config = widgetConfig[widgetId]
+      if (!config) {
+        // Fallback for unknown widgets
         return {
-          w: isLarge ? 6 : isMedium ? 5 : 6,
-          h: isLarge ? 10 : isMedium ? 10 : 12,
-          minH: isLarge ? 8 : isMedium ? 8 : 10,
-          minW: isLarge ? 4 : isMedium ? 4 : 6
+          w: breakpoint === 'lg' ? 4 : breakpoint === 'md' ? 5 : 4,
+          h: 6,
+          minH: 4,
+          minW: breakpoint === 'lg' ? 2 : breakpoint === 'md' ? 2 : 1
         }
       }
       
-      // Stats widget needs full width
-      if (widgetId === 'stats') {
-        return {
-          w: isLarge ? 12 : isMedium ? 10 : 6,
-          h: 4,
-          minH: 3,
-          minW: isLarge ? 6 : isMedium ? 5 : 6
-        }
-      }
+      const { defaultSize, minSize } = config
       
-      // Default size for other widgets
-      return {
-        w: isLarge ? 4 : isMedium ? 5 : 6,
-        h: isLarge ? 8 : isMedium ? 8 : 10,
-        minH: isLarge ? 6 : isMedium ? 6 : 8,
-        minW: isLarge ? 3 : isMedium ? 3 : 6
+      // Adjust sizes based on breakpoint
+      if (breakpoint === 'lg') {
+        return {
+          w: defaultSize.w,
+          h: defaultSize.h,
+          minH: minSize.h,
+          minW: minSize.w
+        }
+      } else if (breakpoint === 'md') {
+        // Scale down for medium screens
+        return {
+          w: Math.min(defaultSize.w, Math.max(minSize.w, Math.floor(defaultSize.w * 0.8))),
+          h: defaultSize.h,
+          minH: minSize.h,
+          minW: Math.max(2, minSize.w)
+        }
+      } else {
+        // Mobile: full width, adjusted height
+        return {
+          w: 4,
+          h: Math.max(minSize.h, Math.floor(defaultSize.h * 0.8)),
+          minH: Math.max(2, minSize.h - 1),
+          minW: 1
+        }
       }
     }
     
     Object.keys(newLayouts).forEach(breakpoint => {
       const layout = newLayouts[breakpoint]
-      const cols = breakpoint === 'lg' ? 12 : breakpoint === 'md' ? 10 : 6
+      const cols = breakpoint === 'lg' ? 12 : breakpoint === 'md' ? 10 : 4
       const widgetSize = getWidgetSize(breakpoint)
       
       // Find the lowest available position
@@ -936,8 +839,47 @@ export function CustomizableDashboard() {
     })
   }
 
-  // Widget components wrapped in a card with drag handle
+  // Widget components using extracted components
   const renderWidget = (key: string) => {
+    const WidgetComponent = widgetComponents[key]
+    
+    if (!WidgetComponent) {
+      // Fallback for unknown widgets
+      return (
+        <Card className="h-full">
+          <CardHeader>
+            <CardTitle>Unknown Widget: {key}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>Widget component not found</p>
+          </CardContent>
+        </Card>
+      )
+    }
+    
+    // Prepare widget data based on widget type
+    let widgetData = {}
+    if (key === 'port-statistics') {
+      widgetData = {
+        totalPorts: portStats?.totalPorts || 0,
+        availablePorts: portStats?.availablePorts || 0,
+        usedPorts: portStats?.usedPorts || 0,
+        reservedPorts: reservations?.length || 0
+      }
+    }
+    
+    return (
+      <WidgetComponent
+        widgetId={key}
+        isEditMode={isEditMode}
+        onRemove={() => removeWidget(key)}
+        data={widgetData}
+      />
+    )
+  }
+
+  // Keep the old implementation for complex widgets that need refactoring
+  const renderComplexWidget = (key: string) => {
     switch (key) {
       case 'stats':
         return (
@@ -2371,15 +2313,15 @@ export function CustomizableDashboard() {
         className="layout"
         layouts={getLayoutsForRendering()}
         onLayoutChange={handleLayoutChange}
-        breakpoints={{ lg: 1200, md: 996, sm: 768 }}
-        cols={{ lg: 12, md: 10, sm: 6 }}
+        breakpoints={responsiveConfig.breakpoints}
+        cols={responsiveConfig.cols}
         isDraggable={isEditMode}
         isResizable={isEditMode}
-        rowHeight={60}
-        margin={[12, 8]}
-        containerPadding={[0, 0]}
+        rowHeight={gridConfig.rowHeight}
+        margin={gridConfig.margin}
+        containerPadding={gridConfig.containerPadding}
         compactType={isEditMode ? null : "vertical"}
-        preventCollision={false}
+        preventCollision={gridConfig.preventCollision}
         draggableHandle={isEditMode ? ".drag-handle" : ""}
         verticalCompact={!isEditMode}
         transformScale={1}
