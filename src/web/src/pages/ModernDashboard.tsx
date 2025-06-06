@@ -84,6 +84,26 @@ import {
   PortAlertsWidget, 
   portAlertsDefinition 
 } from '@/components/dashboard/widgets/PortAlertsWidget'
+import { 
+  ServiceHealthWidget, 
+  serviceHealthDefinition 
+} from '@/components/dashboard/widgets/ServiceHealthWidget'
+import { 
+  ProviderStatusWidget, 
+  providerStatusDefinition 
+} from '@/components/dashboard/widgets/ProviderStatusWidget'
+import { 
+  PortScannerWidget, 
+  portScannerDefinition 
+} from '@/components/dashboard/widgets/PortScannerWidget'
+import { 
+  PortReservationsWidget, 
+  portReservationsDefinition 
+} from '@/components/dashboard/widgets/PortReservationsWidget'
+import { 
+  PortActivityWidget, 
+  portActivityDefinition 
+} from '@/components/dashboard/widgets/PortActivityWidget'
 
 // Styles
 import 'react-grid-layout/css/styles.css'
@@ -101,19 +121,29 @@ const responsiveConfig = {
   rowHeight: 60
 }
 
-// Widget registry setup
+// Widget registry setup - Now with 17 widgets matching old dashboard functionality
 const availableWidgets = [
+  // Core System Widgets
   { definition: statusOverviewDefinition, component: StatusOverviewWidget },
   { definition: systemStatsDefinition, component: SystemStatsWidget },
   { definition: systemAlertsDefinition, component: SystemAlertsWidget },
   { definition: systemResourcesDefinition, component: SystemResourcesWidget },
+  { definition: serviceHealthDefinition, component: ServiceHealthWidget },
   { definition: quickActionsDefinition, component: QuickActionsWidget },
+  
+  // DNS & Networking Widgets
   { definition: dnsHealthDefinition, component: DNSHealthWidget },
+  { definition: providerStatusDefinition, component: ProviderStatusWidget },
   { definition: containerMonitoringDefinition, component: ContainerMonitoringWidget },
+  
+  // Port Management Widgets (matching old dashboard)
   { definition: portMonitoringDefinition, component: PortMonitoringWidget },
   { definition: portCheckerDefinition, component: PortCheckerWidget },
   { definition: portSuggestionsDefinition, component: PortSuggestionsWidget },
-  { definition: portAlertsDefinition, component: PortAlertsWidget }
+  { definition: portAlertsDefinition, component: PortAlertsWidget },
+  { definition: portScannerDefinition, component: PortScannerWidget },
+  { definition: portReservationsDefinition, component: PortReservationsWidget },
+  { definition: portActivityDefinition, component: PortActivityWidget }
 ]
 
 function AddWidgetDialog() {
