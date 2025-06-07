@@ -12,6 +12,7 @@ const {
   clearBlockedIPAddress,
   clearAllBlockedIPs
 } = require('../controllers/statusController');
+const { getSystemResources } = require('../controllers/systemResourcesController');
 const { authenticate, authorize } = require('../middleware/authMiddleware');
 
 /**
@@ -259,6 +260,67 @@ router.delete('/rate-limit/blocked/:ip', authenticate, authorize(['admin']), cle
  *        description: Insufficient permissions
  */
 router.delete('/rate-limit/blocked', authenticate, authorize(['admin']), clearAllBlockedIPs);
+
+/**
+ * @swagger
+ * /status/system-resources:
+ *   get:
+ *     summary: Get system resource usage
+ *     description: Get real-time system monitoring data (CPU, memory, disk)
+ *     tags: [Status]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: System resource usage data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     cpu:
+ *                       type: object
+ *                       properties:
+ *                         usage:
+ *                           type: number
+ *                         cores:
+ *                           type: number
+ *                         loadAvg:
+ *                           type: array
+ *                           items:
+ *                             type: number
+ *                     memory:
+ *                       type: object
+ *                       properties:
+ *                         used:
+ *                           type: number
+ *                         total:
+ *                           type: number
+ *                         percentage:
+ *                           type: number
+ *                     disk:
+ *                       type: object
+ *                       properties:
+ *                         used:
+ *                           type: number
+ *                         total:
+ *                           type: number
+ *                         available:
+ *                           type: number
+ *                         percentage:
+ *                           type: number
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/system-resources', authenticate, getSystemResources);
 
 // Health endpoint - always public
 router.get('/health', (req, res) => {
