@@ -16,7 +16,7 @@ import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 interface ProviderStatus {
   name: string
   type: 'cloudflare' | 'digitalocean' | 'route53'
-  status: 'connected' | 'error' | 'disabled' | 'testing'
+  status: 'connected' | 'active' | 'error' | 'disabled' | 'testing'
   lastCheck?: string
   message?: string
   recordCount?: number
