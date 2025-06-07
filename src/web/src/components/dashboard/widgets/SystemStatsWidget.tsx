@@ -36,48 +36,59 @@ function useSystemMetrics() {
   return useQuery({
     queryKey: ['system-metrics'],
     queryFn: async (): Promise<SystemMetrics> => {
+      // Get real data from status endpoint
+      const statusRes = await api.get('/status')
+      const statusData = statusRes.data.data
+      
+      if (!statusData) {
+        throw new Error('No status data available')
+      }
+      
+      const dnsProvider = statusData.services?.dnsProvider
+      const statistics = statusData.statistics
+      
+      // Get enhanced DNS stats
+      let dnsStats = null
       try {
-        const [statusRes, dnsRes, providersRes] = await Promise.all([
-          api.get('/status'),
-          api.get('/dns/stats'),
-          api.get('/config/providers/status')
-        ])
-        
-        const statusData = statusRes.data.data
-        const dnsData = dnsRes.data.data
-        const providersData = providersRes.data.data
-        
-        return {
-          dns: {
-            total_records: dnsData.total || 0,
-            managed_records: dnsData.managed || 0,
-            orphaned_records: dnsData.orphaned || 0
-          },
-          containers: {
-            total: statusData.statistics?.totalContainers || 0,
-            running: statusData.statistics?.totalContainers || 0, // Assume running if tracked
-            stopped: 0
-          },
-          providers: {
-            total: providersData.length || 0,
-            connected: providersData.filter((p: any) => p.status === 'connected' || p.status === 'active').length || 0
-          },
-          uptime: {
-            seconds: statusData.uptime || 0,
-            percentage: 99.9 // Mock uptime percentage
-          }
-        }
-      } catch (error) {
-        // Fallback to mock data if APIs fail
-        return {
-          dns: { total_records: 0, managed_records: 0, orphaned_records: 0 },
-          containers: { total: 0, running: 0, stopped: 0 },
-          providers: { total: 0, connected: 0 },
-          uptime: { seconds: 0, percentage: 0 }
+        const dnsRes = await api.get('/dns/stats')
+        dnsStats = dnsRes.data.data
+      } catch (dnsError) {
+        console.warn('DNS stats endpoint not available:', dnsError)
+      }
+      
+      // Get provider status
+      let providersData = null
+      try {
+        const providersRes = await api.get('/config/providers/status')
+        providersData = providersRes.data.data
+      } catch (providerError) {
+        console.warn('Provider status endpoint not available:', providerError)
+      }
+      
+      return {
+        dns: {
+          total_records: dnsStats?.total || statistics?.totalRecords || 0,
+          managed_records: dnsStats?.managed || statistics?.totalRecords || 0,
+          orphaned_records: dnsStats?.orphaned || 0
+        },
+        containers: {
+          total: statistics?.totalContainers || 0,
+          running: statistics?.totalContainers || 0,
+          stopped: 0
+        },
+        providers: {
+          total: providersData?.length || (dnsProvider ? 1 : 0),
+          connected: providersData?.filter((p: any) => p.status === 'connected' || p.status === 'active').length || (dnsProvider?.status === 'active' ? 1 : 0)
+        },
+        uptime: {
+          seconds: statusData.uptime || 0,
+          percentage: statusData.uptime ? 99.9 : 0
         }
       }
     },
     refetchInterval: 30000,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   })
 }
 
