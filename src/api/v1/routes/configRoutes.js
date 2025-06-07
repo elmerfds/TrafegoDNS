@@ -17,7 +17,8 @@ const {
   getSecrets,
   getSecretStatus,
   enablePortManagement,
-  disablePortManagement
+  disablePortManagement,
+  getProviderStatus
 } = require('../controllers/configController');
 
 /**
@@ -550,5 +551,51 @@ router.post('/port-management/enable', authenticate, authorize('admin'), enableP
  *         description: Server error
  */
 router.post('/port-management/disable', authenticate, authorize('admin'), disablePortManagement);
+
+/**
+ * @swagger
+ * /config/providers/status:
+ *   get:
+ *     summary: Get DNS provider status
+ *     description: Get status information for configured DNS providers
+ *     tags: [Config]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Provider status retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       name:
+ *                         type: string
+ *                       type:
+ *                         type: string
+ *                       status:
+ *                         type: string
+ *                       lastCheck:
+ *                         type: string
+ *                       message:
+ *                         type: string
+ *                       record_count:
+ *                         type: number
+ *                       response_time:
+ *                         type: number
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/providers/status', authenticate, getProviderStatus);
 
 module.exports = router;

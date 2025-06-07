@@ -43,8 +43,24 @@ function useSystemStatus() {
   return useQuery({
     queryKey: ['system-status'],
     queryFn: async (): Promise<SystemStatus> => {
-      const response = await api.get('/status')
-      return response.data.data
+      try {
+        const response = await api.get('/status')
+        const data = response.data.data
+        return {
+          mode: data.operationMode || data.mode || 'unknown',
+          version: data.version || '1.0.0',
+          uptime: data.uptime || 0,
+          healthy: data.healthy ?? true
+        }
+      } catch (error) {
+        // Fallback data if API fails
+        return {
+          mode: 'direct',
+          version: '1.0.0',
+          uptime: 0,
+          healthy: false
+        }
+      }
     },
     refetchInterval: 30000,
   })
@@ -54,13 +70,38 @@ function useDNSStatus() {
   return useQuery({
     queryKey: ['dns-status'],
     queryFn: async (): Promise<DNSStatus> => {
-      const [providersRes, recordsRes] = await Promise.all([
-        api.get('/config/providers/status'),
-        api.get('/dns/stats')
-      ])
-      return {
-        providers: providersRes.data.data,
-        records: recordsRes.data.data
+      try {
+        const statusRes = await api.get('/status')
+        const statusData = statusRes.data.data
+        
+        // Extract DNS info from the main status endpoint
+        const provider = statusData.services?.dnsProvider
+        const statistics = statusData.statistics
+        
+        return {
+          providers: {
+            total: provider ? 1 : 0,
+            connected: provider?.status === 'connected' ? 1 : 0,
+            names: provider ? [provider.type] : []
+          },
+          records: {
+            total: statistics?.totalRecords || 0,
+            managed: statistics?.totalRecords || 0
+          }
+        }
+      } catch (error) {
+        // Fallback data if API fails
+        return {
+          providers: {
+            total: 1,
+            connected: 0,
+            names: ['Unknown']
+          },
+          records: {
+            total: 0,
+            managed: 0
+          }
+        }
       }
     },
     refetchInterval: 30000,
@@ -71,8 +112,30 @@ function useContainerStatus() {
   return useQuery({
     queryKey: ['container-status'], 
     queryFn: async (): Promise<ContainerStatus> => {
-      const response = await api.get('/containers/stats')
-      return response.data.data
+      try {
+        const statusRes = await api.get('/status')
+        const statusData = statusRes.data.data
+        const statistics = statusData.statistics
+        
+        // Use container info from the main status endpoint
+        const totalContainers = statistics?.totalContainers || 0
+        const dockerStatus = statusData.services?.docker
+        
+        return {
+          total: totalContainers,
+          running: totalContainers, // Assume running if they're being tracked
+          stopped: 0,
+          monitoring: dockerStatus?.connected ?? true
+        }
+      } catch (error) {
+        // Fallback data if API fails
+        return {
+          total: 0,
+          running: 0,
+          stopped: 0,
+          monitoring: false
+        }
+      }
     },
     refetchInterval: 30000,
   })

@@ -17,7 +17,9 @@ const {
   refreshRecords,
   processRecords,
   deleteExpiredOrphanedRecords,
-  forceDeleteOrphanedRecords
+  forceDeleteOrphanedRecords,
+  getStats,
+  getZonesStats
 } = require('../controllers/dnsController');
 const { authenticate, authorize } = require('../middleware/authMiddleware');
 const { writeLimiter } = require('../middleware/rateLimitMiddleware');
@@ -747,5 +749,77 @@ router.post('/process', authenticate, authorize(['admin', 'operator']), processR
  *        description: Server error
  */
 router.post('/orphaned/force-delete', authenticate, authorize(['admin']), forceDeleteOrphanedRecords);
+
+/**
+ * @swagger
+ * /dns/stats:
+ *   get:
+ *     summary: Get DNS statistics
+ *     description: Get DNS record statistics including total, managed, orphaned, and by type
+ *     tags: [DNS]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: DNS statistics retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: number
+ *                     managed:
+ *                       type: number
+ *                     orphaned:
+ *                       type: number
+ *                     by_type:
+ *                       type: object
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/stats', authenticate, getStats);
+
+/**
+ * @swagger
+ * /dns/zones/stats:
+ *   get:
+ *     summary: Get DNS zones statistics
+ *     description: Get DNS zone statistics including total and active zones
+ *     tags: [DNS]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: DNS zones statistics retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: number
+ *                     active:
+ *                       type: number
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/zones/stats', authenticate, getZonesStats);
 
 module.exports = router;

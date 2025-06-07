@@ -50,7 +50,8 @@ const {
   scanPortRange,
   getPortAlerts,
   getPortActivity,
-  suggestPorts
+  suggestPorts,
+  checkSinglePort
 } = require('../controllers/portController');
 
 /**
@@ -248,6 +249,60 @@ router.post('/check-availability',
   ApiResponse.middleware,
   validate('portAvailabilityCheck'),
   checkPortAvailability
+);
+
+/**
+ * @swagger
+ * /api/v1/ports/check/{port}:
+ *   get:
+ *     summary: Check single port status
+ *     description: Check if a specific port is available or in use
+ *     tags: [Ports]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: port
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 65535
+ *         description: Port number to check
+ *     responses:
+ *       200:
+ *         description: Port status retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     port:
+ *                       type: integer
+ *                     available:
+ *                       type: boolean
+ *                     service:
+ *                       type: string
+ *                     container:
+ *                       type: string
+ *                     last_checked:
+ *                       type: string
+ *       400:
+ *         description: Invalid port number
+ *       500:
+ *         description: Server error
+ */
+router.get('/check/:port', 
+  authenticate, 
+  portOperationsLimiter,
+  ApiResponse.middleware,
+  checkSinglePort
 );
 
 /**
