@@ -5,11 +5,9 @@
 
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Shield, Activity, Globe, Container, Network, AlertTriangle, CheckCircle, Settings } from 'lucide-react'
+import { Activity, Globe, Container, Network, AlertTriangle, CheckCircle } from 'lucide-react'
 import { WidgetBase } from '../Widget'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
@@ -77,16 +75,18 @@ function useDNSStatus() {
         // Extract DNS info from the main status endpoint
         const provider = statusData.services?.dnsProvider
         const statistics = statusData.statistics
+        const isConnected = provider?.status === 'connected' || provider?.status === 'active'
         
         return {
           providers: {
             total: provider ? 1 : 0,
-            connected: provider?.status === 'connected' ? 1 : 0,
+            connected: isConnected ? 1 : 0,
             names: provider ? [provider.type] : []
           },
           records: {
-            total: statistics?.totalRecords || 0,
-            managed: statistics?.totalRecords || 0
+            // Only show records if provider is connected
+            total: isConnected ? (statistics?.totalRecords || 0) : 0,
+            managed: isConnected ? (statistics?.totalRecords || 0) : 0
           }
         }
       } catch (error) {
@@ -142,7 +142,6 @@ function useContainerStatus() {
 }
 
 export function StatusOverviewWidget(props: WidgetProps) {
-  const navigate = useNavigate()
   const { data: systemStatus, isLoading: systemLoading, error: systemError } = useSystemStatus()
   const { data: dnsStatus, isLoading: dnsLoading } = useDNSStatus() 
   const { data: containerStatus, isLoading: containerLoading } = useContainerStatus()
@@ -212,7 +211,7 @@ export function StatusOverviewWidget(props: WidgetProps) {
               {dnsStatus?.providers.connected || 0}/{dnsStatus?.providers.total || 0}
             </div>
             <div className="text-xs text-green-700 dark:text-green-300">
-              {dnsStatus?.records.total || 0} records
+              {dnsStatus?.records.total || 0} records • {dnsStatus?.providers.names?.[0] || 'none'}
             </div>
           </div>
 
@@ -243,26 +242,6 @@ export function StatusOverviewWidget(props: WidgetProps) {
               port monitor
             </div>
           </div>
-        </div>
-
-        {/* System Info Bar */}
-        <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3">
-            <Shield className="h-5 w-5 text-gray-600" />
-            <div>
-              <div className="text-sm font-medium">TrafegoDNS</div>
-              <div className="text-xs text-muted-foreground">
-                v{systemStatus?.version || '0.0.0'} • {dnsStatus?.providers.names?.join(', ') || 'No providers'}
-              </div>
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate('/settings')}
-          >
-            <Settings className="h-4 w-4" />
-          </Button>
         </div>
       </div>
     </WidgetBase>

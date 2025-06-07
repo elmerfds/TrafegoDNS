@@ -51,7 +51,7 @@ function useDNSHealth() {
         const zones = zonesRes.data.data
         
         // Calculate health score based on provider connectivity and orphaned records
-        const connectedProviders = providers.filter((p: any) => p.status === 'connected').length
+        const connectedProviders = providers.filter((p: any) => p.status === 'connected' || p.status === 'active').length
         const totalProviders = providers.length
         const orphanedRatio = records.orphaned / (records.total || 1)
         const healthScore = Math.round(

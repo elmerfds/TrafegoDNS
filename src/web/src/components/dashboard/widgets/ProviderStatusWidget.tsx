@@ -102,7 +102,8 @@ export function ProviderStatusWidget(props: WidgetProps) {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'connected': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 border-green-200'
+      case 'connected': 
+      case 'active': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 border-green-200'
       case 'error': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border-red-200'
       case 'testing': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 border-yellow-200'
       case 'disabled': return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400 border-gray-200'
@@ -112,7 +113,8 @@ export function ProviderStatusWidget(props: WidgetProps) {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'connected': return <CheckCircle className="h-4 w-4" />
+      case 'connected': 
+      case 'active': return <CheckCircle className="h-4 w-4" />
       case 'error': return <XCircle className="h-4 w-4" />
       case 'testing': return <AlertCircle className="h-4 w-4" />
       case 'disabled': return <XCircle className="h-4 w-4 opacity-50" />
@@ -125,7 +127,7 @@ export function ProviderStatusWidget(props: WidgetProps) {
     return <Cloud className="h-5 w-5" />
   }
 
-  const connectedProviders = providers.filter(p => p.status === 'connected').length
+  const connectedProviders = providers.filter(p => p.status === 'connected' || p.status === 'active').length
   const totalProviders = providers.filter(p => p.status !== 'disabled').length
 
   return (

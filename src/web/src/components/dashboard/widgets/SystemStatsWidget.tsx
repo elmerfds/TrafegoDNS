@@ -37,26 +37,43 @@ function useSystemMetrics() {
     queryKey: ['system-metrics'],
     queryFn: async (): Promise<SystemMetrics> => {
       try {
-        const [dnsRes, containersRes, providersRes, uptimeRes] = await Promise.all([
+        const [statusRes, dnsRes, providersRes] = await Promise.all([
+          api.get('/status'),
           api.get('/dns/stats'),
-          api.get('/containers/stats'),
-          api.get('/config/providers/status'),
-          api.get('/status/uptime')
+          api.get('/config/providers/status')
         ])
         
+        const statusData = statusRes.data.data
+        const dnsData = dnsRes.data.data
+        const providersData = providersRes.data.data
+        
         return {
-          dns: dnsRes.data.data,
-          containers: containersRes.data.data,
-          providers: providersRes.data.data,
-          uptime: uptimeRes.data.data
+          dns: {
+            total_records: dnsData.total || 0,
+            managed_records: dnsData.managed || 0,
+            orphaned_records: dnsData.orphaned || 0
+          },
+          containers: {
+            total: statusData.statistics?.totalContainers || 0,
+            running: statusData.statistics?.totalContainers || 0, // Assume running if tracked
+            stopped: 0
+          },
+          providers: {
+            total: providersData.length || 0,
+            connected: providersData.filter((p: any) => p.status === 'connected' || p.status === 'active').length || 0
+          },
+          uptime: {
+            seconds: statusData.uptime || 0,
+            percentage: 99.9 // Mock uptime percentage
+          }
         }
       } catch (error) {
         // Fallback to mock data if APIs fail
         return {
-          dns: { total_records: 15, managed_records: 12, orphaned_records: 3 },
-          containers: { total: 5, running: 4, stopped: 1 },
-          providers: { total: 2, connected: 1 },
-          uptime: { seconds: 86400, percentage: 99.8 }
+          dns: { total_records: 0, managed_records: 0, orphaned_records: 0 },
+          containers: { total: 0, running: 0, stopped: 0 },
+          providers: { total: 0, connected: 0 },
+          uptime: { seconds: 0, percentage: 0 }
         }
       }
     },

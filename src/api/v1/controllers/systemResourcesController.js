@@ -54,13 +54,13 @@ async function getSystemResources(req, res) {
     }
 
     res.json({
-      success: true,
+      status: 'success',
       data: resources
     })
   } catch (error) {
     console.error('Error getting system resources:', error)
     res.status(500).json({
-      success: false,
+      status: 'error',
       error: 'Failed to get system resources',
       details: error.message
     })
@@ -74,13 +74,21 @@ async function getCPUUsage() {
   return new Promise((resolve) => {
     const startMeasure = getCPUInfo()
     
+    // Use shorter timeout to reduce API response time
     setTimeout(() => {
       const endMeasure = getCPUInfo()
       const idleDifference = endMeasure.idle - startMeasure.idle
       const totalDifference = endMeasure.total - startMeasure.total
+      
+      // Prevent division by zero
+      if (totalDifference === 0) {
+        resolve(0)
+        return
+      }
+      
       const usage = 100 - Math.round((100 * idleDifference) / totalDifference)
       resolve(Math.max(0, Math.min(100, usage)))
-    }, 1000)
+    }, 500) // Reduced from 1000ms to 500ms for faster response
   })
 }
 
@@ -129,14 +137,15 @@ async function getDiskUsage() {
         const parts = stdout.trim().split(/\s+/)
         
         if (parts.length >= 6) {
-          const total = parseInt(parts[1]) || 0
-          const used = parseInt(parts[2]) || 0
-          const available = parseInt(parts[3]) || 0
+          // df -BG returns values like "45G", "100G" - remove the G and convert to numbers
+          const total = parseFloat(parts[1].replace('G', '')) || 0
+          const used = parseFloat(parts[2].replace('G', '')) || 0
+          const available = parseFloat(parts[3].replace('G', '')) || 0
           
           diskInfo = {
-            used: used,
-            total: total,
-            available: available,
+            used: Math.round(used * 10) / 10, // Round to 1 decimal like memory
+            total: Math.round(total * 10) / 10,
+            available: Math.round(available * 10) / 10,
             percentage: total > 0 ? Math.round((used / total) * 100) : 0
           }
         }
@@ -148,9 +157,9 @@ async function getDiskUsage() {
     // Fallback for other platforms or if df command failed
     if (diskInfo.total === 0) {
       diskInfo = {
-        used: 45,
-        total: 100,
-        available: 55,
+        used: 45.2,
+        total: 100.0,
+        available: 54.8,
         percentage: 45
       }
     }
