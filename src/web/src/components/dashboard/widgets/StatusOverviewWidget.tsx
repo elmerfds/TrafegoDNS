@@ -1,212 +1,218 @@
 /**
  * Status Overview Widget
- * Shows high-level system status cards like the old dashboard
+ * Modern system status overview with real API data
  */
 
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Shield, Activity, Globe, Container, Network, AlertTriangle, CheckCircle } from 'lucide-react'
+import { Shield, Activity, Globe, Container, Network, AlertTriangle, CheckCircle, Settings } from 'lucide-react'
 import { WidgetBase } from '../Widget'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
-interface StatusData {
-  systemMode: 'traefik' | 'direct'
+interface SystemStatus {
+  mode: 'traefik' | 'direct'
   version: string
-  systemHealth: 'healthy' | 'warning' | 'error'
-  dnsProviders: {
-    total: number
-    connected: number
-    status: 'healthy' | 'warning' | 'error'
-  }
-  containers: {
-    total: number
-    running: number
-    status: 'healthy' | 'warning' | 'error'
-  }
-  monitoring: {
-    enabled: boolean
-    status: 'active' | 'inactive' | 'error'
-  }
-  lastUpdate: string
+  uptime: number
+  healthy: boolean
 }
 
-function useStatusOverview() {
-  return useQuery({
-    queryKey: ['status-overview'],
-    queryFn: async (): Promise<StatusData> => {
-      try {
-        // In a real implementation, this would aggregate data from multiple endpoints
-        const [configResponse, statusResponse] = await Promise.allSettled([
-          api.get('/config'),
-          api.get('/status')
-        ])
+interface DNSStatus {
+  providers: {
+    total: number
+    connected: number
+    names: string[]
+  }
+  records: {
+    total: number
+    managed: number
+  }
+}
 
-        // Mock data with some real data if available
-        return {
-          systemMode: 'direct', // or get from config
-          version: '2.1.0',
-          systemHealth: 'healthy',
-          dnsProviders: {
-            total: 2,
-            connected: 1,
-            status: 'warning'
-          },
-          containers: {
-            total: 3,
-            running: 2,
-            status: 'healthy'
-          },
-          monitoring: {
-            enabled: true,
-            status: 'active'
-          },
-          lastUpdate: new Date().toISOString()
-        }
-      } catch {
-        // Fallback mock data
-        return {
-          systemMode: 'direct',
-          version: '2.1.0',
-          systemHealth: 'healthy',
-          dnsProviders: {
-            total: 2,
-            connected: 1,
-            status: 'warning'
-          },
-          containers: {
-            total: 3,
-            running: 2,
-            status: 'healthy'
-          },
-          monitoring: {
-            enabled: true,
-            status: 'active'
-          },
-          lastUpdate: new Date().toISOString()
-        }
+interface ContainerStatus {
+  total: number
+  running: number
+  stopped: number
+  monitoring: boolean
+}
+
+function useSystemStatus() {
+  return useQuery({
+    queryKey: ['system-status'],
+    queryFn: async (): Promise<SystemStatus> => {
+      const response = await api.get('/status')
+      return response.data.data
+    },
+    refetchInterval: 30000,
+  })
+}
+
+function useDNSStatus() {
+  return useQuery({
+    queryKey: ['dns-status'],
+    queryFn: async (): Promise<DNSStatus> => {
+      const [providersRes, recordsRes] = await Promise.all([
+        api.get('/config/providers/status'),
+        api.get('/dns/stats')
+      ])
+      return {
+        providers: providersRes.data.data,
+        records: recordsRes.data.data
       }
     },
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 30000,
+  })
+}
+
+function useContainerStatus() {
+  return useQuery({
+    queryKey: ['container-status'], 
+    queryFn: async (): Promise<ContainerStatus> => {
+      const response = await api.get('/containers/stats')
+      return response.data.data
+    },
+    refetchInterval: 30000,
   })
 }
 
 export function StatusOverviewWidget(props: WidgetProps) {
-  const { data: status, isLoading, error } = useStatusOverview()
+  const navigate = useNavigate()
+  const { data: systemStatus, isLoading: systemLoading, error: systemError } = useSystemStatus()
+  const { data: dnsStatus, isLoading: dnsLoading } = useDNSStatus() 
+  const { data: containerStatus, isLoading: containerLoading } = useContainerStatus()
 
-  const getStatusColor = (statusType: string) => {
-    switch (statusType) {
-      case 'healthy': case 'active': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-      case 'warning': case 'inactive': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
-      case 'error': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-      default: return 'bg-gray-100 text-gray-800'
-    }
+  const isLoading = systemLoading || dnsLoading || containerLoading
+  const error = systemError?.message
+
+  const formatUptime = (seconds: number) => {
+    const days = Math.floor(seconds / 86400)
+    const hours = Math.floor((seconds % 86400) / 3600)
+    if (days > 0) return `${days}d ${hours}h`
+    if (hours > 0) return `${hours}h ${Math.floor((seconds % 3600) / 60)}m`
+    return `${Math.floor(seconds / 60)}m`
   }
 
-  const getStatusIcon = (statusType: string) => {
-    switch (statusType) {
-      case 'healthy': case 'active': return <CheckCircle className="h-4 w-4" />
-      case 'warning': case 'inactive': case 'error': return <AlertTriangle className="h-4 w-4" />
-      default: return <Activity className="h-4 w-4" />
-    }
+  const getOverallHealth = () => {
+    const systemHealthy = systemStatus?.healthy ?? false
+    const dnsHealthy = (dnsStatus?.providers.connected ?? 0) > 0
+    const containersHealthy = (containerStatus?.running ?? 0) > 0
+    
+    if (systemHealthy && dnsHealthy && containersHealthy) return 'healthy'
+    if (!systemHealthy) return 'error'
+    return 'warning'
   }
 
-  const statusCards = [
-    {
-      title: 'System Mode',
-      value: status?.systemMode?.toUpperCase() || 'UNKNOWN',
-      icon: Shield,
-      status: 'healthy',
-      detail: `Version ${status?.version || '0.0.0'}`
-    },
-    {
-      title: 'System Health',
-      value: status?.systemHealth?.toUpperCase() || 'UNKNOWN',
-      icon: Activity,
-      status: status?.systemHealth || 'error',
-      detail: 'All services operational'
-    },
-    {
-      title: 'DNS Providers',
-      value: `${status?.dnsProviders.connected || 0}/${status?.dnsProviders.total || 0}`,
-      icon: Globe,
-      status: status?.dnsProviders.status || 'error',
-      detail: 'Connected providers'
-    },
-    {
-      title: 'Containers',
-      value: `${status?.containers.running || 0}/${status?.containers.total || 0}`,
-      icon: Container,
-      status: status?.containers.status || 'error',
-      detail: 'Running containers'
-    },
-    {
-      title: 'Monitoring',
-      value: status?.monitoring.enabled ? 'ENABLED' : 'DISABLED',
-      icon: Network,
-      status: status?.monitoring.status || 'error',
-      detail: status?.monitoring.enabled ? 'Port monitoring active' : 'Monitoring disabled'
-    }
-  ]
+  const overallHealth = getOverallHealth()
 
   return (
     <WidgetBase
       {...props}
-      title="System Status Overview"
-      icon={Shield}
-      description="High-level system status and health"
+      title="System Status"
+      icon={Activity}
+      description="Real-time system overview"
       isLoading={isLoading}
-      error={error?.message}
+      error={error}
+      actions={
+        <Badge variant={overallHealth === 'healthy' ? 'default' : overallHealth === 'warning' ? 'secondary' : 'destructive'}>
+          {overallHealth === 'healthy' ? <CheckCircle className="h-3 w-3 mr-1" /> : <AlertTriangle className="h-3 w-3 mr-1" />}
+          {overallHealth}
+        </Badge>
+      }
     >
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-        {statusCards.map((card) => (
-          <div
-            key={card.title}
-            className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <card.icon className="h-5 w-5 text-gray-600 dark:text-gray-400" />
-              <Badge variant="outline" className={getStatusColor(card.status)}>
-                <span className="flex items-center gap-1">
-                  {getStatusIcon(card.status)}
-                  {card.status}
-                </span>
-              </Badge>
+      <div className="space-y-4">
+        {/* Main Status Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {/* System Health */}
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-3 border border-blue-200 dark:border-blue-800">
+            <div className="flex items-center gap-2 mb-2">
+              <Activity className="h-4 w-4 text-blue-600" />
+              <span className="text-xs font-medium text-blue-900 dark:text-blue-100">System</span>
             </div>
-            
-            <div className="space-y-1">
-              <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {card.title}
-              </h4>
-              <div className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                {card.value}
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                {card.detail}
-              </p>
+            <div className="text-lg font-bold text-blue-900 dark:text-blue-100">
+              {systemStatus?.mode?.toUpperCase() || 'UNKNOWN'}
+            </div>
+            <div className="text-xs text-blue-700 dark:text-blue-300">
+              {systemStatus?.uptime ? formatUptime(systemStatus.uptime) : 'Unknown'} uptime
             </div>
           </div>
-        ))}
-      </div>
 
-      {/* Last Update */}
-      {status?.lastUpdate && (
-        <div className="mt-4 text-xs text-muted-foreground text-center pt-3 border-t border-gray-200 dark:border-gray-700">
-          Last updated: {new Date(status.lastUpdate).toLocaleTimeString()}
+          {/* DNS Providers */}
+          <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl p-3 border border-green-200 dark:border-green-800">
+            <div className="flex items-center gap-2 mb-2">
+              <Globe className="h-4 w-4 text-green-600" />
+              <span className="text-xs font-medium text-green-900 dark:text-green-100">DNS</span>
+            </div>
+            <div className="text-lg font-bold text-green-900 dark:text-green-100">
+              {dnsStatus?.providers.connected || 0}/{dnsStatus?.providers.total || 0}
+            </div>
+            <div className="text-xs text-green-700 dark:text-green-300">
+              {dnsStatus?.records.total || 0} records
+            </div>
+          </div>
+
+          {/* Containers */}
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl p-3 border border-purple-200 dark:border-purple-800">
+            <div className="flex items-center gap-2 mb-2">
+              <Container className="h-4 w-4 text-purple-600" />
+              <span className="text-xs font-medium text-purple-900 dark:text-purple-100">Containers</span>
+            </div>
+            <div className="text-lg font-bold text-purple-900 dark:text-purple-100">
+              {containerStatus?.running || 0}/{containerStatus?.total || 0}
+            </div>
+            <div className="text-xs text-purple-700 dark:text-purple-300">
+              running
+            </div>
+          </div>
+
+          {/* Monitoring */}
+          <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 rounded-xl p-3 border border-orange-200 dark:border-orange-800">
+            <div className="flex items-center gap-2 mb-2">
+              <Network className="h-4 w-4 text-orange-600" />
+              <span className="text-xs font-medium text-orange-900 dark:text-orange-100">Monitoring</span>
+            </div>
+            <div className="text-lg font-bold text-orange-900 dark:text-orange-100">
+              {containerStatus?.monitoring ? 'ON' : 'OFF'}
+            </div>
+            <div className="text-xs text-orange-700 dark:text-orange-300">
+              port monitor
+            </div>
+          </div>
         </div>
-      )}
+
+        {/* System Info Bar */}
+        <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-3">
+            <Shield className="h-5 w-5 text-gray-600" />
+            <div>
+              <div className="text-sm font-medium">TrafegoDNS</div>
+              <div className="text-xs text-muted-foreground">
+                v{systemStatus?.version || '0.0.0'} • {dnsStatus?.providers.names?.join(', ') || 'No providers'}
+              </div>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/settings')}
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
     </WidgetBase>
   )
 }
 
 export const statusOverviewDefinition: WidgetDefinition = {
   id: 'status-overview',
-  name: 'Status Overview',
-  description: 'High-level system status and health cards',
+  name: 'System Status',
+  description: 'Real-time system overview with health indicators',
   category: 'system',
-  icon: Shield,
-  defaultSize: { w: 12, h: 6 },
-  minSize: { w: 8, h: 4 },
+  icon: Activity,
+  defaultSize: { w: 8, h: 6 },
+  minSize: { w: 6, h: 4 },
   maxSize: { w: 12, h: 8 }
 }
