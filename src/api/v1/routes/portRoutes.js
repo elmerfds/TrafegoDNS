@@ -47,7 +47,10 @@ const {
   getPortStatistics,
   getPortReservations,
   getPortRecommendations,
-  scanPortRange
+  scanPortRange,
+  getPortAlerts,
+  getPortActivity,
+  suggestPorts
 } = require('../controllers/portController');
 
 /**
@@ -706,6 +709,191 @@ router.put('/:port/label',
   ApiResponse.middleware,
   validate('portServiceLabelUpdate'),
   updatePortServiceLabel
+);
+
+/**
+ * @swagger
+ * /api/v1/ports/alerts:
+ *   get:
+ *     summary: Get port security alerts
+ *     description: Retrieve current port-related security alerts and conflicts
+ *     tags: [Ports]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Port alerts retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       port:
+ *                         type: integer
+ *                       severity:
+ *                         type: string
+ *                         enum: [low, medium, high, critical]
+ *                       type:
+ *                         type: string
+ *                         enum: [security, conflict, suspicious, configuration]
+ *                       title:
+ *                         type: string
+ *                       description:
+ *                         type: string
+ *                       timestamp:
+ *                         type: string
+ *                         format: date-time
+ *                       acknowledged:
+ *                         type: boolean
+ *       500:
+ *         description: Server error
+ */
+router.get('/alerts', 
+  authenticate, 
+  ApiResponse.middleware,
+  getPortAlerts
+);
+
+/**
+ * @swagger
+ * /api/v1/ports/activity:
+ *   get:
+ *     summary: Get port activity log
+ *     description: Retrieve recent port activity and changes
+ *     tags: [Ports]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Maximum number of activity entries to return
+ *     responses:
+ *       200:
+ *         description: Port activity retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       port:
+ *                         type: integer
+ *                       action:
+ *                         type: string
+ *                         enum: [opened, closed, reserved, released, scanned, conflict]
+ *                       service:
+ *                         type: string
+ *                       container:
+ *                         type: string
+ *                       user:
+ *                         type: string
+ *                       timestamp:
+ *                         type: string
+ *                         format: date-time
+ *                       details:
+ *                         type: string
+ *       500:
+ *         description: Server error
+ */
+router.get('/activity', 
+  authenticate, 
+  ApiResponse.middleware,
+  getPortActivity
+);
+
+/**
+ * @swagger
+ * /api/v1/ports/suggest:
+ *   post:
+ *     summary: Generate port suggestions
+ *     description: Generate available port suggestions for different service types
+ *     tags: [Ports]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - serviceType
+ *             properties:
+ *               serviceType:
+ *                 type: string
+ *                 enum: [web, api, database, cache, monitoring, custom]
+ *                 description: Type of service needing ports
+ *               count:
+ *                 type: integer
+ *                 default: 5
+ *                 description: Number of port suggestions to generate
+ *               range:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 minItems: 2
+ *                 maxItems: 2
+ *                 description: Port range [min, max] to search within
+ *     responses:
+ *       200:
+ *         description: Port suggestions generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     suggestions:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           port:
+ *                             type: integer
+ *                           reason:
+ *                             type: string
+ *                           confidence:
+ *                             type: string
+ *                             enum: [high, medium, low]
+ *                     serviceType:
+ *                       type: string
+ *                     count:
+ *                       type: integer
+ *       400:
+ *         description: Invalid request parameters
+ *       500:
+ *         description: Server error
+ */
+router.post('/suggest', 
+  authenticate, 
+  sanitizeInputs(),
+  validateRequestSize(),
+  ApiResponse.middleware,
+  suggestPorts
 );
 
 module.exports = router;

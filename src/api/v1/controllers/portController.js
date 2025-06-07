@@ -1043,6 +1043,161 @@ const scanPortRange = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * @desc    Get port security alerts
+ * @route   GET /api/v1/ports/alerts
+ * @access  Private
+ */
+const getPortAlerts = asyncHandler(async (req, res) => {
+  const { PortMonitor } = global.services || {};
+  
+  if (!PortMonitor) {
+    throw new ApiError('Port monitor service not available', 500, 'PORT_MONITOR_NOT_AVAILABLE');
+  }
+  
+  if (!PortMonitor.isInitialized) {
+    throw new ApiError('Port monitor service is not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+  }
+
+  try {
+    // Get port alerts from security analyzer
+    const alerts = await PortMonitor.getSecurityAlerts();
+    
+    // Also check for port conflicts
+    const conflicts = await PortMonitor.getPortConflicts();
+    
+    // Combine alerts and conflicts
+    const allAlerts = [
+      ...alerts.map(alert => ({
+        ...alert,
+        type: 'security'
+      })),
+      ...conflicts.map(conflict => ({
+        id: `conflict-${conflict.port}`,
+        port: conflict.port,
+        severity: 'medium',
+        type: 'conflict',
+        title: 'Port Conflict Detected',
+        description: `Multiple services attempting to bind to port ${conflict.port}`,
+        timestamp: new Date().toISOString(),
+        acknowledged: false
+      }))
+    ];
+    
+    res.json({
+      success: true,
+      data: allAlerts,
+      count: allAlerts.length
+    });
+  } catch (error) {
+    await errorHandler.handleError(error, {
+      operation: 'get_port_alerts',
+      userId: req.user?.id
+    });
+    
+    return res.status(500).json({
+      success: false,
+      error: 'GET_PORT_ALERTS_FAILED',
+      message: `Failed to get port alerts: ${error.message}`
+    });
+  }
+});
+
+/**
+ * @desc    Get port activity/changelog
+ * @route   GET /api/v1/ports/activity
+ * @access  Private
+ */
+const getPortActivity = asyncHandler(async (req, res) => {
+  const { PortMonitor } = global.services || {};
+  
+  if (!PortMonitor) {
+    throw new ApiError('Port monitor service not available', 500, 'PORT_MONITOR_NOT_AVAILABLE');
+  }
+  
+  if (!PortMonitor.isInitialized) {
+    throw new ApiError('Port monitor service is not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+  }
+
+  const { limit = 50 } = req.query;
+
+  try {
+    // Get recent port activity
+    const activity = await PortMonitor.getPortActivity({
+      limit: parseInt(limit),
+      includeTypes: ['opened', 'closed', 'reserved', 'released', 'scanned', 'conflict']
+    });
+    
+    res.json({
+      success: true,
+      data: activity,
+      count: activity.length
+    });
+  } catch (error) {
+    await errorHandler.handleError(error, {
+      operation: 'get_port_activity',
+      query: req.query,
+      userId: req.user?.id
+    });
+    
+    return res.status(500).json({
+      success: false,
+      error: 'GET_PORT_ACTIVITY_FAILED',
+      message: `Failed to get port activity: ${error.message}`
+    });
+  }
+});
+
+/**
+ * @desc    Generate port suggestions for services
+ * @route   POST /api/v1/ports/suggest
+ * @access  Private
+ */
+const suggestPorts = asyncHandler(async (req, res) => {
+  const { PortMonitor } = global.services || {};
+  
+  if (!PortMonitor) {
+    throw new ApiError('Port monitor service not available', 500, 'PORT_MONITOR_NOT_AVAILABLE');
+  }
+  
+  if (!PortMonitor.isInitialized) {
+    throw new ApiError('Port monitor service is not initialized', 500, 'PORT_MONITOR_NOT_INITIALIZED');
+  }
+
+  const { serviceType, count = 5, range } = req.body;
+
+  try {
+    // Use suggestion engine to generate available ports
+    const suggestions = await PortMonitor.suggestPorts({
+      serviceType,
+      count: parseInt(count),
+      range: range || [1024, 65535],
+      avoidConflicts: true
+    });
+    
+    res.json({
+      success: true,
+      data: {
+        suggestions,
+        serviceType,
+        count: suggestions.length
+      }
+    });
+  } catch (error) {
+    await errorHandler.handleError(error, {
+      operation: 'suggest_ports',
+      body: req.body,
+      userId: req.user?.id
+    });
+    
+    return res.status(500).json({
+      success: false,
+      error: 'PORT_SUGGESTION_FAILED',
+      message: `Failed to suggest ports: ${error.message}`
+    });
+  }
+});
+
 module.exports = {
   getPortsInUse,
   checkPortAvailability,
@@ -1055,5 +1210,8 @@ module.exports = {
   getPortStatistics,
   getPortReservations,
   getPortRecommendations,
-  scanPortRange
+  scanPortRange,
+  getPortAlerts,
+  getPortActivity,
+  suggestPorts
 };

@@ -28,10 +28,39 @@ function useProviderStatus() {
     queryKey: ['provider-status'],
     queryFn: async (): Promise<ProviderStatus[]> => {
       try {
-        const response = await api.get('/config/providers/status')
-        return response.data.data || []
-      } catch {
-        // Mock data if API fails
+        // Get both provider status and configurations
+        const [statusRes, configRes] = await Promise.all([
+          api.get('/config/providers/status'),
+          api.get('/config/providers')
+        ])
+        
+        const statusData = statusRes.data.data || {}
+        const configData = configRes.data.data || {}
+        
+        // Process providers from both sources
+        const providers: ProviderStatus[] = []
+        
+        // Known provider types
+        const providerTypes = ['cloudflare', 'digitalocean', 'route53']
+        
+        providerTypes.forEach(type => {
+          const config = configData[type]
+          const status = statusData[type] || statusData.find(p => p.type === type)
+          
+          providers.push({
+            name: type.charAt(0).toUpperCase() + type.slice(1),
+            type: type as any,
+            status: status?.status || (config?.enabled ? 'testing' : 'disabled'),
+            lastCheck: status?.lastCheck,
+            message: status?.message || (config?.enabled ? 'Configuration detected' : 'Not configured'),
+            recordCount: status?.recordCount || 0,
+            responseTime: status?.responseTime
+          })
+        })
+        
+        return providers
+      } catch (error) {
+        // Fallback to mock data if APIs fail
         return [
           {
             name: 'Cloudflare',

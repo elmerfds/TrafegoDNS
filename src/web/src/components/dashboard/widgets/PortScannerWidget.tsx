@@ -71,7 +71,7 @@ export function PortScannerWidget(props: WidgetProps) {
   const scanPortGroup = async (group: PortGroup) => {
     setScanning(group.id)
     try {
-      const response = await api.post('/ports/scan', {
+      const response = await api.post('/ports/scan-range', {
         ports: group.ports,
         timeout: 1000
       }).catch(() => {

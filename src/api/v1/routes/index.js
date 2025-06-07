@@ -19,6 +19,7 @@ const userPreferencesRoutes = require('./userPreferencesRoutes');
 const dashboardLayoutsRoutes = require('./dashboardLayoutsRoutes');
 const portRoutes = require('./portRoutes');
 const serverRoutes = require('./serverRoutes');
+const systemResourcesRoutes = require('./systemResourcesRoutes');
 
 /**
  * Create router with dependencies
@@ -41,6 +42,7 @@ function createRoutes(dependencies = {}) {
   // Mount protected routes that require authentication (or local bypass)
   router.use('/dns', dnsRoutes);
   router.use('/status', statusRoutes);
+  router.use('/status/system-resources', systemResourcesRoutes);
   router.use('/containers', containerRoutes);
   router.use('/hostnames', hostnameRoutes);
   router.use('/config', configRoutes);
