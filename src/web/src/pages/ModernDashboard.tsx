@@ -104,6 +104,10 @@ import {
   PortActivityWidget, 
   portActivityDefinition 
 } from '@/components/dashboard/widgets/PortActivityWidget'
+import { 
+  RecentActivityWidget, 
+  recentActivityDefinition 
+} from '@/components/dashboard/widgets/RecentActivityWidget'
 
 // Styles
 import 'react-grid-layout/css/styles.css'
@@ -112,12 +116,12 @@ import '@/styles/dashboard.css'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
-// Responsive configuration
+// Responsive configuration with better adaptive sizing
 const responsiveConfig = {
-  breakpoints: { lg: 1200, md: 996, sm: 768 },
-  cols: { lg: 12, md: 10, sm: 4 },
-  margin: [16, 16] as [number, number],
-  containerPadding: [16, 16] as [number, number],
+  breakpoints: { lg: 1200, md: 996, sm: 768, xs: 480 },
+  cols: { lg: 12, md: 10, sm: 6, xs: 4 },
+  margin: [12, 12] as [number, number], // Reduced margins for better space utilization
+  containerPadding: [12, 12] as [number, number],
   rowHeight: 60
 }
 
@@ -129,6 +133,7 @@ const availableWidgets = [
   { definition: systemAlertsDefinition, component: SystemAlertsWidget },
   { definition: systemResourcesDefinition, component: SystemResourcesWidget },
   { definition: serviceHealthDefinition, component: ServiceHealthWidget },
+  { definition: recentActivityDefinition, component: RecentActivityWidget },
   { definition: quickActionsDefinition, component: QuickActionsWidget },
   
   // DNS & Networking Widgets
@@ -185,7 +190,7 @@ function AddWidgetDialog() {
                       key={widget.id}
                       className="cursor-pointer hover:shadow-md transition-shadow"
                       onClick={() => {
-                        addWidget(widget.id)
+                        addWidget(widget.id, widget)
                         setIsOpen(false)
                       }}
                     >
@@ -371,8 +376,10 @@ function DashboardGrid() {
       isDraggable={isEditing}
       isResizable={isEditing}
       draggableHandle={isEditing ? ".drag-handle" : ""}
-      compactType={isEditing ? null : "vertical"}
+      compactType="vertical" // Always compact for better space utilization
       preventCollision={false}
+      autoSize={true} // Auto-size container to content
+      useCSSTransforms={true} // Better performance and animations
     >
       {visibleWidgets.map(widgetId => {
         const widgetComponent = registry.get(widgetId)

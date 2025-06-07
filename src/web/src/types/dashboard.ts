@@ -107,7 +107,7 @@ export interface DashboardContextType {
   isSaving: boolean
   hasUnsavedChanges: boolean
   
-  addWidget: (widgetId: string) => void
+  addWidget: (widgetId: string, widgetDefinition?: WidgetDefinition) => void
   removeWidget: (widgetId: string) => void
   toggleWidget: (widgetId: string) => void
   updateLayout: (layouts: Record<string, Layout[]>) => void

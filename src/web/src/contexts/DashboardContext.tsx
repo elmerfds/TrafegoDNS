@@ -131,13 +131,102 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
   })
 
   // Actions
-  const addWidget = useCallback((widgetId: string) => {
+  const addWidget = useCallback((widgetId: string, widgetDefinition?: any) => {
+    // Add to widgets list
     setWidgets(prev => [...prev.filter(id => id !== widgetId), widgetId])
     setHiddenWidgets(prev => {
       const newSet = new Set(prev)
       newSet.delete(widgetId)
       return newSet
     })
+
+    // Create layout entries for the new widget if definition is provided
+    if (widgetDefinition) {
+      setCurrentLayouts(prevLayouts => {
+        const newLayouts = { ...prevLayouts }
+        
+        // Function to find optimal position for a widget
+        const findOptimalPosition = (breakpoint: string, cols: number, defaultSize: { w: number; h: number }) => {
+          const existingItems = newLayouts[breakpoint] || []
+          const widgetWidth = Math.min(defaultSize.w, cols)
+          const widgetHeight = defaultSize.h
+          
+          // Try to find an empty spot by checking each row
+          for (let y = 0; y < 100; y += 2) { // Step by 2 to avoid tight packing
+            for (let x = 0; x <= cols - widgetWidth; x += 2) { // Step by 2 for better spacing
+              const hasCollision = existingItems.some(item => 
+                !(x >= item.x + item.w || x + widgetWidth <= item.x || 
+                  y >= item.y + item.h || y + widgetHeight <= item.y)
+              )
+              
+              if (!hasCollision) {
+                return { x, y, w: widgetWidth, h: widgetHeight }
+              }
+            }
+          }
+          
+          // Fallback: place at bottom
+          const maxY = existingItems.reduce((max, item) => Math.max(max, item.y + item.h), 0)
+          return { x: 0, y: maxY + 1, w: widgetWidth, h: widgetHeight }
+        }
+
+        // Responsive configuration with better sizing logic
+        const breakpointConfigs = {
+          lg: { 
+            cols: 12, 
+            defaultSize: widgetDefinition.defaultSize 
+          },
+          md: { 
+            cols: 10, 
+            defaultSize: { 
+              w: Math.min(widgetDefinition.defaultSize.w, 8), 
+              h: widgetDefinition.defaultSize.h 
+            } 
+          },
+          sm: { 
+            cols: 6, 
+            defaultSize: { 
+              w: Math.min(widgetDefinition.defaultSize.w, 6), 
+              h: widgetDefinition.defaultSize.h 
+            } 
+          },
+          xs: { 
+            cols: 4, 
+            defaultSize: { 
+              w: 4, 
+              h: widgetDefinition.defaultSize.h 
+            } 
+          }
+        }
+
+        // Create layout entry for each breakpoint
+        Object.entries(breakpointConfigs).forEach(([breakpoint, config]) => {
+          if (!newLayouts[breakpoint]) {
+            newLayouts[breakpoint] = []
+          }
+          
+          // Check if widget already exists in this breakpoint
+          const existingIndex = newLayouts[breakpoint].findIndex(item => item.i === widgetId)
+          
+          if (existingIndex === -1) {
+            // Find optimal position and add new layout item
+            const position = findOptimalPosition(breakpoint, config.cols, config.defaultSize)
+            
+            newLayouts[breakpoint].push({
+              i: widgetId,
+              ...position,
+              minW: widgetDefinition.minSize?.w || 2,
+              minH: widgetDefinition.minSize?.h || 3,
+              maxW: widgetDefinition.maxSize?.w || config.cols,
+              maxH: widgetDefinition.maxSize?.h || 20
+            })
+          }
+        })
+
+        return newLayouts
+      })
+    }
+    
     setHasUnsavedChanges(true)
     
     toast({
