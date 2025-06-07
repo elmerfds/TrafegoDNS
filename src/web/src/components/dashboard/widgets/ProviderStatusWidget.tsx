@@ -45,7 +45,7 @@ function useProviderStatus() {
         
         providerTypes.forEach(type => {
           const config = configData[type]
-          const status = statusData[type] || statusData.find(p => p.type === type)
+          const status = statusData[type] || statusData.find((p: any) => p.type === type)
           
           providers.push({
             name: type.charAt(0).toUpperCase() + type.slice(1),
