@@ -47,30 +47,42 @@ function useDNSHealth() {
         throw new Error('No status data available')
       }
       
-      // Get real DNS records data
-      let records = {
+      // Get hostname statistics (managed/preserved counts)
+      let hostnames = {
         total: 0,
         managed: 0,
-        orphaned: 0,
-        by_type: {}
+        preserved: 0
       }
       
       try {
-        const recordsRes = await api.get('/dns/stats')
-        if (recordsRes.data.data) {
-          records = recordsRes.data.data
+        const hostnamesRes = await api.get('/hostnames?limit=1000') // Get all hostnames
+        if (hostnamesRes.data.data?.hostnames) {
+          const allHostnames = hostnamesRes.data.data.hostnames
+          hostnames.total = allHostnames.length
+          hostnames.managed = allHostnames.filter((h: any) => h.type === 'managed').length
+          hostnames.preserved = allHostnames.filter((h: any) => h.type === 'preserved').length
         }
       } catch (error) {
-        console.warn('DNS stats not available, using status data')
+        console.warn('Hostnames stats not available, using status data')
         // Fallback to status data
         if (statusData.statistics) {
-          records = {
+          hostnames = {
             total: statusData.statistics.totalRecords || 0,
             managed: statusData.statistics.totalRecords || 0,
-            orphaned: 0,
-            by_type: {}
+            preserved: 0
           }
         }
+      }
+      
+      // Get DNS records for orphaned count
+      let orphanedCount = 0
+      try {
+        const recordsRes = await api.get('/dns/stats')
+        if (recordsRes.data.data) {
+          orphanedCount = recordsRes.data.data.orphaned || 0
+        }
+      } catch (error) {
+        console.warn('DNS stats not available for orphaned count')
       }
       
       // Get real provider data
@@ -79,7 +91,11 @@ function useDNSHealth() {
       try {
         const providersRes = await api.get('/config/providers/status')
         if (providersRes.data.data) {
-          providers = providersRes.data.data
+          providers = providersRes.data.data.map((provider: any) => ({
+            ...provider,
+            // Override the hardcoded 0 record_count with actual hostnames count
+            record_count: hostnames.total || 0
+          }))
         }
       } catch (error) {
         console.warn('Provider status not available, using status data')
@@ -90,7 +106,7 @@ function useDNSHealth() {
             name: dnsProvider.type.charAt(0).toUpperCase() + dnsProvider.type.slice(1),
             type: dnsProvider.type,
             status: dnsProvider.status,
-            record_count: records.total,
+            record_count: hostnames.total,
             last_sync: new Date().toISOString(),
             response_time: undefined
           }]
@@ -117,13 +133,18 @@ function useDNSHealth() {
       // Calculate real health score
       const connectedProviders = providers.filter((p: any) => p.status === 'connected' || p.status === 'active').length
       const totalProviders = providers.length || 1
-      const orphanedRatio = records.orphaned / (records.total || 1)
+      const orphanedRatio = orphanedCount / (hostnames.total || 1)
       const healthScore = Math.round(
         ((connectedProviders / totalProviders) * 0.7 + (1 - orphanedRatio) * 0.3) * 100
       )
       
       return {
-        records,
+        records: {
+          total: hostnames.total,
+          managed: hostnames.managed,
+          orphaned: orphanedCount,
+          by_type: {}
+        },
         providers,
         zones,
         health_score: healthScore
@@ -187,7 +208,7 @@ export function DNSHealthWidget(props: WidgetProps) {
           <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-3 border border-blue-200 dark:border-blue-800">
             <div className="flex items-center gap-2 mb-2">
               <Database className="h-4 w-4 text-blue-600" />
-              <span className="text-xs font-medium text-blue-900 dark:text-blue-100">Records</span>
+              <span className="text-xs font-medium text-blue-900 dark:text-blue-100">Hostnames</span>
             </div>
             <div className="text-lg font-bold text-blue-900 dark:text-blue-100">
               {health?.records.total || 0}
@@ -223,7 +244,7 @@ export function DNSHealthWidget(props: WidgetProps) {
                     <div>
                       <div className="text-sm font-medium">{provider.name}</div>
                       <div className="text-xs text-muted-foreground">
-                        {provider.record_count} records
+                        {provider.record_count} hostnames
                         {provider.response_time && ` • ${provider.response_time}ms`}
                       </div>
                     </div>
