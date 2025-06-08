@@ -72,6 +72,7 @@ export interface WidgetProps {
   onRemove?: () => void
   onConfigure?: () => void
   className?: string
+  widgetDefinition?: WidgetDefinition
 }
 
 export interface WidgetComponent {
@@ -111,6 +112,7 @@ export interface DashboardContextType {
   removeWidget: (widgetId: string) => void
   toggleWidget: (widgetId: string) => void
   updateLayout: (layouts: Record<string, Layout[]>) => void
+  resizeWidget: (widgetId: string, size: { w: number; h: number }) => void
   saveLayout: (name?: string) => Promise<void>
   loadLayout: (layoutId: string) => Promise<void>
   deleteLayout: (layoutId: string) => Promise<void>

@@ -407,6 +407,7 @@ function DashboardGrid() {
               id={widgetId}
               isEditing={isEditing}
               onRemove={() => removeWidget(widgetId)}
+              widgetDefinition={widgetComponent.definition}
             />
           </div>
         )

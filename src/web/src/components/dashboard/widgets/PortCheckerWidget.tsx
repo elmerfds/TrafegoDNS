@@ -76,6 +76,7 @@ export function PortCheckerWidget(props: WidgetProps) {
       title="Port Checker"
       icon={Search}
       description="Check port availability"
+      widgetDefinition={props.widgetDefinition}
     >
       <div className="space-y-4">
         {/* Port Input */}

@@ -177,6 +177,7 @@ export function StatusOverviewWidget(props: WidgetProps) {
       description="Real-time system overview"
       isLoading={isLoading}
       error={error}
+      widgetDefinition={props.widgetDefinition}
       actions={
         <Badge variant={overallHealth === 'healthy' ? 'default' : overallHealth === 'warning' ? 'secondary' : 'destructive'}>
           {overallHealth === 'healthy' ? <CheckCircle className="h-3 w-3 mr-1" /> : <AlertTriangle className="h-3 w-3 mr-1" />}

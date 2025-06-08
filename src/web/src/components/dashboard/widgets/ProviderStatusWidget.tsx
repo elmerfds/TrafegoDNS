@@ -138,6 +138,7 @@ export function ProviderStatusWidget(props: WidgetProps) {
       description="DNS provider connection status"
       isLoading={isLoading}
       error={error?.message}
+      widgetDefinition={props.widgetDefinition}
       actions={
         <Badge variant={connectedProviders === totalProviders ? 'default' : 'destructive'}>
           {connectedProviders}/{totalProviders} connected

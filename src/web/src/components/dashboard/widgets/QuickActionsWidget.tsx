@@ -73,6 +73,7 @@ export function QuickActionsWidget(props: WidgetProps) {
       title="Quick Actions"
       icon={Settings}
       description="Quick access to common tasks"
+      widgetDefinition={props.widgetDefinition}
     >
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {quickActions.map((action) => (

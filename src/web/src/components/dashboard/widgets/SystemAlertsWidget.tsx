@@ -61,6 +61,7 @@ export function SystemAlertsWidget(props: WidgetProps) {
       description="Important system alerts and warnings"
       isLoading={isLoading}
       error={error?.message}
+      widgetDefinition={props.widgetDefinition}
     >
       <div className="space-y-3">
         {alerts.length === 0 ? (

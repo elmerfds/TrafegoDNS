@@ -140,6 +140,7 @@ export function PortActivityWidget(props: WidgetProps) {
       description="Recent port activity and changes"
       isLoading={isLoading}
       error={error?.message}
+      widgetDefinition={props.widgetDefinition}
       actions={
         <Badge variant={conflictCount > 0 ? 'destructive' : 'default'}>
           {recentActivities.length} events (24h)

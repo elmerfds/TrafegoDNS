@@ -116,6 +116,7 @@ export function PortSuggestionsWidget(props: WidgetProps) {
       title="Port Generator"
       icon={Eye}
       description="Generate available port suggestions"
+      widgetDefinition={props.widgetDefinition}
     >
       <div className="space-y-4">
         {/* Service Type Selection */}

@@ -115,6 +115,7 @@ export function SystemResourcesWidget(props: WidgetProps) {
       description="Real-time resource monitoring"
       isLoading={isLoading}
       error={error?.message}
+      widgetDefinition={props.widgetDefinition}
       actions={
         <Badge variant={healthStatus === 'healthy' ? 'default' : healthStatus === 'warning' ? 'secondary' : 'destructive'}>
           {healthStatus}

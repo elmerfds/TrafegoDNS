@@ -181,6 +181,7 @@ export function PortReservationsWidget(props: WidgetProps) {
       description="Active port reservations management"
       isLoading={isLoading}
       error={error?.message}
+      widgetDefinition={props.widgetDefinition}
       actions={
         <Badge variant="default">
           {activeReservations.length} active

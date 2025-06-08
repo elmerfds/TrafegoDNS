@@ -265,6 +265,52 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
     }
   }, [isEditing])
 
+  const resizeWidget = useCallback((widgetId: string, size: { w: number; h: number }) => {
+    if (!isEditing) return
+    
+    setCurrentLayouts(prevLayouts => {
+      const newLayouts = { ...prevLayouts }
+      
+      // Update size for all breakpoints proportionally
+      Object.keys(newLayouts).forEach(breakpoint => {
+        const layoutItems = [...newLayouts[breakpoint]]
+        const itemIndex = layoutItems.findIndex(item => item.i === widgetId)
+        
+        if (itemIndex !== -1) {
+          const item = layoutItems[itemIndex]
+          
+          // Scale size based on breakpoint
+          let scaledSize = { ...size }
+          if (breakpoint === 'md') {
+            scaledSize.w = Math.max(Math.floor(size.w * 0.8), item.minW || 2)
+            scaledSize.h = Math.max(Math.floor(size.h * 0.9), item.minH || 3)
+          } else if (breakpoint === 'sm') {
+            scaledSize.w = Math.max(Math.floor(size.w * 0.6), item.minW || 2)
+            scaledSize.h = Math.max(Math.floor(size.h * 0.8), item.minH || 3)
+          }
+          
+          // Respect min/max constraints
+          scaledSize.w = Math.max(scaledSize.w, item.minW || 2)
+          scaledSize.h = Math.max(scaledSize.h, item.minH || 3)
+          if (item.maxW) scaledSize.w = Math.min(scaledSize.w, item.maxW)
+          if (item.maxH) scaledSize.h = Math.min(scaledSize.h, item.maxH)
+          
+          layoutItems[itemIndex] = {
+            ...item,
+            w: scaledSize.w,
+            h: scaledSize.h
+          }
+        }
+        
+        newLayouts[breakpoint] = layoutItems
+      })
+      
+      return newLayouts
+    })
+    
+    setHasUnsavedChanges(true)
+  }, [isEditing])
+
   const saveLayout = useCallback(async (name?: string) => {
     const layoutName = name || activeLayoutData?.data?.name || 'My Dashboard'
     setIsSaving(true)
@@ -318,6 +364,7 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
     removeWidget,
     toggleWidget,
     updateLayout,
+    resizeWidget,
     saveLayout,
     loadLayout,
     deleteLayout,

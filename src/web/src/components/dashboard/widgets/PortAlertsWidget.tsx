@@ -105,6 +105,7 @@ export function PortAlertsWidget(props: WidgetProps) {
       description="Port-related security alerts and issues"
       isLoading={isLoading}
       error={error?.message}
+      widgetDefinition={props.widgetDefinition}
       actions={
         <Badge variant={criticalAlerts.length > 0 ? 'destructive' : 'secondary'}>
           {unacknowledgedAlerts.length} alerts

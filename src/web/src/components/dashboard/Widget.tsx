@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { GripVertical, X, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { WidgetProps } from '@/types/dashboard'
+import { WidgetSizePresets } from './WidgetSizePresets'
+import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface WidgetBaseProps extends WidgetProps {
   title: string
@@ -18,6 +19,7 @@ interface WidgetBaseProps extends WidgetProps {
   actions?: React.ReactNode
   isLoading?: boolean
   error?: string
+  widgetDefinition?: WidgetDefinition
 }
 
 export function WidgetBase({
@@ -32,7 +34,8 @@ export function WidgetBase({
   error,
   onRemove,
   onConfigure,
-  className
+  className,
+  widgetDefinition
 }: WidgetBaseProps) {
   return (
     <Card className={cn(
@@ -53,6 +56,12 @@ export function WidgetBase({
           
           <div className="flex items-center gap-1">
             {actions}
+            {isEditing && widgetDefinition && (
+              <WidgetSizePresets
+                widgetId={id}
+                widgetDefinition={widgetDefinition}
+              />
+            )}
             {isEditing && onConfigure && (
               <Button
                 variant="ghost"

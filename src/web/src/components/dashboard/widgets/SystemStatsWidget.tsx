@@ -162,6 +162,7 @@ export function SystemStatsWidget(props: WidgetProps) {
       description="Real-time system statistics"
       isLoading={isLoading}
       error={error?.message}
+      widgetDefinition={props.widgetDefinition}
       actions={
         <Badge variant="outline">
           <TrendingUp className="h-3 w-3 mr-1" />

@@ -163,6 +163,7 @@ export function PauseControlWidget(props: WidgetProps) {
       icon={Settings}
       description="Pause/resume operations"
       isLoading={isLoading}
+      widgetDefinition={props.widgetDefinition}
       actions={actions}
     >
       <div className="space-y-4">

@@ -139,6 +139,7 @@ export function PortMonitoringWidget(props: WidgetProps) {
       description="Port usage statistics and monitoring"
       isLoading={isLoading}
       actions={actions}
+      widgetDefinition={props.widgetDefinition}
     >
       <div className="space-y-4">
         {/* Usage Overview */}

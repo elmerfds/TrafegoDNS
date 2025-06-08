@@ -196,6 +196,7 @@ export function DNSHealthWidget(props: WidgetProps) {
       description="Real-time DNS monitoring"
       isLoading={isLoading}
       error={error?.message}
+      widgetDefinition={props.widgetDefinition}
       actions={
         <Badge variant={healthBadge.variant}>
           {health?.health_score || 0}% {healthBadge.text}

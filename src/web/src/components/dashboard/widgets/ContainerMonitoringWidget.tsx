@@ -98,6 +98,7 @@ export function ContainerMonitoringWidget(props: WidgetProps) {
       description="Docker container status and activity"
       isLoading={isLoading}
       error={error?.message}
+      widgetDefinition={props.widgetDefinition}
     >
       <div className="space-y-4">
         {/* Container Summary */}

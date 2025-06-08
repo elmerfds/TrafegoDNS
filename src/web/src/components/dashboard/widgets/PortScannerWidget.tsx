@@ -164,6 +164,7 @@ export function PortScannerWidget(props: WidgetProps) {
       title="Port Scanner"
       icon={Scan}
       description="Quick port group scanning"
+      widgetDefinition={props.widgetDefinition}
       actions={
         scanResults.size > 0 && (
           <Badge variant={totalOpen > 0 ? 'destructive' : 'default'}>

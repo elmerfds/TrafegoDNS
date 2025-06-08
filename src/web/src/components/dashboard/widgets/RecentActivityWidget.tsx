@@ -160,6 +160,7 @@ export function RecentActivityWidget(props: WidgetProps) {
       description="Latest DNS and system activities"
       isLoading={isLoading}
       error={error?.message}
+      widgetDefinition={props.widgetDefinition}
       actions={
         <Badge variant="default">
           {recentCount} in last hour

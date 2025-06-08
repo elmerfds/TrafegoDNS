@@ -92,6 +92,7 @@ export function ServiceHealthWidget(props: WidgetProps) {
       description="Core service status monitoring"
       isLoading={isLoading}
       error={error?.message}
+      widgetDefinition={props.widgetDefinition}
       actions={
         <Badge variant={healthyServices === totalServices ? 'default' : 'destructive'}>
           {healthyServices}/{totalServices} healthy
