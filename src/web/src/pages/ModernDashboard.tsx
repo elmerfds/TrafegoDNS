@@ -331,36 +331,9 @@ function DashboardGrid() {
     isEditing,
     updateLayout,
     removeWidget,
-    currentLayout
+    currentLayouts
   } = useDashboard()
   const registry = useWidgetRegistry()
-  
-  // Get current layouts from context - use defaultLayouts as fallback
-  const getCurrentLayouts = () => {
-    if (currentLayout?.layout) {
-      return currentLayout.layout as unknown as Record<string, Layout[]>
-    }
-    return {
-      lg: [
-        { i: 'status-overview', x: 0, y: 0, w: 12, h: 6, minW: 8, minH: 4 },
-        { i: 'system-stats', x: 0, y: 6, w: 12, h: 4, minW: 6, minH: 3 },
-        { i: 'dns-health', x: 0, y: 10, w: 4, h: 8, minW: 3, minH: 6 },
-        { i: 'port-monitoring', x: 4, y: 10, w: 8, h: 8, minW: 4, minH: 6 }
-      ],
-      md: [
-        { i: 'status-overview', x: 0, y: 0, w: 10, h: 6, minW: 6, minH: 4 },
-        { i: 'system-stats', x: 0, y: 6, w: 10, h: 4, minW: 5, minH: 3 },
-        { i: 'dns-health', x: 0, y: 10, w: 5, h: 8, minW: 3, minH: 6 },
-        { i: 'port-monitoring', x: 5, y: 10, w: 5, h: 8, minW: 3, minH: 6 }
-      ],
-      sm: [
-        { i: 'status-overview', x: 0, y: 0, w: 4, h: 6, minW: 4, minH: 4 },
-        { i: 'system-stats', x: 0, y: 6, w: 4, h: 4, minW: 4, minH: 3 },
-        { i: 'dns-health', x: 0, y: 10, w: 4, h: 8, minW: 4, minH: 6 },
-        { i: 'port-monitoring', x: 0, y: 18, w: 4, h: 8, minW: 4, minH: 6 }
-      ]
-    }
-  }
 
   const visibleWidgets = widgets.filter(id => !hiddenWidgets.has(id))
 
@@ -371,7 +344,7 @@ function DashboardGrid() {
   return (
     <ResponsiveGridLayout
       className="layout"
-      layouts={getCurrentLayouts()}
+      layouts={currentLayouts}
       onLayoutChange={handleLayoutChange}
       breakpoints={responsiveConfig.breakpoints}
       cols={responsiveConfig.cols}

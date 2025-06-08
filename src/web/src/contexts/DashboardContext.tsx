@@ -74,8 +74,17 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
 
   // Mutations
   const saveLayoutMutation = useMutation({
-    mutationFn: async ({ name, layout }: { name: string, layout: Record<string, Layout[]> }) => {
-      const response = await api.put(`/user/dashboard-layouts/${encodeURIComponent(name)}`, { layout })
+    mutationFn: async ({ name, layout, widgets: widgetList, hiddenWidgets: hiddenList }: { 
+      name: string, 
+      layout: Record<string, Layout[]>,
+      widgets: string[],
+      hiddenWidgets: Set<string>
+    }) => {
+      const response = await api.put(`/user/dashboard-layouts/${encodeURIComponent(name)}`, { 
+        layout,
+        widgets: widgetList,
+        hiddenWidgets: Array.from(hiddenList)
+      })
       return response.data
     },
     onSuccess: (data, variables) => {
@@ -266,6 +275,7 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
   }, [isEditing])
 
   const resizeWidget = useCallback((widgetId: string, size: { w: number; h: number }) => {
+    console.log(`resizeWidget called: ${widgetId}`, size, `isEditing: ${isEditing}`)
     if (!isEditing) return
     
     setCurrentLayouts(prevLayouts => {
@@ -314,8 +324,13 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
   const saveLayout = useCallback(async (name?: string) => {
     const layoutName = name || activeLayoutData?.data?.name || 'My Dashboard'
     setIsSaving(true)
-    saveLayoutMutation.mutate({ name: layoutName, layout: currentLayouts })
-  }, [saveLayoutMutation, currentLayouts, activeLayoutData])
+    saveLayoutMutation.mutate({ 
+      name: layoutName, 
+      layout: currentLayouts,
+      widgets,
+      hiddenWidgets
+    })
+  }, [saveLayoutMutation, currentLayouts, widgets, hiddenWidgets, activeLayoutData])
 
   const loadLayout = useCallback(async (layoutId: string) => {
     setActiveLayoutMutation.mutate(layoutId)
@@ -331,9 +346,14 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
       // Auto-save when exiting edit mode
       const layoutName = activeLayoutData?.data?.name || 'My Dashboard'
       setIsSaving(true)
-      saveLayoutMutation.mutate({ name: layoutName, layout: currentLayouts })
+      saveLayoutMutation.mutate({ 
+        name: layoutName, 
+        layout: currentLayouts,
+        widgets,
+        hiddenWidgets
+      })
     }
-  }, [hasUnsavedChanges, activeLayoutData, currentLayouts, saveLayoutMutation])
+  }, [hasUnsavedChanges, activeLayoutData, currentLayouts, widgets, hiddenWidgets, saveLayoutMutation])
 
   const resetLayout = useCallback(() => {
     setCurrentLayouts(defaultLayouts)
@@ -344,16 +364,32 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
 
   // Load active layout when data changes
   useEffect(() => {
-    if (activeLayoutData?.data?.layout) {
+    if (activeLayoutData?.data) {
+      const layoutData = activeLayoutData.data as any
+      
       // Convert DashboardLayout to Record<string, Layout[]>
-      const layouts = activeLayoutData.data.layout as unknown as Record<string, Layout[]>
-      setCurrentLayouts(layouts)
+      if (layoutData.layout) {
+        const layouts = layoutData.layout as Record<string, Layout[]>
+        setCurrentLayouts(layouts)
+      }
+      
+      // Restore widgets list if available
+      if (layoutData.widgets && Array.isArray(layoutData.widgets)) {
+        setWidgets(layoutData.widgets)
+      }
+      
+      // Restore hidden widgets if available
+      if (layoutData.hiddenWidgets && Array.isArray(layoutData.hiddenWidgets)) {
+        setHiddenWidgets(new Set(layoutData.hiddenWidgets))
+      }
+      
       setHasUnsavedChanges(false)
     }
   }, [activeLayoutData])
 
   const contextValue: DashboardContextType = {
     currentLayout: activeLayoutData?.data || null,
+    currentLayouts,
     layouts: layoutsData?.data || [],
     widgets,
     hiddenWidgets,

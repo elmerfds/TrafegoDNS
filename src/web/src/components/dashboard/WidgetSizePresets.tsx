@@ -138,6 +138,7 @@ export function WidgetSizePresets({ widgetId, widgetDefinition }: WidgetSizePres
   )
   
   const handleResize = (size: { w: number; h: number }) => {
+    console.log(`Resizing widget ${widgetId} to:`, size)
     resizeWidget(widgetId, size)
   }
   

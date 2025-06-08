@@ -101,6 +101,7 @@ export interface WidgetRegistry {
 
 export interface DashboardContextType {
   currentLayout: SavedLayout | null
+  currentLayouts: Record<string, Layout[]>
   layouts: SavedLayout[]
   widgets: string[]
   hiddenWidgets: Set<string>
