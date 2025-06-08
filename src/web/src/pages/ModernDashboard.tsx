@@ -108,6 +108,10 @@ import {
   RecentActivityWidget, 
   recentActivityDefinition 
 } from '@/components/dashboard/widgets/RecentActivityWidget'
+import { 
+  PauseControlWidget, 
+  pauseControlDefinition 
+} from '@/components/dashboard/widgets/PauseControlWidget'
 
 // Styles
 import 'react-grid-layout/css/styles.css'
@@ -135,6 +139,7 @@ const availableWidgets = [
   { definition: serviceHealthDefinition, component: ServiceHealthWidget },
   { definition: recentActivityDefinition, component: RecentActivityWidget },
   { definition: quickActionsDefinition, component: QuickActionsWidget },
+  { definition: pauseControlDefinition, component: PauseControlWidget },
   
   // DNS & Networking Widgets
   { definition: dnsHealthDefinition, component: DNSHealthWidget },
@@ -166,7 +171,7 @@ function AddWidgetDialog() {
           Add Widget
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[80vh]">
         <DialogHeader>
           <DialogTitle>Add Widget</DialogTitle>
           <DialogDescription>
@@ -174,7 +179,7 @@ function AddWidgetDialog() {
           </DialogDescription>
         </DialogHeader>
         
-        <div className="space-y-6">
+        <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2">
           {categories.map(category => {
             const widgets = registry.getByCategory(category)
             if (widgets.length === 0) return null

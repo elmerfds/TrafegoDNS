@@ -39,63 +39,99 @@ function useDNSHealth() {
   return useQuery({
     queryKey: ['dns-health'],
     queryFn: async (): Promise<DNSHealth> => {
+      // Get main status data first (this is guaranteed to work)
+      const statusRes = await api.get('/status')
+      const statusData = statusRes.data.data
+      
+      if (!statusData) {
+        throw new Error('No status data available')
+      }
+      
+      // Get real DNS records data
+      let records = {
+        total: 0,
+        managed: 0,
+        orphaned: 0,
+        by_type: {}
+      }
+      
       try {
-        const [recordsRes, providersRes, zonesRes] = await Promise.all([
-          api.get('/dns/stats'),
-          api.get('/config/providers/status'),
-          api.get('/dns/zones/stats')
-        ])
-        
-        const records = recordsRes.data.data
-        const providers = providersRes.data.data
-        const zones = zonesRes.data.data
-        
-        // Calculate health score based on provider connectivity and orphaned records
-        const connectedProviders = providers.filter((p: any) => p.status === 'connected' || p.status === 'active').length
-        const totalProviders = providers.length
-        const orphanedRatio = records.orphaned / (records.total || 1)
-        const healthScore = Math.round(
-          ((connectedProviders / totalProviders) * 0.7 + (1 - orphanedRatio) * 0.3) * 100
-        )
-        
-        return {
-          records,
-          providers,
-          zones,
-          health_score: healthScore
+        const recordsRes = await api.get('/dns/stats')
+        if (recordsRes.data.data) {
+          records = recordsRes.data.data
         }
       } catch (error) {
-        // Fallback to mock data if APIs fail
-        return {
-          records: {
-            total: 15,
-            managed: 12,
-            orphaned: 3,
-            by_type: { 'A': 8, 'CNAME': 4, 'MX': 2, 'TXT': 1 }
-          },
-          providers: [
-            {
-              name: 'Cloudflare',
-              type: 'cloudflare',
-              status: 'connected',
-              record_count: 8,
-              last_sync: new Date().toISOString(),
-              response_time: 120
-            },
-            {
-              name: 'DigitalOcean',
-              type: 'digitalocean',
-              status: 'disconnected',
-              record_count: 4,
-              response_time: undefined
-            }
-          ],
-          zones: { total: 3, active: 2 },
-          health_score: 75
+        console.warn('DNS stats not available, using status data')
+        // Fallback to status data
+        if (statusData.statistics) {
+          records = {
+            total: statusData.statistics.totalRecords || 0,
+            managed: statusData.statistics.totalRecords || 0,
+            orphaned: 0,
+            by_type: {}
+          }
         }
       }
+      
+      // Get real provider data
+      let providers = []
+      
+      try {
+        const providersRes = await api.get('/config/providers/status')
+        if (providersRes.data.data) {
+          providers = providersRes.data.data
+        }
+      } catch (error) {
+        console.warn('Provider status not available, using status data')
+        // Fallback to status data
+        const dnsProvider = statusData.services?.dnsProvider
+        if (dnsProvider) {
+          providers = [{
+            name: dnsProvider.type.charAt(0).toUpperCase() + dnsProvider.type.slice(1),
+            type: dnsProvider.type,
+            status: dnsProvider.status,
+            record_count: records.total,
+            last_sync: new Date().toISOString(),
+            response_time: undefined
+          }]
+        }
+      }
+      
+      // Get zones data (optional)
+      let zones = { total: 0, active: 0 }
+      
+      try {
+        const zonesRes = await api.get('/dns/zones/stats')
+        if (zonesRes.data.data) {
+          zones = zonesRes.data.data
+        }
+      } catch (error) {
+        console.warn('DNS zones stats not available')
+        // Use minimal zone data
+        zones = {
+          total: providers.length > 0 ? 1 : 0,
+          active: providers.filter((p: any) => p.status === 'connected' || p.status === 'active').length > 0 ? 1 : 0
+        }
+      }
+      
+      // Calculate real health score
+      const connectedProviders = providers.filter((p: any) => p.status === 'connected' || p.status === 'active').length
+      const totalProviders = providers.length || 1
+      const orphanedRatio = records.orphaned / (records.total || 1)
+      const healthScore = Math.round(
+        ((connectedProviders / totalProviders) * 0.7 + (1 - orphanedRatio) * 0.3) * 100
+      )
+      
+      return {
+        records,
+        providers,
+        zones,
+        health_score: healthScore
+      }
     },
-    refetchInterval: 60000, // Refresh every minute
+    refetchInterval: 60000,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   })
 }
 

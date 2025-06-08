@@ -4,27 +4,97 @@
  */
 
 import React from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Network, Activity, Lock, AlertTriangle } from 'lucide-react'
 import { WidgetBase } from '../Widget'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { useNavigate } from 'react-router-dom'
-import { usePortStatistics, useReservationsData } from '@/store/portStore'
+import { api } from '@/lib/api'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
+
+interface PortMonitoringData {
+  statistics: {
+    totalMonitoredPorts: number
+    systemPortsInUse: number
+    availablePortsInRange: number
+    alertCount: number
+  }
+  reservations: number
+  monitoring_active: boolean
+}
+
+function usePortMonitoringData() {
+  return useQuery({
+    queryKey: ['port-monitoring'],
+    queryFn: async (): Promise<PortMonitoringData> => {
+      let data: PortMonitoringData = {
+        statistics: {
+          totalMonitoredPorts: 0,
+          systemPortsInUse: 0,
+          availablePortsInRange: 0,
+          alertCount: 0
+        },
+        reservations: 0,
+        monitoring_active: false
+      }
+
+      // Try to get port statistics
+      try {
+        const statsRes = await api.get('/ports/statistics')
+        if (statsRes.data.data) {
+          data.statistics = {
+            totalMonitoredPorts: statsRes.data.data.totalMonitoredPorts || 0,
+            systemPortsInUse: statsRes.data.data.systemPortsInUse || 0,
+            availablePortsInRange: statsRes.data.data.availablePortsInRange || 0,
+            alertCount: statsRes.data.data.alertCount || 0
+          }
+          data.monitoring_active = true
+        }
+      } catch (error) {
+        console.warn('Port statistics not available:', error)
+      }
+
+      // Try to get reservations count
+      try {
+        const reservationsRes = await api.get('/ports/reservations')
+        if (reservationsRes.data.data) {
+          data.reservations = Array.isArray(reservationsRes.data.data) ? reservationsRes.data.data.length : 0
+        }
+      } catch (error) {
+        console.warn('Port reservations not available:', error)
+      }
+
+      // Try to get alerts count if statistics didn't work
+      if (!data.monitoring_active) {
+        try {
+          const alertsRes = await api.get('/ports/alerts')
+          if (alertsRes.data.data) {
+            data.statistics.alertCount = Array.isArray(alertsRes.data.data) ? alertsRes.data.data.length : 0
+          }
+        } catch (error) {
+          console.warn('Port alerts not available:', error)
+        }
+      }
+
+      return data
+    },
+    refetchInterval: 30000,
+    retry: 2,
+  })
+}
 
 export function PortMonitoringWidget(props: WidgetProps) {
   const navigate = useNavigate()
-  const { statistics: portStats, loading: statsLoading } = usePortStatistics()
-  const { reservations, loading: reservationsLoading } = useReservationsData()
-
-  const isLoading = statsLoading || reservationsLoading
+  const { data: portData, isLoading, error } = usePortMonitoringData()
 
   // Calculate metrics
-  const totalPorts = portStats?.totalMonitoredPorts || 0
-  const usedPorts = portStats?.systemPortsInUse || 0
-  const reservedPorts = reservations?.length || 0
-  const availablePorts = portStats?.availablePortsInRange || 0
+  const totalPorts = portData?.statistics.totalMonitoredPorts || 0
+  const usedPorts = portData?.statistics.systemPortsInUse || 0
+  const reservedPorts = portData?.reservations || 0
+  const availablePorts = portData?.statistics.availablePortsInRange || 0
+  const alertCount = portData?.statistics.alertCount || 0
   
   const usagePercentage = totalPorts > 0 ? (usedPorts / totalPorts) * 100 : 0
 
@@ -56,8 +126,8 @@ export function PortMonitoringWidget(props: WidgetProps) {
   ]
 
   const actions = (
-    <Badge variant={portStats?.monitoringEnabled ? 'default' : 'secondary'}>
-      {portStats?.monitoringEnabled ? 'Active' : 'Inactive'}
+    <Badge variant={portData?.monitoring_active ? 'default' : 'secondary'}>
+      {portData?.monitoring_active ? 'Active' : 'Inactive'}
     </Badge>
   )
 
@@ -101,11 +171,11 @@ export function PortMonitoringWidget(props: WidgetProps) {
         </div>
 
         {/* Quick Status */}
-        {portStats?.conflictsDetected && portStats.conflictsDetected > 0 && (
+        {alertCount > 0 && (
           <div className="flex items-center gap-2 p-2 bg-yellow-50 dark:bg-yellow-950/30 rounded border border-yellow-200 dark:border-yellow-800">
             <AlertTriangle className="h-4 w-4 text-yellow-600" />
             <span className="text-sm text-yellow-800 dark:text-yellow-200">
-              {portStats.conflictsDetected} conflicts detected
+              {alertCount} alerts detected
             </span>
           </div>
         )}
@@ -133,9 +203,9 @@ export function PortMonitoringWidget(props: WidgetProps) {
         </div>
 
         {/* Last Update */}
-        {portStats?.lastScanTime && (
+        {portData?.monitoring_active && (
           <div className="text-xs text-muted-foreground text-center">
-            Last scan: {new Date(portStats.lastScanTime).toLocaleTimeString()}
+            Last updated: {new Date().toLocaleTimeString()}
           </div>
         )}
       </div>
