@@ -123,7 +123,7 @@ const ResponsiveGridLayout = WidthProvider(Responsive)
 // Responsive configuration with better adaptive sizing
 const responsiveConfig = {
   breakpoints: { lg: 1200, md: 996, sm: 768, xs: 480 },
-  cols: { lg: 12, md: 10, sm: 6, xs: 4 },
+  cols: { lg: 24, md: 20, sm: 12, xs: 8 }, // Increased columns for more horizontal flexibility
   margin: [12, 12] as [number, number], // Reduced margins for better space utilization
   containerPadding: [12, 12] as [number, number],
   rowHeight: 60

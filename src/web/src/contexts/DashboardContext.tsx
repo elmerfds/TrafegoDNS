@@ -24,22 +24,22 @@ interface DashboardProviderProps {
 // Default responsive configuration with status overview at top
 const defaultLayouts: Record<string, Layout[]> = {
   lg: [
-    { i: 'status-overview', x: 0, y: 0, w: 12, h: 6, minW: 8, minH: 4 },
-    { i: 'system-stats', x: 0, y: 6, w: 12, h: 4, minW: 6, minH: 3 },
-    { i: 'dns-health', x: 0, y: 10, w: 4, h: 8, minW: 3, minH: 6 },
-    { i: 'port-monitoring', x: 4, y: 10, w: 8, h: 8, minW: 4, minH: 6 }
+    { i: 'status-overview', x: 0, y: 0, w: 24, h: 6, minW: 8, minH: 4 },
+    { i: 'system-stats', x: 0, y: 6, w: 24, h: 4, minW: 6, minH: 3 },
+    { i: 'dns-health', x: 0, y: 10, w: 8, h: 8, minW: 3, minH: 6 },
+    { i: 'port-monitoring', x: 8, y: 10, w: 16, h: 8, minW: 4, minH: 6 }
   ],
   md: [
-    { i: 'status-overview', x: 0, y: 0, w: 10, h: 6, minW: 6, minH: 4 },
-    { i: 'system-stats', x: 0, y: 6, w: 10, h: 4, minW: 5, minH: 3 },
-    { i: 'dns-health', x: 0, y: 10, w: 5, h: 8, minW: 3, minH: 6 },
-    { i: 'port-monitoring', x: 5, y: 10, w: 5, h: 8, minW: 3, minH: 6 }
+    { i: 'status-overview', x: 0, y: 0, w: 20, h: 6, minW: 6, minH: 4 },
+    { i: 'system-stats', x: 0, y: 6, w: 20, h: 4, minW: 5, minH: 3 },
+    { i: 'dns-health', x: 0, y: 10, w: 10, h: 8, minW: 3, minH: 6 },
+    { i: 'port-monitoring', x: 10, y: 10, w: 10, h: 8, minW: 3, minH: 6 }
   ],
   sm: [
-    { i: 'status-overview', x: 0, y: 0, w: 4, h: 6, minW: 4, minH: 4 },
-    { i: 'system-stats', x: 0, y: 6, w: 4, h: 4, minW: 4, minH: 3 },
-    { i: 'dns-health', x: 0, y: 10, w: 4, h: 8, minW: 4, minH: 6 },
-    { i: 'port-monitoring', x: 0, y: 18, w: 4, h: 8, minW: 4, minH: 6 }
+    { i: 'status-overview', x: 0, y: 0, w: 12, h: 6, minW: 4, minH: 4 },
+    { i: 'system-stats', x: 0, y: 6, w: 12, h: 4, minW: 4, minH: 3 },
+    { i: 'dns-health', x: 0, y: 10, w: 12, h: 8, minW: 4, minH: 6 },
+    { i: 'port-monitoring', x: 0, y: 18, w: 12, h: 8, minW: 4, minH: 6 }
   ]
 }
 
@@ -81,9 +81,11 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
       hiddenWidgets: Set<string>
     }) => {
       const response = await api.put(`/user/dashboard-layouts/${encodeURIComponent(name)}`, { 
-        layout,
-        widgets: widgetList,
-        hiddenWidgets: Array.from(hiddenList)
+        layout: {
+          ...layout,
+          widgets: widgetList,
+          hiddenWidgets: Array.from(hiddenList)
+        }
       })
       return response.data
     },
@@ -182,27 +184,27 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
         // Responsive configuration with better sizing logic
         const breakpointConfigs = {
           lg: { 
-            cols: 12, 
+            cols: 24, 
             defaultSize: widgetDefinition.defaultSize 
           },
           md: { 
-            cols: 10, 
+            cols: 20, 
             defaultSize: { 
-              w: Math.min(widgetDefinition.defaultSize.w, 8), 
+              w: Math.min(widgetDefinition.defaultSize.w, 16), 
               h: widgetDefinition.defaultSize.h 
             } 
           },
           sm: { 
-            cols: 6, 
+            cols: 12, 
             defaultSize: { 
-              w: Math.min(widgetDefinition.defaultSize.w, 6), 
+              w: Math.min(widgetDefinition.defaultSize.w, 12), 
               h: widgetDefinition.defaultSize.h 
             } 
           },
           xs: { 
-            cols: 4, 
+            cols: 8, 
             defaultSize: { 
-              w: 4, 
+              w: Math.min(widgetDefinition.defaultSize.w, 8), 
               h: widgetDefinition.defaultSize.h 
             } 
           }
@@ -275,7 +277,6 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
   }, [isEditing])
 
   const resizeWidget = useCallback((widgetId: string, size: { w: number; h: number }) => {
-    console.log(`resizeWidget called: ${widgetId}`, size, `isEditing: ${isEditing}`)
     if (!isEditing) return
     
     setCurrentLayouts(prevLayouts => {
@@ -367,20 +368,24 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
     if (activeLayoutData?.data) {
       const layoutData = activeLayoutData.data as any
       
-      // Convert DashboardLayout to Record<string, Layout[]>
       if (layoutData.layout) {
-        const layouts = layoutData.layout as Record<string, Layout[]>
-        setCurrentLayouts(layouts)
-      }
-      
-      // Restore widgets list if available
-      if (layoutData.widgets && Array.isArray(layoutData.widgets)) {
-        setWidgets(layoutData.widgets)
-      }
-      
-      // Restore hidden widgets if available
-      if (layoutData.hiddenWidgets && Array.isArray(layoutData.hiddenWidgets)) {
-        setHiddenWidgets(new Set(layoutData.hiddenWidgets))
+        const layout = layoutData.layout as any
+        
+        // Extract grid layouts (remove widgets and hiddenWidgets from the grid config)
+        const { widgets: savedWidgets, hiddenWidgets: savedHiddenWidgets, ...gridLayouts } = layout
+        setCurrentLayouts(gridLayouts)
+        
+        // Restore widgets list if available
+        if (savedWidgets && Array.isArray(savedWidgets)) {
+          console.log('Loading saved widgets:', savedWidgets)
+          setWidgets(savedWidgets)
+        }
+        
+        // Restore hidden widgets if available
+        if (savedHiddenWidgets && Array.isArray(savedHiddenWidgets)) {
+          console.log('Loading saved hidden widgets:', savedHiddenWidgets)
+          setHiddenWidgets(new Set(savedHiddenWidgets))
+        }
       }
       
       setHasUnsavedChanges(false)
