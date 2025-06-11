@@ -25,6 +25,15 @@ export function PortCheckerWidget(props: WidgetProps) {
   const [checking, setChecking] = useState(false)
   const [result, setResult] = useState<PortCheckResult | null>(null)
   const [recentChecks, setRecentChecks] = useState<PortCheckResult[]>([])
+  const { displayMode = 'normal', currentBreakpoint = 'lg' } = props
+  
+  // Calculate how many items to show based on widget size
+  const getMaxItems = () => {
+    if (displayMode === 'compact') return 3
+    if (currentBreakpoint === 'lg') return 10  // More items on larger screens
+    if (currentBreakpoint === 'md') return 6
+    return 4
+  }
 
   const checkPort = async () => {
     if (!port || isNaN(Number(port))) return
@@ -79,9 +88,9 @@ export function PortCheckerWidget(props: WidgetProps) {
       description="Check port availability"
       widgetDefinition={props.widgetDefinition}
     >
-      <div className="space-y-4">
+      <div className="flex flex-col h-full">
         {/* Port Input */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 mb-3">
           <Input
             type="number"
             placeholder="Enter port number"
@@ -106,7 +115,7 @@ export function PortCheckerWidget(props: WidgetProps) {
 
         {/* Current Result */}
         {result && (
-          <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg mb-3">
             <div className="flex items-center justify-between mb-2">
               <span className="font-medium">Port {result.port}</span>
               <Badge variant="outline" className={getStatusColor(result.status)}>
@@ -131,10 +140,10 @@ export function PortCheckerWidget(props: WidgetProps) {
 
         {/* Recent Checks */}
         {recentChecks.length > 0 && (
-          <div className="space-y-2">
+          <div className="flex-1 space-y-2 overflow-y-auto min-h-0 mb-3">
             <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Recent Checks</h4>
-            <div className="space-y-1 max-h-32 overflow-y-auto">
-              {recentChecks.map((check, index) => (
+            <div className="space-y-1">
+              {recentChecks.slice(0, getMaxItems()).map((check, index) => (
                 <div key={index} className="flex items-center justify-between p-2 text-sm bg-gray-50 dark:bg-gray-800 rounded">
                   <span>Port {check.port}</span>
                   <Badge variant="outline" className={getStatusColor(check.status)}>
@@ -147,7 +156,7 @@ export function PortCheckerWidget(props: WidgetProps) {
         )}
 
         {/* Quick Port Suggestions */}
-        <div className="space-y-2">
+        <div className="space-y-2 mt-auto">
           <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Quick Check</h4>
           <div className="grid grid-cols-3 gap-2">
             {[3000, 8080, 9000].map(quickPort => (

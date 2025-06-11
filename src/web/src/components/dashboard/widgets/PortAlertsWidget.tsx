@@ -66,6 +66,15 @@ function usePortAlerts() {
 export function PortAlertsWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data: alerts = [], isLoading, error } = usePortAlerts()
+  const { displayMode = 'normal', currentBreakpoint = 'lg' } = props
+  
+  // Calculate how many items to show based on widget size
+  const getMaxItems = () => {
+    if (displayMode === 'compact') return 3
+    if (currentBreakpoint === 'lg') return 10  // More items on larger screens
+    if (currentBreakpoint === 'md') return 6
+    return 4
+  }
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -113,11 +122,11 @@ export function PortAlertsWidget(props: WidgetProps) {
         </Badge>
       }
     >
-      <div className="space-y-3">
+      <div className="flex flex-col h-full">
         {unacknowledgedAlerts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center space-y-3 py-6">
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
             <CheckCircle className="h-12 w-12 text-green-500" />
-            <div>
+            <div className="text-center space-y-2">
               <h3 className="font-medium text-green-700 dark:text-green-300">All Clear!</h3>
               <p className="text-sm text-green-600 dark:text-green-400">
                 No port alerts at this time
@@ -125,8 +134,8 @@ export function PortAlertsWidget(props: WidgetProps) {
             </div>
           </div>
         ) : (
-          <div className="space-y-3 max-h-64 overflow-y-auto">
-            {unacknowledgedAlerts.slice(0, 5).map((alert) => (
+          <div className="flex-1 space-y-2 overflow-y-auto min-h-0 mb-3">
+            {unacknowledgedAlerts.slice(0, getMaxItems()).map((alert) => (
               <Alert key={alert.id} className={getSeverityColor(alert.severity)}>
                 <div className="flex items-start gap-2">
                   {getSeverityIcon(alert.severity)}
@@ -153,9 +162,9 @@ export function PortAlertsWidget(props: WidgetProps) {
           </div>
         )}
 
-        {/* Summary Stats */}
-        {alerts.length > 0 && (
-          <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
+        {/* Summary Stats - only in detailed mode */}
+        {alerts.length > 0 && displayMode === 'detailed' && currentBreakpoint === 'lg' && (
+          <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-200 dark:border-gray-700 mb-3">
             <div className="text-center">
               <div className="text-lg font-bold text-red-600">
                 {criticalAlerts.length}
@@ -177,7 +186,7 @@ export function PortAlertsWidget(props: WidgetProps) {
 
         {/* Quick Actions */}
         {alerts.length > 0 && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 mt-auto">
             <Button
               variant="outline"
               size="sm"

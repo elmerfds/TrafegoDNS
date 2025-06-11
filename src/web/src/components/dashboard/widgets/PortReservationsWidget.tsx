@@ -78,6 +78,15 @@ export function PortReservationsWidget(props: WidgetProps) {
   const [quickReservePort, setQuickReservePort] = useState('')
   const [quickReserveService, setQuickReserveService] = useState('')
   const { data: reservations = [], isLoading, error } = usePortReservations()
+  const { displayMode = 'normal', currentBreakpoint = 'lg' } = props
+  
+  // Calculate how many items to show based on widget size
+  const getMaxItems = () => {
+    if (displayMode === 'compact') return 3
+    if (currentBreakpoint === 'lg') return 10  // More items on larger screens
+    if (currentBreakpoint === 'md') return 6
+    return 4
+  }
 
   const reservePortMutation = useMutation({
     mutationFn: async ({ port, serviceName }: { port: number, serviceName: string }) => {
@@ -189,9 +198,9 @@ export function PortReservationsWidget(props: WidgetProps) {
         </Badge>
       }
     >
-      <div className="space-y-4">
+      <div className="flex flex-col h-full">
         {/* Quick Reserve */}
-        <div className="space-y-2">
+        <div className="space-y-2 mb-3">
           <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Quick Reserve</h4>
           <div className="flex gap-2">
             <Input
@@ -221,10 +230,10 @@ export function PortReservationsWidget(props: WidgetProps) {
 
         {/* Active Reservations */}
         {activeReservations.length > 0 ? (
-          <div className="space-y-2">
+          <div className="flex-1 space-y-2 overflow-y-auto min-h-0 mb-3">
             <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Active Reservations</h4>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {activeReservations.map((reservation) => (
+            <div className="space-y-2">
+              {activeReservations.slice(0, getMaxItems()).map((reservation) => (
                 <div
                   key={reservation.id}
                   className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
@@ -273,15 +282,15 @@ export function PortReservationsWidget(props: WidgetProps) {
             </div>
           </div>
         ) : (
-          <div className="text-center py-6 text-muted-foreground">
-            <Shield className="h-8 w-8 mx-auto mb-2 opacity-50" />
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
+            <Shield className="h-8 w-8 mb-2 opacity-50" />
             <p className="text-sm">No active reservations</p>
           </div>
         )}
 
-        {/* Summary Stats */}
-        {reservations.length > 0 && (
-          <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
+        {/* Summary Stats - only in detailed mode */}
+        {reservations.length > 0 && displayMode === 'detailed' && currentBreakpoint === 'lg' && (
+          <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-200 dark:border-gray-700 mb-3">
             <div className="text-center">
               <div className="text-lg font-bold text-blue-600">
                 {activeReservations.length}
@@ -302,7 +311,7 @@ export function PortReservationsWidget(props: WidgetProps) {
         )}
 
         {/* Quick Suggestions */}
-        <div className="space-y-2">
+        <div className="space-y-2 mt-auto">
           <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Quick Reserve</h4>
           <div className="grid grid-cols-2 gap-2">
             {[

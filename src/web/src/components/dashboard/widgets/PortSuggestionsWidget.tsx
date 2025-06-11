@@ -35,6 +35,15 @@ export function PortSuggestionsWidget(props: WidgetProps) {
   const [suggestions, setSuggestions] = useState<PortSuggestion[]>([])
   const [loading, setLoading] = useState(false)
   const [copiedPort, setCopiedPort] = useState<number | null>(null)
+  const { displayMode = 'normal', currentBreakpoint = 'lg' } = props
+  
+  // Calculate how many items to show based on widget size
+  const getMaxItems = () => {
+    if (displayMode === 'compact') return 3
+    if (currentBreakpoint === 'lg') return 10  // More items on larger screens
+    if (currentBreakpoint === 'md') return 6
+    return 4
+  }
 
   const generateSuggestions = async () => {
     setLoading(true)
@@ -119,9 +128,9 @@ export function PortSuggestionsWidget(props: WidgetProps) {
       description="Generate available port suggestions"
       widgetDefinition={props.widgetDefinition}
     >
-      <div className="space-y-4">
+      <div className="flex flex-col h-full">
         {/* Service Type Selection */}
-        <div className="space-y-2">
+        <div className="space-y-2 mb-3">
           <label className="text-sm font-medium">Service Type</label>
           <Select value={serviceType} onValueChange={setServiceType}>
             <SelectTrigger>
@@ -141,7 +150,7 @@ export function PortSuggestionsWidget(props: WidgetProps) {
         <Button 
           onClick={generateSuggestions} 
           disabled={loading}
-          className="w-full"
+          className="w-full mb-3"
         >
           {loading ? (
             <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
@@ -152,13 +161,13 @@ export function PortSuggestionsWidget(props: WidgetProps) {
         </Button>
 
         {/* Suggestions List */}
-        {suggestions.length > 0 && (
-          <div className="space-y-2">
+        {suggestions.length > 0 ? (
+          <div className="flex-1 space-y-2 overflow-y-auto min-h-0 mb-3">
             <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Suggested Ports
             </h4>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {suggestions.map((suggestion) => (
+            <div className="space-y-2">
+              {suggestions.slice(0, getMaxItems()).map((suggestion) => (
                 <div
                   key={suggestion.port}
                   className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
@@ -196,10 +205,15 @@ export function PortSuggestionsWidget(props: WidgetProps) {
               ))}
             </div>
           </div>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
+            <Eye className="h-8 w-8 mb-2 opacity-50" />
+            <p className="text-sm">No suggestions yet</p>
+          </div>
         )}
 
         {/* Quick Generate for Common Services */}
-        <div className="space-y-2">
+        <div className="space-y-2 mt-auto">
           <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Quick Generate</h4>
           <div className="grid grid-cols-2 gap-2">
             {serviceTypes.slice(0, 4).map(service => (

@@ -68,6 +68,15 @@ export function PortScannerWidget(props: WidgetProps) {
   const { toast } = useToast()
   const [scanning, setScanning] = useState<string | null>(null)
   const [scanResults, setScanResults] = useState<Map<string, GroupScanResult>>(new Map())
+  const { displayMode = 'normal', currentBreakpoint = 'lg' } = props
+  
+  // Calculate how many items to show based on widget size
+  const getMaxItems = () => {
+    if (displayMode === 'compact') return 3
+    if (currentBreakpoint === 'lg') return 10  // More items on larger screens
+    if (currentBreakpoint === 'md') return 6
+    return 4
+  }
 
   const scanPortGroup = async (group: PortGroup) => {
     setScanning(group.id)
@@ -174,9 +183,9 @@ export function PortScannerWidget(props: WidgetProps) {
         )
       }
     >
-      <div className="space-y-4">
+      <div className="flex flex-col h-full">
         {/* Port Group Buttons */}
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2 mb-3">
           {portGroups.map((group) => (
             <Button
               key={group.id}
@@ -200,13 +209,13 @@ export function PortScannerWidget(props: WidgetProps) {
         </div>
 
         {/* Scan Results */}
-        {scanResults.size > 0 && (
-          <div className="space-y-3">
+        {scanResults.size > 0 ? (
+          <div className="flex-1 space-y-2 overflow-y-auto min-h-0 mb-3">
             <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Recent Scans
             </h4>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {Array.from(scanResults.entries()).map(([groupId, result]) => {
+            <div className="space-y-2">
+              {Array.from(scanResults.entries()).slice(0, getMaxItems()).map(([groupId, result]) => {
                 const group = portGroups.find(g => g.id === groupId)
                 if (!group) return null
 
@@ -248,11 +257,16 @@ export function PortScannerWidget(props: WidgetProps) {
               })}
             </div>
           </div>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
+            <Scan className="h-8 w-8 mb-2 opacity-50" />
+            <p className="text-sm">No scan results yet</p>
+          </div>
         )}
 
-        {/* Summary Stats */}
-        {scanResults.size > 0 && (
-          <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
+        {/* Summary Stats - only in detailed mode */}
+        {scanResults.size > 0 && displayMode === 'detailed' && currentBreakpoint === 'lg' && (
+          <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-200 dark:border-gray-700 mb-3">
             <div className="text-center">
               <div className="text-lg font-bold text-red-600">
                 {totalOpen}
@@ -276,7 +290,7 @@ export function PortScannerWidget(props: WidgetProps) {
         <Button
           variant="default"
           size="sm"
-          className="w-full"
+          className="w-full mt-auto"
           onClick={() => {
             portGroups.forEach(group => {
               setTimeout(() => scanPortGroup(group), Math.random() * 2000)

@@ -107,6 +107,15 @@ export function RecentActivityWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data: activities = [], isLoading, error } = useRecentActivity()
+  const { displayMode = 'normal', currentBreakpoint = 'lg' } = props
+  
+  // Calculate how many items to show based on widget size
+  const getMaxItems = () => {
+    if (displayMode === 'compact') return 3
+    if (currentBreakpoint === 'lg') return 8  // More items on larger screens
+    if (currentBreakpoint === 'md') return 6
+    return 4
+  }
 
   // Listen for real-time events to trigger data refresh
   useSocketEvent('event', (event: { type: string; data: any }) => {
@@ -168,11 +177,11 @@ export function RecentActivityWidget(props: WidgetProps) {
         </Badge>
       }
     >
-      <div className="space-y-3">
+      <div className="flex flex-col h-full">
         {/* Activity Feed */}
         {activities.length > 0 ? (
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {activities.map((activity, index) => {
+          <div className="flex-1 space-y-2 overflow-y-auto min-h-0 mb-3">
+            {activities.slice(0, getMaxItems()).map((activity, index) => {
               const Icon = activityIcons[activity.type] || Activity
               const colorClass = activityColors[activity.type] || 'text-gray-600'
               
@@ -181,7 +190,7 @@ export function RecentActivityWidget(props: WidgetProps) {
                   key={activity.id} 
                   className={cn(
                     "flex items-start gap-3 p-2 rounded-lg transition-colors hover:bg-muted/50",
-                    index < activities.length - 1 && "border-b border-border/50 pb-3 mb-3"
+                    index < getMaxItems() - 1 && index < activities.length - 1 && "border-b border-border/50 pb-3 mb-3"
                   )}
                 >
                   <div className={cn(
@@ -218,16 +227,18 @@ export function RecentActivityWidget(props: WidgetProps) {
             })}
           </div>
         ) : (
-          <div className="text-center py-6 text-muted-foreground">
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
             <Activity className="h-8 w-8 mx-auto mb-2 opacity-50" />
             <p className="text-sm">No recent activity</p>
-            <p className="text-xs">Activity will appear here as you manage DNS records</p>
+            {!displayMode || displayMode !== 'compact' && (
+              <p className="text-xs">Activity will appear here as you manage DNS records</p>
+            )}
           </div>
         )}
 
-        {/* Activity Stats */}
-        {activities.length > 0 && (
-          <div className="grid grid-cols-3 gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
+        {/* Activity Stats - Only show in detailed mode and larger widgets */}
+        {activities.length > 0 && displayMode === 'detailed' && currentBreakpoint === 'lg' && (
+          <div className="grid grid-cols-3 gap-2 pt-3 mb-3 border-t border-gray-200 dark:border-gray-700">
             <div className="text-center">
               <div className="text-lg font-bold text-green-600">
                 {activities.filter(a => a.type === 'created').length}
@@ -255,8 +266,8 @@ export function RecentActivityWidget(props: WidgetProps) {
           </div>
         )}
 
-        {/* Quick Actions */}
-        <div className="flex gap-2">
+        {/* Quick Actions - Always at bottom */}
+        <div className="flex gap-2 mt-auto">
           <Button
             variant="outline"
             size="sm"
@@ -264,7 +275,7 @@ export function RecentActivityWidget(props: WidgetProps) {
             onClick={() => navigate('/logs?tab=activity')}
           >
             View All
-            <ArrowRight className="h-4 w-4 ml-2" />
+            {displayMode !== 'compact' && <ArrowRight className="h-4 w-4 ml-2" />}
           </Button>
           <Button
             variant="outline"
