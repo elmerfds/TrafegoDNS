@@ -11,6 +11,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
+import { createResponsiveSizes } from '@/lib/responsiveUtils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface SystemAlert {
@@ -141,7 +142,13 @@ export const systemAlertsDefinition: WidgetDefinition = {
   description: 'Important system alerts and warnings',
   category: 'system',
   icon: AlertTriangle,
-  defaultSize: { w: 20, h: 4 },
-  minSize: { w: 8, h: 3 },
-  maxSize: { w: 24, h: 10 }
+  defaultSize: createResponsiveSizes({ w: 20, h: 4 }),
+  minSize: createResponsiveSizes({ w: 8, h: 3 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  maxSize: createResponsiveSizes({ w: 24, h: 10 }),
+  responsiveDisplay: {
+    lg: 'detailed',
+    md: 'normal',
+    sm: 'compact',
+    xs: 'compact'
+  }
 }

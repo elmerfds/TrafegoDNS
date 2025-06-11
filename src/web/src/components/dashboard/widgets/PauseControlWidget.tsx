@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 import { api } from '@/lib/api'
+import { createResponsiveSizes } from '@/lib/responsiveUtils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface PauseStatus {
@@ -261,7 +262,13 @@ export const pauseControlDefinition: WidgetDefinition = {
   description: 'Pause and resume system operations',
   category: 'system',
   icon: Settings,
-  defaultSize: { w: 8, h: 5 },
-  minSize: { w: 6, h: 4 },
-  maxSize: { w: 12, h: 6 }
+  defaultSize: createResponsiveSizes({ w: 8, h: 5 }),
+  minSize: createResponsiveSizes({ w: 6, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  maxSize: createResponsiveSizes({ w: 12, h: 6 }),
+  responsiveDisplay: {
+    lg: 'detailed',
+    md: 'normal',
+    sm: 'compact',
+    xs: 'compact'
+  }
 }

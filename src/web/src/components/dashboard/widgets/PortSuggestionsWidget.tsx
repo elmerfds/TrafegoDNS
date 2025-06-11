@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
+import { createResponsiveSizes } from '@/lib/responsiveUtils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface PortSuggestion {
@@ -228,7 +229,13 @@ export const portSuggestionsDefinition: WidgetDefinition = {
   description: 'Generate available port suggestions for different services',
   category: 'ports',
   icon: Eye,
-  defaultSize: { w: 8, h: 10 },
-  minSize: { w: 6, h: 8 },
-  maxSize: { w: 12, h: 12 }
+  defaultSize: createResponsiveSizes({ w: 8, h: 10 }),
+  minSize: createResponsiveSizes({ w: 6, h: 8 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  maxSize: createResponsiveSizes({ w: 12, h: 12 }),
+  responsiveDisplay: {
+    lg: 'detailed',
+    md: 'normal',
+    sm: 'compact',
+    xs: 'compact'
+  }
 }

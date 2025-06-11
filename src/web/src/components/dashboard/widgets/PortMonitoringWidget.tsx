@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
+import { createResponsiveSizes } from '@/lib/responsiveUtils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface PortMonitoringData {
@@ -220,7 +221,13 @@ export const portMonitoringDefinition: WidgetDefinition = {
   description: 'Port usage statistics and monitoring status',
   category: 'ports',
   icon: Network,
-  defaultSize: { w: 12, h: 6 },
-  minSize: { w: 8, h: 5 },
-  maxSize: { w: 16, h: 8 }
+  defaultSize: createResponsiveSizes({ w: 12, h: 6 }),
+  minSize: createResponsiveSizes({ w: 8, h: 5 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  maxSize: createResponsiveSizes({ w: 16, h: 8 }),
+  responsiveDisplay: {
+    lg: 'detailed',
+    md: 'normal',
+    sm: 'compact',
+    xs: 'compact'
+  }
 }

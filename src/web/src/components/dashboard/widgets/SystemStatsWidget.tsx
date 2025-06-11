@@ -9,6 +9,7 @@ import { Activity, TrendingUp, Database, Container, Globe, Clock } from 'lucide-
 import { WidgetBase } from '../Widget'
 import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api'
+import { createResponsiveSizes } from '@/lib/responsiveUtils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface SystemMetrics {
@@ -220,7 +221,13 @@ export const systemStatsDefinition: WidgetDefinition = {
   description: 'Real-time system statistics and health indicators',
   category: 'system',
   icon: Activity,
-  defaultSize: { w: 16, h: 4 },
-  minSize: { w: 8, h: 3 },
-  maxSize: { w: 24, h: 10 }
+  defaultSize: createResponsiveSizes({ w: 16, h: 4 }),
+  minSize: createResponsiveSizes({ w: 8, h: 3 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  maxSize: createResponsiveSizes({ w: 24, h: 10 }),
+  responsiveDisplay: {
+    lg: 'detailed',
+    md: 'normal',
+    sm: 'compact',
+    xs: 'compact'
+  }
 }

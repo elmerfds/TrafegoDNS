@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { Responsive, WidthProvider, Layout } from 'react-grid-layout'
+import { getCurrentBreakpoint, getDisplayMode, getSizeForBreakpoint } from '@/lib/responsiveUtils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -334,6 +335,22 @@ function DashboardGrid() {
     currentLayouts
   } = useDashboard()
   const registry = useWidgetRegistry()
+  
+  // Track current breakpoint for responsive widget rendering
+  const [currentBreakpoint, setCurrentBreakpoint] = useState<'lg' | 'md' | 'sm' | 'xs'>('lg')
+  
+  useEffect(() => {
+    const updateBreakpoint = () => {
+      setCurrentBreakpoint(getCurrentBreakpoint())
+    }
+    
+    // Update on mount
+    updateBreakpoint()
+    
+    // Update on resize
+    window.addEventListener('resize', updateBreakpoint)
+    return () => window.removeEventListener('resize', updateBreakpoint)
+  }, [])
 
   const visibleWidgets = widgets.filter(id => !hiddenWidgets.has(id))
 
@@ -374,6 +391,15 @@ function DashboardGrid() {
         }
 
         const WidgetComponent = widgetComponent.component
+        
+        // Get current widget size from layout for display mode calculation
+        const currentLayout = currentLayouts[currentBreakpoint]?.find(item => item.i === widgetId)
+        const currentSize = currentLayout ? { w: currentLayout.w, h: currentLayout.h } : getSizeForBreakpoint(widgetComponent.definition.defaultSize, currentBreakpoint)
+        
+        // Determine display mode based on widget definition and current size
+        const displayMode = widgetComponent.definition.responsiveDisplay?.[currentBreakpoint] || 
+                           getDisplayMode(currentSize, currentBreakpoint)
+        
         return (
           <div key={widgetId}>
             <WidgetComponent
@@ -381,6 +407,8 @@ function DashboardGrid() {
               isEditing={isEditing}
               onRemove={() => removeWidget(widgetId)}
               widgetDefinition={widgetComponent.definition}
+              currentBreakpoint={currentBreakpoint}
+              displayMode={displayMode}
             />
           </div>
         )

@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
+import { createResponsiveSizes } from '@/lib/responsiveUtils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface PortGroup {
@@ -301,7 +302,13 @@ export const portScannerDefinition: WidgetDefinition = {
   description: 'Quick port group scanning (Web, Dev, Database, SSH)',
   category: 'ports',
   icon: Scan,
-  defaultSize: { w: 8, h: 10 },
-  minSize: { w: 6, h: 8 },
-  maxSize: { w: 12, h: 12 }
+  defaultSize: createResponsiveSizes({ w: 8, h: 10 }),
+  minSize: createResponsiveSizes({ w: 6, h: 8 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  maxSize: createResponsiveSizes({ w: 12, h: 12 }),
+  responsiveDisplay: {
+    lg: 'detailed',
+    md: 'normal',
+    sm: 'compact',
+    xs: 'compact'
+  }
 }

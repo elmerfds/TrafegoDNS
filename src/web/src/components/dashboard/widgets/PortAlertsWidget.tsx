@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
+import { createResponsiveSizes } from '@/lib/responsiveUtils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface PortAlert {
@@ -208,7 +209,13 @@ export const portAlertsDefinition: WidgetDefinition = {
   description: 'Port-related security alerts and issues',
   category: 'ports',
   icon: AlertCircle,
-  defaultSize: { w: 8, h: 8 },
-  minSize: { w: 6, h: 6 },
-  maxSize: { w: 12, h: 10 }
+  defaultSize: createResponsiveSizes({ w: 8, h: 8 }),
+  minSize: createResponsiveSizes({ w: 6, h: 6 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  maxSize: createResponsiveSizes({ w: 12, h: 10 }),
+  responsiveDisplay: {
+    lg: 'detailed',
+    md: 'normal',
+    sm: 'compact',
+    xs: 'compact'
+  }
 }
