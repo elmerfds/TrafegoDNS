@@ -324,6 +324,14 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
 
   const saveLayout = useCallback(async (name?: string) => {
     const layoutName = name || activeLayoutData?.data?.name || 'My Dashboard'
+    
+    console.log('Saving layout:', {
+      name: layoutName,
+      widgets: widgets,
+      hiddenWidgets: Array.from(hiddenWidgets),
+      layoutsCount: Object.keys(currentLayouts).length
+    })
+    
     setIsSaving(true)
     saveLayoutMutation.mutate({ 
       name: layoutName, 
@@ -373,6 +381,13 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
         
         // Extract grid layouts (remove widgets and hiddenWidgets from the grid config)
         const { widgets: savedWidgets, hiddenWidgets: savedHiddenWidgets, ...gridLayouts } = layout
+        
+        console.log('Loading layout data:', {
+          savedWidgets,
+          savedHiddenWidgets,
+          hasGridLayouts: Object.keys(gridLayouts).length > 0
+        })
+        
         setCurrentLayouts(gridLayouts)
         
         // Restore widgets list if available

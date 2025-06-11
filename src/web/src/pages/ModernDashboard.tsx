@@ -390,11 +390,6 @@ function DashboardGrid() {
 }
 
 function DashboardContent() {
-  const registry = useWidgetRegistry()
-  
-  // Register available widgets
-  useWidgetRegistration(availableWidgets)
-
   return (
     <div className="container mx-auto p-6">
       <DashboardToolbar />
@@ -403,12 +398,21 @@ function DashboardContent() {
   )
 }
 
-export function ModernDashboard() {
+function DashboardWrapper() {
+  const registry = useWidgetRegistry()
+  
+  // Register available widgets BEFORE DashboardProvider initializes
+  useWidgetRegistration(availableWidgets)
+
   return (
     <DashboardProvider>
       <DashboardContent />
     </DashboardProvider>
   )
+}
+
+export function ModernDashboard() {
+  return <DashboardWrapper />
 }
 
 export default ModernDashboard
