@@ -10,6 +10,7 @@ import { WidgetBase } from '../Widget'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api'
+import { createResponsiveSizes } from '@/lib/responsiveUtils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface SystemResources {
@@ -210,7 +211,13 @@ export const systemResourcesDefinition: WidgetDefinition = {
   description: 'CPU, memory, and disk usage monitoring',
   category: 'system',
   icon: Cpu,
-  defaultSize: { w: 8, h: 8 },
-  minSize: { w: 6, h: 6 },
-  maxSize: { w: 16, h: 12 }
+  defaultSize: createResponsiveSizes({ w: 8, h: 8 }),
+  minSize: createResponsiveSizes({ w: 6, h: 6 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  maxSize: createResponsiveSizes({ w: 16, h: 12 }),
+  responsiveDisplay: {
+    lg: 'detailed',
+    md: 'normal',
+    sm: 'compact',
+    xs: 'compact'
+  }
 }

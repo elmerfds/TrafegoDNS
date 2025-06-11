@@ -17,6 +17,7 @@ import {
 import { WidgetBase } from '../Widget'
 import { Button } from '@/components/ui/button'
 import { useNavigate } from 'react-router-dom'
+import { createResponsiveSizes } from '@/lib/responsiveUtils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 export function QuickActionsWidget(props: WidgetProps) {
@@ -101,7 +102,13 @@ export const quickActionsDefinition: WidgetDefinition = {
   description: 'Quick access to common dashboard tasks',
   category: 'system',
   icon: Settings,
-  defaultSize: { w: 12, h: 6 },
-  minSize: { w: 8, h: 4 },
-  maxSize: { w: 16, h: 8 }
+  defaultSize: createResponsiveSizes({ w: 12, h: 6 }),
+  minSize: createResponsiveSizes({ w: 8, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  maxSize: createResponsiveSizes({ w: 16, h: 8 }),
+  responsiveDisplay: {
+    lg: 'detailed',
+    md: 'normal',
+    sm: 'compact',
+    xs: 'compact'
+  }
 }

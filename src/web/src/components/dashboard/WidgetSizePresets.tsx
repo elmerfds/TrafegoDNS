@@ -16,6 +16,7 @@ import {
 import { Maximize2 } from 'lucide-react'
 import { useDashboard } from '@/contexts/DashboardContext'
 import type { WidgetDefinition } from '@/types/dashboard'
+import { getCurrentBreakpoint, getSizeForBreakpoint, getMaxColumnsForBreakpoint } from '@/lib/responsiveUtils'
 
 interface WidgetSizePresetsProps {
   widgetId: string
@@ -28,11 +29,18 @@ interface SizePreset {
   size: { w: number; h: number }
 }
 
-// Define size presets based on widget category
-const getSizePresets = (category: string, minSize: { w: number; h: number }, maxSize?: { w: number; h: number }): SizePreset[] => {
-  // Use larger defaults suitable for 24-column grid system
-  const defaultMaxW = maxSize?.w || 24
-  const defaultMaxH = maxSize?.h || 12
+
+// Define size presets based on widget category and current breakpoint
+const getSizePresets = (
+  category: string, 
+  minSize: { w: number; h: number }, 
+  maxSize: { w: number; h: number },
+  breakpoint: 'lg' | 'md' | 'sm' | 'xs'
+): SizePreset[] => {
+  // Get max columns for current breakpoint
+  const maxCols = getMaxColumnsForBreakpoint(breakpoint)
+  const defaultMaxW = Math.min(maxSize.w, maxCols)
+  const defaultMaxH = maxSize.h
   
   const basePresets: SizePreset[] = [
     {
@@ -135,10 +143,17 @@ export function WidgetSizePresets({ widgetId, widgetDefinition }: WidgetSizePres
   
   if (!isEditing) return null
   
+  const currentBreakpoint = getCurrentBreakpoint()
+  
+  // Get size configs for current breakpoint
+  const minSize = getSizeForBreakpoint(widgetDefinition.minSize, currentBreakpoint)
+  const maxSize = getSizeForBreakpoint(widgetDefinition.maxSize || { w: 24, h: 12 }, currentBreakpoint)
+  
   const presets = getSizePresets(
     widgetDefinition.category, 
-    widgetDefinition.minSize, 
-    widgetDefinition.maxSize
+    minSize, 
+    maxSize,
+    currentBreakpoint
   )
   
   const handleResize = (size: { w: number; h: number }) => {
@@ -183,13 +198,16 @@ export function WidgetSizePresets({ widgetId, widgetDefinition }: WidgetSizePres
         <DropdownMenuSeparator />
         
         <DropdownMenuItem
-          onClick={() => handleResize(widgetDefinition.defaultSize)}
+          onClick={() => {
+            const defaultSize = getSizeForBreakpoint(widgetDefinition.defaultSize, currentBreakpoint)
+            handleResize(defaultSize)
+          }}
           className="flex flex-col items-start p-3"
         >
           <div className="flex items-center justify-between w-full">
             <span className="font-medium">Default</span>
             <span className="text-xs text-muted-foreground">
-              {widgetDefinition.defaultSize.w}×{widgetDefinition.defaultSize.h}
+              {getSizeForBreakpoint(widgetDefinition.defaultSize, currentBreakpoint).w}×{getSizeForBreakpoint(widgetDefinition.defaultSize, currentBreakpoint).h}
             </span>
           </div>
           <span className="text-xs text-muted-foreground mt-1">

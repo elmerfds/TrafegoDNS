@@ -42,6 +42,19 @@ export interface DashboardLayoutResponse {
   data: SavedLayout | null
 }
 
+// Responsive sizing for different breakpoints
+export interface ResponsiveSizeConfig {
+  w: number
+  h: number
+}
+
+export interface ResponsiveWidgetSizes {
+  lg: ResponsiveSizeConfig
+  md: ResponsiveSizeConfig
+  sm: ResponsiveSizeConfig
+  xs: ResponsiveSizeConfig
+}
+
 // Modern widget system types
 export interface WidgetDefinition {
   id: string
@@ -49,18 +62,20 @@ export interface WidgetDefinition {
   description: string
   category: 'system' | 'dns' | 'containers' | 'ports' | 'monitoring'
   icon: LucideIcon
-  defaultSize: {
-    w: number
-    h: number
+  
+  // Responsive sizing - can be either static or responsive
+  defaultSize: ResponsiveSizeConfig | ResponsiveWidgetSizes
+  minSize: ResponsiveSizeConfig | ResponsiveWidgetSizes
+  maxSize?: ResponsiveSizeConfig | ResponsiveWidgetSizes
+  
+  // Widget display options per breakpoint
+  responsiveDisplay?: {
+    lg?: 'normal' | 'compact' | 'detailed'
+    md?: 'normal' | 'compact' | 'detailed'
+    sm?: 'normal' | 'compact' | 'detailed'
+    xs?: 'normal' | 'compact' | 'detailed'
   }
-  minSize: {
-    w: number
-    h: number
-  }
-  maxSize?: {
-    w: number
-    h: number
-  }
+  
   settings?: Record<string, any>
   requirements?: string[]
 }
@@ -73,6 +88,8 @@ export interface WidgetProps {
   onConfigure?: () => void
   className?: string
   widgetDefinition?: WidgetDefinition
+  currentBreakpoint?: 'lg' | 'md' | 'sm' | 'xs'
+  displayMode?: 'normal' | 'compact' | 'detailed'
 }
 
 export interface WidgetComponent {

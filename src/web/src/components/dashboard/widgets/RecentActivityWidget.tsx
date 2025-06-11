@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom'
 import { useSocketEvent } from '@/hooks/useSocket'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { createResponsiveSizes } from '@/lib/responsiveUtils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface ActivityEvent {
@@ -285,7 +286,13 @@ export const recentActivityDefinition: WidgetDefinition = {
   description: 'Latest DNS and system activities',
   category: 'system',
   icon: Activity,
-  defaultSize: { w: 8, h: 10 },
-  minSize: { w: 6, h: 8 },
-  maxSize: { w: 12, h: 12 }
+  defaultSize: createResponsiveSizes({ w: 8, h: 10 }),
+  minSize: createResponsiveSizes({ w: 6, h: 8 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  maxSize: createResponsiveSizes({ w: 12, h: 12 }),
+  responsiveDisplay: {
+    lg: 'detailed',
+    md: 'normal',
+    sm: 'compact',
+    xs: 'compact'
+  }
 }
