@@ -185,10 +185,22 @@ export function RecentActivityWidget(props: WidgetProps) {
   // Include other meaningful types
   const managedCount = activities.filter(a => a.type === 'managed' || a.type === 'tracked').length
   
-  // Log useful debug info when there are activities but no counts
-  if (activities.length > 0 && createdCount === 0 && updatedCount === 0 && deletedCount === 0 && managedCount === 0) {
-    console.log('Recent Activity: Found activities but no matching types. Types found:', uniqueTypes)
-    console.log('Sample activity:', activities[0])
+  // Enhanced debug logging to understand the data
+  if (activities.length > 0) {
+    console.log('Recent Activity Debug:')
+    console.log('- Total activities:', activities.length)
+    console.log('- Unique types found:', uniqueTypes)
+    console.log('- Count breakdown:', { createdCount, updatedCount, deletedCount, managedCount })
+    console.log('- First few activities:', activities.slice(0, 3).map(a => ({ type: a.type, hostname: a.hostname, details: a.details })))
+    
+    // Show which activities are matching each filter
+    console.log('- Activities matching "deleted" filter:', activities.filter(a => 
+      a.type === 'deleted' || a.type === 'delete' || a.type === 'removed' || a.type === 'remove'
+    ).map(a => a.type))
+    
+    console.log('- Activities matching "managed" filter:', activities.filter(a => 
+      a.type === 'managed' || a.type === 'tracked'
+    ).map(a => a.type))
   }
 
   return (
