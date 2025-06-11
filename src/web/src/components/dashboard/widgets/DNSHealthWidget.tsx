@@ -303,7 +303,7 @@ export const dnsHealthDefinition: WidgetDefinition = {
   description: 'DNS provider status and record health',
   category: 'dns',
   icon: Globe,
-  defaultSize: { w: 4, h: 6 },
-  minSize: { w: 3, h: 4 },
-  maxSize: { w: 6, h: 8 }
+  defaultSize: { w: 8, h: 8 },
+  minSize: { w: 6, h: 6 },
+  maxSize: { w: 16, h: 16 }
 }

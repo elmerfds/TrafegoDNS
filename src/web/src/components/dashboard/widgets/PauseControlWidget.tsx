@@ -261,7 +261,7 @@ export const pauseControlDefinition: WidgetDefinition = {
   description: 'Pause and resume system operations',
   category: 'system',
   icon: Settings,
-  defaultSize: { w: 4, h: 5 },
-  minSize: { w: 3, h: 4 },
-  maxSize: { w: 6, h: 6 }
+  defaultSize: { w: 8, h: 5 },
+  minSize: { w: 6, h: 4 },
+  maxSize: { w: 12, h: 6 }
 }

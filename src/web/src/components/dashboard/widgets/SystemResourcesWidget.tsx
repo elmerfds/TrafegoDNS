@@ -210,7 +210,7 @@ export const systemResourcesDefinition: WidgetDefinition = {
   description: 'CPU, memory, and disk usage monitoring',
   category: 'system',
   icon: Cpu,
-  defaultSize: { w: 4, h: 8 },
-  minSize: { w: 3, h: 6 },
-  maxSize: { w: 6, h: 10 }
+  defaultSize: { w: 8, h: 8 },
+  minSize: { w: 6, h: 6 },
+  maxSize: { w: 16, h: 12 }
 }

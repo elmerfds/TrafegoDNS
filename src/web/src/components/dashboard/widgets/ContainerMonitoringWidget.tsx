@@ -166,7 +166,7 @@ export const containerMonitoringDefinition: WidgetDefinition = {
   description: 'Docker container status and activity',
   category: 'containers',
   icon: Container,
-  defaultSize: { w: 4, h: 8 },
-  minSize: { w: 3, h: 6 },
-  maxSize: { w: 6, h: 10 }
+  defaultSize: { w: 8, h: 8 },
+  minSize: { w: 6, h: 6 },
+  maxSize: { w: 12, h: 10 }
 }

@@ -220,7 +220,7 @@ export const portMonitoringDefinition: WidgetDefinition = {
   description: 'Port usage statistics and monitoring status',
   category: 'ports',
   icon: Network,
-  defaultSize: { w: 6, h: 6 },
-  minSize: { w: 4, h: 5 },
-  maxSize: { w: 8, h: 8 }
+  defaultSize: { w: 12, h: 6 },
+  minSize: { w: 8, h: 5 },
+  maxSize: { w: 16, h: 8 }
 }

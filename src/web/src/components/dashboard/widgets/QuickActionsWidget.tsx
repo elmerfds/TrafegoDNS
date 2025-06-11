@@ -101,7 +101,7 @@ export const quickActionsDefinition: WidgetDefinition = {
   description: 'Quick access to common dashboard tasks',
   category: 'system',
   icon: Settings,
-  defaultSize: { w: 6, h: 6 },
-  minSize: { w: 4, h: 4 },
-  maxSize: { w: 8, h: 8 }
+  defaultSize: { w: 12, h: 6 },
+  minSize: { w: 8, h: 4 },
+  maxSize: { w: 16, h: 8 }
 }

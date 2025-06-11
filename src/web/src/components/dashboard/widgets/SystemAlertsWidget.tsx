@@ -141,7 +141,7 @@ export const systemAlertsDefinition: WidgetDefinition = {
   description: 'Important system alerts and warnings',
   category: 'system',
   icon: AlertTriangle,
-  defaultSize: { w: 12, h: 3 },
-  minSize: { w: 6, h: 2 },
-  maxSize: { w: 12, h: 6 }
+  defaultSize: { w: 20, h: 4 },
+  minSize: { w: 8, h: 3 },
+  maxSize: { w: 24, h: 10 }
 }

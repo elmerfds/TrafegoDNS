@@ -255,7 +255,7 @@ export const statusOverviewDefinition: WidgetDefinition = {
   description: 'Real-time system overview with health indicators',
   category: 'system',
   icon: Activity,
-  defaultSize: { w: 8, h: 6 },
-  minSize: { w: 6, h: 4 },
-  maxSize: { w: 12, h: 8 }
+  defaultSize: { w: 16, h: 6 },
+  minSize: { w: 8, h: 4 },
+  maxSize: { w: 24, h: 12 }
 }

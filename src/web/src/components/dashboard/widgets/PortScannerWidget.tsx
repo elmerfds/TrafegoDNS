@@ -301,7 +301,7 @@ export const portScannerDefinition: WidgetDefinition = {
   description: 'Quick port group scanning (Web, Dev, Database, SSH)',
   category: 'ports',
   icon: Scan,
-  defaultSize: { w: 4, h: 10 },
-  minSize: { w: 3, h: 8 },
-  maxSize: { w: 6, h: 12 }
+  defaultSize: { w: 8, h: 10 },
+  minSize: { w: 6, h: 8 },
+  maxSize: { w: 12, h: 12 }
 }

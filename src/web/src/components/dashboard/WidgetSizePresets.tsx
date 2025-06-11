@@ -30,6 +30,10 @@ interface SizePreset {
 
 // Define size presets based on widget category
 const getSizePresets = (category: string, minSize: { w: number; h: number }, maxSize?: { w: number; h: number }): SizePreset[] => {
+  // Use larger defaults suitable for 24-column grid system
+  const defaultMaxW = maxSize?.w || 24
+  const defaultMaxH = maxSize?.h || 12
+  
   const basePresets: SizePreset[] = [
     {
       name: 'Compact',
@@ -40,16 +44,16 @@ const getSizePresets = (category: string, minSize: { w: number; h: number }, max
       name: 'Medium',
       description: 'Balanced view',
       size: { 
-        w: Math.min(minSize.w + 2, maxSize?.w || 8), 
-        h: Math.min(minSize.h + 1, maxSize?.h || 6) 
+        w: Math.min(minSize.w + 4, defaultMaxW), 
+        h: Math.min(minSize.h + 2, defaultMaxH) 
       }
     },
     {
       name: 'Large',
       description: 'Expanded view',
       size: { 
-        w: Math.min(minSize.w + 4, maxSize?.w || 12), 
-        h: Math.min(minSize.h + 2, maxSize?.h || 8) 
+        w: Math.min(minSize.w + 8, defaultMaxW), 
+        h: Math.min(minSize.h + 4, defaultMaxH) 
       }
     }
   ]
@@ -63,8 +67,8 @@ const getSizePresets = (category: string, minSize: { w: number; h: number }, max
           name: 'Wide',
           description: 'Full width',
           size: { 
-            w: Math.min(12, maxSize?.w || 12), 
-            h: Math.min(minSize.h + 1, maxSize?.h || 6) 
+            w: Math.min(24, defaultMaxW), 
+            h: Math.min(minSize.h + 2, defaultMaxH) 
           }
         }
       ]
@@ -76,8 +80,8 @@ const getSizePresets = (category: string, minSize: { w: number; h: number }, max
           name: 'Tall',
           description: 'More vertical space',
           size: { 
-            w: Math.min(minSize.w + 2, maxSize?.w || 6), 
-            h: Math.min(minSize.h + 3, maxSize?.h || 10) 
+            w: Math.min(minSize.w + 6, defaultMaxW), 
+            h: Math.min(minSize.h + 6, defaultMaxH) 
           }
         }
       ]
@@ -89,8 +93,8 @@ const getSizePresets = (category: string, minSize: { w: number; h: number }, max
           name: 'Grid',
           description: 'Square layout',
           size: { 
-            w: Math.min(6, maxSize?.w || 6), 
-            h: Math.min(6, maxSize?.h || 6) 
+            w: Math.min(12, defaultMaxW), 
+            h: Math.min(12, defaultMaxH) 
           }
         }
       ]
@@ -102,8 +106,8 @@ const getSizePresets = (category: string, minSize: { w: number; h: number }, max
           name: 'Dashboard',
           description: 'Chart-friendly',
           size: { 
-            w: Math.min(8, maxSize?.w || 8), 
-            h: Math.min(6, maxSize?.h || 6) 
+            w: Math.min(16, defaultMaxW), 
+            h: Math.min(10, defaultMaxH) 
           }
         }
       ]
@@ -115,8 +119,8 @@ const getSizePresets = (category: string, minSize: { w: number; h: number }, max
           name: 'List',
           description: 'List-optimized',
           size: { 
-            w: Math.min(10, maxSize?.w || 10), 
-            h: Math.min(minSize.h + 2, maxSize?.h || 8) 
+            w: Math.min(20, defaultMaxW), 
+            h: Math.min(minSize.h + 4, defaultMaxH) 
           }
         }
       ]

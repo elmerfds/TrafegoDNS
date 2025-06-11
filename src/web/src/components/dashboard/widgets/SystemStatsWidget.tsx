@@ -220,7 +220,7 @@ export const systemStatsDefinition: WidgetDefinition = {
   description: 'Real-time system statistics and health indicators',
   category: 'system',
   icon: Activity,
-  defaultSize: { w: 8, h: 4 },
-  minSize: { w: 6, h: 3 },
-  maxSize: { w: 12, h: 6 }
+  defaultSize: { w: 16, h: 4 },
+  minSize: { w: 8, h: 3 },
+  maxSize: { w: 24, h: 10 }
 }
