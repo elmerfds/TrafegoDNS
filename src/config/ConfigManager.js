@@ -182,6 +182,12 @@ class ConfigManager {
     // IP refresh interval in milliseconds (default: 1 hour)
     this.ipRefreshInterval = EnvironmentLoader.getInt('IP_REFRESH_INTERVAL', 3600000);
     
+    // Host IP for Docker containers (for port monitoring)
+    this.hostIp = EnvironmentLoader.getString('HOST_IP') || EnvironmentLoader.getString('DOCKER_HOST_IP') || '';
+    
+    // Port Management feature flag (disabled by default, requires admin setup)
+    this.portManagementEnabled = EnvironmentLoader.getBool('PORT_MANAGEMENT_ENABLED', false);
+    
     // Now that provider config is validated, set the default content if not provided
     if (!this.defaultContent && !process.env.DNS_DEFAULT_CONTENT) {
       this.defaultContent = this.getProviderDomain();
@@ -284,6 +290,10 @@ class ConfigManager {
     
     // Network settings
     this._envConfig.apiTimeout = this.apiTimeout;
+    this._envConfig.hostIp = this.hostIp;
+    
+    // Feature flags
+    this._envConfig.portManagementEnabled = this.portManagementEnabled;
     
     // Label settings
     this._envConfig.genericLabelPrefix = this.genericLabelPrefix;
@@ -382,6 +392,10 @@ class ConfigManager {
         
         // Network settings
         apiTimeout: this.apiTimeout,
+        hostIp: this.hostIp,
+        
+        // Feature flags
+        portManagementEnabled: this.portManagementEnabled,
         
         // Label settings
         genericLabelPrefix: this.genericLabelPrefix,
@@ -466,8 +480,12 @@ class ConfigManager {
     }
     if (settings.ipRefreshInterval !== undefined) this.ipRefreshInterval = settings.ipRefreshInterval;
     if (settings.apiTimeout !== undefined) this.apiTimeout = settings.apiTimeout;
+    if (settings.hostIp !== undefined) this.hostIp = settings.hostIp;
     if (settings.genericLabelPrefix !== undefined) this.genericLabelPrefix = settings.genericLabelPrefix;
     if (settings.traefikLabelPrefix !== undefined) this.traefikLabelPrefix = settings.traefikLabelPrefix;
+    
+    // Feature flags
+    if (settings.portManagementEnabled !== undefined) this.portManagementEnabled = settings.portManagementEnabled;
     if (settings.managedHostnames !== undefined) this.managedHostnames = settings.managedHostnames;
     if (settings.preservedHostnames !== undefined) this.preservedHostnames = settings.preservedHostnames;
     
@@ -501,6 +519,19 @@ class ConfigManager {
       
       // Apply updates
       this._applySettings(updates);
+      
+      // If hostIp is being updated, update PortMonitor as well
+      if (updates.hostIp !== undefined) {
+        try {
+          const portMonitor = global.services?.PortMonitor;
+          if (portMonitor && portMonitor.availabilityChecker) {
+            logger.info(`🔧 Updating PortMonitor host IP to: ${updates.hostIp}`);
+            portMonitor.availabilityChecker.setHostIp(updates.hostIp, false);
+          }
+        } catch (error) {
+          logger.error(`Failed to update PortMonitor host IP: ${error.message}`);
+        }
+      }
       
       // Save to database
       const saveResult = await this.saveToDatabase();
@@ -553,6 +584,7 @@ class ConfigManager {
       domain: this.getProviderDomain(),
       publicIP: this.getPublicIPSync(),
       publicIPv6: this.getPublicIPv6Sync(),
+      hostIp: this.hostIp,
       ipRefreshInterval: this.ipRefreshInterval,
       traefikApiUrl: this.traefikApiUrl,
       dockerSocket: this.dockerSocket,

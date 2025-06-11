@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Search, Copy, Check } from 'lucide-react';
 import { api } from '../lib/api';
+import { usePortStore } from '../store/portStore';
 
 interface PortFinderProps {
   onPortSelected?: (ports: number[]) => void;
@@ -36,6 +37,9 @@ export function PortFinder({
   const [recommendations, setRecommendations] = useState<PortRecommendation[]>([]);
   const [loading, setLoading] = useState(false);
   const [copiedPorts, setCopiedPorts] = useState<string | null>(null);
+  
+  // Access Zustand store for alternative port suggestions
+  const { suggestAlternativePorts } = usePortStore();
 
   const findPorts = async () => {
     setLoading(true);

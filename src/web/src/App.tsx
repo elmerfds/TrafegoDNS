@@ -3,7 +3,7 @@ import { useAuthStore } from '@/store/authStore'
 import { Layout } from '@/components/Layout'
 import { LoginPage } from '@/pages/Login'
 import { AuthCallbackPage } from '@/pages/AuthCallback'
-import { CustomizableDashboard } from '@/pages/CustomizableDashboard'
+import { ModernDashboard } from '@/pages/ModernDashboard'
 import { DNSRecordsPage } from '@/pages/DNSRecords'
 import { ContainersPage } from '@/pages/Containers'
 import { HostnamesPage } from '@/pages/Hostnames'
@@ -32,7 +32,7 @@ function App() {
             path="/"
             element={isAuthenticated ? <Layout /> : <Navigate to="/login" />}
           >
-            <Route index element={<CustomizableDashboard />} />
+            <Route index element={<ModernDashboard />} />
             <Route path="dns-records" element={<DNSRecordsPage />} />
             <Route path="containers" element={<ContainersPage />} />
             <Route path="hostnames" element={<HostnamesPage />} />

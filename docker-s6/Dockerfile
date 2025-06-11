@@ -44,7 +44,9 @@ ARG TARGETARCH
 USER root
 
 # Install required packages
-RUN apk add --no-cache shadow curl xz tar bash sqlite sqlite-dev python3 py3-pip make g++ python3-dev py3-setuptools
+RUN apk add --no-cache shadow curl xz tar bash sqlite sqlite-dev python3 py3-pip make g++ python3-dev py3-setuptools \
+    # Add iproute2 for ss command and net-tools for netstat as fallback
+    iproute2 net-tools
 
 # Set architecture for s6-overlay download
 RUN case "${TARGETARCH}" in \

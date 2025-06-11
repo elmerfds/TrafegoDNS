@@ -15,7 +15,10 @@ const {
   updateSecrets,
   testSecrets,
   getSecrets,
-  getSecretStatus
+  getSecretStatus,
+  enablePortManagement,
+  disablePortManagement,
+  getProviderStatus
 } = require('../controllers/configController');
 
 /**
@@ -461,5 +464,138 @@ router.post('/secrets/test', authenticate, authorize('admin'), testSecrets);
  *         description: Server error
  */
 router.get('/secrets/status', authenticate, authorize('admin'), getSecretStatus);
+
+/**
+ * @swagger
+ * /config/port-management/enable:
+ *   post:
+ *     summary: Enable port management feature
+ *     tags: [Config]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - hostIp
+ *             properties:
+ *               hostIp:
+ *                 type: string
+ *                 description: Host machine IP address for port scanning
+ *                 example: "10.0.0.9"
+ *     responses:
+ *       200:
+ *         description: Port management enabled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                     hostIp:
+ *                       type: string
+ *                     portManagementEnabled:
+ *                       type: boolean
+ *       400:
+ *         description: Invalid host IP or connectivity issue
+ *       401:
+ *         description: Not authenticated
+ *       403:
+ *         description: Not authorized (admin only)
+ *       500:
+ *         description: Server error
+ */
+router.post('/port-management/enable', authenticate, authorize('admin'), enablePortManagement);
+
+/**
+ * @swagger
+ * /config/port-management/disable:
+ *   post:
+ *     summary: Disable port management feature
+ *     tags: [Config]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Port management disabled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                     portManagementEnabled:
+ *                       type: boolean
+ *       401:
+ *         description: Not authenticated
+ *       403:
+ *         description: Not authorized (admin only)
+ *       500:
+ *         description: Server error
+ */
+router.post('/port-management/disable', authenticate, authorize('admin'), disablePortManagement);
+
+/**
+ * @swagger
+ * /config/providers/status:
+ *   get:
+ *     summary: Get DNS provider status
+ *     description: Get status information for configured DNS providers
+ *     tags: [Config]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Provider status retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       name:
+ *                         type: string
+ *                       type:
+ *                         type: string
+ *                       status:
+ *                         type: string
+ *                       lastCheck:
+ *                         type: string
+ *                       message:
+ *                         type: string
+ *                       record_count:
+ *                         type: number
+ *                       response_time:
+ *                         type: number
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/providers/status', authenticate, getProviderStatus);
 
 module.exports = router;

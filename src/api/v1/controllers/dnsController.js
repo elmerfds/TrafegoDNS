@@ -1,10 +1,14 @@
 /**
  * DNS controller
- * Handles DNS record management endpoints
+ * Handles DNS record management endpoints with enhanced validation and error handling
  */
 const asyncHandler = require('express-async-handler');
 const { ApiError } = require('../../../utils/apiError');
 const logger = require('../../../utils/logger');
+const DataValidator = require('../../../utils/dataValidator');
+const { errorHandler, ValidationError, BusinessLogicError } = require('../../../utils/errorHandler');
+const { transactionManager } = require('../../../database/transactionManager');
+const { dataConsistencyService } = require('../../../services/dataConsistencyService');
 const { getPaginationParams, formatPaginatedResponse } = require('../utils/paginationUtils');
 
 /**
@@ -1310,6 +1314,107 @@ const clearOrphanedHistory = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * @desc    Get DNS statistics
+ * @route   GET /api/v1/dns/stats
+ * @access  Private
+ */
+const getStats = asyncHandler(async (req, res) => {
+  try {
+    const { database } = global;
+    
+    if (!database || !database.repositories) {
+      throw new ApiError('Database not available', 500, 'DATABASE_NOT_AVAILABLE');
+    }
+
+    let stats = {
+      total: 0,
+      managed: 0,
+      orphaned: 0,
+      by_type: {}
+    };
+
+    try {
+      // Get total managed records (non-orphaned)
+      if (database.repositories.dnsManager?.managedRecords) {
+        stats.managed = await database.repositories.dnsManager.managedRecords.count({ is_orphaned: 0 });
+      }
+
+      // Get orphaned records count
+      if (database.repositories.dnsManager?.managedRecords) {
+        stats.orphaned = await database.repositories.dnsManager.managedRecords.count({ is_orphaned: 1 });
+      }
+
+      // Total is managed + orphaned
+      stats.total = stats.managed + stats.orphaned;
+
+      // Get records by type
+      if (database.repositories.dnsManager?.managedRecords) {
+        const records = await database.repositories.dnsManager.managedRecords.findAll();
+        const typeCount = {};
+        
+        records.forEach(record => {
+          const type = record.type || 'Unknown';
+          typeCount[type] = (typeCount[type] || 0) + 1;
+        });
+        
+        stats.by_type = typeCount;
+      }
+
+    } catch (error) {
+      logger.warn(`Failed to get accurate DNS stats: ${error.message}`);
+      // Return basic fallback stats
+      stats = {
+        total: 0,
+        managed: 0,
+        orphaned: 0,
+        by_type: {}
+      };
+    }
+
+    res.json({
+      status: 'success',
+      data: stats
+    });
+
+  } catch (error) {
+    logger.error(`DNS stats error: ${error.message}`);
+    throw new ApiError('Failed to get DNS statistics', 500, 'DNS_STATS_ERROR');
+  }
+});
+
+/**
+ * @desc    Get DNS zones statistics
+ * @route   GET /api/v1/dns/zones/stats
+ * @access  Private
+ */
+const getZonesStats = asyncHandler(async (req, res) => {
+  try {
+    const { DNSManager } = global.services || {};
+    
+    let stats = {
+      total: 0,
+      active: 0
+    };
+
+    // Get zone information from DNS provider if available
+    if (DNSManager && DNSManager.dnsProvider) {
+      // For now, assume 1 zone per provider
+      stats.total = 1;
+      stats.active = 1;
+    }
+
+    res.json({
+      status: 'success',
+      data: stats
+    });
+
+  } catch (error) {
+    logger.error(`DNS zones stats error: ${error.message}`);
+    throw new ApiError('Failed to get DNS zones statistics', 500, 'DNS_ZONES_STATS_ERROR');
+  }
+});
+
 module.exports = {
   getRecords,
   getRecord,
@@ -1324,5 +1429,7 @@ module.exports = {
   refreshRecords,
   processRecords,
   deleteExpiredOrphanedRecords,
-  forceDeleteOrphanedRecords
+  forceDeleteOrphanedRecords,
+  getStats,
+  getZonesStats
 };

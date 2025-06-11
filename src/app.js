@@ -272,6 +272,19 @@ async function start() {
       logger.info('🚀 Starting in direct CLI mode (API server disabled)');
     }
 
+    // Make services available to API controllers via global BEFORE initialization
+    global.services = {
+      DNSManager: dnsManager,
+      DockerMonitor: dockerMonitor,
+      StatusReporter: statusReporter,
+      Monitor: monitor,
+      TraefikMonitor: config.operationMode.toLowerCase() !== 'direct' ? monitor : null,
+      DirectDNSManager: config.operationMode.toLowerCase() === 'direct' ? monitor : null,
+      ConfigManager: config,
+      PortMonitor: portMonitor,
+      database: database
+    };
+
     // Initialize all services
     await dnsManager.init();
     await monitor.init();
@@ -279,11 +292,23 @@ async function start() {
     // Initialize port monitoring
     if (portMonitor) {
       try {
-        await portMonitor.initialize();
-        logger.info('✅ Port monitoring service started');
+        logger.info('🔧 Initializing port monitoring service...');
+        const initResult = await portMonitor.initialize();
+        if (initResult) {
+          logger.info('✅ Port monitoring service started successfully');
+        } else {
+          logger.error('❌ Port monitoring service initialization failed - service will be disabled');
+          portMonitor = null; // Clear the portMonitor to prevent further issues
+          global.services.PortMonitor = null; // Update global services
+        }
       } catch (portError) {
-        logger.warn(`⚠️ Failed to start port monitoring: ${portError.message}`);
+        logger.error(`❌ Failed to start port monitoring: ${portError.message}`);
+        logger.error(`❌ Port monitoring stack trace: ${portError.stack}`);
+        portMonitor = null; // Clear the portMonitor to prevent further issues  
+        global.services.PortMonitor = null; // Update global services
       }
+    } else {
+      logger.info('🔕 Port monitoring is disabled');
     }
 
     // Start monitoring
@@ -293,18 +318,6 @@ async function start() {
 
     // Start main polling
     await monitor.startPolling();
-
-    // Make services available to API controllers via global
-    global.services = {
-      DNSManager: dnsManager,
-      DockerMonitor: dockerMonitor,
-      StatusReporter: statusReporter,
-      Monitor: monitor,
-      TraefikMonitor: config.operationMode.toLowerCase() !== 'direct' ? monitor : null,
-      DirectDNSManager: config.operationMode.toLowerCase() === 'direct' ? monitor : null,
-      ConfigManager: config,
-      PortMonitor: portMonitor
-    };
 
     // Initialize state management system
     const { initializeStateManagement } = require('./state');

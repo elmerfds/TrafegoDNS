@@ -5,6 +5,36 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/authMiddleware');
+const ApiResponse = require('../../../utils/apiResponse');
+const { paginationMiddleware } = require('../middleware/paginationMiddleware');
+const { validate, validateRequestSize, sanitizeInputs } = require('../middleware/validationMiddleware');
+const { 
+  portOperationsLimiter, 
+  criticalOperationsLimiter,
+  createRateLimiter 
+} = require('../middleware/rateLimitMiddleware');
+
+// Create specialized rate limiters for different operations
+const scanLimiter = createRateLimiter({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 10, // 10 scans per 5 minutes
+  message: 'Too many port scans. Please wait before starting another scan.',
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      status: 'error',
+      message: 'Port scan rate limit exceeded',
+      error: 'SCAN_RATE_LIMIT_EXCEEDED',
+      retryAfter: 300
+    });
+  }
+});
+
+const reservationLimiter = createRateLimiter({
+  windowMs: 2 * 60 * 1000, // 2 minutes
+  max: 15, // 15 reservations per 2 minutes
+  message: 'Too many port reservations. Please wait before creating more reservations.'
+});
 const {
   getPortsInUse,
   checkPortAvailability,
@@ -17,7 +47,11 @@ const {
   getPortStatistics,
   getPortReservations,
   getPortRecommendations,
-  scanPortRange
+  scanPortRange,
+  getPortAlerts,
+  getPortActivity,
+  suggestPorts,
+  checkSinglePort
 } = require('../controllers/portController');
 
 /**
@@ -207,7 +241,69 @@ const {
  *       500:
  *         description: Server error
  */
-router.post('/check-availability', authenticate, checkPortAvailability);
+router.post('/check-availability', 
+  authenticate, 
+  portOperationsLimiter,
+  sanitizeInputs(),
+  validateRequestSize(),
+  ApiResponse.middleware,
+  validate('portAvailabilityCheck'),
+  checkPortAvailability
+);
+
+/**
+ * @swagger
+ * /api/v1/ports/check/{port}:
+ *   get:
+ *     summary: Check single port status
+ *     description: Check if a specific port is available or in use
+ *     tags: [Ports]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: port
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 65535
+ *         description: Port number to check
+ *     responses:
+ *       200:
+ *         description: Port status retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     port:
+ *                       type: integer
+ *                     available:
+ *                       type: boolean
+ *                     service:
+ *                       type: string
+ *                     container:
+ *                       type: string
+ *                     last_checked:
+ *                       type: string
+ *       400:
+ *         description: Invalid port number
+ *       500:
+ *         description: Server error
+ */
+router.get('/check/:port', 
+  authenticate, 
+  portOperationsLimiter,
+  ApiResponse.middleware,
+  checkSinglePort
+);
 
 /**
  * @swagger
@@ -234,7 +330,15 @@ router.post('/check-availability', authenticate, checkPortAvailability);
  *       500:
  *         description: Server error
  */
-router.post('/reserve', authenticate, reservePorts);
+router.post('/reserve', 
+  authenticate, 
+  reservationLimiter,
+  sanitizeInputs(),
+  validateRequestSize(),
+  ApiResponse.middleware,
+  validate('portReservation'),
+  reservePorts
+);
 
 /**
  * @swagger
@@ -269,7 +373,15 @@ router.post('/reserve', authenticate, reservePorts);
  *       500:
  *         description: Server error
  */
-router.delete('/reserve', authenticate, releasePorts);
+router.delete('/reserve', 
+  authenticate, 
+  reservationLimiter,
+  sanitizeInputs(),
+  validateRequestSize(),
+  ApiResponse.middleware,
+  validate('portReservationRelease'),
+  releasePorts
+);
 
 /**
  * @swagger
@@ -294,7 +406,14 @@ router.delete('/reserve', authenticate, releasePorts);
  *       500:
  *         description: Server error
  */
-router.post('/suggest-alternatives', authenticate, suggestAlternativePorts);
+router.post('/suggest-alternatives', 
+  authenticate, 
+  sanitizeInputs(),
+  validateRequestSize(),
+  ApiResponse.middleware,
+  validate('portSuggestions'),
+  suggestAlternativePorts
+);
 
 /**
  * @swagger
@@ -321,7 +440,14 @@ router.post('/suggest-alternatives', authenticate, suggestAlternativePorts);
  *       500:
  *         description: Server error
  */
-router.post('/validate-deployment', authenticate, validateDeployment);
+router.post('/validate-deployment', 
+  authenticate, 
+  sanitizeInputs(),
+  validateRequestSize(),
+  ApiResponse.middleware,
+  validate('deploymentValidation'),
+  validateDeployment
+);
 
 /**
  * @swagger
@@ -360,7 +486,7 @@ router.post('/validate-deployment', authenticate, validateDeployment);
  *       500:
  *         description: Server error
  */
-router.get('/statistics', authenticate, getPortStatistics);
+router.get('/statistics', authenticate, ApiResponse.middleware, getPortStatistics);
 
 /**
  * @swagger
@@ -390,7 +516,14 @@ router.get('/statistics', authenticate, getPortStatistics);
  *       500:
  *         description: Server error
  */
-router.get('/reservations', authenticate, getPortReservations);
+router.get('/reservations', 
+  authenticate, 
+  sanitizeInputs(),
+  ApiResponse.middleware,
+  validate('reservationQuery'),
+  paginationMiddleware(), 
+  getPortReservations
+);
 
 /**
  * @swagger
@@ -433,7 +566,14 @@ router.get('/reservations', authenticate, getPortReservations);
  *       500:
  *         description: Server error
  */
-router.post('/recommendations', authenticate, getPortRecommendations);
+router.post('/recommendations', 
+  authenticate, 
+  sanitizeInputs(),
+  validateRequestSize(),
+  ApiResponse.middleware,
+  validate('portRecommendations'),
+  getPortRecommendations
+);
 
 /**
  * @swagger
@@ -483,7 +623,16 @@ router.post('/recommendations', authenticate, getPortRecommendations);
  *       500:
  *         description: Server error
  */
-router.post('/scan-range', authenticate, scanPortRange);
+router.post('/scan-range', 
+  authenticate, 
+  scanLimiter,
+  sanitizeInputs(),
+  validateRequestSize(),
+  ApiResponse.middleware,
+  validate('portScanRange'),
+  paginationMiddleware(), 
+  scanPortRange
+);
 
 /**
  * @swagger
@@ -507,7 +656,14 @@ router.post('/scan-range', authenticate, scanPortRange);
  *       500:
  *         description: Server error
  */
-router.get('/in-use', authenticate, getPortsInUse);
+router.get('/in-use', 
+  authenticate, 
+  sanitizeInputs(),
+  ApiResponse.middleware,
+  validate('portListQuery'),
+  paginationMiddleware(), 
+  getPortsInUse
+);
 
 /**
  * @swagger
@@ -547,7 +703,14 @@ router.get('/in-use', authenticate, getPortsInUse);
  *       500:
  *         description: Server error
  */
-router.put('/:port/documentation', authenticate, updatePortDocumentation);
+router.put('/:port/documentation', 
+  authenticate, 
+  sanitizeInputs(),
+  validateRequestSize(),
+  ApiResponse.middleware,
+  validate('portDocumentationUpdate'),
+  updatePortDocumentation
+);
 
 /**
  * @swagger
@@ -594,6 +757,198 @@ router.put('/:port/documentation', authenticate, updatePortDocumentation);
  *       500:
  *         description: Server error
  */
-router.put('/:port/label', authenticate, updatePortServiceLabel);
+router.put('/:port/label', 
+  authenticate, 
+  sanitizeInputs(),
+  validateRequestSize(),
+  ApiResponse.middleware,
+  validate('portServiceLabelUpdate'),
+  updatePortServiceLabel
+);
+
+/**
+ * @swagger
+ * /api/v1/ports/alerts:
+ *   get:
+ *     summary: Get port security alerts
+ *     description: Retrieve current port-related security alerts and conflicts
+ *     tags: [Ports]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Port alerts retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       port:
+ *                         type: integer
+ *                       severity:
+ *                         type: string
+ *                         enum: [low, medium, high, critical]
+ *                       type:
+ *                         type: string
+ *                         enum: [security, conflict, suspicious, configuration]
+ *                       title:
+ *                         type: string
+ *                       description:
+ *                         type: string
+ *                       timestamp:
+ *                         type: string
+ *                         format: date-time
+ *                       acknowledged:
+ *                         type: boolean
+ *       500:
+ *         description: Server error
+ */
+router.get('/alerts', 
+  authenticate, 
+  ApiResponse.middleware,
+  getPortAlerts
+);
+
+/**
+ * @swagger
+ * /api/v1/ports/activity:
+ *   get:
+ *     summary: Get port activity log
+ *     description: Retrieve recent port activity and changes
+ *     tags: [Ports]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Maximum number of activity entries to return
+ *     responses:
+ *       200:
+ *         description: Port activity retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       port:
+ *                         type: integer
+ *                       action:
+ *                         type: string
+ *                         enum: [opened, closed, reserved, released, scanned, conflict]
+ *                       service:
+ *                         type: string
+ *                       container:
+ *                         type: string
+ *                       user:
+ *                         type: string
+ *                       timestamp:
+ *                         type: string
+ *                         format: date-time
+ *                       details:
+ *                         type: string
+ *       500:
+ *         description: Server error
+ */
+router.get('/activity', 
+  authenticate, 
+  ApiResponse.middleware,
+  getPortActivity
+);
+
+/**
+ * @swagger
+ * /api/v1/ports/suggest:
+ *   post:
+ *     summary: Generate port suggestions
+ *     description: Generate available port suggestions for different service types
+ *     tags: [Ports]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - serviceType
+ *             properties:
+ *               serviceType:
+ *                 type: string
+ *                 enum: [web, api, database, cache, monitoring, custom]
+ *                 description: Type of service needing ports
+ *               count:
+ *                 type: integer
+ *                 default: 5
+ *                 description: Number of port suggestions to generate
+ *               range:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 minItems: 2
+ *                 maxItems: 2
+ *                 description: Port range [min, max] to search within
+ *     responses:
+ *       200:
+ *         description: Port suggestions generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     suggestions:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           port:
+ *                             type: integer
+ *                           reason:
+ *                             type: string
+ *                           confidence:
+ *                             type: string
+ *                             enum: [high, medium, low]
+ *                     serviceType:
+ *                       type: string
+ *                     count:
+ *                       type: integer
+ *       400:
+ *         description: Invalid request parameters
+ *       500:
+ *         description: Server error
+ */
+router.post('/suggest', 
+  authenticate, 
+  sanitizeInputs(),
+  validateRequestSize(),
+  ApiResponse.middleware,
+  suggestPorts
+);
 
 module.exports = router;

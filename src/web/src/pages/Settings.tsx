@@ -45,7 +45,9 @@ export function SettingsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (config: Partial<Config>) => {
+      console.log('Settings: Sending config update:', config)
       const response = await api.put('/config', config)
+      console.log('Settings: Config update response:', response.data)
       return response.data
     },
     onSuccess: () => {
@@ -138,10 +140,25 @@ export function SettingsPage() {
   }
 
   const handleInputChange = (field: keyof Config, value: any) => {
+    // Validate hostIp field
+    if (field === 'hostIp' && value) {
+      const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$|^host\.docker\.internal$|^localhost$/
+      if (!ipRegex.test(value)) {
+        toast({
+          title: 'Invalid IP format',
+          description: 'Please enter a valid IP address (e.g., 10.0.0.9) or hostname (localhost, host.docker.internal)',
+          variant: 'destructive',
+        })
+        return
+      }
+    }
+    
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
   const handleSave = () => {
+    console.log('Settings: handleSave called with formData:', formData)
+    
     // Separate secrets from regular config
     const {
       cloudflareToken,
@@ -151,6 +168,8 @@ export function SettingsPage() {
       traefikApiPassword,
       ...regularConfig
     } = formData
+    
+    console.log('Settings: regularConfig after separation:', regularConfig)
 
     const secrets = {
       cloudflareToken,
@@ -717,6 +736,64 @@ export function SettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="hostIp">Host IP Address</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="hostIp"
+                  value={formData.hostIp ?? config.hostIp}
+                  onChange={(e) =>
+                    handleInputChange('hostIp', e.target.value)
+                  }
+                  placeholder="e.g., 10.0.0.9 (leave empty for auto-detection)"
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    const hostIp = formData.hostIp ?? config.hostIp
+                    if (!hostIp) {
+                      toast({
+                        title: 'No IP specified',
+                        description: 'Please enter a host IP address to test',
+                        variant: 'destructive',
+                      })
+                      return
+                    }
+                    
+                    try {
+                      // Test connection by checking a specific port
+                      const response = await api.post('/ports/check-availability', {
+                        ports: [80, 22, 443],
+                        protocol: 'tcp',
+                        server: hostIp
+                      })
+                      
+                      toast({
+                        title: 'Connection test successful',
+                        description: `Successfully connected to ${hostIp}`,
+                      })
+                    } catch (error) {
+                      toast({
+                        title: 'Connection test failed',
+                        description: `Could not connect to ${hostIp}. Please verify the IP address.`,
+                        variant: 'destructive',
+                      })
+                    }
+                  }}
+                  disabled={!formData.hostIp && !config.hostIp}
+                >
+                  Test
+                </Button>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Specify the actual host machine IP address for Docker containers. 
+                Leave empty to use automatic detection. Used for port monitoring and availability checks.
+                Click "Test" to verify connectivity.
+              </p>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="apiTimeout">API Timeout (seconds)</Label>

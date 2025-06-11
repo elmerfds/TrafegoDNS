@@ -134,19 +134,49 @@ class DashboardLayoutsRepository extends BaseRepository {
    */
   async deleteLayout(userId, name) {
     try {
-      // Don't allow deleting the active layout
       const layout = await this.getLayout(userId, name);
-      if (layout && layout.is_active) {
-        throw new Error('Cannot delete the active layout');
+      if (!layout) {
+        return false;
       }
       
-      const sql = `
-        DELETE FROM ${this.tableName}
-        WHERE user_id = ? AND name = ?
-      `;
-      
-      const result = await this.db.run(sql, [userId, name]);
-      return result.changes > 0;
+      // If deleting the active layout, unset it first (user will revert to default)
+      if (layout.is_active) {
+        await this.db.run('BEGIN TRANSACTION');
+        
+        try {
+          // First, unset the active status
+          const unsetSql = `
+            UPDATE ${this.tableName}
+            SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ? AND name = ?
+          `;
+          
+          await this.db.run(unsetSql, [userId, name]);
+          
+          // Then delete the layout
+          const deleteSql = `
+            DELETE FROM ${this.tableName}
+            WHERE user_id = ? AND name = ?
+          `;
+          
+          const result = await this.db.run(deleteSql, [userId, name]);
+          
+          await this.db.run('COMMIT');
+          return result.changes > 0;
+        } catch (error) {
+          await this.db.run('ROLLBACK');
+          throw error;
+        }
+      } else {
+        // Layout is not active, just delete it
+        const sql = `
+          DELETE FROM ${this.tableName}
+          WHERE user_id = ? AND name = ?
+        `;
+        
+        const result = await this.db.run(sql, [userId, name]);
+        return result.changes > 0;
+      }
     } catch (error) {
       logger.error(`Failed to delete layout: ${error.message}`);
       throw error;

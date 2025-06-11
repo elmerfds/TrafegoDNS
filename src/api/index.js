@@ -12,8 +12,26 @@ const fs = require('fs');
 const swaggerUi = require('swagger-ui-express');
 const logger = require('../utils/logger');
 const { errorHandler } = require('./v1/middleware/errorMiddleware');
-const { globalLimiter } = require('./v1/middleware/rateLimitMiddleware');
+const { 
+  globalLimiter, 
+  createUserAwareRateLimiter,
+  createBurstProtectionMiddleware,
+  createIPBlockingMiddleware
+} = require('./v1/middleware/rateLimitMiddleware');
 const configureCors = require('./v1/middleware/corsMiddleware');
+const {
+  createSecurityHeadersMiddleware,
+  createHttpsEnforcementMiddleware,
+  createApiSecurityMiddleware
+} = require('./v1/middleware/securityHeadersMiddleware');
+const {
+  createAuthAuditMiddleware,
+  createPermissionAuditMiddleware,
+  createDataAccessAuditMiddleware,
+  createRateLimitAuditMiddleware,
+  createInputValidationAuditMiddleware,
+  createPortAuditMiddleware
+} = require('./v1/middleware/auditLogMiddleware');
 const SocketServer = require('./socketServer');
 
 // Import routes - will be set up in startApiServer
@@ -48,20 +66,97 @@ if (fs.existsSync(publicPath) && fs.existsSync(path.join(publicPath, 'assets')))
   logger.warn('Web UI build not found. Web interface will not be available.');
 }
 
-// Disable all security headers temporarily to debug
+// Security middleware setup
+app.set('trust proxy', 1); // Trust first proxy
+
+// HTTPS enforcement (production only)
+app.use(createHttpsEnforcementMiddleware({
+  enabled: process.env.NODE_ENV === 'production',
+  excludePaths: ['/api/health', '/api/metrics']
+}));
+
+// IP blocking and burst protection with configurable allowedIPs
+const allowedIPs = (process.env.ALLOWED_IPS || '').split(',').map(ip => ip.trim()).filter(ip => ip);
+const localNetworkIPs = ['127.0.0.1', '::1', '10.0.0.198']; // Add your specific IP
+const allAllowedIPs = [...allowedIPs, ...localNetworkIPs];
+
+logger.info(`Rate limiting configured with allowed IPs: ${allAllowedIPs.join(', ')}`);
+
+app.use(createIPBlockingMiddleware({
+  allowedIPs: allAllowedIPs,
+  suspiciousThreshold: parseInt(process.env.RATE_LIMIT_SUSPICIOUS_THRESHOLD) || 10,
+  blockDuration: parseInt(process.env.RATE_LIMIT_BLOCK_DURATION) || (24 * 60 * 60 * 1000)
+}));
+app.use(createBurstProtectionMiddleware({
+  windowMs: parseInt(process.env.RATE_LIMIT_BURST_WINDOW) || 1000,
+  maxBurst: parseInt(process.env.RATE_LIMIT_BURST_MAX) || 25,
+  blockDuration: parseInt(process.env.RATE_LIMIT_BURST_BLOCK_DURATION) || 60000
+}));
+
+// Security headers
+app.use(createSecurityHeadersMiddleware({
+  contentSecurityPolicy: {
+    enabled: true,
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'", "https://unpkg.com"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"]
+    }
+  },
+  hsts: {
+    enabled: process.env.NODE_ENV === 'production',
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  }
+}));
+
+// CORS handling with configuration
+app.use(configureCors());
+
+// API-specific security
+app.use('/api/', createApiSecurityMiddleware({
+  noCache: true,
+  validateContentType: true
+}));
+
+// Request parsing middleware
+app.use(express.json({ limit: '1mb' })); // Parse JSON with size limit
+app.use(express.urlencoded({ extended: false, limit: '1mb' })); // Parse URL-encoded with size limit
+app.use(cookieParser()); // Parse cookies
+
+// Logging middleware
+app.use(morgan('combined', {
+  stream: { write: message => logger.info(message.trim()) }
+}));
+
+// Audit logging middleware
+app.use(createRateLimitAuditMiddleware());
+app.use(createInputValidationAuditMiddleware());
+
+// Rate limiting with user awareness and configurable limits
+app.use(createUserAwareRateLimiter({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || (60 * 1000),
+  anonymousMax: parseInt(process.env.RATE_LIMIT_ANONYMOUS_MAX) || 100,
+  authenticatedMax: parseInt(process.env.RATE_LIMIT_AUTHENTICATED_MAX) || 300,
+  premiumMax: parseInt(process.env.RATE_LIMIT_PREMIUM_MAX) || 500,
+  bypassRoles: ['admin'],
+  allowedIPs: allAllowedIPs // Use the same allowed IPs here
+}));
+
+// Debug logging for UI requests
 app.use((req, res, next) => {
-  // Log what's being requested
   if (req.path === '/' || req.path.endsWith('.html')) {
-    logger.info(`Serving HTML request: ${req.path} from ${webUIPath || 'no UI path'}`);
+    logger.debug(`Serving HTML request: ${req.path} from ${webUIPath || 'no UI path'}`);
   }
   next();
-})
-app.use(configureCors()); // CORS handling with configuration
-app.use(express.json()); // Parse JSON request body
-app.use(express.urlencoded({ extended: false })); // Parse URL-encoded request body
-app.use(cookieParser()); // Parse cookies
-app.use(morgan('dev')); // HTTP request logging
-app.use(globalLimiter); // Apply rate limiting to all routes
+});
 
 // Import environment loader
 const EnvironmentLoader = require('../config/EnvironmentLoader');
@@ -132,7 +227,13 @@ async function startApiServer(port, config, eventBus, additionalRoutes = null) {
     v1Routes = createRoutes();
   }
   
-  // Mount API routes BEFORE creating the server
+  // Mount audit logging middleware for specific API routes
+  app.use('/api/v1/auth', createAuthAuditMiddleware());
+  app.use('/api/v1', createPermissionAuditMiddleware());
+  app.use('/api/v1', createDataAccessAuditMiddleware());
+  app.use('/api/v1/ports', createPortAuditMiddleware());
+  
+  // Mount API routes AFTER audit middleware
   app.use('/api/v1', v1Routes);
   
   // 404 Handler for API routes

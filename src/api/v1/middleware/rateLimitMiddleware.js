@@ -1,9 +1,25 @@
 /**
- * Rate Limiting Middleware
- * Provides protection against excessive API requests
+ * Enhanced Rate Limiting Middleware
+ * Provides sophisticated protection against excessive API requests, DDoS, and brute force attacks
  */
 const rateLimit = require('express-rate-limit');
 const logger = require('../../../utils/logger');
+
+// In-memory store for tracking suspicious IPs
+const suspiciousIPs = new Map();
+const blockedIPs = new Set();
+
+// Cleanup suspicious IPs every hour
+setInterval(() => {
+  const now = Date.now();
+  const oneHour = 60 * 60 * 1000;
+  
+  for (const [ip, data] of suspiciousIPs.entries()) {
+    if (now - data.firstSeen > oneHour) {
+      suspiciousIPs.delete(ip);
+    }
+  }
+}, 60 * 60 * 1000);
 
 /**
  * Create a configurable rate limiter
@@ -56,9 +72,305 @@ const writeLimiter = createRateLimiter({
   max: 30 // 30 write operations per 5 minutes
 });
 
+/**
+ * Advanced rate limiter with user-specific limits
+ * @param {Object} options - Configuration options
+ * @returns {Function} Express middleware
+ */
+function createUserAwareRateLimiter(options = {}) {
+  const defaults = {
+    windowMs: 60 * 1000,
+    anonymousMax: 50,    // Lower limit for unauthenticated users
+    authenticatedMax: 150, // Higher limit for authenticated users
+    premiumMax: 300,     // Even higher for premium users
+    bypassRoles: ['admin'], // Roles that bypass rate limiting
+    allowedIPs: [], // IPs that bypass rate limiting completely
+    keyGenerator: (req) => {
+      // Use user ID for authenticated users, IP for anonymous
+      return req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`;
+    }
+  };
+
+  const config = { ...defaults, ...options };
+
+  return rateLimit({
+    windowMs: config.windowMs,
+    max: (req) => {
+      // Bypass for allowed IPs
+      if (config.allowedIPs && config.allowedIPs.includes(req.ip)) {
+        return 0; // No limit for allowed IPs
+      }
+
+      // Bypass for certain roles
+      if (req.user?.role && config.bypassRoles.includes(req.user.role)) {
+        return 0; // No limit
+      }
+
+      // Different limits based on user status
+      if (!req.user) {
+        return config.anonymousMax;
+      } else if (req.user.premium) {
+        return config.premiumMax;
+      } else {
+        return config.authenticatedMax;
+      }
+    },
+    keyGenerator: config.keyGenerator,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => {
+      // Skip rate limiting entirely for allowed IPs
+      return config.allowedIPs && config.allowedIPs.includes(req.ip);
+    },
+    handler: (req, res) => {
+      const userType = req.user ? (req.user.premium ? 'premium' : 'authenticated') : 'anonymous';
+      logger.warn(`Rate limit exceeded for ${userType} user: ${req.user?.username || req.ip}`);
+      
+      res.status(429).json({
+        success: false,
+        status: 'error',
+        message: 'Rate limit exceeded. Please try again later.',
+        error: 'RATE_LIMIT_EXCEEDED',
+        retryAfter: Math.ceil(config.windowMs / 1000)
+      });
+    }
+  });
+}
+
+/**
+ * Burst protection middleware
+ * Prevents rapid-fire requests within a short time window
+ * @param {Object} options - Configuration options
+ * @returns {Function} Express middleware
+ */
+function createBurstProtectionMiddleware(options = {}) {
+  const defaults = {
+    windowMs: 1000,     // 1 second window
+    maxBurst: 10,       // 10 requests per second max
+    blockDuration: 60000 // Block for 1 minute if burst exceeded
+  };
+
+  const config = { ...defaults, ...options };
+  const burstTracker = new Map();
+
+  return function burstProtectionMiddleware(req, res, next) {
+    const key = req.ip;
+    const now = Date.now();
+    
+    // Clean old entries
+    if (burstTracker.has(key)) {
+      const data = burstTracker.get(key);
+      if (now - data.windowStart > config.windowMs) {
+        data.count = 1;
+        data.windowStart = now;
+      } else {
+        data.count++;
+      }
+      
+      // Check if burst limit exceeded
+      if (data.count > config.maxBurst) {
+        // Block the IP temporarily
+        blockedIPs.add(key);
+        setTimeout(() => blockedIPs.delete(key), config.blockDuration);
+        
+        logger.warn(`Burst protection activated for IP: ${key}`);
+        return res.status(429).json({
+          success: false,
+          status: 'error',
+          message: 'Too many rapid requests. Temporarily blocked.',
+          error: 'BURST_PROTECTION_ACTIVATED',
+          retryAfter: Math.ceil(config.blockDuration / 1000)
+        });
+      }
+    } else {
+      burstTracker.set(key, {
+        count: 1,
+        windowStart: now
+      });
+    }
+
+    next();
+  };
+}
+
+/**
+ * IP blocking middleware
+ * Blocks requests from known malicious IPs
+ * @param {Object} options - Configuration options
+ * @returns {Function} Express middleware
+ */
+function createIPBlockingMiddleware(options = {}) {
+  const defaults = {
+    allowedIPs: [], // IPs that are always allowed
+    blockedIPs: [], // IPs that are always blocked
+    suspiciousThreshold: 5, // Number of suspicious events before temporary block
+    blockDuration: 24 * 60 * 60 * 1000 // 24 hours
+  };
+
+  const config = { ...defaults, ...options };
+
+  return function ipBlockingMiddleware(req, res, next) {
+    const clientIP = req.ip;
+
+    // Check if IP is in allowed list
+    if (config.allowedIPs.includes(clientIP)) {
+      return next();
+    }
+
+    // Check if IP is permanently blocked
+    if (config.blockedIPs.includes(clientIP) || blockedIPs.has(clientIP)) {
+      logger.warn(`Blocked IP attempted access: ${clientIP}`);
+      return res.status(403).json({
+        success: false,
+        status: 'error',
+        message: 'Access denied',
+        error: 'IP_BLOCKED'
+      });
+    }
+
+    // Check suspicious activity
+    if (suspiciousIPs.has(clientIP)) {
+      const data = suspiciousIPs.get(clientIP);
+      if (data.count >= config.suspiciousThreshold) {
+        // Temporarily block suspicious IP
+        blockedIPs.add(clientIP);
+        setTimeout(() => blockedIPs.delete(clientIP), config.blockDuration);
+        
+        logger.warn(`Suspicious IP temporarily blocked: ${clientIP}`);
+        return res.status(403).json({
+          success: false,
+          status: 'error',
+          message: 'Suspicious activity detected. Temporarily blocked.',
+          error: 'SUSPICIOUS_ACTIVITY_BLOCKED'
+        });
+      }
+    }
+
+    next();
+  };
+}
+
+/**
+ * Mark IP as suspicious
+ * @param {string} ip - IP address
+ * @param {string} reason - Reason for suspicion
+ */
+function markIPSuspicious(ip, reason) {
+  const now = Date.now();
+  
+  if (suspiciousIPs.has(ip)) {
+    const data = suspiciousIPs.get(ip);
+    data.count++;
+    data.reasons.push({ reason, timestamp: now });
+  } else {
+    suspiciousIPs.set(ip, {
+      count: 1,
+      firstSeen: now,
+      reasons: [{ reason, timestamp: now }]
+    });
+  }
+  
+  logger.info(`IP marked as suspicious: ${ip} - ${reason}`);
+}
+
+/**
+ * Clear a blocked IP address
+ * @param {string} ip - IP address to unblock
+ * @returns {boolean} - True if IP was blocked and is now cleared
+ */
+function clearBlockedIP(ip) {
+  const wasBlocked = blockedIPs.has(ip);
+  blockedIPs.delete(ip);
+  suspiciousIPs.delete(ip);
+  
+  if (wasBlocked) {
+    logger.info(`Cleared blocked IP: ${ip}`);
+  }
+  
+  return wasBlocked;
+}
+
+/**
+ * Clear all blocked IPs
+ * @returns {number} - Number of IPs that were cleared
+ */
+function clearAllBlockedIPs() {
+  const count = blockedIPs.size;
+  blockedIPs.clear();
+  suspiciousIPs.clear();
+  
+  logger.info(`Cleared ${count} blocked IPs`);
+  return count;
+}
+
+/**
+ * Get current rate limiting status
+ * @returns {Object} - Status information
+ */
+function getRateLimitStatus() {
+  return {
+    blockedIPs: Array.from(blockedIPs),
+    suspiciousIPs: Array.from(suspiciousIPs.entries()).map(([ip, data]) => ({
+      ip,
+      count: data.count,
+      firstSeen: new Date(data.firstSeen).toISOString(),
+      reasons: data.reasons.map(r => ({
+        reason: r.reason,
+        timestamp: new Date(r.timestamp).toISOString()
+      }))
+    })),
+    totalBlocked: blockedIPs.size,
+    totalSuspicious: suspiciousIPs.size
+  };
+}
+
+/**
+ * Port-specific rate limiter
+ * Special limits for port management operations
+ */
+const portOperationsLimiter = createRateLimiter({
+  windowMs: 2 * 60 * 1000, // 2 minutes
+  max: 20, // 20 port operations per 2 minutes
+  message: 'Too many port operations. Please wait before trying again.',
+  skip: (req) => {
+    // Skip rate limiting for simple queries
+    return req.method === 'GET' && !req.path.includes('/scan');
+  }
+});
+
+/**
+ * Critical operations limiter
+ * Very strict limits for sensitive operations
+ */
+const criticalOperationsLimiter = createRateLimiter({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  max: 5, // 5 critical operations per 10 minutes
+  message: 'Critical operation limit exceeded. Please contact administrator if needed.',
+  handler: (req, res) => {
+    markIPSuspicious(req.ip, 'Critical operations limit exceeded');
+    logger.error(`Critical operations limit exceeded for IP: ${req.ip}, Path: ${req.path}`);
+    
+    res.status(429).json({
+      success: false,
+      status: 'error',
+      message: 'Critical operation limit exceeded',
+      error: 'CRITICAL_LIMIT_EXCEEDED'
+    });
+  }
+});
+
 module.exports = {
   globalLimiter,
   authLimiter,
   writeLimiter,
-  createRateLimiter
+  portOperationsLimiter,
+  criticalOperationsLimiter,
+  createRateLimiter,
+  createUserAwareRateLimiter,
+  createBurstProtectionMiddleware,
+  createIPBlockingMiddleware,
+  markIPSuspicious,
+  clearBlockedIP,
+  clearAllBlockedIPs,
+  getRateLimitStatus
 };

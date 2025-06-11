@@ -7,8 +7,12 @@ const {
   getStatus,
   getMetrics,
   getLogs,
-  getEnvironment
+  getEnvironment,
+  getRateLimitingStatus,
+  clearBlockedIPAddress,
+  clearAllBlockedIPs
 } = require('../controllers/statusController');
+const { getSystemResources } = require('../controllers/systemResourcesController');
 const { authenticate, authorize } = require('../middleware/authMiddleware');
 
 /**
@@ -145,6 +149,178 @@ router.get('/logs', authenticate, authorize(['admin', 'operator']), getLogs);
  *        description: Insufficient permissions
  */
 router.get('/env', authenticate, authorize(['admin']), getEnvironment);
+
+/**
+ * @swagger
+ * /status/rate-limit:
+ *  get:
+ *    summary: Get rate limiting status
+ *    description: Shows current blocked IPs and rate limiting configuration
+ *    tags: [Status]
+ *    security:
+ *      - BearerAuth: []
+ *    responses:
+ *      200:
+ *        description: Rate limiting status
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                data:
+ *                  type: object
+ *                  properties:
+ *                    blockedIPs:
+ *                      type: array
+ *                      items:
+ *                        type: string
+ *                    suspiciousIPs:
+ *                      type: array
+ *                      items:
+ *                        type: object
+ *                    configuration:
+ *                      type: object
+ *      401:
+ *        description: Not authenticated
+ *      403:
+ *        description: Insufficient permissions
+ */
+router.get('/rate-limit', authenticate, authorize(['admin']), getRateLimitingStatus);
+
+/**
+ * @swagger
+ * /status/rate-limit/blocked/{ip}:
+ *  delete:
+ *    summary: Clear blocked IP address
+ *    description: Remove a specific IP from the blocked list
+ *    tags: [Status]
+ *    security:
+ *      - BearerAuth: []
+ *    parameters:
+ *      - in: path
+ *        name: ip
+ *        schema:
+ *          type: string
+ *        required: true
+ *        description: IP address to unblock
+ *    responses:
+ *      200:
+ *        description: IP address cleared successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                message:
+ *                  type: string
+ *                data:
+ *                  type: object
+ *      400:
+ *        description: Invalid IP address
+ *      401:
+ *        description: Not authenticated
+ *      403:
+ *        description: Insufficient permissions
+ */
+router.delete('/rate-limit/blocked/:ip', authenticate, authorize(['admin']), clearBlockedIPAddress);
+
+/**
+ * @swagger
+ * /status/rate-limit/blocked:
+ *  delete:
+ *    summary: Clear all blocked IPs
+ *    description: Remove all IPs from the blocked and suspicious lists
+ *    tags: [Status]
+ *    security:
+ *      - BearerAuth: []
+ *    responses:
+ *      200:
+ *        description: All blocked IPs cleared successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                status:
+ *                  type: string
+ *                  example: success
+ *                message:
+ *                  type: string
+ *                data:
+ *                  type: object
+ *      401:
+ *        description: Not authenticated
+ *      403:
+ *        description: Insufficient permissions
+ */
+router.delete('/rate-limit/blocked', authenticate, authorize(['admin']), clearAllBlockedIPs);
+
+/**
+ * @swagger
+ * /status/system-resources:
+ *   get:
+ *     summary: Get system resource usage
+ *     description: Get real-time system monitoring data (CPU, memory, disk)
+ *     tags: [Status]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: System resource usage data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     cpu:
+ *                       type: object
+ *                       properties:
+ *                         usage:
+ *                           type: number
+ *                         cores:
+ *                           type: number
+ *                         loadAvg:
+ *                           type: array
+ *                           items:
+ *                             type: number
+ *                     memory:
+ *                       type: object
+ *                       properties:
+ *                         used:
+ *                           type: number
+ *                         total:
+ *                           type: number
+ *                         percentage:
+ *                           type: number
+ *                     disk:
+ *                       type: object
+ *                       properties:
+ *                         used:
+ *                           type: number
+ *                         total:
+ *                           type: number
+ *                         available:
+ *                           type: number
+ *                         percentage:
+ *                           type: number
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/system-resources', authenticate, getSystemResources);
 
 // Health endpoint - always public
 router.get('/health', (req, res) => {

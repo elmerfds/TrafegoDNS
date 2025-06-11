@@ -3,6 +3,7 @@
  * Suggests alternative ports when conflicts are detected
  */
 const logger = require('../../utils/logger');
+const protocolHandler = require('../../utils/protocolHandler');
 
 class PortSuggestionEngine {
   constructor(availabilityChecker, reservationManager, config) {
@@ -34,21 +35,46 @@ class PortSuggestionEngine {
 
   /**
    * Suggest alternative ports for a list of requested ports
-   * @param {Array<number>} requestedPorts - Originally requested ports
-   * @param {string} protocol - Protocol (tcp/udp)
    * @param {Object} options - Suggestion options
+   * @param {Array<number>} options.requestedPorts - Originally requested ports
+   * @param {string|string[]} [options.protocol='tcp'] - Protocol(s) (tcp/udp/both)
+   * @param {boolean} [options.preferSequential] - Prefer sequential ports for multiple ports
+   * @param {number} [options.maxSuggestions] - Maximum number of suggestions per port
+   * @param {number} [options.nearbyRange] - Range to search around original ports
+   * @param {boolean} [options.avoidWellKnown] - Avoid well-known service ports
    * @returns {Promise<Array<Object>>}
    */
-  async suggestAlternativePorts(requestedPorts, protocol = 'tcp', options = {}) {
+  async suggestAlternativePorts(options = {}) {
+    // Handle backward compatibility with old signature
+    if (Array.isArray(options)) {
+      const [requestedPorts, protocol = 'tcp', opts = {}] = arguments;
+      return this.suggestAlternativePorts({
+        requestedPorts,
+        protocol,
+        ...opts
+      });
+    }
+
+    const {
+      requestedPorts = [],
+      protocol: inputProtocol = 'tcp',
+      preferSequential = this.suggestionRules.preferSequential,
+      maxSuggestions = this.suggestionRules.maxSuggestions,
+      nearbyRange = this.suggestionRules.nearbyRange,
+      avoidWellKnown = this.suggestionRules.avoidWellKnownPorts
+    } = options;
+
+    const protocol = protocolHandler.normalizeProtocol(inputProtocol);
     const suggestions = [];
     
+    logger.info(`🔍 PortSuggestionEngine: Finding alternatives for ports: ${JSON.stringify(requestedPorts)}, protocol: ${protocol}`);
+    logger.info(`🔧 Configuration: portRanges=${JSON.stringify(this.portRanges)}, excludedPorts=[${this.excludedPorts.join(', ')}]`);
+    
     try {
-      const {
-        preferSequential = this.suggestionRules.preferSequential,
-        maxSuggestions = this.suggestionRules.maxSuggestions,
-        nearbyRange = this.suggestionRules.nearbyRange,
-        avoidWellKnown = this.suggestionRules.avoidWellKnownPorts
-      } = options;
+      // Be more lenient for suggestions - allow well-known ports if we can't find enough alternatives
+      const relaxedAvoidWellKnown = avoidWellKnown;
+
+      logger.info(`📋 Suggestion options: preferSequential=${preferSequential}, maxSuggestions=${maxSuggestions}, nearbyRange=${nearbyRange}, avoidWellKnown=${avoidWellKnown}`);
 
       if (preferSequential && requestedPorts.length > 1) {
         // Try to find sequential port blocks
@@ -63,13 +89,34 @@ class PortSuggestionEngine {
       } else {
         // Find individual port alternatives
         for (const port of requestedPorts) {
-          const portSuggestions = await this._findAlternativePortsForSingle(
+          let portSuggestions = await this._findAlternativePortsForSingle(
             port,
             protocol,
             maxSuggestions,
             nearbyRange,
-            avoidWellKnown
+            relaxedAvoidWellKnown
           );
+          
+          // If we didn't find enough suggestions and we were avoiding well-known ports, try again with relaxed restrictions
+          if (portSuggestions.length < maxSuggestions && relaxedAvoidWellKnown) {
+            logger.info(`🔍 Only found ${portSuggestions.length} alternatives for port ${port}, trying with relaxed restrictions...`);
+            const additionalSuggestions = await this._findAlternativePortsForSingle(
+              port,
+              protocol,
+              maxSuggestions - portSuggestions.length,
+              nearbyRange,
+              false // Don't avoid well-known ports
+            );
+            
+            // Merge suggestions, avoiding duplicates
+            for (const additional of additionalSuggestions) {
+              if (!portSuggestions.includes(additional)) {
+                portSuggestions.push(additional);
+              }
+            }
+          }
+          
+          logger.info(`🔍 Found ${portSuggestions.length} alternatives for port ${port}: ${JSON.stringify(portSuggestions)}`);
           
           suggestions.push({
             originalPort: port,
@@ -78,6 +125,7 @@ class PortSuggestionEngine {
         }
       }
 
+      logger.info(`🔍 PortSuggestionEngine: Total suggestions found: ${JSON.stringify(suggestions)}`);
       return suggestions;
     } catch (error) {
       logger.error(`Failed to suggest alternative ports: ${error.message}`);
@@ -319,6 +367,8 @@ class PortSuggestionEngine {
    * @private
    */
   async _findAlternativePortsForSingle(originalPort, protocol, maxSuggestions, nearbyRange, avoidWellKnown) {
+    logger.info(`🔍 Finding alternatives for port ${originalPort} (protocol: ${protocol}, max: ${maxSuggestions}, range: ${nearbyRange})`);
+    
     const alternatives = [];
     const searchOrder = [];
 
@@ -332,31 +382,53 @@ class PortSuggestionEngine {
       }
     }
 
+    logger.debug(`📋 Will check ${searchOrder.length} nearby ports: ${searchOrder.slice(0, 10).join(', ')}${searchOrder.length > 10 ? '...' : ''}`);
+
     // Check each port in search order
+    let checkedCount = 0;
     for (const port of searchOrder) {
       if (alternatives.length >= maxSuggestions) break;
+      checkedCount++;
 
       if (await this._isPortSuitable(port, protocol, avoidWellKnown, true)) {
         alternatives.push(port);
+        logger.debug(`✅ Added alternative port ${port} (${alternatives.length}/${maxSuggestions})`);
       }
     }
+
+    logger.debug(`📊 Checked ${checkedCount} nearby ports, found ${alternatives.length} alternatives`);
 
     // If we don't have enough suggestions, look in configured ranges
     if (alternatives.length < maxSuggestions) {
+      logger.debug(`🔍 Need more alternatives, searching configured ranges: ${JSON.stringify(this.portRanges)}`);
+      
+      let rangeCheckedCount = 0;
       for (const range of this.portRanges) {
         if (alternatives.length >= maxSuggestions) break;
 
+        logger.debug(`🔍 Searching range ${range.start}-${range.end}...`);
         for (let port = range.start; port <= range.end; port++) {
           if (alternatives.length >= maxSuggestions) break;
+          rangeCheckedCount++;
           
-          if (!alternatives.includes(port) && 
+          if (!alternatives.includes(port) && !searchOrder.includes(port) &&
               await this._isPortSuitable(port, protocol, avoidWellKnown, false)) {
             alternatives.push(port);
+            logger.debug(`✅ Added range alternative port ${port} (${alternatives.length}/${maxSuggestions})`);
+          }
+          
+          // Limit range scanning to prevent overwhelming
+          if (rangeCheckedCount >= 200) {
+            logger.debug(`⏹️ Stopping range search after ${rangeCheckedCount} ports to prevent timeout`);
+            break;
           }
         }
       }
+      
+      logger.debug(`📊 Checked ${rangeCheckedCount} range ports, total alternatives: ${alternatives.length}`);
     }
 
+    logger.info(`📤 Found ${alternatives.length} alternatives for port ${originalPort}: [${alternatives.join(', ')}]`);
     return alternatives;
   }
 
@@ -370,26 +442,88 @@ class PortSuggestionEngine {
    * @private
    */
   async _isPortSuitable(port, protocol, avoidWellKnown, respectRanges) {
+    logger.debug(`🔍 Checking port ${port} suitability (protocol: ${protocol}, avoidWellKnown: ${avoidWellKnown}, respectRanges: ${respectRanges})`);
+    
     // Check basic port validity
-    if (port < 1024 || port > 65535) return false;
+    if (port < 1024 || port > 65535) {
+      logger.debug(`❌ Port ${port} rejected: outside valid range (1024-65535)`);
+      return false;
+    }
 
     // Check excluded ports
-    if (this.excludedPorts.includes(port)) return false;
+    if (this.excludedPorts.includes(port)) {
+      logger.debug(`❌ Port ${port} rejected: in excluded list (${this.excludedPorts.join(', ')})`);
+      return false;
+    }
 
     // Check well-known ports
-    if (avoidWellKnown && this.wellKnownPorts.has(port)) return false;
+    if (avoidWellKnown && this.wellKnownPorts.has(port)) {
+      logger.debug(`❌ Port ${port} rejected: well-known port`);
+      return false;
+    }
 
     // Check configured ranges
-    if (respectRanges && !this._isPortInConfiguredRanges(port)) return false;
+    if (respectRanges && !this._isPortInConfiguredRanges(port)) {
+      logger.debug(`❌ Port ${port} rejected: outside configured ranges (${JSON.stringify(this.portRanges)})`);
+      return false;
+    }
 
-    // Check system availability
-    const isAvailable = await this.availabilityChecker.checkSinglePort(port, protocol);
-    if (!isAvailable) return false;
+    // Check system availability using ProtocolHandler
+    let isAvailable = true;
+    try {
+      const protocols = protocolHandler.expandProtocols(protocol);
+      logger.debug(`🔍 Checking port ${port} availability for protocols: ${protocols.join(', ')}`);
+      
+      const availabilityResults = [];
+      for (const proto of protocols) {
+        const protoAvailable = await this.availabilityChecker.checkSinglePort(port, proto);
+        availabilityResults.push({ protocol: proto, available: protoAvailable });
+      }
+      
+      // For suggestions, be more lenient - port is available if any protocol is available
+      // This allows for more flexibility in port suggestions
+      isAvailable = availabilityResults.some(result => result.available);
+      
+      logger.debug(`🔍 Port ${port} availability results:`, availabilityResults);
+      
+      if (availabilityResults.every(result => result.available)) {
+        logger.debug(`✅ Port ${port} fully available for all requested protocols`);
+      } else if (isAvailable) {
+        const availableProtocols = availabilityResults.filter(r => r.available).map(r => r.protocol);
+        logger.debug(`⚠️ Port ${port} partially available for: ${availableProtocols.join(', ')}`);
+      }
+    } catch (error) {
+      logger.debug(`⚠️ Port ${port} availability check failed: ${error.message}, assuming unavailable`);
+      isAvailable = false;
+    }
+    
+    if (!isAvailable) {
+      logger.debug(`❌ Port ${port} rejected: not available on system`);
+      return false;
+    }
 
-    // Check reservations
-    const reservation = await this.reservationManager.getPortReservation(port, protocol);
-    if (reservation) return false;
+    // Check reservations using ProtocolHandler
+    try {
+      const protocols = protocolHandler.expandProtocols(protocol);
+      let hasReservation = false;
+      
+      for (const proto of protocols) {
+        const reservation = await this.reservationManager.getPortReservation(port, proto);
+        if (reservation) {
+          hasReservation = true;
+          break;
+        }
+      }
+      
+      if (hasReservation) {
+        logger.debug(`❌ Port ${port} rejected: has active reservation for one or more protocols`);
+        return false;
+      }
+    } catch (error) {
+      logger.debug(`⚠️ Port ${port} reservation check failed: ${error.message}, assuming no reservation`);
+    }
 
+    logger.debug(`✅ Port ${port} is suitable for suggestion`);
     return true;
   }
 

@@ -44,6 +44,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useToast } from '../hooks/use-toast';
+import { usePortStore, usePortsData, useAlertsData, useScansData, usePortStatistics } from '../store/portStore';
 import type { 
   Port, 
   PortAlert, 
@@ -57,21 +58,49 @@ import type {
 
 export default function PortMonitoring() {
   const [activeTab, setActiveTab] = useState('overview');
-  const [ports, setPorts] = useState<Port[]>([]);
-  const [alerts, setAlerts] = useState<PortAlert[]>([]);
-  const [scans, setScans] = useState<PortScan[]>([]);
-  const [statistics, setStatistics] = useState<PortStatistics | null>(null);
+  
+  // Zustand store hooks
+  const { ports, loading: portsLoading, error: portsError } = usePortsData();
+  const { alerts, loading: alertsLoading, error: alertsError } = useAlertsData();
+  const { scans, loading: scansLoading, error: scansError } = useScansData();
+  const { statistics, loading: statsLoading, error: statsError } = usePortStatistics();
+  
+  const {
+    fetchPorts,
+    fetchAlerts,
+    fetchScans,
+    fetchStatistics,
+    startPortScan,
+    acknowledgeAlert,
+    updatePortFilters,
+    updateAlertFilters,
+    updateScanFilters
+  } = usePortStore();
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Filters
-  const [portFilters, setPortFilters] = useState<PortFilters>({ page: 1, limit: 50 });
-  const [alertFilters, setAlertFilters] = useState<AlertFilters>({ page: 1, limit: 20 });
-  const [scanFilters, setScanFilters] = useState<ScanFilters>({ page: 1, limit: 20 });
+  // Update error and loading states
+  useEffect(() => {
+    setError(portsError || alertsError || scansError || statsError);
+    setLoading(portsLoading || alertsLoading || scansLoading || statsLoading);
+  }, [portsError, alertsError, scansError, statsError, portsLoading, alertsLoading, scansLoading, statsLoading]);
+  
+  // Filters - now managed by Zustand store
+  const { filters } = usePortStore();
+  const portFilters = filters.ports;
+  const alertFilters = filters.alerts;
+  const scanFilters = filters.scans;
   
   // Scan dialog
   const [showScanDialog, setShowScanDialog] = useState(false);
-  const [scanRequest, setScanRequest] = useState<PortScanRequest>({ host: '', port_range: '1-1000' });
+  const [scanRequest, setScanRequest] = useState<PortScanRequest>({ 
+    host: '', 
+    port_range: '1-1000', 
+    startPort: 1, 
+    endPort: 1000, 
+    protocol: 'tcp' 
+  });
   const [scanning, setScanning] = useState(false);
   
   // Search states
@@ -80,80 +109,29 @@ export default function PortMonitoring() {
   const { toast } = useToast();
 
   useEffect(() => {
-    loadInitialData();
-  }, []);
+    // Load initial data using Zustand store
+    fetchStatistics();
+    fetchAlerts({ limit: 5, acknowledged: false });
+    setLoading(false);
+  }, [fetchStatistics, fetchAlerts]);
 
   useEffect(() => {
     if (activeTab === 'ports') {
-      loadPorts();
+      fetchPorts();
     } else if (activeTab === 'alerts') {
-      loadAlerts();
+      fetchAlerts();
     } else if (activeTab === 'scans') {
-      loadScans();
+      fetchScans();
     }
-  }, [activeTab, portFilters, alertFilters, scanFilters]);
+  }, [activeTab, portFilters, alertFilters, scanFilters, fetchPorts, fetchAlerts, fetchScans]);
 
-  const loadInitialData = async () => {
-    try {
-      setLoading(true);
-      const stats = await api.get('/api/v1/ports/statistics');
-      setStatistics(stats.data);
-      
-      // Load recent alerts
-      const recentAlerts = await api.get('/api/v1/ports/alerts', {
-        params: { limit: 5, acknowledged: false }
-      });
-      setAlerts(recentAlerts.data.data || []);
-      
-    } catch (err) {
-      console.error('Error loading initial data:', err);
-      setError('Failed to load port monitoring data');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Remove loadInitialData - now handled by Zustand store
 
-  const loadPorts = async () => {
-    try {
-      const response = await api.get('/api/v1/ports', { params: portFilters });
-      setPorts(response.data.data || []);
-    } catch (err) {
-      console.error('Error loading ports:', err);
-      toast({
-        title: "Error",
-        description: "Failed to load ports",
-        variant: "destructive"
-      });
-    }
-  };
+  // Remove loadPorts - now handled by Zustand store
 
-  const loadAlerts = async () => {
-    try {
-      const response = await api.get('/api/v1/ports/alerts', { params: alertFilters });
-      setAlerts(response.data.data || []);
-    } catch (err) {
-      console.error('Error loading alerts:', err);
-      toast({
-        title: "Error",
-        description: "Failed to load alerts",
-        variant: "destructive"
-      });
-    }
-  };
+  // Remove loadAlerts - now handled by Zustand store
 
-  const loadScans = async () => {
-    try {
-      const response = await api.get('/api/v1/ports/scans', { params: scanFilters });
-      setScans(response.data.data || []);
-    } catch (err) {
-      console.error('Error loading scans:', err);
-      toast({
-        title: "Error",
-        description: "Failed to load scans",
-        variant: "destructive"
-      });
-    }
-  };
+  // Remove loadScans - now handled by Zustand store
 
   const handleScan = async () => {
     if (!scanRequest.host) {
@@ -167,7 +145,18 @@ export default function PortMonitoring() {
 
     try {
       setScanning(true);
-      await api.post('/api/v1/ports/scan', scanRequest);
+      
+      // Convert port_range and protocols to the format expected by the store
+      const [startPort, endPort] = scanRequest.port_range?.includes('-') 
+        ? (scanRequest.port_range || '1-1000').split('-').map(p => parseInt(p.trim()))
+        : [1, 1000];
+      
+      await startPortScan({
+        server_id: 'default', // This would need to be determined based on the host
+        startPort,
+        endPort,
+        protocol: scanRequest.protocols?.[0] || 'tcp'
+      });
       
       toast({
         title: "Success",
@@ -175,12 +164,13 @@ export default function PortMonitoring() {
       });
       
       setShowScanDialog(false);
-      setScanRequest({ host: '', port_range: '1-1000' });
-      
-      // Refresh scans if on scans tab
-      if (activeTab === 'scans') {
-        setTimeout(loadScans, 1000);
-      }
+      setScanRequest({ 
+        host: '', 
+        port_range: '1-1000', 
+        startPort: 1, 
+        endPort: 1000, 
+        protocol: 'tcp' 
+      });
       
     } catch (err) {
       console.error('Error starting scan:', err);
@@ -194,18 +184,14 @@ export default function PortMonitoring() {
     }
   };
 
-  const acknowledgeAlert = async (alertId: number) => {
+  const handleAcknowledgeAlert = async (alertId: string) => {
     try {
-      await api.put(`/api/v1/ports/alerts/${alertId}/acknowledge`);
+      await acknowledgeAlert(alertId);
       
       toast({
         title: "Success",
         description: "Alert acknowledged",
       });
-      
-      // Refresh alerts
-      loadAlerts();
-      loadInitialData(); // Refresh statistics
       
     } catch (err) {
       console.error('Error acknowledging alert:', err);
@@ -219,7 +205,7 @@ export default function PortMonitoring() {
 
   const exportPorts = async (format: 'json' | 'csv' = 'json') => {
     try {
-      const response = await api.get('/api/v1/ports/export', {
+      const response = await api.get('/ports/export', {
         params: { format, ...portFilters },
         responseType: 'blob'
       });
@@ -287,10 +273,26 @@ export default function PortMonitoring() {
   }
 
   if (error) {
+    const isPortMonitorError = error.includes('Port monitor not initialized');
+    
     return (
-      <Alert variant="destructive">
+      <Alert variant={isPortMonitorError ? "default" : "destructive"}>
         <AlertTriangle className="h-4 w-4" />
-        <AlertDescription>{error}</AlertDescription>
+        <AlertDescription>
+          {isPortMonitorError ? (
+            <div className="space-y-2">
+              <p>Port monitoring is not yet initialized. This usually happens when:</p>
+              <ul className="list-disc list-inside text-sm space-y-1">
+                <li>The port management feature was just enabled</li>
+                <li>The application is still starting up</li>
+                <li>There are database initialization issues</li>
+              </ul>
+              <p className="text-sm">Please check the application logs and try refreshing in a moment.</p>
+            </div>
+          ) : (
+            error
+          )}
+        </AlertDescription>
       </Alert>
     );
   }
@@ -318,7 +320,7 @@ export default function PortMonitoring() {
 
         <TabsContent value="overview" className="space-y-6">
           {/* Statistics Cards */}
-          {statistics && (
+          {statistics && statistics.ports && statistics.alerts && statistics.scans && (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -327,10 +329,10 @@ export default function PortMonitoring() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {Object.values(statistics.ports.byStatus).reduce((a, b) => a + b, 0)}
+                    {statistics.ports?.byStatus ? Object.values(statistics.ports.byStatus).reduce((a, b) => a + b, 0) : 0}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {statistics.ports.byStatus.open || 0} open, {statistics.ports.byStatus.closed || 0} closed
+                    {statistics.ports?.byStatus?.open || 0} open, {statistics.ports?.byStatus?.closed || 0} closed
                   </p>
                 </CardContent>
               </Card>
@@ -341,9 +343,9 @@ export default function PortMonitoring() {
                   <AlertTriangle className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{statistics.alerts.unacknowledged}</div>
+                  <div className="text-2xl font-bold">{statistics.alerts?.unacknowledged || 0}</div>
                   <p className="text-xs text-muted-foreground">
-                    {statistics.alerts.bySeverity.critical || 0} critical, {statistics.alerts.bySeverity.high || 0} high
+                    {statistics.alerts?.bySeverity?.critical || 0} critical, {statistics.alerts?.bySeverity?.high || 0} high
                   </p>
                 </CardContent>
               </Card>
@@ -354,9 +356,9 @@ export default function PortMonitoring() {
                   <Activity className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{statistics.scans.recentScans}</div>
+                  <div className="text-2xl font-bold">{statistics.scans?.recentScans || 0}</div>
                   <p className="text-xs text-muted-foreground">
-                    Avg: {Math.round(statistics.scans.averageDuration / 1000)}s duration
+                    Avg: {statistics.scans?.averageDuration ? Math.round(statistics.scans.averageDuration / 1000) : 0}s duration
                   </p>
                 </CardContent>
               </Card>
@@ -367,11 +369,39 @@ export default function PortMonitoring() {
                   <Clock className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{statistics.ports.recentActivity}</div>
+                  <div className="text-2xl font-bold">{statistics.ports?.recentActivity || 0}</div>
                   <p className="text-xs text-muted-foreground">Port changes (24h)</p>
                 </CardContent>
               </Card>
             </div>
+          )}
+
+          {/* Show loading state for statistics */}
+          {!statistics && statsLoading && (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <Card key={index}>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
+                    <div className="h-4 w-4 bg-gray-200 rounded animate-pulse" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-8 w-16 bg-gray-200 rounded animate-pulse mb-2" />
+                    <div className="h-3 w-24 bg-gray-200 rounded animate-pulse" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Show error state for statistics */}
+          {!statistics && !statsLoading && statsError && (
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                Failed to load statistics: {statsError}
+              </AlertDescription>
+            </Alert>
           )}
 
           {/* Recent Alerts */}
@@ -381,18 +411,18 @@ export default function PortMonitoring() {
               <CardDescription>Latest security alerts requiring attention</CardDescription>
             </CardHeader>
             <CardContent>
-              {alerts.length === 0 ? (
+              {!alerts || alerts.length === 0 ? (
                 <p className="text-muted-foreground text-center py-4">No recent alerts</p>
               ) : (
                 <div className="space-y-2">
-                  {alerts.slice(0, 5).map((alert) => (
+                  {Array.isArray(alerts) ? alerts.slice(0, 5).map((alert) => (
                     <div key={alert.id} className="flex items-center justify-between p-3 border rounded">
                       <div className="flex items-center space-x-3">
                         <Shield className="h-4 w-4 text-orange-500" />
                         <div>
                           <p className="font-medium">{alert.title}</p>
                           <p className="text-sm text-muted-foreground">
-                            {alert.host}:{alert.port} - {alert.description}
+                            {alert.server_id}:{alert.port} - {alert.description}
                           </p>
                         </div>
                       </div>
@@ -401,20 +431,20 @@ export default function PortMonitoring() {
                         <Button 
                           size="sm" 
                           variant="outline"
-                          onClick={() => acknowledgeAlert(alert.id)}
+                          onClick={() => handleAcknowledgeAlert(alert.id)}
                         >
                           Acknowledge
                         </Button>
                       </div>
                     </div>
-                  ))}
+                  )) : null}
                 </div>
               )}
             </CardContent>
           </Card>
 
           {/* Top Services and Hosts */}
-          {statistics && (
+          {statistics && statistics.ports && statistics.ports.topServices && statistics.ports.topHosts && (
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
                 <CardHeader>
@@ -422,12 +452,12 @@ export default function PortMonitoring() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {statistics.ports.topServices.slice(0, 5).map((service, index) => (
+                    {Array.isArray(statistics.ports?.topServices) ? statistics.ports.topServices.slice(0, 5).map((service, index) => (
                       <div key={index} className="flex justify-between items-center">
                         <span className="font-medium">{service.service_name || 'Unknown'}</span>
                         <Badge variant="secondary">{service.count}</Badge>
                       </div>
-                    ))}
+                    )) : null}
                   </div>
                 </CardContent>
               </Card>
@@ -438,12 +468,12 @@ export default function PortMonitoring() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {statistics.ports.topHosts.slice(0, 5).map((host, index) => (
+                    {Array.isArray(statistics.ports?.topHosts) ? statistics.ports.topHosts.slice(0, 5).map((host, index) => (
                       <div key={index} className="flex justify-between items-center">
                         <span className="font-medium">{host.host}</span>
                         <Badge variant="secondary">{host.port_count} ports</Badge>
                       </div>
-                    ))}
+                    )) : null}
                   </div>
                 </CardContent>
               </Card>
@@ -466,7 +496,7 @@ export default function PortMonitoring() {
               </div>
               <Select
                 value={portFilters.status || 'all'}
-                onValueChange={(value) => setPortFilters({ ...portFilters, status: value === 'all' ? undefined : value })}
+                onValueChange={(value) => updatePortFilters({ status: value === 'all' ? undefined : value })}
               >
                 <SelectTrigger className="w-32">
                   <SelectValue placeholder="Status" />
@@ -480,7 +510,7 @@ export default function PortMonitoring() {
               </Select>
               <Select
                 value={portFilters.protocol || 'all'}
-                onValueChange={(value) => setPortFilters({ ...portFilters, protocol: value === 'all' ? undefined : value })}
+                onValueChange={(value) => updatePortFilters({ protocol: value === 'all' ? undefined : value })}
               >
                 <SelectTrigger className="w-32">
                   <SelectValue placeholder="Protocol" />
@@ -521,41 +551,54 @@ export default function PortMonitoring() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {ports.map((port) => (
-                    <TableRow key={port.id}>
-                      <TableCell className="font-medium">{port.host}</TableCell>
-                      <TableCell>{port.port}</TableCell>
-                      <TableCell>{port.protocol.toUpperCase()}</TableCell>
-                      <TableCell>{getStatusBadge(port.status)}</TableCell>
-                      <TableCell>
-                        {port.service_name ? (
-                          <div>
-                            <div className="font-medium">{port.service_name}</div>
-                            {port.service_version && (
-                              <div className="text-sm text-muted-foreground">{port.service_version}</div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">Unknown</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {port.unread_alerts ? (
-                          <Badge variant="destructive">{port.unread_alerts}</Badge>
-                        ) : (
-                          <span className="text-muted-foreground">None</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {new Date(port.last_seen).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="sm">
-                          <Eye className="h-4 w-4" />
-                        </Button>
+                  {!ports || ports.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        {searchTerm ? `No ports found matching "${searchTerm}"` : 'No ports found'}
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : (
+                    Array.isArray(ports) ? ports.map((port, index) => (
+                      <TableRow key={port.id || `${port.server_id}-${port.port}-${index}`}>
+                        <TableCell className="font-medium">{port.server_name || port.server_id}</TableCell>
+                        <TableCell className="font-mono">{port.port}</TableCell>
+                        <TableCell>{port.protocol.toUpperCase()}</TableCell>
+                        <TableCell>{getStatusBadge(port.status)}</TableCell>
+                        <TableCell>
+                          {port.service_name ? (
+                            <div>
+                              <div className="font-medium">{port.service_name}</div>
+                              {port.service_version && (
+                                <div className="text-sm text-muted-foreground">{port.service_version}</div>
+                              )}
+                              {port.source && (
+                                <div className="text-xs text-muted-foreground">
+                                  Source: {port.source}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">Unknown</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {port.unread_alerts ? (
+                            <Badge variant="destructive">{port.unread_alerts}</Badge>
+                          ) : (
+                            <span className="text-muted-foreground">None</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {new Date(port.last_seen || new Date()).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="sm">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    )) : null
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -567,7 +610,7 @@ export default function PortMonitoring() {
           <div className="flex items-center space-x-2">
             <Select
               value={alertFilters.severity || 'all'}
-              onValueChange={(value) => setAlertFilters({ ...alertFilters, severity: value === 'all' ? undefined : value })}
+              onValueChange={(value) => updateAlertFilters({ severity: value === 'all' ? undefined : value })}
             >
               <SelectTrigger className="w-40">
                 <SelectValue placeholder="Severity" />
@@ -582,10 +625,7 @@ export default function PortMonitoring() {
             </Select>
             <Select
               value={alertFilters.acknowledged?.toString() || 'all'}
-              onValueChange={(value) => setAlertFilters({ 
-                ...alertFilters, 
-                acknowledged: value === 'all' ? undefined : value === 'true' 
-              })}
+              onValueChange={(value) => updateAlertFilters({ acknowledged: value === 'all' ? undefined : value === 'true' })}
             >
               <SelectTrigger className="w-40">
                 <SelectValue placeholder="Status" />
@@ -614,7 +654,7 @@ export default function PortMonitoring() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {alerts.map((alert) => (
+                  {Array.isArray(alerts) ? alerts.map((alert) => (
                     <TableRow key={alert.id}>
                       <TableCell>
                         <div>
@@ -624,7 +664,7 @@ export default function PortMonitoring() {
                       </TableCell>
                       <TableCell>{getSeverityBadge(alert.severity)}</TableCell>
                       <TableCell className="font-mono">
-                        {alert.host}:{alert.port}
+                        {alert.server_id}:{alert.port}
                       </TableCell>
                       <TableCell>{alert.alert_type.replace('_', ' ')}</TableCell>
                       <TableCell>
@@ -642,14 +682,14 @@ export default function PortMonitoring() {
                           <Button 
                             variant="outline" 
                             size="sm"
-                            onClick={() => acknowledgeAlert(alert.id)}
+                            onClick={() => handleAcknowledgeAlert(alert.id)}
                           >
                             Acknowledge
                           </Button>
                         )}
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )) : null}
                 </TableBody>
               </Table>
             </CardContent>
@@ -662,7 +702,7 @@ export default function PortMonitoring() {
             <div className="flex items-center space-x-2">
               <Select
                 value={scanFilters.status || 'all'}
-                onValueChange={(value) => setScanFilters({ ...scanFilters, status: value === 'all' ? undefined : value })}
+                onValueChange={(value) => updateScanFilters({ status: value === 'all' ? undefined : value })}
               >
                 <SelectTrigger className="w-40">
                   <SelectValue placeholder="Status" />
@@ -677,7 +717,7 @@ export default function PortMonitoring() {
               </Select>
               <Select
                 value={scanFilters.scan_type || 'all'}
-                onValueChange={(value) => setScanFilters({ ...scanFilters, scan_type: value === 'all' ? undefined : value })}
+                onValueChange={(value) => updateScanFilters({ scan_type: value === 'all' ? undefined : value })}
               >
                 <SelectTrigger className="w-40">
                   <SelectValue placeholder="Type" />
@@ -713,7 +753,7 @@ export default function PortMonitoring() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {scans.map((scan) => (
+                  {Array.isArray(scans) ? scans.map((scan) => (
                     <TableRow key={scan.id}>
                       <TableCell className="font-medium">{scan.host}</TableCell>
                       <TableCell>{scan.scan_type}</TableCell>
@@ -734,7 +774,7 @@ export default function PortMonitoring() {
                       </TableCell>
                       <TableCell>{scan.created_by}</TableCell>
                     </TableRow>
-                  ))}
+                  )) : null}
                 </TableBody>
               </Table>
             </CardContent>

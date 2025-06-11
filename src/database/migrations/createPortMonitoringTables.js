@@ -85,18 +85,16 @@ async function createPortMonitoringTables(db) {
     `);
 
     // Create indexes for better performance
-    db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_ports_host ON ports(host);
-      CREATE INDEX IF NOT EXISTS idx_ports_status ON ports(status);
-      CREATE INDEX IF NOT EXISTS idx_ports_container ON ports(container_id);
-      CREATE INDEX IF NOT EXISTS idx_ports_last_seen ON ports(last_seen);
-      CREATE INDEX IF NOT EXISTS idx_port_scans_host ON port_scans(host);
-      CREATE INDEX IF NOT EXISTS idx_port_scans_status ON port_scans(status);
-      CREATE INDEX IF NOT EXISTS idx_port_history_port_id ON port_history(port_id);
-      CREATE INDEX IF NOT EXISTS idx_port_history_change_type ON port_history(change_type);
-      CREATE INDEX IF NOT EXISTS idx_port_alerts_port_id ON port_alerts(port_id);
-      CREATE INDEX IF NOT EXISTS idx_port_alerts_acknowledged ON port_alerts(acknowledged);
-    `);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_ports_host ON ports(host)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_ports_status ON ports(status)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_ports_container ON ports(container_id)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_ports_last_seen ON ports(last_seen)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_port_scans_host ON port_scans(host)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_port_scans_status ON port_scans(status)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_port_history_port_id ON port_history(port_id)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_port_history_change_type ON port_history(change_type)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_port_alerts_port_id ON port_alerts(port_id)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_port_alerts_acknowledged ON port_alerts(acknowledged)`);
 
     // Create triggers for updating timestamps
     db.exec(`

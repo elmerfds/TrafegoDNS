@@ -1,9 +1,14 @@
 /**
  * Database Module
- * Central entry point for database operations
+ * Central entry point for database operations with enhanced features
  */
 const logger = require('../utils/logger');
 const connection = require('./connection');
+const { pool, ConnectionPool } = require('./connectionPool');
+const { dataIntegrityService, DataIntegrityService } = require('./dataIntegrityService');
+const { migrationRunner, MigrationRunner } = require('./migrationRunner');
+const ImprovedBaseRepository = require('./repository/improvedBaseRepository');
+const ImprovedPortRepository = require('./repository/improvedPortRepository');
 const { migrateDnsTables } = require('./migrations/dnsTablesMigration');
 const { addLastRefreshedToProviderCache } = require('./migrations/addLastRefreshedToProviderCache');
 const { ensureLastRefreshedColumn } = require('./migrations/ensureLastRefreshedColumn');
@@ -15,6 +20,8 @@ const { up: createUserPreferencesTable } = require('./migrations/createUserPrefe
 const createDashboardLayoutsTable = require('./migrations/createDashboardLayoutsTable');
 const { createPortMonitoringTables } = require('./migrations/createPortMonitoringTables');
 const createPortReservationsTable = require('./migrations/createPortReservationsTable');
+const createServersTable = require('./migrations/createServersTable');
+const addServerToPortReservations = require('./migrations/addServerToPortReservations');
 
 // Import repositories
 const UserRepository = require('./repository/userRepository');
@@ -29,6 +36,7 @@ const PortRepository = require('./repository/portRepository');
 const PortScanRepository = require('./repository/portScanRepository');
 const PortAlertRepository = require('./repository/portAlertRepository');
 const PortReservationRepository = require('./repository/portReservationRepository');
+const ServerRepository = require('./repository/serverRepository');
 
 // Database singleton
 let db = null;
@@ -121,6 +129,11 @@ async function initialize(migrate = true, options = {}) {
       if (shouldInitializeRepo('portReservation') && (!repositories.portReservation || options.force)) {
         repositories.portReservation = new PortReservationRepository(db);
       }
+      
+      // Server repository
+      if (shouldInitializeRepo('server') && (!repositories.server || options.force)) {
+        repositories.server = new ServerRepository(db);
+      }
     }
     
     // Initialize each repository if it has an initialize method
@@ -139,6 +152,7 @@ async function initialize(migrate = true, options = {}) {
       portScan: 3,      // Medium-low priority
       portAlert: 3,     // Medium-low priority
       portReservation: 3, // Medium-low priority
+      server: 3,        // Medium-low priority
       revokedToken: 2,  // Low priority
       auditLog: 1,      // Lowest priority
       activityLog: 1    // Lowest priority
@@ -228,6 +242,22 @@ async function initialize(migrate = true, options = {}) {
         logger.info('Port reservations table ready');
       } catch (portReservationsError) {
         logger.error(`Failed to create port reservations table: ${portReservationsError.message}`);
+      }
+      
+      try {
+        // Create servers table
+        await createServersTable.up(db);
+        logger.info('Servers table ready');
+      } catch (serversError) {
+        logger.error(`Failed to create servers table: ${serversError.message}`);
+      }
+      
+      try {
+        // Add server column to port reservations
+        await addServerToPortReservations.up(db);
+        logger.info('Port reservations server column migration completed');
+      } catch (serverColumnError) {
+        logger.error(`Failed to add server column to port reservations: ${serverColumnError.message}`);
       }
     }
     
@@ -403,6 +433,17 @@ module.exports = {
   setForceInitialized,
   reinitializeAfterRecovery,
   close,
+  
+  // Enhanced features
+  pool,
+  ConnectionPool,
+  dataIntegrityService,
+  DataIntegrityService,
+  migrationRunner,
+  MigrationRunner,
+  ImprovedBaseRepository,
+  ImprovedPortRepository,
+  
   get db() {
     return db;
   },

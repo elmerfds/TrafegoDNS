@@ -78,12 +78,20 @@ class SocketServer {
       id: socket.id,
       userId,
       subscriptions: new Set(),
-      connectedAt: new Date()
+      connectedAt: new Date(),
+      lastPing: null,
+      latency: null,
+      eventQueue: [],
+      batchTimeout: null
     });
     
     // Client disconnection
     socket.on('disconnect', () => {
       logger.debug(`WebSocket client disconnected: ${socket.id}`);
+      const client = this.socketClients.get(socket.id);
+      if (client && client.batchTimeout) {
+        clearTimeout(client.batchTimeout);
+      }
       this.socketClients.delete(socket.id);
     });
     
@@ -93,16 +101,45 @@ class SocketServer {
         const client = this.socketClients.get(socket.id);
         client.subscriptions.add(eventType);
         logger.debug(`Client ${socket.id} subscribed to: ${eventType}`);
+        
+        // Send subscription confirmation
+        socket.emit('subscribed', { eventType });
       } else {
-        socket.emit('error', { message: `Invalid event type: ${eventType}` });
+        const errorMsg = `Invalid event type: ${eventType}`;
+        logger.warn(`Subscription error for client ${socket.id}: ${errorMsg}`);
+        socket.emit('subscription_error', { eventType, error: errorMsg });
       }
     });
     
     // Handle unsubscription from event types
     socket.on('unsubscribe', (eventType) => {
       const client = this.socketClients.get(socket.id);
-      client.subscriptions.delete(eventType);
-      logger.debug(`Client ${socket.id} unsubscribed from: ${eventType}`);
+      if (client) {
+        client.subscriptions.delete(eventType);
+        logger.debug(`Client ${socket.id} unsubscribed from: ${eventType}`);
+        
+        // Send unsubscription confirmation
+        socket.emit('unsubscribed', { eventType });
+      }
+    });
+
+    // Handle ping for latency measurement
+    socket.on('ping', (data) => {
+      const client = this.socketClients.get(socket.id);
+      if (client) {
+        client.lastPing = Date.now();
+        // Echo back the ping data for latency calculation
+        socket.emit('pong', data);
+      }
+    });
+
+    // Handle client-side pong responses (if we want to measure from server side)
+    socket.on('pong', (data) => {
+      const client = this.socketClients.get(socket.id);
+      if (client && client.lastPing) {
+        client.latency = Date.now() - client.lastPing;
+        logger.debug(`Client ${socket.id} latency: ${client.latency}ms`);
+      }
     });
     
     // Send welcome message with basic status
@@ -195,13 +232,23 @@ class SocketServer {
    */
   broadcastEvent(eventType, data) {
     let recipientCount = 0;
+    const eventData = { 
+      type: eventType, 
+      data, 
+      timestamp: new Date().toISOString() 
+    };
     
     // Send event to clients who are subscribed to this event type
     this.socketClients.forEach((client, socketId) => {
       if (client.subscriptions.has(eventType) || client.subscriptions.has('*')) {
         const socket = this.io.sockets.sockets.get(socketId);
         if (socket) {
-          socket.emit('event', { type: eventType, data });
+          // Check if we should batch events or send immediately
+          if (this.shouldBatchEvent(eventType)) {
+            this.addToEventBatch(client, eventData);
+          } else {
+            socket.emit('event', eventData);
+          }
           recipientCount++;
         }
       }
@@ -209,6 +256,89 @@ class SocketServer {
     
     if (recipientCount > 0) {
       logger.debug(`Broadcasted ${eventType} event to ${recipientCount} clients`);
+    }
+  }
+
+  /**
+   * Check if an event type should be batched
+   * @param {string} eventType - Event type to check
+   * @returns {boolean} Whether to batch this event type
+   */
+  shouldBatchEvent(eventType) {
+    // Batch high-frequency events like port changes and scan progress
+    const batchableEvents = [
+      'port:changed',
+      'port:scan:progress',
+      'port:statistics:updated'
+    ];
+    
+    return batchableEvents.includes(eventType);
+  }
+
+  /**
+   * Add event to client's batch queue
+   * @param {Object} client - Client object
+   * @param {Object} eventData - Event data to batch
+   */
+  addToEventBatch(client, eventData) {
+    client.eventQueue.push(eventData);
+    
+    // Clear existing timeout
+    if (client.batchTimeout) {
+      clearTimeout(client.batchTimeout);
+    }
+    
+    // Set new timeout or process immediately if batch is full
+    const batchSize = 10;
+    const batchDelay = 100; // 100ms
+    
+    if (client.eventQueue.length >= batchSize) {
+      this.processBatch(client);
+    } else {
+      client.batchTimeout = setTimeout(() => {
+        this.processBatch(client);
+      }, batchDelay);
+    }
+  }
+
+  /**
+   * Process and send batched events for a client
+   * @param {Object} client - Client object
+   */
+  processBatch(client) {
+    if (client.eventQueue.length === 0) return;
+    
+    const socket = this.io.sockets.sockets.get(client.id);
+    if (!socket) return;
+    
+    // Group events by type for deduplication
+    const eventGroups = {};
+    client.eventQueue.forEach(event => {
+      if (!eventGroups[event.type]) {
+        eventGroups[event.type] = [];
+      }
+      eventGroups[event.type].push(event);
+    });
+    
+    // For some event types, only send the latest event
+    const latestOnlyEvents = ['port:statistics:updated'];
+    
+    Object.entries(eventGroups).forEach(([type, events]) => {
+      if (latestOnlyEvents.includes(type)) {
+        // Only send the most recent event
+        const latestEvent = events[events.length - 1];
+        socket.emit('event', latestEvent);
+      } else {
+        // Send all events
+        events.forEach(event => socket.emit('event', event));
+      }
+    });
+    
+    // Clear the queue and timeout
+    client.eventQueue = [];
+    if (client.batchTimeout) {
+      clearTimeout(client.batchTimeout);
+      client.batchTimeout = null;
     }
   }
   
