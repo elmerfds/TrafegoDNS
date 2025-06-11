@@ -185,23 +185,6 @@ export function RecentActivityWidget(props: WidgetProps) {
   // Include other meaningful types
   const managedCount = activities.filter(a => a.type === 'managed' || a.type === 'tracked').length
   
-  // Enhanced debug logging to understand the data
-  if (activities.length > 0) {
-    console.log('Recent Activity Debug:')
-    console.log('- Total activities:', activities.length)
-    console.log('- Unique types found:', uniqueTypes)
-    console.log('- Count breakdown:', { createdCount, updatedCount, deletedCount, managedCount })
-    console.log('- First few activities:', activities.slice(0, 3).map(a => ({ type: a.type, hostname: a.hostname, details: a.details })))
-    
-    // Show which activities are matching each filter
-    console.log('- Activities matching "deleted" filter:', activities.filter(a => 
-      a.type === 'deleted' || a.type === 'delete' || a.type === 'removed' || a.type === 'remove'
-    ).map(a => a.type))
-    
-    console.log('- Activities matching "managed" filter:', activities.filter(a => 
-      a.type === 'managed' || a.type === 'tracked'
-    ).map(a => a.type))
-  }
 
   return (
     <WidgetBase
@@ -280,41 +263,75 @@ export function RecentActivityWidget(props: WidgetProps) {
 
         {/* Activity Stats - Show when there's data and enough space */}
         {activities.length > 0 && displayMode !== 'compact' && (
-          <div className={`gap-2 pt-3 mb-3 border-t border-gray-200 dark:border-gray-700 ${
-            managedCount > 0 ? 'grid grid-cols-4' : 'grid grid-cols-3'
-          }`}>
-            <div className="text-center">
-              <div className="text-lg font-bold text-green-600">
-                {createdCount}
-              </div>
-              <div className="text-xs text-gray-600 dark:text-gray-400">
-                Created
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-blue-600">
-                {updatedCount}
-              </div>
-              <div className="text-xs text-gray-600 dark:text-gray-400">
-                Updated
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-red-600">
-                {deletedCount}
-              </div>
-              <div className="text-xs text-gray-600 dark:text-gray-400">
-                Deleted
-              </div>
-            </div>
-            {managedCount > 0 && (
-              <div className="text-center">
-                <div className="text-lg font-bold text-purple-600">
-                  {managedCount}
+          <div className="pt-3 mb-3 border-t border-gray-200 dark:border-gray-700">
+            {/* Show different stats based on what activity types are present */}
+            {uniqueTypes.length === 1 && uniqueTypes[0] === 'tracked' ? (
+              // Special case for all tracked/orphaned activities
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center">
+                  <div className="text-lg font-bold text-orange-600">
+                    {activities.length}
+                  </div>
+                  <div className="text-xs text-gray-600 dark:text-gray-400">
+                    Tracked
+                  </div>
                 </div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">
-                  Managed
+                <div className="text-center">
+                  <div className="text-lg font-bold text-yellow-600">
+                    {activities.filter(a => a.details.toLowerCase().includes('orphaned')).length}
+                  </div>
+                  <div className="text-xs text-gray-600 dark:text-gray-400">
+                    Orphaned
+                  </div>
                 </div>
+              </div>
+            ) : (
+              // Standard CRUD activity stats
+              <div className={`gap-2 ${
+                managedCount > 0 && (createdCount > 0 || updatedCount > 0 || deletedCount > 0) 
+                  ? 'grid grid-cols-4' 
+                  : managedCount > 0 
+                    ? 'grid grid-cols-1' 
+                    : 'grid grid-cols-3'
+              }`}>
+                {(createdCount > 0 || updatedCount > 0 || deletedCount > 0) && (
+                  <>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-green-600">
+                        {createdCount}
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        Created
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-blue-600">
+                        {updatedCount}
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        Updated
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-red-600">
+                        {deletedCount}
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        Deleted
+                      </div>
+                    </div>
+                  </>
+                )}
+                {managedCount > 0 && (
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-purple-600">
+                      {managedCount}
+                    </div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">
+                      {uniqueTypes.includes('tracked') ? 'Tracked' : 'Managed'}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
