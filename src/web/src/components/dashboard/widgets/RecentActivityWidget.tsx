@@ -18,36 +18,40 @@ import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface ActivityEvent {
   id: string
-  type: 'created' | 'updated' | 'deleted' | 'managed' | 'tracked'
+  type: string // More flexible to handle various activity types
   recordType: string
   hostname: string
   timestamp: string
   details: string
-  source: 'dns' | 'orphaned' | 'managed'
+  source: string // More flexible to handle various sources
 }
 
-const activityIcons = {
-  created: Plus,
-  updated: Pencil,
-  deleted: Trash2,
-  managed: Settings,
-  tracked: Eye
+const getActivityIcon = (type: string) => {
+  const lowerType = type.toLowerCase()
+  if (lowerType.includes('create') || lowerType.includes('add')) return Plus
+  if (lowerType.includes('update') || lowerType.includes('modif') || lowerType.includes('change')) return Pencil
+  if (lowerType.includes('delete') || lowerType.includes('remove')) return Trash2
+  if (lowerType.includes('manage')) return Settings
+  if (lowerType.includes('track')) return Eye
+  return Activity // Default icon
 }
 
-const activityColors = {
-  created: 'text-green-600',
-  updated: 'text-blue-600',
-  deleted: 'text-red-600',
-  managed: 'text-purple-600',
-  tracked: 'text-orange-600'
+const getActivityColor = (type: string) => {
+  const lowerType = type.toLowerCase()
+  if (lowerType.includes('create') || lowerType.includes('add')) return 'text-green-600'
+  if (lowerType.includes('update') || lowerType.includes('modif') || lowerType.includes('change')) return 'text-blue-600'
+  if (lowerType.includes('delete') || lowerType.includes('remove')) return 'text-red-600'
+  if (lowerType.includes('manage')) return 'text-purple-600'
+  if (lowerType.includes('track')) return 'text-orange-600'
+  return 'text-gray-600' // Default color
 }
 
-const activityBadgeVariants = {
-  created: 'default' as const,
-  updated: 'secondary' as const,
-  deleted: 'destructive' as const,
-  managed: 'outline' as const,
-  tracked: 'outline' as const
+const getActivityBadgeVariant = (type: string): "default" | "secondary" | "destructive" | "outline" => {
+  const lowerType = type.toLowerCase()
+  if (lowerType.includes('create') || lowerType.includes('add')) return 'default'
+  if (lowerType.includes('update') || lowerType.includes('modif') || lowerType.includes('change')) return 'secondary'
+  if (lowerType.includes('delete') || lowerType.includes('remove')) return 'destructive'
+  return 'outline' // Default variant
 }
 
 function useRecentActivity() {
@@ -116,6 +120,9 @@ export function RecentActivityWidget(props: WidgetProps) {
     if (currentBreakpoint === 'md') return 6
     return 4
   }
+  
+  // Debug activity types and data structure
+  const uniqueTypes = [...new Set(activities.map(a => a.type))]
 
   // Listen for real-time events to trigger data refresh
   useSocketEvent('event', (event: { type: string; data: any }) => {
@@ -161,6 +168,28 @@ export function RecentActivityWidget(props: WidgetProps) {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
     return activityTime > oneHourAgo
   }).length
+  
+  // Calculate activity stats with fallbacks for different possible type values
+  const createdCount = activities.filter(a => 
+    a.type === 'created' || a.type === 'create' || a.type === 'added' || a.type === 'add'
+  ).length
+  
+  const updatedCount = activities.filter(a => 
+    a.type === 'updated' || a.type === 'update' || a.type === 'modified' || a.type === 'changed'
+  ).length
+  
+  const deletedCount = activities.filter(a => 
+    a.type === 'deleted' || a.type === 'delete' || a.type === 'removed' || a.type === 'remove'
+  ).length
+  
+  // Include other meaningful types
+  const managedCount = activities.filter(a => a.type === 'managed' || a.type === 'tracked').length
+  
+  // Log useful debug info when there are activities but no counts
+  if (activities.length > 0 && createdCount === 0 && updatedCount === 0 && deletedCount === 0 && managedCount === 0) {
+    console.log('Recent Activity: Found activities but no matching types. Types found:', uniqueTypes)
+    console.log('Sample activity:', activities[0])
+  }
 
   return (
     <WidgetBase
@@ -182,8 +211,8 @@ export function RecentActivityWidget(props: WidgetProps) {
         {activities.length > 0 ? (
           <div className="flex-1 space-y-2 overflow-y-auto min-h-0 mb-3">
             {activities.slice(0, getMaxItems()).map((activity, index) => {
-              const Icon = activityIcons[activity.type] || Activity
-              const colorClass = activityColors[activity.type] || 'text-gray-600'
+              const Icon = getActivityIcon(activity.type)
+              const colorClass = getActivityColor(activity.type)
               
               return (
                 <div 
@@ -195,11 +224,12 @@ export function RecentActivityWidget(props: WidgetProps) {
                 >
                   <div className={cn(
                     'rounded-full p-1.5 mt-0.5 flex-shrink-0',
-                    activity.type === 'created' && 'bg-green-100 dark:bg-green-900/30',
-                    activity.type === 'updated' && 'bg-blue-100 dark:bg-blue-900/30',
-                    activity.type === 'deleted' && 'bg-red-100 dark:bg-red-900/30',
-                    activity.type === 'managed' && 'bg-purple-100 dark:bg-purple-900/30',
-                    activity.type === 'tracked' && 'bg-orange-100 dark:bg-orange-900/30'
+                    getActivityColor(activity.type).includes('green') && 'bg-green-100 dark:bg-green-900/30',
+                    getActivityColor(activity.type).includes('blue') && 'bg-blue-100 dark:bg-blue-900/30',
+                    getActivityColor(activity.type).includes('red') && 'bg-red-100 dark:bg-red-900/30',
+                    getActivityColor(activity.type).includes('purple') && 'bg-purple-100 dark:bg-purple-900/30',
+                    getActivityColor(activity.type).includes('orange') && 'bg-orange-100 dark:bg-orange-900/30',
+                    getActivityColor(activity.type).includes('gray') && 'bg-gray-100 dark:bg-gray-900/30'
                   )}>
                     <Icon className={cn('h-3 w-3', colorClass)} />
                   </div>
@@ -209,7 +239,7 @@ export function RecentActivityWidget(props: WidgetProps) {
                         {activity.hostname}
                       </span>
                       <Badge 
-                        variant={activityBadgeVariants[activity.type]}
+                        variant={getActivityBadgeVariant(activity.type)}
                         className="text-xs"
                       >
                         {activity.recordType}
@@ -236,12 +266,14 @@ export function RecentActivityWidget(props: WidgetProps) {
           </div>
         )}
 
-        {/* Activity Stats - Only show in detailed mode and larger widgets */}
-        {activities.length > 0 && displayMode === 'detailed' && currentBreakpoint === 'lg' && (
-          <div className="grid grid-cols-3 gap-2 pt-3 mb-3 border-t border-gray-200 dark:border-gray-700">
+        {/* Activity Stats - Show when there's data and enough space */}
+        {activities.length > 0 && displayMode !== 'compact' && (
+          <div className={`gap-2 pt-3 mb-3 border-t border-gray-200 dark:border-gray-700 ${
+            managedCount > 0 ? 'grid grid-cols-4' : 'grid grid-cols-3'
+          }`}>
             <div className="text-center">
               <div className="text-lg font-bold text-green-600">
-                {activities.filter(a => a.type === 'created').length}
+                {createdCount}
               </div>
               <div className="text-xs text-gray-600 dark:text-gray-400">
                 Created
@@ -249,7 +281,7 @@ export function RecentActivityWidget(props: WidgetProps) {
             </div>
             <div className="text-center">
               <div className="text-lg font-bold text-blue-600">
-                {activities.filter(a => a.type === 'updated').length}
+                {updatedCount}
               </div>
               <div className="text-xs text-gray-600 dark:text-gray-400">
                 Updated
@@ -257,12 +289,22 @@ export function RecentActivityWidget(props: WidgetProps) {
             </div>
             <div className="text-center">
               <div className="text-lg font-bold text-red-600">
-                {activities.filter(a => a.type === 'deleted').length}
+                {deletedCount}
               </div>
               <div className="text-xs text-gray-600 dark:text-gray-400">
                 Deleted
               </div>
             </div>
+            {managedCount > 0 && (
+              <div className="text-center">
+                <div className="text-lg font-bold text-purple-600">
+                  {managedCount}
+                </div>
+                <div className="text-xs text-gray-600 dark:text-gray-400">
+                  Managed
+                </div>
+              </div>
+            )}
           </div>
         )}
 
