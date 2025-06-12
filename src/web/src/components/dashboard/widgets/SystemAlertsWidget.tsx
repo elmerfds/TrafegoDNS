@@ -27,22 +27,28 @@ function useSystemAlerts() {
     queryKey: ['system-alerts'],
     queryFn: async (): Promise<SystemAlert[]> => {
       try {
-        // Try to get orphaned records as alerts
+        // Try to get current orphaned records as alerts (not history)
         const response = await api.get('/dns/orphaned')
         const orphaned = response.data.data
         
-        if (orphaned && orphaned.count > 0) {
+        // Debug log to help identify the issue
+        console.debug('SystemAlerts: Orphaned records API response:', orphaned)
+        
+        // Only show alerts for CURRENT orphaned records that need attention
+        // These are records that are still marked as orphaned and exist at the provider
+        if (orphaned && orphaned.records && orphaned.records.length > 0) {
           return [{
             id: 'orphaned-records',
             type: 'warning',
             title: 'Orphaned DNS Records',
-            description: `${orphaned.count} orphaned DNS records need attention`,
+            description: `${orphaned.records.length} orphaned DNS records need attention`,
             timestamp: new Date().toISOString()
           }]
         }
         return []
-      } catch {
-        // Fallback to mock data if API fails
+      } catch (error) {
+        console.error('SystemAlerts: Failed to fetch orphaned records:', error)
+        // Fallback to empty array if API fails
         return []
       }
     },
