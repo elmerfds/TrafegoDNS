@@ -13,8 +13,8 @@ import {
   TooltipTrigger,
 } from './ui/tooltip';
 import { 
-  Wifi, 
-  WifiOff, 
+  Plug, 
+  Unplug, 
   RefreshCw, 
   AlertTriangle,
   CheckCircle,
@@ -55,17 +55,17 @@ export function ConnectionStatus({
     if (isConnected) {
       switch (connectionQuality) {
         case 'excellent':
-          return <Wifi className="h-4 w-4 text-green-500" />;
+          return <Plug className="h-4 w-4 text-green-500" />;
         case 'good':
-          return <Wifi className="h-4 w-4 text-yellow-500" />;
+          return <Plug className="h-4 w-4 text-yellow-500" />;
         case 'poor':
           return <AlertTriangle className="h-4 w-4 text-orange-500" />;
         default:
-          return <Wifi className="h-4 w-4 text-gray-500" />;
+          return <Plug className="h-4 w-4 text-gray-500" />;
       }
     }
     
-    return <WifiOff className="h-4 w-4 text-red-500" />;
+    return <Unplug className="h-4 w-4 text-red-500" />;
   };
 
   /**

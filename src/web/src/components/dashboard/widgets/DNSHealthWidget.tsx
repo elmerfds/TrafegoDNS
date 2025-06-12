@@ -75,15 +75,15 @@ function useDNSHealth() {
         }
       }
       
-      // Get DNS records for orphaned count
+      // Get current orphaned records count (not historical)
       let orphanedCount = 0
       try {
-        const recordsRes = await api.get('/dns/stats')
-        if (recordsRes.data.data) {
-          orphanedCount = recordsRes.data.data.orphaned || 0
+        const orphanedRes = await api.get('/dns/orphaned')
+        if (orphanedRes.data.data && orphanedRes.data.data.records) {
+          orphanedCount = orphanedRes.data.data.records.length
         }
       } catch (error) {
-        console.warn('DNS stats not available for orphaned count')
+        console.warn('Current orphaned records not available:', error)
       }
       
       // Get real provider data
@@ -160,6 +160,10 @@ function useDNSHealth() {
 export function DNSHealthWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data: health, isLoading, error } = useDNSHealth()
+  const { layout } = props
+  
+  // Get current widget height from layout for dynamic sizing
+  const currentHeight = layout?.h || 4
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -198,6 +202,9 @@ export function DNSHealthWidget(props: WidgetProps) {
       isLoading={isLoading}
       error={error?.message}
       widgetDefinition={props.widgetDefinition}
+      enableDynamicSizing={true}
+      currentHeight={currentHeight}
+      onSizeChange={props.onSizeChange}
       actions={
         <Badge variant={healthBadge.variant}>
           {health?.health_score || 0}% {healthBadge.text}

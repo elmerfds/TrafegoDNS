@@ -90,6 +90,8 @@ export interface WidgetProps {
   widgetDefinition?: WidgetDefinition
   currentBreakpoint?: 'lg' | 'md' | 'sm' | 'xs'
   displayMode?: 'normal' | 'compact' | 'detailed'
+  layout?: Layout // Current layout information from react-grid-layout
+  onSizeChange?: (widgetId: string, newHeight: number) => void // Dynamic sizing callback
 }
 
 export interface WidgetComponent {

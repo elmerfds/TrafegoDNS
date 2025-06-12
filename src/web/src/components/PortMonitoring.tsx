@@ -11,7 +11,7 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Switch } from './ui/switch';
 import { Progress } from './ui/progress';
-import { AlertTriangle, CheckCircle, XCircle, Search, Settings, Activity, Wifi, WifiOff, Plus, Server, Clock, Lock, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle, XCircle, Search, Settings, Activity, Plug, Unplug, Plus, Server, Clock, Lock, X } from 'lucide-react';
 import { useSocket } from '../hooks/useSocket';
 import { api } from '../lib/api';
 import { usePortStore, usePortsData, useReservationsData, useServersData, usePortStatistics } from '../store/portStore';
@@ -1094,7 +1094,7 @@ export default function PortMonitoring() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Monitoring Status</CardTitle>
-              <Wifi className="h-4 w-4 text-green-500" />
+              <Plug className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
               <div className="text-sm">

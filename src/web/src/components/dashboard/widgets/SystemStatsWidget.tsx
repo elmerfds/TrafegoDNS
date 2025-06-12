@@ -57,6 +57,17 @@ function useSystemMetrics() {
         console.warn('DNS stats endpoint not available:', dnsError)
       }
       
+      // Get current orphaned records count (not historical)
+      let orphanedCount = 0
+      try {
+        const orphanedRes = await api.get('/dns/orphaned')
+        if (orphanedRes.data.data && orphanedRes.data.data.records) {
+          orphanedCount = orphanedRes.data.data.records.length
+        }
+      } catch (orphanedError) {
+        console.warn('Current orphaned records not available:', orphanedError)
+      }
+      
       // Get provider status
       let providersData = null
       try {
@@ -70,7 +81,7 @@ function useSystemMetrics() {
         dns: {
           total_records: dnsStats?.total || statistics?.totalRecords || 0,
           managed_records: dnsStats?.managed || statistics?.totalRecords || 0,
-          orphaned_records: dnsStats?.orphaned || 0
+          orphaned_records: orphanedCount // Use actual current orphaned count
         },
         containers: {
           total: statistics?.totalContainers || 0,
@@ -95,6 +106,10 @@ function useSystemMetrics() {
 
 export function SystemStatsWidget(props: WidgetProps) {
   const { data: metrics, isLoading, error } = useSystemMetrics()
+  const { layout } = props
+  
+  // Get current widget height from layout for dynamic sizing
+  const currentHeight = layout?.h || 4
 
   const formatUptime = (seconds: number) => {
     const days = Math.floor(seconds / 86400)
@@ -164,6 +179,9 @@ export function SystemStatsWidget(props: WidgetProps) {
       isLoading={isLoading}
       error={error?.message}
       widgetDefinition={props.widgetDefinition}
+      enableDynamicSizing={true}
+      currentHeight={currentHeight}
+      onSizeChange={props.onSizeChange}
       actions={
         <Badge variant="outline">
           <TrendingUp className="h-3 w-3 mr-1" />

@@ -1341,9 +1341,35 @@ const getStats = asyncHandler(async (req, res) => {
         stats.managed = await database.repositories.dnsManager.managedRecords.count({ is_orphaned: 0 });
       }
 
-      // Get orphaned records count
+      // Get orphaned records count (only those that still exist at provider)
       if (database.repositories.dnsManager?.managedRecords) {
-        stats.orphaned = await database.repositories.dnsManager.managedRecords.count({ is_orphaned: 1 });
+        const { DNSManager } = global.services || {};
+        if (DNSManager?.dnsProvider) {
+          try {
+            // Get current orphaned records from database
+            const provider = DNSManager.config.dnsProvider;
+            const dbOrphanedRecords = await database.repositories.dnsManager.managedRecords.getRecords(provider, { isOrphaned: true });
+            
+            // Get current records from provider to verify they still exist
+            const providerRecords = await DNSManager.dnsProvider.getRecordsFromCache(true);
+            const providerRecordIds = new Set(providerRecords.map(r => r.id));
+            
+            // Filter out records that no longer exist at the provider
+            const actualOrphanedRecords = dbOrphanedRecords.filter(record => {
+              const recordId = record.providerId || record.record_id;
+              return providerRecordIds.has(recordId);
+            });
+            
+            stats.orphaned = actualOrphanedRecords.length;
+          } catch (error) {
+            logger.warn(`Failed to get accurate orphaned count: ${error.message}`);
+            // Fallback to simple database count
+            stats.orphaned = await database.repositories.dnsManager.managedRecords.count({ is_orphaned: 1 });
+          }
+        } else {
+          // Fallback to simple database count if DNS provider not available
+          stats.orphaned = await database.repositories.dnsManager.managedRecords.count({ is_orphaned: 1 });
+        }
       }
 
       // Total is managed + orphaned

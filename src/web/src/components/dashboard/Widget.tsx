@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { GripVertical, X, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { WidgetSizePresets } from './WidgetSizePresets'
+import { DynamicSizeWrapper } from './DynamicSizeWrapper'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface WidgetBaseProps extends WidgetProps {
@@ -20,6 +21,10 @@ interface WidgetBaseProps extends WidgetProps {
   isLoading?: boolean
   error?: string
   widgetDefinition?: WidgetDefinition
+  // Dynamic sizing options
+  enableDynamicSizing?: boolean
+  onSizeChange?: (widgetId: string, newHeight: number) => void
+  currentHeight?: number
 }
 
 export function WidgetBase({
@@ -35,9 +40,12 @@ export function WidgetBase({
   onRemove,
   onConfigure,
   className,
-  widgetDefinition
+  widgetDefinition,
+  enableDynamicSizing = false,
+  onSizeChange,
+  currentHeight = 4
 }: WidgetBaseProps) {
-  return (
+  const widgetContent = (
     <Card className={cn(
       "h-full flex flex-col transition-all duration-200",
       isEditing && "ring-2 ring-blue-200 dark:ring-blue-800",
@@ -108,6 +116,23 @@ export function WidgetBase({
       </CardContent>
     </Card>
   )
+
+  // Wrap with dynamic sizing if enabled
+  if (enableDynamicSizing && onSizeChange) {
+    return (
+      <DynamicSizeWrapper
+        widgetId={id}
+        currentHeight={currentHeight}
+        onSizeChange={onSizeChange}
+        enabled={!isEditing} // Disable during editing to avoid conflicts
+        showIndicator={!isEditing}
+      >
+        {widgetContent}
+      </DynamicSizeWrapper>
+    )
+  }
+
+  return widgetContent
 }
 
 // Higher-order component for creating widgets
