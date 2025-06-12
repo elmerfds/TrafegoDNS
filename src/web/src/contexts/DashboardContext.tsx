@@ -182,16 +182,26 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
           return { x: 0, y: maxY + 1, w: widgetWidth, h: widgetHeight }
         }
 
-        // Get responsive sizing configurations
+        // Get responsive sizing configurations using "Medium" preset as default
         const breakpoints: Array<'lg' | 'md' | 'sm' | 'xs'> = ['lg', 'md', 'sm', 'xs']
         const breakpointConfigs = breakpoints.reduce((configs, breakpoint) => {
           const cols = getMaxColumnsForBreakpoint(breakpoint)
-          const defaultSize = getSizeForBreakpoint(widgetDefinition.defaultSize, breakpoint)
-          const constrainedSize = constrainSizeToBreakpoint(defaultSize, breakpoint)
+          
+          // Calculate "Medium" preset size for this widget category and breakpoint
+          const minSize = getSizeForBreakpoint(widgetDefinition.minSize, breakpoint)
+          const maxSize = getSizeForBreakpoint(widgetDefinition.maxSize || { w: cols, h: 20 }, breakpoint)
+          const constrainedMinSize = constrainSizeToBreakpoint(minSize, breakpoint)
+          const constrainedMaxSize = constrainSizeToBreakpoint(maxSize, breakpoint)
+          
+          // Medium preset: balanced view (min + 4 width, min + 2 height)
+          const mediumPresetSize = {
+            w: Math.min(constrainedMinSize.w + 4, constrainedMaxSize.w),
+            h: Math.min(constrainedMinSize.h + 2, constrainedMaxSize.h)
+          }
           
           configs[breakpoint] = {
             cols,
-            defaultSize: constrainedSize
+            defaultSize: mediumPresetSize
           }
           return configs
         }, {} as Record<string, { cols: number; defaultSize: { w: number; h: number } }>)
