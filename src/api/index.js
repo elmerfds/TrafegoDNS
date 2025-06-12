@@ -32,6 +32,7 @@ const {
   createInputValidationAuditMiddleware,
   createPortAuditMiddleware
 } = require('./v1/middleware/auditLogMiddleware');
+const { clearBlockedIP } = require('./v1/middleware/rateLimitMiddleware');
 const SocketServer = require('./socketServer');
 
 // Import routes - will be set up in startApiServer
@@ -77,20 +78,31 @@ app.use(createHttpsEnforcementMiddleware({
 
 // IP blocking and burst protection with configurable allowedIPs
 const allowedIPs = (process.env.ALLOWED_IPS || '').split(',').map(ip => ip.trim()).filter(ip => ip);
-const localNetworkIPs = ['127.0.0.1', '::1', '10.0.0.198']; // Add your specific IP
-const allAllowedIPs = [...allowedIPs, ...localNetworkIPs];
 
-logger.info(`Rate limiting configured with allowed IPs: ${allAllowedIPs.join(', ')}`);
+logger.info(`Rate limiting configured with ${allowedIPs.length > 0 ? `allowed IPs: ${allowedIPs.join(', ')} and` : ''} universal local network detection`);
+
+// Clear any blocked localhost IPs on startup (though they should be auto-bypassed)
+try {
+  const { getRateLimitStatus } = require('./v1/middleware/rateLimitMiddleware');
+  const status = getRateLimitStatus();
+  if (status.blockedIPs.length > 0) {
+    logger.info(`Clearing ${status.blockedIPs.length} blocked IPs on startup (local networks will be auto-bypassed)`);
+    // Don't clear specific IPs, let the universal detection handle bypassing
+  }
+} catch (error) {
+  logger.warn(`Failed to check blocked IPs on startup: ${error.message}`);
+}
 
 app.use(createIPBlockingMiddleware({
-  allowedIPs: allAllowedIPs,
+  allowedIPs: allowedIPs, // Only explicit allowed IPs, local networks auto-bypassed
   suspiciousThreshold: parseInt(process.env.RATE_LIMIT_SUSPICIOUS_THRESHOLD) || 10,
   blockDuration: parseInt(process.env.RATE_LIMIT_BLOCK_DURATION) || (24 * 60 * 60 * 1000)
 }));
 app.use(createBurstProtectionMiddleware({
   windowMs: parseInt(process.env.RATE_LIMIT_BURST_WINDOW) || 1000,
   maxBurst: parseInt(process.env.RATE_LIMIT_BURST_MAX) || 25,
-  blockDuration: parseInt(process.env.RATE_LIMIT_BURST_BLOCK_DURATION) || 60000
+  blockDuration: parseInt(process.env.RATE_LIMIT_BURST_BLOCK_DURATION) || 60000,
+  allowedIPs: allowedIPs // Only explicit allowed IPs, local networks auto-bypassed
 }));
 
 // Security headers
@@ -169,7 +181,7 @@ app.use(createUserAwareRateLimiter({
   authenticatedMax: parseInt(process.env.RATE_LIMIT_AUTHENTICATED_MAX) || 300,
   premiumMax: parseInt(process.env.RATE_LIMIT_PREMIUM_MAX) || 500,
   bypassRoles: ['admin'],
-  allowedIPs: allAllowedIPs // Use the same allowed IPs here
+  allowedIPs: allowedIPs // Only explicit allowed IPs, local networks auto-bypassed
 }));
 
 // Debug logging for UI requests
