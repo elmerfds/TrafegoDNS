@@ -30,6 +30,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { useTheme } from '@/components/theme-provider'
 import { PauseStatusIndicator } from '@/components/PauseStatusIndicator'
 import ConnectionStatus from '@/components/ConnectionStatus'
+import { SystemStatusIndicator, SystemToastNotifications } from '@/components/system-status'
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: Home, path: '/' },
@@ -144,6 +145,7 @@ export function Layout() {
               <ConnectionStatus compact showDetails />
             </div>
             <div className="flex items-center gap-x-4 lg:gap-x-6">
+              <SystemStatusIndicator />
               <ThemeToggle />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -173,6 +175,9 @@ export function Layout() {
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
           <Outlet />
         </main>
+        
+        {/* System Toast Notifications */}
+        <SystemToastNotifications />
       </div>
     </div>
   )

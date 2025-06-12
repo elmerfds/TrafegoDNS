@@ -1,5 +1,8 @@
 /**
  * System Alerts Widget
+ * @deprecated This widget has been replaced with the SystemStatusIndicator in the header
+ * @see SystemStatusIndicator component in /components/system-status/
+ * 
  * Shows important system alerts and warnings
  */
 

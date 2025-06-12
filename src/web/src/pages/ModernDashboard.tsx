@@ -45,10 +45,7 @@ import {
   SystemStatsWidget, 
   systemStatsDefinition 
 } from '@/components/dashboard/widgets/SystemStatsWidget'
-import { 
-  SystemAlertsWidget, 
-  systemAlertsDefinition 
-} from '@/components/dashboard/widgets/SystemAlertsWidget'
+// System Alerts Widget removed - replaced with header status indicator
 import { 
   SystemResourcesWidget, 
   systemResourcesDefinition 
@@ -135,7 +132,7 @@ const availableWidgets = [
   // Core System Widgets
   { definition: statusOverviewDefinition, component: StatusOverviewWidget },
   { definition: systemStatsDefinition, component: SystemStatsWidget },
-  { definition: systemAlertsDefinition, component: SystemAlertsWidget },
+  // System Alerts Widget removed - replaced with header status indicator
   { definition: systemResourcesDefinition, component: SystemResourcesWidget },
   { definition: serviceHealthDefinition, component: ServiceHealthWidget },
   { definition: recentActivityDefinition, component: RecentActivityWidget },
