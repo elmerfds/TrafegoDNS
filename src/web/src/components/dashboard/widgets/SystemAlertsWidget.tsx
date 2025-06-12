@@ -53,6 +53,18 @@ function useSystemAlerts() {
 export function SystemAlertsWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data: alerts = [], isLoading, error } = useSystemAlerts()
+  const { displayMode = 'normal', currentBreakpoint = 'lg' } = props
+
+  // Determine max alerts to show based on size
+  const getMaxAlerts = () => {
+    if (displayMode === 'compact') return 1
+    if (currentBreakpoint === 'xs' || currentBreakpoint === 'sm') return 2
+    return 3
+  }
+
+  const maxAlerts = getMaxAlerts()
+  const visibleAlerts = alerts.slice(0, maxAlerts)
+  const hasMoreAlerts = alerts.length > maxAlerts
 
   return (
     <WidgetBase
@@ -64,72 +76,94 @@ export function SystemAlertsWidget(props: WidgetProps) {
       error={error?.message}
       widgetDefinition={props.widgetDefinition}
     >
-      <div className="space-y-3">
+      <div className="flex flex-col h-full">
         {alerts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center space-y-3 py-8">
-            <CheckCircle className="h-12 w-12 text-green-500" />
-            <div>
-              <h3 className="font-medium text-green-700 dark:text-green-300">All Clear!</h3>
-              <p className="text-sm text-green-600 dark:text-green-400">
-                No system alerts at this time
-              </p>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Last checked: {new Date().toLocaleTimeString()}
+          <div className="flex-1 flex items-center justify-center">
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+              <CheckCircle className={`${displayMode === 'compact' ? 'h-4 w-4' : 'h-5 w-5'}`} />
+              <span className={`font-medium ${displayMode === 'compact' ? 'text-sm' : 'text-base'}`}>
+                All Clear
+              </span>
             </div>
           </div>
         ) : (
-          alerts.map((alert) => (
-            <Alert 
-              key={alert.id}
-              className={
-                alert.type === 'error' 
-                  ? 'border-red-200 bg-red-50 dark:bg-red-950/30' 
-                  : alert.type === 'warning'
-                  ? 'border-orange-200 bg-orange-50 dark:bg-orange-950/30'
-                  : 'border-blue-200 bg-blue-50 dark:bg-blue-950/30'
-              }
-            >
-              <AlertTriangle className={`h-4 w-4 ${
-                alert.type === 'error' 
-                  ? 'text-red-600' 
-                  : alert.type === 'warning'
-                  ? 'text-orange-600'
-                  : 'text-blue-600'
-              }`} />
-              <AlertTitle className={
-                alert.type === 'error' 
-                  ? 'text-red-800 dark:text-red-200' 
-                  : alert.type === 'warning'
-                  ? 'text-orange-800 dark:text-orange-200'
-                  : 'text-blue-800 dark:text-blue-200'
-              }>
-                {alert.title}
-              </AlertTitle>
-              <AlertDescription className="space-y-2">
-                <p className={
-                  alert.type === 'error' 
-                    ? 'text-red-700 dark:text-red-300' 
-                    : alert.type === 'warning'
-                    ? 'text-orange-700 dark:text-orange-300'
-                    : 'text-blue-700 dark:text-blue-300'
-                }>
-                  {alert.description}
-                </p>
-                {alert.id === 'orphaned-records' && (
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    className="border-orange-300 text-orange-700 hover:bg-orange-100 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-900/50"
-                    onClick={() => navigate('/orphaned-records')}
-                  >
-                    <AlertTriangle className="h-3 w-3 mr-2" />
-                    View Orphaned Records
-                  </Button>
-                )}
-              </AlertDescription>
-            </Alert>
-          ))
+          <>
+            <div className="flex-1 space-y-2 min-h-0 overflow-hidden">
+              {visibleAlerts.map((alert) => (
+                <div
+                  key={alert.id}
+                  className={`
+                    flex items-start gap-2 p-2 rounded-md border
+                    ${alert.type === 'error' 
+                      ? 'border-red-200 bg-red-50/50 dark:bg-red-950/20' 
+                      : alert.type === 'warning'
+                      ? 'border-orange-200 bg-orange-50/50 dark:bg-orange-950/20'
+                      : 'border-blue-200 bg-blue-50/50 dark:bg-blue-950/20'
+                    }
+                  `}
+                >
+                  <AlertTriangle className={`
+                    ${displayMode === 'compact' ? 'h-3 w-3 mt-0.5' : 'h-4 w-4 mt-0.5'} flex-shrink-0
+                    ${alert.type === 'error' 
+                      ? 'text-red-600' 
+                      : alert.type === 'warning'
+                      ? 'text-orange-600'
+                      : 'text-blue-600'
+                    }
+                  `} />
+                  
+                  <div className="flex-1 min-w-0">
+                    <div className={`
+                      font-medium truncate
+                      ${displayMode === 'compact' ? 'text-xs' : 'text-sm'}
+                      ${alert.type === 'error' 
+                        ? 'text-red-800 dark:text-red-200' 
+                        : alert.type === 'warning'
+                        ? 'text-orange-800 dark:text-orange-200'
+                        : 'text-blue-800 dark:text-blue-200'
+                      }
+                    `}>
+                      {alert.title}
+                    </div>
+                    
+                    {displayMode !== 'compact' && (
+                      <div className={`
+                        text-xs truncate mt-1
+                        ${alert.type === 'error' 
+                          ? 'text-red-700 dark:text-red-300' 
+                          : alert.type === 'warning'
+                          ? 'text-orange-700 dark:text-orange-300'
+                          : 'text-blue-700 dark:text-blue-300'
+                        }
+                      `}>
+                        {alert.description}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {alert.id === 'orphaned-records' && (
+                    <Button 
+                      variant="ghost" 
+                      size={displayMode === 'compact' ? 'sm' : 'sm'}
+                      className="h-auto p-1 flex-shrink-0"
+                      onClick={() => navigate('/orphaned-records')}
+                      title="View Orphaned Records"
+                    >
+                      <AlertTriangle className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+            
+            {hasMoreAlerts && (
+              <div className="pt-2 mt-auto">
+                <div className="text-xs text-muted-foreground text-center">
+                  +{alerts.length - maxAlerts} more alert{alerts.length - maxAlerts !== 1 ? 's' : ''}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </WidgetBase>
@@ -142,12 +176,12 @@ export const systemAlertsDefinition: WidgetDefinition = {
   description: 'Important system alerts and warnings',
   category: 'system',
   icon: AlertTriangle,
-  defaultSize: createResponsiveSizes({ w: 20, h: 4 }),
-  minSize: createResponsiveSizes({ w: 8, h: 3 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
-  maxSize: createResponsiveSizes({ w: 24, h: 10 }),
+  defaultSize: createResponsiveSizes({ w: 12, h: 3 }), // Much more compact default
+  minSize: createResponsiveSizes({ w: 6, h: 2 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  maxSize: createResponsiveSizes({ w: 24, h: 8 }), // Reduced max height
   responsiveDisplay: {
-    lg: 'detailed',
-    md: 'normal',
+    lg: 'normal',
+    md: 'normal', 
     sm: 'compact',
     xs: 'compact'
   }

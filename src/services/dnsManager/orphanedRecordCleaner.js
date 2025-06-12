@@ -134,7 +134,8 @@ async function cleanupOrphanedRecords(
   forceImmediate = false
 ) {
   try {
-    logger.debug('Checking for orphaned DNS records...');
+    const startTime = new Date();
+    logger.debug(`Starting orphaned DNS records cleanup at ${startTime.toISOString()}, grace period: ${config.cleanupGracePeriod} minutes, force: ${forceImmediate}`);
     
     // Check if database is available before proceeding
     const database = require('../../database');
@@ -317,9 +318,11 @@ async function cleanupOrphanedRecords(
           // Handle potential formats of orphaned time
           let parsedOrphanedTime;
           if (!orphanedTime) {
-            // If no orphaned time, use current time as fallback
-            parsedOrphanedTime = new Date();
-            logger.warn(`No orphaned time found for record ${recordFqdn}, using current time`);
+            // If no orphaned time found, this indicates a database inconsistency
+            // Log error and skip this record to avoid resetting the timer
+            logger.error(`No orphaned time found for orphaned record ${recordFqdn}, skipping to prevent timer reset`);
+            logger.error(`This indicates a database inconsistency - record is marked as orphaned but has no orphaned_at timestamp`);
+            continue; // Skip this record entirely
           } else if (typeof orphanedTime === 'string') {
             // Parse ISO string to Date
             parsedOrphanedTime = new Date(orphanedTime);
@@ -338,9 +341,12 @@ async function cleanupOrphanedRecords(
 
           const now = new Date();
           const elapsedMinutes = (now - parsedOrphanedTime) / (1000 * 60);
+          const gracePeriodMinutes = config.cleanupGracePeriod;
+          
+          logger.debug(`Orphaned record ${recordFqdn}: elapsed=${Math.floor(elapsedMinutes)}min, grace=${gracePeriodMinutes}min, orphaned_at=${parsedOrphanedTime.toISOString()}`);
           
           // Check if grace period has elapsed or forceImmediate is true
-          if (forceImmediate || elapsedMinutes >= config.cleanupGracePeriod) {
+          if (forceImmediate || elapsedMinutes >= gracePeriodMinutes) {
             // Grace period elapsed or forced immediate cleanup, we can delete the record
             readyForDeletionCount++;
             

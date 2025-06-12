@@ -100,8 +100,11 @@ class DNSManager {
     // Timer for orphaned records cleanup
     this.orphanedRecordCleanupTimer = null;
     
-    // Set default cleanup interval to 5 minutes (can be overridden by environment variable)
-    this.cleanupInterval = parseInt(process.env.CLEANUP_INTERVAL_MINUTES || 5, 10) * 60 * 1000; // Convert to milliseconds
+    // Set cleanup interval to run more frequently to ensure timely cleanup
+    // Default to 30 seconds for near real-time grace period enforcement
+    // Can be overridden with CLEANUP_INTERVAL_SECONDS env var
+    const cleanupIntervalSeconds = parseInt(process.env.CLEANUP_INTERVAL_SECONDS || 30, 10);
+    this.cleanupInterval = Math.max(cleanupIntervalSeconds, 10) * 1000; // Minimum 10 seconds to prevent excessive load
     
     // Timer for provider cache database sync
     this.providerCacheSyncTimer = null;
@@ -201,7 +204,11 @@ class DNSManager {
       }
       
       // Log the cleanup interval
-      logger.info(`Starting orphaned DNS record cleanup timer with interval of ${this.cleanupInterval / 60000} minutes`);
+      if (this.cleanupInterval >= 60000) {
+        logger.info(`Starting orphaned DNS record cleanup timer with interval of ${this.cleanupInterval / 60000} minutes`);
+      } else {
+        logger.info(`Starting orphaned DNS record cleanup timer with interval of ${this.cleanupInterval / 1000} seconds`);
+      }
       
       // Run the cleanup immediately on startup only if we have active hostnames
       if (this.lastActiveHostnames && this.lastActiveHostnames.length > 0) {

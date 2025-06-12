@@ -1321,9 +1321,10 @@ const clearOrphanedHistory = asyncHandler(async (req, res) => {
  */
 const getStats = asyncHandler(async (req, res) => {
   try {
-    const { database } = global;
+    // Get database from the database module (same pattern as other functions)
+    const database = require('../../../database');
     
-    if (!database || !database.repositories) {
+    if (!database.isInitialized() || !database.db || !database.repositories) {
       throw new ApiError('Database not available', 500, 'DATABASE_NOT_AVAILABLE');
     }
 
