@@ -131,10 +131,32 @@ app.use(express.json({ limit: '1mb' })); // Parse JSON with size limit
 app.use(express.urlencoded({ extended: false, limit: '1mb' })); // Parse URL-encoded with size limit
 app.use(cookieParser()); // Parse cookies
 
-// Logging middleware
-app.use(morgan('combined', {
-  stream: { write: message => logger.info(message.trim()) }
-}));
+// HTTP access logging - only in DEBUG mode to reduce log verbosity
+if (logger.level >= 3) { // DEBUG level (3) or higher
+  app.use(morgan('combined', {
+    stream: { write: message => logger.debug(message.trim()) }
+  }));
+} else {
+  // In non-debug mode, only log errors and important requests
+  app.use(morgan('combined', {
+    stream: { write: message => logger.debug(message.trim()) },
+    skip: (req, res) => {
+      // Skip logging for routine dashboard requests
+      const routineRoutes = [
+        '/api/v1/system/pause-status',
+        '/api/v1/config/providers/status',
+        '/api/v1/dashboard/layouts',
+        '/api/health'
+      ];
+      
+      const isRoutine = routineRoutes.some(route => req.originalUrl.includes(route));
+      const isSuccess = res.statusCode < 400;
+      
+      // Only log errors or non-routine requests
+      return isRoutine && isSuccess;
+    }
+  }));
+}
 
 // Audit logging middleware
 app.use(createRateLimitAuditMiddleware());
