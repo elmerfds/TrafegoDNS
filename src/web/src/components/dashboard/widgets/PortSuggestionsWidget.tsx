@@ -3,7 +3,7 @@
  * Generates available port suggestions for different service types
  */
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Eye, RefreshCw, Copy, CheckCircle, Search } from 'lucide-react'
 import { WidgetBase } from '../Widget'
 import { Button } from '@/components/ui/button'
@@ -33,6 +33,17 @@ const serviceTypes = [
   { value: 'custom', label: 'Custom Range', range: [10000, 65535] }
 ]
 
+// Storage keys for persistence
+const STORAGE_KEYS = {
+  SERVICE_TYPE: 'port-generator-service-type',
+  SUGGESTIONS: 'port-generator-suggestions',
+  CUSTOM_PORT: 'port-generator-custom-port',
+  TIMESTAMP: 'port-generator-timestamp'
+}
+
+// Cache duration: 5 minutes
+const CACHE_DURATION = 5 * 60 * 1000
+
 export function PortSuggestionsWidget(props: WidgetProps) {
   const { toast } = useToast()
   const [serviceType, setServiceType] = useState('web')
@@ -41,10 +52,92 @@ export function PortSuggestionsWidget(props: WidgetProps) {
   const [copiedPort, setCopiedPort] = useState<number | null>(null)
   const [customPort, setCustomPort] = useState('')
   const [checkingCustom, setCheckingCustom] = useState(false)
+  const [isLoadedFromCache, setIsLoadedFromCache] = useState(false)
   const { displayMode = 'normal', currentBreakpoint = 'lg', layout } = props
   
   // Get current widget height from layout for dynamic sizing
   const currentHeight = layout?.h || 4
+
+  // Load persisted state on component mount
+  useEffect(() => {
+    try {
+      // Load service type
+      const savedServiceType = localStorage.getItem(STORAGE_KEYS.SERVICE_TYPE)
+      if (savedServiceType) {
+        setServiceType(savedServiceType)
+      }
+
+      // Load custom port
+      const savedCustomPort = localStorage.getItem(STORAGE_KEYS.CUSTOM_PORT)
+      if (savedCustomPort) {
+        setCustomPort(savedCustomPort)
+      }
+
+      // Load suggestions if they're not too old
+      const savedTimestamp = localStorage.getItem(STORAGE_KEYS.TIMESTAMP)
+      const savedSuggestions = localStorage.getItem(STORAGE_KEYS.SUGGESTIONS)
+      
+      if (savedTimestamp && savedSuggestions) {
+        const timestamp = parseInt(savedTimestamp)
+        const now = Date.now()
+        
+        if (now - timestamp < CACHE_DURATION) {
+          try {
+            const parsedSuggestions = JSON.parse(savedSuggestions)
+            if (Array.isArray(parsedSuggestions)) {
+              setSuggestions(parsedSuggestions)
+              setIsLoadedFromCache(true)
+            }
+          } catch (parseError) {
+            console.warn('Failed to parse saved suggestions:', parseError)
+            // Clear invalid data
+            localStorage.removeItem(STORAGE_KEYS.SUGGESTIONS)
+            localStorage.removeItem(STORAGE_KEYS.TIMESTAMP)
+          }
+        } else {
+          // Cache expired, clear it
+          localStorage.removeItem(STORAGE_KEYS.SUGGESTIONS)
+          localStorage.removeItem(STORAGE_KEYS.TIMESTAMP)
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to load persisted state:', error)
+    }
+  }, [])
+
+  // Persist service type changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.SERVICE_TYPE, serviceType)
+    } catch (error) {
+      console.warn('Failed to persist service type:', error)
+    }
+  }, [serviceType])
+
+  // Persist custom port changes
+  useEffect(() => {
+    try {
+      if (customPort) {
+        localStorage.setItem(STORAGE_KEYS.CUSTOM_PORT, customPort)
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.CUSTOM_PORT)
+      }
+    } catch (error) {
+      console.warn('Failed to persist custom port:', error)
+    }
+  }, [customPort])
+
+  // Persist suggestions changes
+  useEffect(() => {
+    try {
+      if (suggestions.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.SUGGESTIONS, JSON.stringify(suggestions))
+        localStorage.setItem(STORAGE_KEYS.TIMESTAMP, Date.now().toString())
+      }
+    } catch (error) {
+      console.warn('Failed to persist suggestions:', error)
+    }
+  }, [suggestions])
   
   // Calculate how many items to show based on widget size
   const getMaxItems = () => {
@@ -54,8 +147,20 @@ export function PortSuggestionsWidget(props: WidgetProps) {
     return 4
   }
 
+  // Clear cached data
+  const clearCache = () => {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.SUGGESTIONS)
+      localStorage.removeItem(STORAGE_KEYS.TIMESTAMP)
+      setIsLoadedFromCache(false)
+    } catch (error) {
+      console.warn('Failed to clear cache:', error)
+    }
+  }
+
   const generateSuggestions = async () => {
     setLoading(true)
+    setIsLoadedFromCache(false) // Clear cache flag when generating new suggestions
     try {
       const selectedService = serviceTypes.find(s => s.value === serviceType)
       if (!selectedService) return
@@ -186,6 +291,7 @@ export function PortSuggestionsWidget(props: WidgetProps) {
   }
 
   const checkCustomPort = async () => {
+    setIsLoadedFromCache(false) // Clear cache flag when checking custom port
     if (!customPort || isNaN(Number(customPort))) {
       toast({
         title: 'Invalid Port',
@@ -437,18 +543,34 @@ export function PortSuggestionsWidget(props: WidgetProps) {
         </div>
 
         {/* Generate Button */}
-        <Button 
-          onClick={generateSuggestions} 
-          disabled={loading}
-          className="w-full mb-3"
-        >
-          {loading ? (
-            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Eye className="h-4 w-4 mr-2" />
+        <div className="flex gap-2 mb-3">
+          <Button 
+            onClick={generateSuggestions} 
+            disabled={loading}
+            className="flex-1"
+          >
+            {loading ? (
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Eye className="h-4 w-4 mr-2" />
+            )}
+            Generate Service Suggestions
+          </Button>
+          {isLoadedFromCache && (
+            <Button 
+              onClick={() => {
+                clearCache()
+                generateSuggestions()
+              }}
+              disabled={loading}
+              variant="outline"
+              size="sm"
+              title="Refresh cached data"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
           )}
-          Generate Service Suggestions
-        </Button>
+        </div>
 
         {/* Suggestions List */}
         {suggestions.length > 0 ? (
@@ -457,8 +579,15 @@ export function PortSuggestionsWidget(props: WidgetProps) {
               <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">
                 Suggested Ports
               </h4>
-              <div className="text-xs text-muted-foreground" title="Real-time port availability check">
-                ℹ️ Live Status
+              <div className="flex items-center gap-2">
+                {isLoadedFromCache && (
+                  <div className="text-xs text-amber-600 dark:text-amber-400" title="Data loaded from cache">
+                    📋 Cached
+                  </div>
+                )}
+                <div className="text-xs text-muted-foreground" title="Real-time port availability check">
+                  ℹ️ Live Status
+                </div>
               </div>
             </div>
             <div className="space-y-2">

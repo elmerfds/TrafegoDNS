@@ -1146,51 +1146,137 @@ const getPortAlerts = asyncHandler(async (req, res) => {
 const suggestPorts = asyncHandler(async (req, res) => {
   try {
     const { PortMonitor } = global.services || {};
-    const { serviceType = 'web', count = 5, protocol = 'tcp' } = req.body;
+    const { serviceType = 'web', count = 5, protocol = 'tcp', range } = req.body;
     
-    if (!PortMonitor || !PortMonitor.isInitialized) {
-      // Provide fallback suggestions when port monitor not available
+    // Generate smart suggestions based on service type
+    const generateSmartSuggestions = async (serviceType, count, requestedRange) => {
+      // Service-specific recommended ports
+      const serviceRecommendations = {
+        web: [3000, 3001, 8000, 8080, 8081, 8082, 8083, 8084],
+        api: [4000, 4001, 4002, 5000, 5001, 5002, 5003, 5004],
+        database: [5432, 5433, 3306, 3307, 27017, 27018],
+        cache: [6379, 6380, 11211, 11212],
+        monitoring: [9000, 9001, 9090, 9091, 9100, 9200],
+        custom: [10000, 10001, 10002, 10003, 10004, 10005]
+      };
+      
+      const recommendedPorts = serviceRecommendations[serviceType] || serviceRecommendations.custom;
+      const suggestions = [];
+      
+      // Filter recommended ports by range if provided
+      let candidatePorts = recommendedPorts;
+      if (requestedRange && Array.isArray(requestedRange) && requestedRange.length === 2) {
+        const [min, max] = requestedRange;
+        candidatePorts = recommendedPorts.filter(port => port >= min && port <= max);
+        
+        // If no recommended ports in range, generate some in the range
+        if (candidatePorts.length === 0) {
+          for (let i = 0; i < count; i++) {
+            candidatePorts.push(min + i);
+          }
+        }
+      }
+      
+      // Check availability if PortMonitor is available
+      if (PortMonitor && PortMonitor.isInitialized) {
+        for (const port of candidatePorts.slice(0, count * 2)) { // Check double to ensure we get enough
+          try {
+            const availability = await PortMonitor.checkPortsAvailability([port], protocol, 'localhost');
+            const portInfo = availability.results ? availability.results[0] : availability[0];
+            
+            suggestions.push({
+              port,
+              available: portInfo?.available ?? true,
+              reason: `Recommended for ${serviceType} services`,
+              service: portInfo?.service,
+              container: portInfo?.container,
+              isRecommended: true
+            });
+            
+            if (suggestions.length >= count) break;
+          } catch (checkError) {
+            // If individual check fails, assume available
+            suggestions.push({
+              port,
+              available: true,
+              reason: `Recommended for ${serviceType} services`,
+              isRecommended: true
+            });
+            
+            if (suggestions.length >= count) break;
+          }
+        }
+      } else {
+        // PortMonitor not available, return recommended ports as available
+        for (const port of candidatePorts.slice(0, count)) {
+          suggestions.push({
+            port,
+            available: true,
+            reason: `Recommended for ${serviceType} services`,
+            isRecommended: true
+          });
+        }
+      }
+      
+      return suggestions;
+    };
+    
+    try {
+      const suggestions = await generateSmartSuggestions(serviceType, count, range);
+      
+      res.json({
+        status: 'success',
+        data: {
+          suggestions,
+          serviceType,
+          protocol
+        }
+      });
+      
+    } catch (suggestionError) {
+      logger.warn(`Smart suggestions failed: ${suggestionError.message}, using fallback`);
+      
+      // Final fallback - simple sequential suggestions
       const fallbackSuggestions = [];
-      const basePort = serviceType === 'web' ? 8080 : 3000;
+      const basePort = serviceType === 'web' ? 8080 : 
+                      serviceType === 'api' ? 4000 :
+                      serviceType === 'database' ? 5432 :
+                      serviceType === 'cache' ? 6379 :
+                      serviceType === 'monitoring' ? 9000 : 10000;
       
       for (let i = 0; i < count; i++) {
         fallbackSuggestions.push({
           port: basePort + i,
           available: true,
-          reason: `Suggested ${serviceType} port`,
-          protocol: protocol
+          reason: `Fallback suggestion for ${serviceType}`,
+          isRecommended: false
         });
       }
       
-      return res.json({
+      res.json({
         status: 'success',
         data: {
           suggestions: fallbackSuggestions,
-          serviceType: serviceType,
-          protocol: protocol
+          serviceType,
+          protocol
         }
       });
     }
 
-    // Get port suggestions from port monitor
-    const suggestions = await PortMonitor.suggestPorts({
-      serviceType,
-      count,
-      protocol
-    });
-    
-    res.json({
-      status: 'success',
-      data: {
-        suggestions: Array.isArray(suggestions) ? suggestions : [],
-        serviceType: serviceType,
-        protocol: protocol
-      }
-    });
-
   } catch (error) {
     logger.error(`Failed to generate port suggestions: ${error.message}`);
-    throw new ApiError('Failed to generate port suggestions', 500, 'PORT_SUGGEST_FAILED');
+    
+    // Return error response instead of throwing to prevent 500 errors
+    return res.status(500).json({
+      status: 'error',
+      error: 'PORT_SUGGEST_FAILED',
+      message: 'Failed to generate port suggestions',
+      data: {
+        suggestions: [],
+        serviceType: req.body.serviceType || 'web',
+        protocol: req.body.protocol || 'tcp'
+      }
+    });
   }
 });
 
