@@ -4,10 +4,11 @@
  */
 
 import React, { useState } from 'react'
-import { Eye, RefreshCw, Copy, CheckCircle } from 'lucide-react'
+import { Eye, RefreshCw, Copy, CheckCircle, Search } from 'lucide-react'
 import { WidgetBase } from '../Widget'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
@@ -404,8 +405,8 @@ export function PortSuggestionsWidget(props: WidgetProps) {
               type="number"
               placeholder="Enter port number"
               value={customPort}
-              onChange={(e) => setCustomPort(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && checkCustomPort()}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomPort(e.target.value)}
+              onKeyPress={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && checkCustomPort()}
               min="1"
               max="65535"
               className="[&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield]"
