@@ -360,8 +360,8 @@ export const portReservationsDefinition: WidgetDefinition = {
   description: 'Active port reservations management',
   category: 'ports',
   icon: Shield,
-  defaultSize: createResponsiveSizes({ w: 8, h: 10 }),
-  minSize: createResponsiveSizes({ w: 6, h: 8 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  defaultSize: createResponsiveSizes({ w: 6, h: 6 }), // Medium preset: min + 4 width, min + 2 height
+  minSize: createResponsiveSizes({ w: 4, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
   maxSize: createResponsiveSizes({ w: 12, h: 12 }),
   responsiveDisplay: {
     lg: 'detailed',
