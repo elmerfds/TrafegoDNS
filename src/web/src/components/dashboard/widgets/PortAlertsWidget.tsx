@@ -32,7 +32,15 @@ function usePortAlerts() {
     queryFn: async (): Promise<PortAlert[]> => {
       try {
         const response = await api.get('/ports/alerts')
-        return response.data.data || []
+        const data = response.data.data
+        // Ensure we always return an array
+        if (Array.isArray(data)) {
+          return data
+        } else if (data && Array.isArray(data.alerts)) {
+          return data.alerts
+        } else {
+          return []
+        }
       } catch {
         // Mock data if API fails
         return [
@@ -66,7 +74,10 @@ function usePortAlerts() {
 export function PortAlertsWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data: alerts = [], isLoading, error } = usePortAlerts()
-  const { displayMode = 'normal', currentBreakpoint = 'lg' } = props
+  const { displayMode = 'normal', currentBreakpoint = 'lg', layout } = props
+  
+  // Get current widget height from layout for dynamic sizing
+  const currentHeight = layout?.h || 4
   
   // Calculate how many items to show based on widget size
   const getMaxItems = () => {
@@ -116,6 +127,9 @@ export function PortAlertsWidget(props: WidgetProps) {
       isLoading={isLoading}
       error={error?.message}
       widgetDefinition={props.widgetDefinition}
+      enableDynamicSizing={true}
+      currentHeight={currentHeight}
+      onSizeChange={props.onSizeChange}
       actions={
         <Badge variant={criticalAlerts.length > 0 ? 'destructive' : 'secondary'}>
           {unacknowledgedAlerts.length} alerts

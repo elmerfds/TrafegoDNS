@@ -32,7 +32,15 @@ function usePortReservations() {
     queryFn: async (): Promise<PortReservation[]> => {
       try {
         const response = await api.get('/ports/reservations')
-        return response.data.data || []
+        const data = response.data.data
+        // Ensure we always return an array
+        if (Array.isArray(data)) {
+          return data
+        } else if (data && Array.isArray(data.reservations)) {
+          return data.reservations
+        } else {
+          return []
+        }
       } catch {
         // Mock data if API fails
         return [
@@ -78,7 +86,10 @@ export function PortReservationsWidget(props: WidgetProps) {
   const [quickReservePort, setQuickReservePort] = useState('')
   const [quickReserveService, setQuickReserveService] = useState('')
   const { data: reservations = [], isLoading, error } = usePortReservations()
-  const { displayMode = 'normal', currentBreakpoint = 'lg' } = props
+  const { displayMode = 'normal', currentBreakpoint = 'lg', layout } = props
+  
+  // Get current widget height from layout for dynamic sizing
+  const currentHeight = layout?.h || 4
   
   // Calculate how many items to show based on widget size
   const getMaxItems = () => {
@@ -192,6 +203,9 @@ export function PortReservationsWidget(props: WidgetProps) {
       isLoading={isLoading}
       error={error?.message}
       widgetDefinition={props.widgetDefinition}
+      enableDynamicSizing={true}
+      currentHeight={currentHeight}
+      onSizeChange={props.onSizeChange}
       actions={
         <Badge variant="default">
           {activeReservations.length} active

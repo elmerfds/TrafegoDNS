@@ -31,7 +31,15 @@ function usePortActivity() {
     queryFn: async (): Promise<PortActivity[]> => {
       try {
         const response = await api.get('/ports/activity')
-        return response.data.data || []
+        const data = response.data.data
+        // Ensure we always return an array
+        if (Array.isArray(data)) {
+          return data
+        } else if (data && Array.isArray(data.activities)) {
+          return data.activities
+        } else {
+          return []
+        }
       } catch {
         // Mock data if API fails
         return [
@@ -91,7 +99,10 @@ function usePortActivity() {
 export function PortActivityWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data: activities = [], isLoading, error } = usePortActivity()
-  const { displayMode = 'normal', currentBreakpoint = 'lg' } = props
+  const { displayMode = 'normal', currentBreakpoint = 'lg', layout } = props
+  
+  // Get current widget height from layout for dynamic sizing
+  const currentHeight = layout?.h || 4
   
   // Calculate how many items to show based on widget size
   const getMaxItems = () => {
@@ -151,6 +162,9 @@ export function PortActivityWidget(props: WidgetProps) {
       isLoading={isLoading}
       error={error?.message}
       widgetDefinition={props.widgetDefinition}
+      enableDynamicSizing={true}
+      currentHeight={currentHeight}
+      onSizeChange={props.onSizeChange}
       actions={
         <Badge variant={conflictCount > 0 ? 'destructive' : 'default'}>
           {recentActivities.length} events (24h)

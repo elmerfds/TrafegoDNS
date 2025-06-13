@@ -25,7 +25,10 @@ export function PortCheckerWidget(props: WidgetProps) {
   const [checking, setChecking] = useState(false)
   const [result, setResult] = useState<PortCheckResult | null>(null)
   const [recentChecks, setRecentChecks] = useState<PortCheckResult[]>([])
-  const { displayMode = 'normal', currentBreakpoint = 'lg' } = props
+  const { displayMode = 'normal', currentBreakpoint = 'lg', layout } = props
+  
+  // Get current widget height from layout for dynamic sizing
+  const currentHeight = layout?.h || 4
   
   // Calculate how many items to show based on widget size
   const getMaxItems = () => {
@@ -87,6 +90,9 @@ export function PortCheckerWidget(props: WidgetProps) {
       icon={Search}
       description="Check port availability"
       widgetDefinition={props.widgetDefinition}
+      enableDynamicSizing={true}
+      currentHeight={currentHeight}
+      onSizeChange={props.onSizeChange}
     >
       <div className="flex flex-col h-full">
         {/* Port Input */}
@@ -99,6 +105,8 @@ export function PortCheckerWidget(props: WidgetProps) {
             onKeyPress={(e) => e.key === 'Enter' && checkPort()}
             min="1"
             max="65535"
+            className="[&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield] overflow-hidden"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           />
           <Button 
             onClick={checkPort} 

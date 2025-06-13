@@ -35,7 +35,10 @@ export function PortSuggestionsWidget(props: WidgetProps) {
   const [suggestions, setSuggestions] = useState<PortSuggestion[]>([])
   const [loading, setLoading] = useState(false)
   const [copiedPort, setCopiedPort] = useState<number | null>(null)
-  const { displayMode = 'normal', currentBreakpoint = 'lg' } = props
+  const { displayMode = 'normal', currentBreakpoint = 'lg', layout } = props
+  
+  // Get current widget height from layout for dynamic sizing
+  const currentHeight = layout?.h || 4
   
   // Calculate how many items to show based on widget size
   const getMaxItems = () => {
@@ -65,7 +68,9 @@ export function PortSuggestionsWidget(props: WidgetProps) {
         }
       })
 
-      setSuggestions(response.data.suggestions)
+      // Ensure we always work with an array
+      const suggestions = response.data.suggestions || response.data.data?.suggestions || []
+      setSuggestions(Array.isArray(suggestions) ? suggestions : [])
     } catch (error) {
       toast({
         title: 'Error',
@@ -127,6 +132,9 @@ export function PortSuggestionsWidget(props: WidgetProps) {
       icon={Eye}
       description="Generate available port suggestions"
       widgetDefinition={props.widgetDefinition}
+      enableDynamicSizing={true}
+      currentHeight={currentHeight}
+      onSizeChange={props.onSizeChange}
     >
       <div className="flex flex-col h-full">
         {/* Service Type Selection */}
