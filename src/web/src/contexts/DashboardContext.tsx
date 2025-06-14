@@ -204,28 +204,29 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
             defaultSize: mediumPresetSize
           }
           return configs
-        }, {} as Record<string, { cols: number; defaultSize: { w: number; h: number } }>)
+        }, {} as Record<Breakpoint, { cols: number; defaultSize: { w: number; h: number } }>)
 
         // Create layout entry for each breakpoint
         Object.entries(breakpointConfigs).forEach(([breakpoint, config]) => {
-          if (!newLayouts[breakpoint]) {
-            newLayouts[breakpoint] = []
+          const breakpointTyped = breakpoint as Breakpoint
+          if (!newLayouts[breakpointTyped]) {
+            newLayouts[breakpointTyped] = []
           }
           
           // Check if widget already exists in this breakpoint
-          const existingIndex = newLayouts[breakpoint].findIndex(item => item.i === widgetId)
+          const existingIndex = newLayouts[breakpointTyped].findIndex(item => item.i === widgetId)
           
           if (existingIndex === -1) {
             // Find optimal position and add new layout item
-            const position = findOptimalPosition(breakpoint, config.cols, config.defaultSize)
+            const position = findOptimalPosition(breakpointTyped, config.cols, config.defaultSize)
             
             // Get responsive constraints for this breakpoint
-            const minSize = getSizeForBreakpoint(widgetDefinition.minSize, breakpoint)
-            const maxSize = getSizeForBreakpoint(widgetDefinition.maxSize || { w: config.cols, h: 20 }, breakpoint)
-            const constrainedMinSize = constrainSizeToBreakpoint(minSize, breakpoint)
-            const constrainedMaxSize = constrainSizeToBreakpoint(maxSize, breakpoint)
+            const minSize = getSizeForBreakpoint(widgetDefinition.minSize, breakpointTyped)
+            const maxSize = getSizeForBreakpoint(widgetDefinition.maxSize || { w: config.cols, h: 20 }, breakpointTyped)
+            const constrainedMinSize = constrainSizeToBreakpoint(minSize, breakpointTyped)
+            const constrainedMaxSize = constrainSizeToBreakpoint(maxSize, breakpointTyped)
             
-            newLayouts[breakpoint].push({
+            newLayouts[breakpointTyped].push({
               i: widgetId,
               ...position,
               minW: constrainedMinSize.w,
