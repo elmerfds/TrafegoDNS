@@ -74,7 +74,7 @@ export function ContainerMonitoringWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data: summary, isLoading, error } = useContainerSummary()
   const { displayMode, currentBreakpoint } = props
-  const isMobile = currentBreakpoint === 'xs' || currentBreakpoint === 'xxs'
+  const isMobile = currentBreakpoint === 'xs'
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {

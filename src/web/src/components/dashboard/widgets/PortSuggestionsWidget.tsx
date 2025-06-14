@@ -55,7 +55,7 @@ export function PortSuggestionsWidget(props: WidgetProps) {
   const [checkingCustom, setCheckingCustom] = useState(false)
   const [isLoadedFromCache, setIsLoadedFromCache] = useState(false)
   const { displayMode = 'normal', currentBreakpoint = 'lg', layout } = props
-  const isMobile = currentBreakpoint === 'xs' || currentBreakpoint === 'xxs'
+  const isMobile = currentBreakpoint === 'xs'
   
   // Get current widget height from layout for dynamic sizing
   const currentHeight = layout?.h || 4

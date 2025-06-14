@@ -101,7 +101,7 @@ export function PortActivityWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data: activities = [], isLoading, error } = usePortActivity()
   const { displayMode = 'normal', currentBreakpoint = 'lg', layout } = props
-  const isMobile = currentBreakpoint === 'xs' || currentBreakpoint === 'xxs'
+  const isMobile = currentBreakpoint === 'xs'
   
   // Get current widget height from layout for dynamic sizing
   const currentHeight = layout?.h || 4

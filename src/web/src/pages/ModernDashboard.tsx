@@ -375,7 +375,7 @@ function DashboardGrid() {
       autoSize={true} // Auto-size container to content
       useCSSTransforms={true} // Better performance and animations
       // Mobile-specific optimizations
-      transformScale={currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? 1 : 1}
+      transformScale={currentBreakpoint === 'xs' ? 1 : 1}
       allowOverlap={false}
       isBounded={true} // Prevent widgets from going outside container
     >

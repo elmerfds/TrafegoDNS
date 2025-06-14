@@ -91,7 +91,7 @@ export function PortMonitoringWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data: portData, isLoading, error } = usePortMonitoringData()
   const { displayMode, currentBreakpoint } = props
-  const isMobile = currentBreakpoint === 'xs' || currentBreakpoint === 'xxs'
+  const isMobile = currentBreakpoint === 'xs'
 
   // Calculate metrics
   const totalPorts = portData?.statistics.totalMonitoredPorts || 0

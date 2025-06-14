@@ -88,7 +88,7 @@ export function PortReservationsWidget(props: WidgetProps) {
   const [quickReserveService, setQuickReserveService] = useState('')
   const { data: reservations = [], isLoading, error } = usePortReservations()
   const { displayMode = 'normal', currentBreakpoint = 'lg', layout } = props
-  const isMobile = currentBreakpoint === 'xs' || currentBreakpoint === 'xxs'
+  const isMobile = currentBreakpoint === 'xs'
   
   // Get current widget height from layout for dynamic sizing
   const currentHeight = layout?.h || 4

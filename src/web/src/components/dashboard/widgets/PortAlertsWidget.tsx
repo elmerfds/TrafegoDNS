@@ -76,7 +76,7 @@ export function PortAlertsWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data: alerts = [], isLoading, error } = usePortAlerts()
   const { displayMode = 'normal', currentBreakpoint = 'lg', layout } = props
-  const isMobile = currentBreakpoint === 'xs' || currentBreakpoint === 'xxs'
+  const isMobile = currentBreakpoint === 'xs'
   
   // Get current widget height from layout for dynamic sizing
   const currentHeight = layout?.h || 4

@@ -38,7 +38,7 @@ export function PauseControlWidget(props: WidgetProps) {
   const queryClient = useQueryClient()
   const [selectedDuration, setSelectedDuration] = useState<string>('')
   const { displayMode, currentBreakpoint } = props
-  const isMobile = currentBreakpoint === 'xs' || currentBreakpoint === 'xxs'
+  const isMobile = currentBreakpoint === 'xs'
 
   // Query pause status
   const { data: pauseStatus, isLoading } = useQuery<{ success: boolean; data: PauseStatus }>({
