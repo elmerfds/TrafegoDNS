@@ -120,11 +120,13 @@ const ResponsiveGridLayout = WidthProvider(Responsive)
 
 // Responsive configuration with better adaptive sizing
 const responsiveConfig = {
-  breakpoints: { lg: 1200, md: 996, sm: 768, xs: 480 },
-  cols: { lg: 24, md: 20, sm: 12, xs: 8 }, // Increased columns for more horizontal flexibility
+  breakpoints: { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 320 },
+  cols: { lg: 24, md: 20, sm: 12, xs: 4, xxs: 2 }, // Mobile-optimized column counts
   margin: [12, 12] as [number, number], // Reduced margins for better space utilization
   containerPadding: [12, 12] as [number, number],
-  rowHeight: 60
+  rowHeight: 60,
+  // Mobile-specific margin overrides  
+  mobileMargin: { xs: [8, 8], xxs: [6, 6] } as Record<string, [number, number]>
 }
 
 // Widget registry setup - Now with 17 widgets matching old dashboard functionality
@@ -169,7 +171,7 @@ function AddWidgetDialog() {
           Add Widget
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[80vh]">
+      <DialogContent className="max-w-2xl max-h-[80vh] mx-4">
         <DialogHeader>
           <DialogTitle>Add Widget</DialogTitle>
           <DialogDescription>
@@ -177,7 +179,7 @@ function AddWidgetDialog() {
           </DialogDescription>
         </DialogHeader>
         
-        <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2">
+        <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2 touch-manipulation">
           {categories.map(category => {
             const widgets = registry.getByCategory(category)
             if (widgets.length === 0) return null
@@ -191,17 +193,17 @@ function AddWidgetDialog() {
                   {widgets.map(widget => (
                     <Card
                       key={widget.id}
-                      className="cursor-pointer hover:shadow-md transition-shadow"
+                      className="cursor-pointer hover:shadow-md transition-shadow touch-manipulation"
                       onClick={() => {
                         addWidget(widget.id, widget)
                         setIsOpen(false)
                       }}
                     >
-                      <CardContent className="p-4">
+                      <CardContent className="p-4 md:p-4">
                         <div className="flex items-start gap-3">
-                          <widget.icon className="h-6 w-6 text-primary mt-0.5" />
+                          <widget.icon className="h-6 w-6 text-primary mt-0.5 flex-shrink-0" />
                           <div className="flex-1 min-w-0">
-                            <h5 className="font-medium text-sm">{widget.name}</h5>
+                            <h5 className="font-medium text-sm md:text-sm">{widget.name}</h5>
                             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                               {widget.description}
                             </p>
@@ -233,15 +235,15 @@ function DashboardToolbar() {
   } = useDashboard()
 
   return (
-    <div className="flex items-center justify-between mb-6">
+    <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-4">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Dashboard</h1>
+        <p className="text-sm md:text-base text-muted-foreground">
           Monitor your DNS records and container status in real-time
         </p>
       </div>
       
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap md:flex-nowrap">
         {/* Unsaved changes indicator */}
         {hasUnsavedChanges && (
           <Badge variant="outline" className="bg-orange-50 text-orange-700">
@@ -334,7 +336,7 @@ function DashboardGrid() {
   const registry = useWidgetRegistry()
   
   // Track current breakpoint for responsive widget rendering
-  const [currentBreakpoint, setCurrentBreakpoint] = useState<'lg' | 'md' | 'sm' | 'xs'>('lg')
+  const [currentBreakpoint, setCurrentBreakpoint] = useState<'lg' | 'md' | 'sm' | 'xs' | 'xxs'>('lg')
   
   useEffect(() => {
     const updateBreakpoint = () => {
@@ -363,7 +365,7 @@ function DashboardGrid() {
       breakpoints={responsiveConfig.breakpoints}
       cols={responsiveConfig.cols}
       rowHeight={responsiveConfig.rowHeight}
-      margin={responsiveConfig.margin}
+      margin={responsiveConfig.mobileMargin[currentBreakpoint] || responsiveConfig.margin}
       containerPadding={responsiveConfig.containerPadding}
       isDraggable={isEditing}
       isResizable={isEditing}
@@ -372,6 +374,10 @@ function DashboardGrid() {
       preventCollision={false}
       autoSize={true} // Auto-size container to content
       useCSSTransforms={true} // Better performance and animations
+      // Mobile-specific optimizations
+      transformScale={currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? 1 : 1}
+      allowOverlap={false}
+      isBounded={true} // Prevent widgets from going outside container
     >
       {visibleWidgets.map(widgetId => {
         const widgetComponent = registry.get(widgetId)
@@ -416,7 +422,7 @@ function DashboardGrid() {
 
 function DashboardContent() {
   return (
-    <div className="container mx-auto p-6">
+    <div className="container mx-auto p-4 md:p-6">
       <DashboardToolbar />
       <DashboardGrid />
     </div>

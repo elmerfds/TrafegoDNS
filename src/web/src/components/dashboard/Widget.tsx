@@ -48,6 +48,7 @@ export function WidgetBase({
   const widgetContent = (
     <Card className={cn(
       "h-full flex flex-col transition-all duration-200",
+      "touch-manipulation", // Improve touch responsiveness
       isEditing && "ring-2 ring-blue-200 dark:ring-blue-800",
       error && "ring-2 ring-red-200 dark:ring-red-800",
       className
@@ -56,10 +57,10 @@ export function WidgetBase({
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
             {isEditing && (
-              <GripVertical className="h-4 w-4 text-gray-400 drag-handle cursor-move" />
+              <GripVertical className="h-5 w-5 md:h-4 md:w-4 text-gray-400 drag-handle cursor-move touch-manipulation" />
             )}
-            {Icon && <Icon className="h-5 w-5" />}
-            <span className="truncate">{title}</span>
+            {Icon && <Icon className="h-5 w-5 md:h-5 md:w-5 flex-shrink-0" />}
+            <span className="truncate text-base md:text-lg">{title}</span>
           </CardTitle>
           
           <div className="flex items-center gap-1">
@@ -75,7 +76,7 @@ export function WidgetBase({
                 variant="ghost"
                 size="sm"
                 onClick={onConfigure}
-                className="h-8 w-8 p-0"
+                className="h-9 w-9 md:h-8 md:w-8 p-0 touch-manipulation"
               >
                 <Settings className="h-4 w-4" />
               </Button>
@@ -85,7 +86,7 @@ export function WidgetBase({
                 variant="ghost"
                 size="sm"
                 onClick={onRemove}
-                className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                className="h-9 w-9 md:h-8 md:w-8 p-0 text-destructive hover:text-destructive touch-manipulation"
               >
                 <X className="h-4 w-4" />
               </Button>

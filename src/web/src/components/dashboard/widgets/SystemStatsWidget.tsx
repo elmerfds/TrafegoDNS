@@ -10,6 +10,7 @@ import { WidgetBase } from '../Widget'
 import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api'
 import { createResponsiveSizes } from '@/lib/responsiveUtils'
+import { cn } from '@/lib/utils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface SystemMetrics {
@@ -106,7 +107,7 @@ function useSystemMetrics() {
 
 export function SystemStatsWidget(props: WidgetProps) {
   const { data: metrics, isLoading, error } = useSystemMetrics()
-  const { layout } = props
+  const { layout, displayMode = 'normal', currentBreakpoint = 'lg' } = props
   
   // Get current widget height from layout for dynamic sizing
   const currentHeight = layout?.h || 4
@@ -189,13 +190,24 @@ export function SystemStatsWidget(props: WidgetProps) {
         </Badge>
       }
     >
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className={cn(
+        "grid gap-3",
+        displayMode === 'compact' || currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' 
+          ? "grid-cols-2" 
+          : displayMode === 'detailed' && currentBreakpoint === 'lg'
+          ? "grid-cols-4"
+          : "grid-cols-2 md:grid-cols-4"
+      )}>
         {statCards.map((stat) => {
           const IconComponent = stat.icon
           return (
             <div
               key={stat.label}
-              className={`rounded-xl p-4 border transition-all hover:shadow-md ${getColorClasses(stat.color)}`}
+              className={cn(
+                "rounded-xl border transition-all hover:shadow-md",
+                getColorClasses(stat.color),
+                currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? "p-3" : "p-4"
+              )}
             >
               <div className="flex items-center justify-between mb-3">
                 <IconComponent className="h-5 w-5 text-gray-600 dark:text-gray-400" />
@@ -203,10 +215,16 @@ export function SystemStatsWidget(props: WidgetProps) {
               </div>
               
               <div className="space-y-1">
-                <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                <div className={cn(
+                  "font-bold text-gray-900 dark:text-gray-100",
+                  currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? "text-lg" : "text-2xl"
+                )}>
                   {stat.value}
                 </div>
-                <div className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                <div className={cn(
+                  "font-medium text-gray-700 dark:text-gray-300",
+                  currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? "text-xs" : "text-xs"
+                )}>
                   {stat.label}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
@@ -239,13 +257,14 @@ export const systemStatsDefinition: WidgetDefinition = {
   description: 'Real-time system statistics and health indicators',
   category: 'system',
   icon: Activity,
-  defaultSize: createResponsiveSizes({ w: 16, h: 4 }),
-  minSize: createResponsiveSizes({ w: 8, h: 3 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  defaultSize: createResponsiveSizes({ w: 16, h: 4 }, { xsRatio: 1.0, xxsRatio: 1.0 }),
+  minSize: createResponsiveSizes({ w: 8, h: 3 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0, xxsRatio: 1.0 }),
   maxSize: createResponsiveSizes({ w: 24, h: 10 }),
   responsiveDisplay: {
     lg: 'detailed',
     md: 'normal',
     sm: 'compact',
-    xs: 'compact'
+    xs: 'compact',
+    xxs: 'compact'
   }
 }

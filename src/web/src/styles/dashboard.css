@@ -42,12 +42,20 @@
   border: 2px dashed rgba(var(--primary), 0.3);
 }
 
-/* Resize handle styling */
+/* Resize handle styling - Mobile optimized */
 .react-resizable-handle {
   position: absolute;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   box-sizing: border-box;
+  touch-action: none; /* Prevent scrolling while resizing */
+}
+
+@media (min-width: 768px) {
+  .react-resizable-handle {
+    width: 20px;
+    height: 20px;
+  }
 }
 
 .react-resizable-handle::after {
@@ -55,27 +63,46 @@
   position: absolute;
   right: 3px;
   bottom: 3px;
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-right: 2px solid rgba(var(--foreground), 0.4);
   border-bottom: 2px solid rgba(var(--foreground), 0.4);
 }
 
-/* Handle positioning for different resize directions */
+@media (min-width: 768px) {
+  .react-resizable-handle::after {
+    width: 10px;
+    height: 10px;
+  }
+}
+
+/* Handle positioning for different resize directions - Mobile optimized */
 .react-resizable-handle-s {
   bottom: 0;
   left: 0;
   cursor: ns-resize;
-  height: 10px;
+  height: 14px;
   width: 100%;
+}
+
+@media (min-width: 768px) {
+  .react-resizable-handle-s {
+    height: 10px;
+  }
 }
 
 .react-resizable-handle-e {
   right: 0;
   top: 0;
   cursor: ew-resize;
-  width: 10px;
+  width: 14px;
   height: 100%;
+}
+
+@media (min-width: 768px) {
+  .react-resizable-handle-e {
+    width: 10px;
+  }
 }
 
 .react-resizable-handle-se {
@@ -94,14 +121,26 @@
   left: 0;
   top: 0;
   cursor: ew-resize;
-  width: 10px;
+  width: 14px;
   height: 100%;
 }
 
-/* Drag handle styling */
+@media (min-width: 768px) {
+  .react-resizable-handle-w {
+    width: 10px;
+  }
+}
+
+/* Drag handle styling - Mobile optimized */
 .drag-handle {
   cursor: move;
   user-select: none;
+  touch-action: none; /* Prevent scrolling while dragging */
+  -webkit-touch-callout: none; /* Disable iOS callout */
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
 /* Layout container */
@@ -127,4 +166,55 @@
 
 .dark .react-resizable-handle::after {
   border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* Mobile-specific optimizations */
+@media (max-width: 768px) {
+  /* Larger touch targets for mobile */
+  .layout {
+    margin: -6px; /* Reduce negative margin on mobile */
+  }
+  
+  /* Ensure minimum widget heights on mobile */
+  .react-grid-item {
+    min-height: 240px; /* Minimum readable height */
+  }
+  
+  /* Better spacing for mobile widgets */
+  .react-grid-item .card {
+    border-radius: 12px; /* Slightly larger radius for mobile */
+  }
+  
+  /* Optimize scrollable areas in widgets */
+  .widget-scroll-area {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  
+  /* Hide resize handles on very small screens to reduce clutter */
+  @media (max-width: 480px) {
+    .react-resizable-handle:not(.react-resizable-handle-se) {
+      display: none;
+    }
+  }
+}
+
+/* Touch interaction improvements */
+@media (hover: none) and (pointer: coarse) {
+  /* For touch devices, increase interactive element sizes */
+  .react-grid-item button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Reduce hover effects on touch devices */
+  .react-grid-item:hover {
+    transform: none;
+  }
+  
+  /* Improve focus visibility for touch navigation */
+  .react-grid-item:focus-within {
+    outline: 2px solid rgba(var(--primary), 0.5);
+    outline-offset: 2px;
+  }
 }

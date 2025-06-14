@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api'
 import { createResponsiveSizes } from '@/lib/responsiveUtils'
+import { cn } from '@/lib/utils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface PortCheckResult {
@@ -99,19 +100,23 @@ export function PortCheckerWidget(props: WidgetProps) {
         <div className="flex gap-2 mb-3">
           <Input
             type="number"
-            placeholder="Enter port number"
+            placeholder={currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? "Port" : "Enter port number"}
             value={port}
             onChange={(e) => setPort(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && checkPort()}
             min="1"
             max="65535"
-            className="[&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield] overflow-hidden"
+            className={cn(
+              "[&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield] overflow-hidden",
+              currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? "text-base" : ""
+            )}
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           />
           <Button 
             onClick={checkPort} 
             disabled={checking || !port}
-            size="sm"
+            size={currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? "default" : "sm"}
+            className="touch-manipulation"
           >
             {checking ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -166,17 +171,26 @@ export function PortCheckerWidget(props: WidgetProps) {
         {/* Quick Port Suggestions */}
         <div className="space-y-2 mt-auto">
           <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Quick Check</h4>
-          <div className="grid grid-cols-3 gap-2">
-            {[3000, 8080, 9000].map(quickPort => (
+          <div className={cn(
+            "grid gap-2",
+            currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? "grid-cols-2" : "grid-cols-3"
+          )}>
+            {(currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' 
+              ? [3000, 8080] 
+              : [3000, 8080, 9000]
+            ).map(quickPort => (
               <Button
                 key={quickPort}
                 variant="outline"
-                size="sm"
+                size={currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? "default" : "sm"}
                 onClick={() => {
                   setPort(quickPort.toString())
                   setTimeout(() => checkPort(), 100)
                 }}
-                className="text-xs"
+                className={cn(
+                  "touch-manipulation",
+                  currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? "text-sm" : "text-xs"
+                )}
               >
                 {quickPort}
               </Button>
@@ -194,13 +208,14 @@ export const portCheckerDefinition: WidgetDefinition = {
   description: 'Quick port availability checker',
   category: 'ports',
   icon: Search,
-  defaultSize: createResponsiveSizes({ w: 6, h: 6 }), // Medium preset: min + 4 width, min + 2 height
-  minSize: createResponsiveSizes({ w: 4, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  defaultSize: createResponsiveSizes({ w: 6, h: 6 }, { xsRatio: 1.0, xxsRatio: 1.0 }), // Medium preset: min + 4 width, min + 2 height
+  minSize: createResponsiveSizes({ w: 4, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0, xxsRatio: 1.0 }),
   maxSize: createResponsiveSizes({ w: 12, h: 10 }),
   responsiveDisplay: {
     lg: 'detailed',
     md: 'normal',
     sm: 'compact',
-    xs: 'compact'
+    xs: 'compact',
+    xxs: 'compact'
   }
 }
