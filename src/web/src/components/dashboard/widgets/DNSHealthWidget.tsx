@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { createResponsiveSizes } from '@/lib/responsiveUtils'
+import { cn } from '@/lib/utils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface DNSHealth {
@@ -160,7 +161,8 @@ function useDNSHealth() {
 export function DNSHealthWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data: health, isLoading, error } = useDNSHealth()
-  const { layout } = props
+  const { layout, displayMode, currentBreakpoint } = props
+  const isMobile = currentBreakpoint === 'xs' || currentBreakpoint === 'xxs'
   
   // Get current widget height from layout for dynamic sizing
   const currentHeight = layout?.h || 4
@@ -213,29 +215,56 @@ export function DNSHealthWidget(props: WidgetProps) {
     >
       <div className="space-y-4">
         {/* DNS Metrics Grid */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-3 border border-blue-200 dark:border-blue-800">
+        <div className={cn(
+          "grid gap-3",
+          isMobile ? "grid-cols-2" : "grid-cols-2"
+        )}>
+          <div className={cn(
+            "bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl border border-blue-200 dark:border-blue-800",
+            isMobile ? "p-4" : "p-3"
+          )}>
             <div className="flex items-center gap-2 mb-2">
-              <Database className="h-4 w-4 text-blue-600" />
-              <span className="text-xs font-medium text-blue-900 dark:text-blue-100">Hostnames</span>
+              <Database className={cn(isMobile ? "h-5 w-5" : "h-4 w-4", "text-blue-600")} />
+              <span className={cn(
+                "font-medium text-blue-900 dark:text-blue-100",
+                isMobile ? "text-sm" : "text-xs"
+              )}>Hostnames</span>
             </div>
-            <div className="text-lg font-bold text-blue-900 dark:text-blue-100">
+            <div className={cn(
+              "font-bold text-blue-900 dark:text-blue-100",
+              isMobile ? "text-xl" : "text-lg"
+            )}>
               {health?.records.total || 0}
             </div>
-            <div className="text-xs text-blue-700 dark:text-blue-300">
+            <div className={cn(
+              "text-blue-700 dark:text-blue-300",
+              isMobile ? "text-sm" : "text-xs"
+            )}>
               {health?.records.managed || 0} managed
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl p-3 border border-purple-200 dark:border-purple-800">
+          <div className={cn(
+            "bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl border border-purple-200 dark:border-purple-800",
+            isMobile ? "p-4" : "p-3"
+          )}>
             <div className="flex items-center gap-2 mb-2">
-              <Globe className="h-4 w-4 text-purple-600" />
-              <span className="text-xs font-medium text-purple-900 dark:text-purple-100">Providers</span>
+              <Globe className={cn(isMobile ? "h-5 w-5" : "h-4 w-4", "text-purple-600")} />
+              <span className={cn(
+                "font-medium text-purple-900 dark:text-purple-100",
+                isMobile ? "text-sm" : "text-xs"
+              )}>Providers</span>
             </div>
-            <div className="text-lg font-bold text-purple-900 dark:text-purple-100">
+            <div className={cn(
+              "font-bold text-purple-900 dark:text-purple-100",
+              isMobile ? "text-xl" : "text-lg"
+            )}>
               {connectedProviders}/{totalProviders}
             </div>
-            <div className="text-xs text-purple-700 dark:text-purple-300">
+            <div className={cn(
+              "text-purple-700 dark:text-purple-300",
+              isMobile ? "text-sm" : "text-xs"
+            )}>
               connected
             </div>
           </div>
@@ -244,15 +273,27 @@ export function DNSHealthWidget(props: WidgetProps) {
         {/* Provider Status List */}
         {health?.providers && health.providers.length > 0 && (
           <div className="space-y-2">
-            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Providers</h4>
+            <h4 className={cn(
+              "font-medium text-gray-700 dark:text-gray-300",
+              isMobile ? "text-base" : "text-sm"
+            )}>Providers</h4>
             <div className="space-y-2">
               {health.providers.map((provider) => (
-                <div key={provider.name} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <div key={provider.name} className={cn(
+                  "flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded-lg",
+                  isMobile ? "p-4" : "p-3"
+                )}>
                   <div className="flex items-center gap-3">
                     {getStatusIcon(provider.status)}
                     <div>
-                      <div className="text-sm font-medium">{provider.name}</div>
-                      <div className="text-xs text-muted-foreground">
+                      <div className={cn(
+                        "font-medium",
+                        isMobile ? "text-base" : "text-sm"
+                      )}>{provider.name}</div>
+                      <div className={cn(
+                        "text-muted-foreground",
+                        isMobile ? "text-sm" : "text-xs"
+                      )}>
                         {provider.record_count} hostnames
                         {provider.response_time && ` • ${provider.response_time}ms`}
                       </div>
@@ -269,10 +310,16 @@ export function DNSHealthWidget(props: WidgetProps) {
 
         {/* Orphaned Records Alert */}
         {(health?.records.orphaned || 0) > 0 && (
-          <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+          <div className={cn(
+            "bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg",
+            isMobile ? "p-4" : "p-3"
+          )}>
             <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-200">
-              <Trash2 className="h-4 w-4" />
-              <span className="text-sm font-medium">
+              <Trash2 className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+              <span className={cn(
+                "font-medium",
+                isMobile ? "text-base" : "text-sm"
+              )}>
                 {health?.records.orphaned} orphaned records need attention
               </span>
             </div>
@@ -283,8 +330,11 @@ export function DNSHealthWidget(props: WidgetProps) {
         <div className="flex gap-2">
           <Button
             variant="outline"
-            size="sm"
-            className="flex-1"
+            size={isMobile ? "default" : "sm"}
+            className={cn(
+              "flex-1",
+              isMobile && "min-h-[44px]"
+            )}
             onClick={() => navigate('/dns-records')}
           >
             Manage DNS
@@ -292,8 +342,11 @@ export function DNSHealthWidget(props: WidgetProps) {
           {(health?.records.orphaned || 0) > 0 && (
             <Button
               variant="outline"
-              size="sm"
-              className="flex-1"
+              size={isMobile ? "default" : "sm"}
+              className={cn(
+                "flex-1",
+                isMobile && "min-h-[44px]"
+              )}
               onClick={() => navigate('/orphaned-records')}
             >
               Clean Up
@@ -312,12 +365,13 @@ export const dnsHealthDefinition: WidgetDefinition = {
   category: 'dns',
   icon: Globe,
   defaultSize: createResponsiveSizes({ w: 8, h: 8 }),
-  minSize: createResponsiveSizes({ w: 6, h: 6 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  minSize: createResponsiveSizes({ w: 6, h: 6 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0, xxsRatio: 1.0 }),
   maxSize: createResponsiveSizes({ w: 16, h: 16 }),
   responsiveDisplay: {
     lg: 'detailed',
     md: 'normal',
     sm: 'compact',
-    xs: 'compact'
+    xs: 'compact',
+    xxs: 'compact'
   }
 }

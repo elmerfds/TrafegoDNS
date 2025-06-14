@@ -13,6 +13,7 @@ import { Progress } from '@/components/ui/progress'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { createResponsiveSizes } from '@/lib/responsiveUtils'
+import { cn } from '@/lib/utils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface PortMonitoringData {
@@ -89,6 +90,8 @@ function usePortMonitoringData() {
 export function PortMonitoringWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data: portData, isLoading, error } = usePortMonitoringData()
+  const { displayMode, currentBreakpoint } = props
+  const isMobile = currentBreakpoint === 'xs' || currentBreakpoint === 'xxs'
 
   // Calculate metrics
   const totalPorts = portData?.statistics.totalMonitoredPorts || 0
@@ -145,27 +148,45 @@ export function PortMonitoringWidget(props: WidgetProps) {
       <div className="space-y-4">
         {/* Usage Overview */}
         <div className="space-y-2">
-          <div className="flex justify-between text-sm">
+          <div className={cn(
+            "flex justify-between",
+            isMobile ? "text-base" : "text-sm"
+          )}>
             <span>Port Usage</span>
             <span>{usagePercentage.toFixed(1)}%</span>
           </div>
-          <Progress value={usagePercentage} className="h-2" />
-          <div className="text-xs text-muted-foreground">
+          <Progress value={usagePercentage} className={cn(isMobile ? "h-3" : "h-2")} />
+          <div className={cn(
+            "text-muted-foreground",
+            isMobile ? "text-sm" : "text-xs"
+          )}>
             {usedPorts} of {totalPorts} ports in use
           </div>
         </div>
 
         {/* Metrics Grid */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className={cn(
+          "grid gap-3",
+          isMobile ? "grid-cols-2" : "grid-cols-2"
+        )}>
           {metrics.map((metric) => (
             <div
               key={metric.name}
-              className={`${metric.bgColor} rounded-lg p-3 text-center transition-all hover:scale-105`}
+              className={cn(
+                `${metric.bgColor} rounded-lg text-center transition-all hover:scale-105`,
+                isMobile ? "p-4" : "p-3"
+              )}
             >
-              <div className={`text-lg font-bold ${metric.color}`}>
+              <div className={cn(
+                `font-bold ${metric.color}`,
+                isMobile ? "text-xl" : "text-lg"
+              )}>
                 {metric.value}
               </div>
-              <div className="text-xs text-gray-600 dark:text-gray-400">
+              <div className={cn(
+                "text-gray-600 dark:text-gray-400",
+                isMobile ? "text-sm" : "text-xs"
+              )}>
                 {metric.name}
               </div>
             </div>
@@ -174,9 +195,15 @@ export function PortMonitoringWidget(props: WidgetProps) {
 
         {/* Quick Status */}
         {alertCount > 0 && (
-          <div className="flex items-center gap-2 p-2 bg-yellow-50 dark:bg-yellow-950/30 rounded border border-yellow-200 dark:border-yellow-800">
-            <AlertTriangle className="h-4 w-4 text-yellow-600" />
-            <span className="text-sm text-yellow-800 dark:text-yellow-200">
+          <div className={cn(
+            "flex items-center gap-2 bg-yellow-50 dark:bg-yellow-950/30 rounded border border-yellow-200 dark:border-yellow-800",
+            isMobile ? "p-3" : "p-2"
+          )}>
+            <AlertTriangle className={cn("text-yellow-600", isMobile ? "h-5 w-5" : "h-4 w-4")} />
+            <span className={cn(
+              "text-yellow-800 dark:text-yellow-200",
+              isMobile ? "text-base" : "text-sm"
+            )}>
               {alertCount} alerts detected
             </span>
           </div>
@@ -186,27 +213,36 @@ export function PortMonitoringWidget(props: WidgetProps) {
         <div className="flex gap-2">
           <Button
             variant="outline"
-            size="sm"
-            className="flex-1"
+            size={isMobile ? "default" : "sm"}
+            className={cn(
+              "flex-1",
+              isMobile && "min-h-[44px]"
+            )}
             onClick={() => navigate('/port-monitoring')}
           >
-            <Activity className="h-3 w-3 mr-1" />
+            <Activity className={cn("mr-1", isMobile ? "h-4 w-4" : "h-3 w-3")} />
             Details
           </Button>
           <Button
             variant="outline"
-            size="sm"
-            className="flex-1"
+            size={isMobile ? "default" : "sm"}
+            className={cn(
+              "flex-1",
+              isMobile && "min-h-[44px]"
+            )}
             onClick={() => navigate('/port-management')}
           >
-            <Lock className="h-3 w-3 mr-1" />
+            <Lock className={cn("mr-1", isMobile ? "h-4 w-4" : "h-3 w-3")} />
             Manage
           </Button>
         </div>
 
         {/* Last Update */}
         {portData?.monitoring_active && (
-          <div className="text-xs text-muted-foreground text-center">
+          <div className={cn(
+            "text-muted-foreground text-center",
+            isMobile ? "text-sm" : "text-xs"
+          )}>
             Last updated: {new Date().toLocaleTimeString()}
           </div>
         )}
@@ -222,12 +258,13 @@ export const portMonitoringDefinition: WidgetDefinition = {
   category: 'ports',
   icon: Network,
   defaultSize: createResponsiveSizes({ w: 12, h: 6 }),
-  minSize: createResponsiveSizes({ w: 8, h: 5 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  minSize: createResponsiveSizes({ w: 8, h: 5 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0, xxsRatio: 1.0 }),
   maxSize: createResponsiveSizes({ w: 16, h: 8 }),
   responsiveDisplay: {
     lg: 'detailed',
     md: 'normal',
     sm: 'compact',
-    xs: 'compact'
+    xs: 'compact',
+    xxs: 'compact'
   }
 }

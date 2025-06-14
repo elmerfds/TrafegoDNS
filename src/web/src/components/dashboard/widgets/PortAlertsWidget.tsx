@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { createResponsiveSizes } from '@/lib/responsiveUtils'
+import { cn } from '@/lib/utils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface PortAlert {
@@ -75,6 +76,7 @@ export function PortAlertsWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data: alerts = [], isLoading, error } = usePortAlerts()
   const { displayMode = 'normal', currentBreakpoint = 'lg', layout } = props
+  const isMobile = currentBreakpoint === 'xs' || currentBreakpoint === 'xxs'
   
   // Get current widget height from layout for dynamic sizing
   const currentHeight = layout?.h || 4
@@ -84,6 +86,7 @@ export function PortAlertsWidget(props: WidgetProps) {
     if (displayMode === 'compact') return 3
     if (currentBreakpoint === 'lg') return 10  // More items on larger screens
     if (currentBreakpoint === 'md') return 6
+    if (isMobile) return 3
     return 4
   }
 
@@ -99,10 +102,10 @@ export function PortAlertsWidget(props: WidgetProps) {
 
   const getSeverityIcon = (severity: string) => {
     switch (severity) {
-      case 'critical': case 'high': return <AlertTriangle className="h-4 w-4" />
-      case 'medium': return <AlertCircle className="h-4 w-4" />
-      case 'low': return <Shield className="h-4 w-4" />
-      default: return <AlertCircle className="h-4 w-4" />
+      case 'critical': case 'high': return <AlertTriangle className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+      case 'medium': return <AlertCircle className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+      case 'low': return <Shield className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+      default: return <AlertCircle className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
     }
   }
 
@@ -139,10 +142,19 @@ export function PortAlertsWidget(props: WidgetProps) {
       <div className="flex flex-col h-full">
         {unacknowledgedAlerts.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
-            <CheckCircle className="h-12 w-12 text-green-500" />
+            <CheckCircle className={cn(
+              "text-green-500",
+              isMobile ? "h-16 w-16" : "h-12 w-12"
+            )} />
             <div className="text-center space-y-2">
-              <h3 className="font-medium text-green-700 dark:text-green-300">All Clear!</h3>
-              <p className="text-sm text-green-600 dark:text-green-400">
+              <h3 className={cn(
+                "font-medium text-green-700 dark:text-green-300",
+                isMobile ? "text-lg" : "text-base"
+              )}>All Clear!</h3>
+              <p className={cn(
+                "text-green-600 dark:text-green-400",
+                isMobile ? "text-base" : "text-sm"
+              )}>
                 No port alerts at this time
               </p>
             </div>
@@ -154,7 +166,10 @@ export function PortAlertsWidget(props: WidgetProps) {
                 <div className="flex items-start gap-2">
                   {getSeverityIcon(alert.severity)}
                   <div className="flex-1 min-w-0">
-                    <AlertTitle className="text-sm font-medium">
+                    <AlertTitle className={cn(
+                      "font-medium",
+                      isMobile ? "text-base" : "text-sm"
+                    )}>
                       <div className="flex items-center gap-2">
                         <span>Port {alert.port}</span>
                         <Badge variant="outline">
@@ -162,7 +177,10 @@ export function PortAlertsWidget(props: WidgetProps) {
                         </Badge>
                       </div>
                     </AlertTitle>
-                    <AlertDescription className="text-xs mt-1">
+                    <AlertDescription className={cn(
+                      "mt-1",
+                      isMobile ? "text-sm" : "text-xs"
+                    )}>
                       <p className="font-medium">{alert.title}</p>
                       <p className="mt-1 opacity-90">{alert.description}</p>
                       <p className="mt-1 opacity-70">
@@ -177,7 +195,7 @@ export function PortAlertsWidget(props: WidgetProps) {
         )}
 
         {/* Summary Stats - only in detailed mode */}
-        {alerts.length > 0 && displayMode === 'detailed' && currentBreakpoint === 'lg' && (
+        {alerts.length > 0 && displayMode === 'detailed' && !isMobile && (
           <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-200 dark:border-gray-700 mb-3">
             <div className="text-center">
               <div className="text-lg font-bold text-red-600">
@@ -203,8 +221,11 @@ export function PortAlertsWidget(props: WidgetProps) {
           <div className="flex gap-2 mt-auto">
             <Button
               variant="outline"
-              size="sm"
-              className="flex-1"
+              size={isMobile ? "default" : "sm"}
+              className={cn(
+                "flex-1",
+                isMobile && "min-h-[44px]"
+              )}
               onClick={() => navigate('/port-monitoring')}
             >
               View All
@@ -212,8 +233,11 @@ export function PortAlertsWidget(props: WidgetProps) {
             {criticalAlerts.length > 0 && (
               <Button
                 variant="outline"
-                size="sm"
-                className="flex-1"
+                size={isMobile ? "default" : "sm"}
+                className={cn(
+                  "flex-1",
+                  isMobile && "min-h-[44px]"
+                )}
                 onClick={() => navigate('/port-management')}
               >
                 Manage
@@ -233,12 +257,13 @@ export const portAlertsDefinition: WidgetDefinition = {
   category: 'ports',
   icon: AlertCircle,
   defaultSize: createResponsiveSizes({ w: 6, h: 6 }), // Medium preset: min + 4 width, min + 2 height
-  minSize: createResponsiveSizes({ w: 4, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  minSize: createResponsiveSizes({ w: 4, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0, xxsRatio: 1.0 }),
   maxSize: createResponsiveSizes({ w: 12, h: 10 }),
   responsiveDisplay: {
     lg: 'detailed',
     md: 'normal',
     sm: 'compact',
-    xs: 'compact'
+    xs: 'compact',
+    xxs: 'compact'
   }
 }

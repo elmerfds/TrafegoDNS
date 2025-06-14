@@ -10,6 +10,7 @@ import { WidgetBase } from '../Widget'
 import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api'
 import { createResponsiveSizes } from '@/lib/responsiveUtils'
+import { cn } from '@/lib/utils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface SystemStatus {
@@ -144,6 +145,7 @@ function useContainerStatus() {
 
 export function StatusOverviewWidget(props: WidgetProps) {
   const { displayMode = 'normal', currentBreakpoint = 'lg' } = props
+  const isMobile = currentBreakpoint === 'xs' || currentBreakpoint === 'xxs'
   const { data: systemStatus, isLoading: systemLoading, error: systemError } = useSystemStatus()
   const { data: dnsStatus, isLoading: dnsLoading } = useDNSStatus() 
   const { data: containerStatus, isLoading: containerLoading } = useContainerStatus()
@@ -193,23 +195,30 @@ export function StatusOverviewWidget(props: WidgetProps) {
     >
       <div className="space-y-4">
         {/* Main Status Grid - Responsive layout */}
-        <div className={`grid gap-3 ${
-          isCompact 
-            ? 'grid-cols-2' 
-            : currentBreakpoint === 'sm' 
-              ? 'grid-cols-2' 
-              : 'grid-cols-4'
-        }`}>
+        <div className={cn(
+          "grid gap-3",
+          isMobile || isCompact ? "grid-cols-2" : 
+          currentBreakpoint === 'sm' ? "grid-cols-2" : "grid-cols-4"
+        )}>
           {/* System Health */}
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-3 border border-blue-200 dark:border-blue-800">
+          <div className={cn(
+            "bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl border border-blue-200 dark:border-blue-800",
+            isMobile ? "p-4" : "p-3"
+          )}>
             <div className="flex items-center gap-2 mb-2">
-              <Activity className="h-4 w-4 text-blue-600" />
-              <span className="text-xs font-medium text-blue-900 dark:text-blue-100">System</span>
+              <Activity className={cn(isMobile ? "h-5 w-5" : "h-4 w-4", "text-blue-600")} />
+              <span className={cn(
+                "font-medium text-blue-900 dark:text-blue-100",
+                isMobile ? "text-sm" : "text-xs"
+              )}>System</span>
             </div>
-            <div className={`font-bold text-blue-900 dark:text-blue-100 ${isCompact ? 'text-sm' : 'text-lg'}`}>
+            <div className={cn(
+              "font-bold text-blue-900 dark:text-blue-100",
+              isMobile || isCompact ? "text-sm" : "text-lg"
+            )}>
               {systemStatus?.mode?.toUpperCase() || 'UNKNOWN'}
             </div>
-            {!isCompact && (
+            {!isCompact && !isMobile && (
               <div className="text-xs text-blue-700 dark:text-blue-300">
                 {systemStatus?.uptime ? formatUptime(systemStatus.uptime) : 'Unknown'} uptime
               </div>
@@ -217,15 +226,24 @@ export function StatusOverviewWidget(props: WidgetProps) {
           </div>
 
           {/* DNS Providers */}
-          <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl p-3 border border-green-200 dark:border-green-800">
+          <div className={cn(
+            "bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl border border-green-200 dark:border-green-800",
+            isMobile ? "p-4" : "p-3"
+          )}>
             <div className="flex items-center gap-2 mb-2">
-              <Globe className="h-4 w-4 text-green-600" />
-              <span className="text-xs font-medium text-green-900 dark:text-green-100">DNS</span>
+              <Globe className={cn(isMobile ? "h-5 w-5" : "h-4 w-4", "text-green-600")} />
+              <span className={cn(
+                "font-medium text-green-900 dark:text-green-100",
+                isMobile ? "text-sm" : "text-xs"
+              )}>DNS</span>
             </div>
-            <div className={`font-bold text-green-900 dark:text-green-100 ${isCompact ? 'text-sm' : 'text-lg'}`}>
+            <div className={cn(
+              "font-bold text-green-900 dark:text-green-100",
+              isMobile || isCompact ? "text-sm" : "text-lg"
+            )}>
               {dnsStatus?.providers.connected || 0}/{dnsStatus?.providers.total || 0}
             </div>
-            {!isCompact && (
+            {!isCompact && !isMobile && (
               <div className="text-xs text-green-700 dark:text-green-300">
                 {dnsStatus?.records.total || 0} records • {dnsStatus?.providers.names?.[0] || 'none'}
               </div>
@@ -233,15 +251,24 @@ export function StatusOverviewWidget(props: WidgetProps) {
           </div>
 
           {/* Containers */}
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl p-3 border border-purple-200 dark:border-purple-800">
+          <div className={cn(
+            "bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl border border-purple-200 dark:border-purple-800",
+            isMobile ? "p-4" : "p-3"
+          )}>
             <div className="flex items-center gap-2 mb-2">
-              <Container className="h-4 w-4 text-purple-600" />
-              <span className="text-xs font-medium text-purple-900 dark:text-purple-100">Containers</span>
+              <Container className={cn(isMobile ? "h-5 w-5" : "h-4 w-4", "text-purple-600")} />
+              <span className={cn(
+                "font-medium text-purple-900 dark:text-purple-100",
+                isMobile ? "text-sm" : "text-xs"
+              )}>Containers</span>
             </div>
-            <div className={`font-bold text-purple-900 dark:text-purple-100 ${isCompact ? 'text-sm' : 'text-lg'}`}>
+            <div className={cn(
+              "font-bold text-purple-900 dark:text-purple-100",
+              isMobile || isCompact ? "text-sm" : "text-lg"
+            )}>
               {containerStatus?.running || 0}/{containerStatus?.total || 0}
             </div>
-            {!isCompact && (
+            {!isCompact && !isMobile && (
               <div className="text-xs text-purple-700 dark:text-purple-300">
                 running
               </div>
@@ -249,15 +276,24 @@ export function StatusOverviewWidget(props: WidgetProps) {
           </div>
 
           {/* Monitoring */}
-          <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 rounded-xl p-3 border border-orange-200 dark:border-orange-800">
+          <div className={cn(
+            "bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 rounded-xl border border-orange-200 dark:border-orange-800",
+            isMobile ? "p-4" : "p-3"
+          )}>
             <div className="flex items-center gap-2 mb-2">
-              <Network className="h-4 w-4 text-orange-600" />
-              <span className="text-xs font-medium text-orange-900 dark:text-orange-100">Monitoring</span>
+              <Network className={cn(isMobile ? "h-5 w-5" : "h-4 w-4", "text-orange-600")} />
+              <span className={cn(
+                "font-medium text-orange-900 dark:text-orange-100",
+                isMobile ? "text-sm" : "text-xs"
+              )}>Monitoring</span>
             </div>
-            <div className={`font-bold text-orange-900 dark:text-orange-100 ${isCompact ? 'text-sm' : 'text-lg'}`}>
+            <div className={cn(
+              "font-bold text-orange-900 dark:text-orange-100",
+              isMobile || isCompact ? "text-sm" : "text-lg"
+            )}>
               {containerStatus?.monitoring ? 'ON' : 'OFF'}
             </div>
-            {!isCompact && (
+            {!isCompact && !isMobile && (
               <div className="text-xs text-orange-700 dark:text-orange-300">
                 port monitor
               </div>
@@ -275,13 +311,14 @@ export const statusOverviewDefinition: WidgetDefinition = {
   description: 'Real-time system overview with health indicators',
   category: 'system',
   icon: Activity,
-  defaultSize: createResponsiveSizes({ w: 16, h: 6 }),
-  minSize: createResponsiveSizes({ w: 8, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  defaultSize: createResponsiveSizes({ w: 16, h: 6 }, { xsRatio: 1.0, xxsRatio: 1.0 }),
+  minSize: createResponsiveSizes({ w: 8, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0, xxsRatio: 1.0 }),
   maxSize: createResponsiveSizes({ w: 24, h: 12 }),
   responsiveDisplay: {
     lg: 'detailed',
     md: 'normal', 
     sm: 'compact',
-    xs: 'compact'
+    xs: 'compact',
+    xxs: 'compact'
   }
 }

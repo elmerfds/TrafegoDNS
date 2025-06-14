@@ -27,6 +27,7 @@ export function PortCheckerWidget(props: WidgetProps) {
   const [result, setResult] = useState<PortCheckResult | null>(null)
   const [recentChecks, setRecentChecks] = useState<PortCheckResult[]>([])
   const { displayMode = 'normal', currentBreakpoint = 'lg', layout } = props
+  const isMobile = currentBreakpoint === 'xs' || currentBreakpoint === 'xxs'
   
   // Get current widget height from layout for dynamic sizing
   const currentHeight = layout?.h || 4
@@ -77,10 +78,10 @@ export function PortCheckerWidget(props: WidgetProps) {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'available': return <CheckCircle className="h-4 w-4" />
-      case 'in-use': case 'reserved': return <XCircle className="h-4 w-4" />
-      case 'error': return <XCircle className="h-4 w-4" />
-      default: return <Search className="h-4 w-4" />
+      case 'available': return <CheckCircle className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+      case 'in-use': case 'reserved': return <XCircle className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+      case 'error': return <XCircle className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+      default: return <Search className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
     }
   }
 
@@ -100,7 +101,7 @@ export function PortCheckerWidget(props: WidgetProps) {
         <div className="flex gap-2 mb-3">
           <Input
             type="number"
-            placeholder={currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? "Port" : "Enter port number"}
+            placeholder={isMobile ? "Port" : "Enter port number"}
             value={port}
             onChange={(e) => setPort(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && checkPort()}
@@ -108,15 +109,18 @@ export function PortCheckerWidget(props: WidgetProps) {
             max="65535"
             className={cn(
               "[&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield] overflow-hidden",
-              currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? "text-base" : ""
+              isMobile ? "text-base h-12" : ""
             )}
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           />
           <Button 
             onClick={checkPort} 
             disabled={checking || !port}
-            size={currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? "default" : "sm"}
-            className="touch-manipulation"
+            size={isMobile ? "default" : "sm"}
+            className={cn(
+              "touch-manipulation",
+              isMobile && "min-h-[44px]"
+            )}
           >
             {checking ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -128,9 +132,15 @@ export function PortCheckerWidget(props: WidgetProps) {
 
         {/* Current Result */}
         {result && (
-          <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg mb-3">
+          <div className={cn(
+            "bg-gray-50 dark:bg-gray-800 rounded-lg mb-3",
+            isMobile ? "p-4" : "p-3"
+          )}>
             <div className="flex items-center justify-between mb-2">
-              <span className="font-medium">Port {result.port}</span>
+              <span className={cn(
+                "font-medium",
+                isMobile ? "text-base" : "text-sm"
+              )}>Port {result.port}</span>
               <Badge variant="outline" className={getStatusColor(result.status)}>
                 <span className="flex items-center gap-1">
                   {getStatusIcon(result.status)}
@@ -139,12 +149,18 @@ export function PortCheckerWidget(props: WidgetProps) {
               </Badge>
             </div>
             {result.service && (
-              <p className="text-sm text-muted-foreground">
+              <p className={cn(
+                "text-muted-foreground",
+                isMobile ? "text-base" : "text-sm"
+              )}>
                 Service: {result.service}
               </p>
             )}
             {result.container && (
-              <p className="text-sm text-muted-foreground">
+              <p className={cn(
+                "text-muted-foreground",
+                isMobile ? "text-base" : "text-sm"
+              )}>
                 Container: {result.container}
               </p>
             )}
@@ -154,10 +170,16 @@ export function PortCheckerWidget(props: WidgetProps) {
         {/* Recent Checks */}
         {recentChecks.length > 0 && (
           <div className="flex-1 space-y-2 overflow-y-auto min-h-0 mb-3">
-            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Recent Checks</h4>
+            <h4 className={cn(
+              "font-medium text-gray-700 dark:text-gray-300",
+              isMobile ? "text-base" : "text-sm"
+            )}>Recent Checks</h4>
             <div className="space-y-1">
               {recentChecks.slice(0, getMaxItems()).map((check, index) => (
-                <div key={index} className="flex items-center justify-between p-2 text-sm bg-gray-50 dark:bg-gray-800 rounded">
+                <div key={index} className={cn(
+                  "flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded",
+                  isMobile ? "p-3 text-base" : "p-2 text-sm"
+                )}>
                   <span>Port {check.port}</span>
                   <Badge variant="outline" className={getStatusColor(check.status)}>
                     {check.status}
@@ -170,26 +192,26 @@ export function PortCheckerWidget(props: WidgetProps) {
 
         {/* Quick Port Suggestions */}
         <div className="space-y-2 mt-auto">
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Quick Check</h4>
+          <h4 className={cn(
+            "font-medium text-gray-700 dark:text-gray-300",
+            isMobile ? "text-base" : "text-sm"
+          )}>Quick Check</h4>
           <div className={cn(
             "grid gap-2",
-            currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? "grid-cols-2" : "grid-cols-3"
+            isMobile ? "grid-cols-2" : "grid-cols-3"
           )}>
-            {(currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' 
-              ? [3000, 8080] 
-              : [3000, 8080, 9000]
-            ).map(quickPort => (
+            {(isMobile ? [3000, 8080] : [3000, 8080, 9000]).map(quickPort => (
               <Button
                 key={quickPort}
                 variant="outline"
-                size={currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? "default" : "sm"}
+                size={isMobile ? "default" : "sm"}
                 onClick={() => {
                   setPort(quickPort.toString())
                   setTimeout(() => checkPort(), 100)
                 }}
                 className={cn(
                   "touch-manipulation",
-                  currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? "text-sm" : "text-xs"
+                  isMobile ? "text-base min-h-[44px]" : "text-xs"
                 )}
               >
                 {quickPort}
