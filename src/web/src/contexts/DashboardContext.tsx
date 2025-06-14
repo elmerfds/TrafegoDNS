@@ -41,6 +41,12 @@ const defaultLayouts: Record<string, Layout[]> = {
     { i: 'system-stats', x: 0, y: 6, w: 12, h: 4, minW: 4, minH: 3 },
     { i: 'dns-health', x: 0, y: 10, w: 12, h: 8, minW: 4, minH: 6 },
     { i: 'port-monitoring', x: 0, y: 18, w: 12, h: 8, minW: 4, minH: 6 }
+  ],
+  xs: [
+    { i: 'status-overview', x: 0, y: 0, w: 2, h: 8, minW: 2, minH: 6 },
+    { i: 'system-stats', x: 0, y: 8, w: 2, h: 6, minW: 2, minH: 4 },
+    { i: 'dns-health', x: 0, y: 14, w: 2, h: 12, minW: 2, minH: 8 },
+    { i: 'port-monitoring', x: 0, y: 26, w: 2, h: 8, minW: 2, minH: 6 }
   ]
 }
 
@@ -183,7 +189,7 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
         }
 
         // Get responsive sizing configurations using "Medium" preset as default
-        const breakpoints: Array<Breakpoint> = ['lg', 'md', 'sm', 'xs', 'xxs']
+        const breakpoints: Array<Breakpoint> = ['lg', 'md', 'sm', 'xs']
         const breakpointConfigs = breakpoints.reduce((configs, breakpoint) => {
           const cols = getMaxColumnsForBreakpoint(breakpoint)
           

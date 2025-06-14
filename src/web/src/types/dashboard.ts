@@ -53,7 +53,6 @@ export interface ResponsiveWidgetSizes {
   md: ResponsiveSizeConfig
   sm: ResponsiveSizeConfig
   xs: ResponsiveSizeConfig
-  xxs: ResponsiveSizeConfig
 }
 
 // Modern widget system types
@@ -75,7 +74,6 @@ export interface WidgetDefinition {
     md?: 'normal' | 'compact' | 'detailed'
     sm?: 'normal' | 'compact' | 'detailed'
     xs?: 'normal' | 'compact' | 'detailed'
-    xxs?: 'normal' | 'compact' | 'detailed'
   }
   
   settings?: Record<string, any>
@@ -90,7 +88,7 @@ export interface WidgetProps {
   onConfigure?: () => void
   className?: string
   widgetDefinition?: WidgetDefinition
-  currentBreakpoint?: 'lg' | 'md' | 'sm' | 'xs' | 'xxs'
+  currentBreakpoint?: 'lg' | 'md' | 'sm' | 'xs'
   displayMode?: 'normal' | 'compact' | 'detailed'
   layout?: Layout // Current layout information from react-grid-layout
   onSizeChange?: (widgetId: string, newHeight: number) => void // Dynamic sizing callback

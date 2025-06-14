@@ -27,7 +27,7 @@ export function PortCheckerWidget(props: WidgetProps) {
   const [result, setResult] = useState<PortCheckResult | null>(null)
   const [recentChecks, setRecentChecks] = useState<PortCheckResult[]>([])
   const { displayMode = 'normal', currentBreakpoint = 'lg', layout } = props
-  const isMobile = currentBreakpoint === 'xs' || currentBreakpoint === 'xxs'
+  const isMobile = currentBreakpoint === 'xs'
   
   // Get current widget height from layout for dynamic sizing
   const currentHeight = layout?.h || 4
@@ -230,14 +230,13 @@ export const portCheckerDefinition: WidgetDefinition = {
   description: 'Quick port availability checker',
   category: 'ports',
   icon: Search,
-  defaultSize: createResponsiveSizes({ w: 6, h: 6 }, { xsRatio: 1.0, xxsRatio: 1.0 }), // Medium preset: min + 4 width, min + 2 height
-  minSize: createResponsiveSizes({ w: 4, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0, xxsRatio: 1.0 }),
+  defaultSize: createResponsiveSizes({ w: 6, h: 6 }, { xsRatio: 1.0 }), // Medium preset: min + 4 width, min + 2 height
+  minSize: createResponsiveSizes({ w: 4, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0 }),
   maxSize: createResponsiveSizes({ w: 12, h: 10 }),
   responsiveDisplay: {
     lg: 'detailed',
     md: 'normal',
     sm: 'compact',
-    xs: 'compact',
-    xxs: 'compact'
+    xs: 'compact'
   }
 }

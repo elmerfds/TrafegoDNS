@@ -108,6 +108,7 @@ function useSystemMetrics() {
 export function SystemStatsWidget(props: WidgetProps) {
   const { data: metrics, isLoading, error } = useSystemMetrics()
   const { layout, displayMode = 'normal', currentBreakpoint = 'lg' } = props
+  const isMobile = currentBreakpoint === 'xs'
   
   // Get current widget height from layout for dynamic sizing
   const currentHeight = layout?.h || 4
@@ -247,22 +248,24 @@ export const systemStatsDefinition: WidgetDefinition = {
     lg: { w: 16, h: 4 },
     md: { w: 13, h: 4 },
     sm: { w: 10, h: 4 },
-    xs: { w: 4, h: 4 },
-    xxs: { w: 2, h: 5 }
+    xs: { w: 2, h: 6 } // Full width on mobile (2 cols), taller for content
   },
   minSize: {
     lg: { w: 8, h: 3 },
     md: { w: 7, h: 3 },
     sm: { w: 6, h: 3 },
-    xs: { w: 4, h: 4 },
-    xxs: { w: 2, h: 5 }
+    xs: { w: 2, h: 5 } // Full width on mobile
   },
-  maxSize: createResponsiveSizes({ w: 24, h: 10 }),
+  maxSize: {
+    lg: { w: 24, h: 10 },
+    md: { w: 20, h: 10 },
+    sm: { w: 12, h: 10 },
+    xs: { w: 2, h: 12 } // Full width on mobile
+  },
   responsiveDisplay: {
     lg: 'detailed',
     md: 'normal',
     sm: 'compact',
-    xs: 'compact',
-    xxs: 'compact'
+    xs: 'compact'
   }
 }

@@ -258,13 +258,12 @@ export const portMonitoringDefinition: WidgetDefinition = {
   category: 'ports',
   icon: Network,
   defaultSize: createResponsiveSizes({ w: 12, h: 6 }),
-  minSize: createResponsiveSizes({ w: 8, h: 5 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0, xxsRatio: 1.0 }),
+  minSize: createResponsiveSizes({ w: 8, h: 5 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0 }),
   maxSize: createResponsiveSizes({ w: 16, h: 8 }),
   responsiveDisplay: {
     lg: 'detailed',
     md: 'normal',
     sm: 'compact',
-    xs: 'compact',
-    xxs: 'compact'
+    xs: 'compact'
   }
 }

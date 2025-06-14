@@ -118,15 +118,15 @@ import '@/styles/dashboard.css'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
-// Responsive configuration with better adaptive sizing
+// Responsive configuration with better adaptive sizing  
 const responsiveConfig = {
-  breakpoints: { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 320 },
-  cols: { lg: 24, md: 20, sm: 12, xs: 4, xxs: 2 }, // Mobile-optimized column counts
-  margin: [12, 12] as [number, number], // Reduced margins for better space utilization
-  containerPadding: [12, 12] as [number, number],
+  breakpoints: { lg: 1200, md: 996, sm: 768, xs: 320 }, // Removed xxs, using xs for all mobile
+  cols: { lg: 24, md: 20, sm: 12, xs: 2 }, // Mobile uses 2 columns for full width
+  margin: [12, 12] as [number, number],
+  containerPadding: [12, 12] as [number, number], 
   rowHeight: 60,
-  // Mobile-specific margin overrides  
-  mobileMargin: { xs: [8, 8], xxs: [6, 6] } as Record<string, [number, number]>
+  // Mobile-specific margin overrides
+  mobileMargin: { xs: [6, 6] } as Record<string, [number, number]>
 }
 
 // Widget registry setup - Now with 17 widgets matching old dashboard functionality
@@ -336,7 +336,7 @@ function DashboardGrid() {
   const registry = useWidgetRegistry()
   
   // Track current breakpoint for responsive widget rendering
-  const [currentBreakpoint, setCurrentBreakpoint] = useState<'lg' | 'md' | 'sm' | 'xs' | 'xxs'>('lg')
+  const [currentBreakpoint, setCurrentBreakpoint] = useState<'lg' | 'md' | 'sm' | 'xs'>('lg')
   
   useEffect(() => {
     const updateBreakpoint = () => {

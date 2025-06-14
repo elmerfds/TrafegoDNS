@@ -210,13 +210,12 @@ export const containerMonitoringDefinition: WidgetDefinition = {
   category: 'containers',
   icon: Container,
   defaultSize: createResponsiveSizes({ w: 8, h: 8 }),
-  minSize: createResponsiveSizes({ w: 6, h: 6 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0, xxsRatio: 1.0 }),
+  minSize: createResponsiveSizes({ w: 6, h: 6 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0 }),
   maxSize: createResponsiveSizes({ w: 12, h: 10 }),
   responsiveDisplay: {
     lg: 'detailed',
     md: 'normal',
     sm: 'compact',
-    xs: 'compact',
-    xxs: 'compact'
+    xs: 'compact'
   }
 }

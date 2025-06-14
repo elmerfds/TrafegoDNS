@@ -145,7 +145,7 @@ function useContainerStatus() {
 
 export function StatusOverviewWidget(props: WidgetProps) {
   const { displayMode = 'normal', currentBreakpoint = 'lg' } = props
-  const isMobile = currentBreakpoint === 'xs' || currentBreakpoint === 'xxs'
+  const isMobile = currentBreakpoint === 'xs'
   const { data: systemStatus, isLoading: systemLoading, error: systemError } = useSystemStatus()
   const { data: dnsStatus, isLoading: dnsLoading } = useDNSStatus() 
   const { data: containerStatus, isLoading: containerLoading } = useContainerStatus()
@@ -255,22 +255,24 @@ export const statusOverviewDefinition: WidgetDefinition = {
     lg: { w: 16, h: 6 },
     md: { w: 13, h: 6 },
     sm: { w: 10, h: 6 },
-    xs: { w: 4, h: 6 },
-    xxs: { w: 2, h: 7 }
+    xs: { w: 2, h: 8 } // Full width on mobile (2 cols), taller for 4 status items
   },
   minSize: {
     lg: { w: 8, h: 4 },
     md: { w: 7, h: 4 },
     sm: { w: 6, h: 4 },
-    xs: { w: 4, h: 5 },
-    xxs: { w: 2, h: 6 }
+    xs: { w: 2, h: 6 } // Full width on mobile
   },
-  maxSize: createResponsiveSizes({ w: 24, h: 12 }),
+  maxSize: {
+    lg: { w: 24, h: 12 },
+    md: { w: 20, h: 12 },
+    sm: { w: 12, h: 12 },
+    xs: { w: 2, h: 15 } // Full width on mobile
+  },
   responsiveDisplay: {
     lg: 'detailed',
     md: 'normal', 
     sm: 'compact',
-    xs: 'compact',
-    xxs: 'compact'
+    xs: 'compact'
   }
 }

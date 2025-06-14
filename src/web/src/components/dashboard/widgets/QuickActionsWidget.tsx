@@ -24,7 +24,7 @@ import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 export function QuickActionsWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { displayMode, currentBreakpoint } = props
-  const isMobile = currentBreakpoint === 'xs' || currentBreakpoint === 'xxs'
+  const isMobile = currentBreakpoint === 'xs'
 
   const quickActions = [
     {
@@ -119,14 +119,13 @@ export const quickActionsDefinition: WidgetDefinition = {
   description: 'Quick access to common dashboard tasks',
   category: 'system',
   icon: Settings,
-  defaultSize: createResponsiveSizes({ w: 12, h: 6 }, { xsRatio: 1.0, xxsRatio: 1.0 }),
-  minSize: createResponsiveSizes({ w: 8, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0, xxsRatio: 1.0 }),
+  defaultSize: createResponsiveSizes({ w: 12, h: 6 }, { xsRatio: 1.0 }),
+  minSize: createResponsiveSizes({ w: 8, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0 }),
   maxSize: createResponsiveSizes({ w: 16, h: 8 }),
   responsiveDisplay: {
     lg: 'detailed',
     md: 'normal',
     sm: 'compact',
-    xs: 'compact',
-    xxs: 'compact'
+    xs: 'compact'
   }
 }

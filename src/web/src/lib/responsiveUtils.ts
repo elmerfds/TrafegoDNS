@@ -5,15 +5,14 @@
 
 import type { ResponsiveSizeConfig, ResponsiveWidgetSizes } from '@/types/dashboard'
 
-export type Breakpoint = 'lg' | 'md' | 'sm' | 'xs' | 'xxs'
+export type Breakpoint = 'lg' | 'md' | 'sm' | 'xs'
 
 // Breakpoint definitions (must match ModernDashboard.tsx)
 export const BREAKPOINTS = {
   lg: 1200,
   md: 996,
   sm: 768,
-  xs: 480,
-  xxs: 320  // Added extra small breakpoint for very small phones
+  xs: 320   // All mobile devices use xs breakpoint
 } as const
 
 // Column counts per breakpoint (must match ModernDashboard.tsx)
@@ -21,8 +20,7 @@ export const COLUMNS = {
   lg: 24,
   md: 20,
   sm: 12,
-  xs: 4,    // Reduced from 8 to 4 for better mobile layout
-  xxs: 2    // Very minimal columns for smallest screens
+  xs: 2     // Mobile uses 2 columns for full-width widgets
 } as const
 
 /**
@@ -36,8 +34,7 @@ export const getCurrentBreakpoint = (): Breakpoint => {
   if (width >= BREAKPOINTS.lg) return 'lg'
   if (width >= BREAKPOINTS.md) return 'md'
   if (width >= BREAKPOINTS.sm) return 'sm'
-  if (width >= BREAKPOINTS.xs) return 'xs'
-  return 'xxs'
+  return 'xs' // All mobile devices below 768px use xs
 }
 
 /**
@@ -86,10 +83,9 @@ export const createResponsiveSizes = (
     mdRatio?: number
     smRatio?: number  
     xsRatio?: number
-    xxsRatio?: number
   }
 ): ResponsiveWidgetSizes => {
-  const { mdRatio = 0.8, smRatio = 0.6, xsRatio = 1.0, xxsRatio = 1.0 } = options || {}
+  const { mdRatio = 0.8, smRatio = 0.6, xsRatio = 1.0 } = options || {}
   
   return {
     lg: constrainSizeToBreakpoint(lgSize, 'lg'),
@@ -102,13 +98,9 @@ export const createResponsiveSizes = (
       h: lgSize.h
     }, 'sm'),
     xs: constrainSizeToBreakpoint({
-      w: Math.max(Math.round(lgSize.w * xsRatio), Math.min(4, lgSize.w)), // Use full width on mobile (4 cols max)
-      h: Math.max(lgSize.h, 4) // Ensure minimum height for readability
-    }, 'xs'),
-    xxs: constrainSizeToBreakpoint({
-      w: Math.max(Math.round(lgSize.w * xxsRatio), Math.min(2, lgSize.w)), // Full width on very small screens
-      h: Math.max(lgSize.h + 1, 5) // Extra height for very small screens
-    }, 'xxs')
+      w: 2, // Force full width on mobile (2 columns)
+      h: Math.max(lgSize.h + 2, 6) // Taller for mobile readability
+    }, 'xs')
   }
 }
 

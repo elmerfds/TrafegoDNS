@@ -162,7 +162,7 @@ export function DNSHealthWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data: health, isLoading, error } = useDNSHealth()
   const { layout, displayMode, currentBreakpoint } = props
-  const isMobile = currentBreakpoint === 'xs' || currentBreakpoint === 'xxs'
+  const isMobile = currentBreakpoint === 'xs'
   
   // Get current widget height from layout for dynamic sizing
   const currentHeight = layout?.h || 4
@@ -317,22 +317,24 @@ export const dnsHealthDefinition: WidgetDefinition = {
     lg: { w: 8, h: 8 },
     md: { w: 7, h: 8 },
     sm: { w: 6, h: 8 },
-    xs: { w: 4, h: 9 },
-    xxs: { w: 2, h: 10 }
+    xs: { w: 2, h: 12 } // Full width on mobile (2 cols), tall for content
   },
   minSize: {
     lg: { w: 6, h: 6 },
     md: { w: 5, h: 6 },
     sm: { w: 5, h: 6 },
-    xs: { w: 4, h: 7 },
-    xxs: { w: 2, h: 8 }
+    xs: { w: 2, h: 8 } // Full width on mobile
   },
-  maxSize: createResponsiveSizes({ w: 16, h: 16 }),
+  maxSize: {
+    lg: { w: 16, h: 16 },
+    md: { w: 15, h: 16 },
+    sm: { w: 12, h: 16 },
+    xs: { w: 2, h: 20 } // Full width on mobile
+  },
   responsiveDisplay: {
     lg: 'detailed',
     md: 'normal',
     sm: 'compact',
-    xs: 'compact',
-    xxs: 'compact'
+    xs: 'compact'
   }
 }
