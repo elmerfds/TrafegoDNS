@@ -195,109 +195,49 @@ export function StatusOverviewWidget(props: WidgetProps) {
     >
       <div className="space-y-4">
         {/* Main Status Grid - Responsive layout */}
-        <div className={cn(
-          "grid gap-3",
-          isMobile || isCompact ? "grid-cols-2" : 
-          currentBreakpoint === 'sm' ? "grid-cols-2" : "grid-cols-4"
-        )}>
+        <div className="grid grid-cols-2 gap-3">
           {/* System Health */}
-          <div className={cn(
-            "bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl border border-blue-200 dark:border-blue-800",
-            isMobile ? "p-4" : "p-3"
-          )}>
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl border border-blue-200 dark:border-blue-800 p-3">
             <div className="flex items-center gap-2 mb-2">
-              <Activity className={cn(isMobile ? "h-5 w-5" : "h-4 w-4", "text-blue-600")} />
-              <span className={cn(
-                "font-medium text-blue-900 dark:text-blue-100",
-                isMobile ? "text-sm" : "text-xs"
-              )}>System</span>
+              <Activity className="h-4 w-4 text-blue-600" />
+              <span className="text-xs font-medium text-blue-900 dark:text-blue-100">System</span>
             </div>
-            <div className={cn(
-              "font-bold text-blue-900 dark:text-blue-100",
-              isMobile || isCompact ? "text-sm" : "text-lg"
-            )}>
+            <div className="text-sm font-bold text-blue-900 dark:text-blue-100">
               {systemStatus?.mode?.toUpperCase() || 'UNKNOWN'}
             </div>
-            {!isCompact && !isMobile && (
-              <div className="text-xs text-blue-700 dark:text-blue-300">
-                {systemStatus?.uptime ? formatUptime(systemStatus.uptime) : 'Unknown'} uptime
-              </div>
-            )}
           </div>
 
           {/* DNS Providers */}
-          <div className={cn(
-            "bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl border border-green-200 dark:border-green-800",
-            isMobile ? "p-4" : "p-3"
-          )}>
+          <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl border border-green-200 dark:border-green-800 p-3">
             <div className="flex items-center gap-2 mb-2">
-              <Globe className={cn(isMobile ? "h-5 w-5" : "h-4 w-4", "text-green-600")} />
-              <span className={cn(
-                "font-medium text-green-900 dark:text-green-100",
-                isMobile ? "text-sm" : "text-xs"
-              )}>DNS</span>
+              <Globe className="h-4 w-4 text-green-600" />
+              <span className="text-xs font-medium text-green-900 dark:text-green-100">DNS</span>
             </div>
-            <div className={cn(
-              "font-bold text-green-900 dark:text-green-100",
-              isMobile || isCompact ? "text-sm" : "text-lg"
-            )}>
+            <div className="text-sm font-bold text-green-900 dark:text-green-100">
               {dnsStatus?.providers.connected || 0}/{dnsStatus?.providers.total || 0}
             </div>
-            {!isCompact && !isMobile && (
-              <div className="text-xs text-green-700 dark:text-green-300">
-                {dnsStatus?.records.total || 0} records • {dnsStatus?.providers.names?.[0] || 'none'}
-              </div>
-            )}
           </div>
 
           {/* Containers */}
-          <div className={cn(
-            "bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl border border-purple-200 dark:border-purple-800",
-            isMobile ? "p-4" : "p-3"
-          )}>
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl border border-purple-200 dark:border-purple-800 p-3">
             <div className="flex items-center gap-2 mb-2">
-              <Container className={cn(isMobile ? "h-5 w-5" : "h-4 w-4", "text-purple-600")} />
-              <span className={cn(
-                "font-medium text-purple-900 dark:text-purple-100",
-                isMobile ? "text-sm" : "text-xs"
-              )}>Containers</span>
+              <Container className="h-4 w-4 text-purple-600" />
+              <span className="text-xs font-medium text-purple-900 dark:text-purple-100">Containers</span>
             </div>
-            <div className={cn(
-              "font-bold text-purple-900 dark:text-purple-100",
-              isMobile || isCompact ? "text-sm" : "text-lg"
-            )}>
+            <div className="text-sm font-bold text-purple-900 dark:text-purple-100">
               {containerStatus?.running || 0}/{containerStatus?.total || 0}
             </div>
-            {!isCompact && !isMobile && (
-              <div className="text-xs text-purple-700 dark:text-purple-300">
-                running
-              </div>
-            )}
           </div>
 
           {/* Monitoring */}
-          <div className={cn(
-            "bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 rounded-xl border border-orange-200 dark:border-orange-800",
-            isMobile ? "p-4" : "p-3"
-          )}>
+          <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 rounded-xl border border-orange-200 dark:border-orange-800 p-3">
             <div className="flex items-center gap-2 mb-2">
-              <Network className={cn(isMobile ? "h-5 w-5" : "h-4 w-4", "text-orange-600")} />
-              <span className={cn(
-                "font-medium text-orange-900 dark:text-orange-100",
-                isMobile ? "text-sm" : "text-xs"
-              )}>Monitoring</span>
+              <Network className="h-4 w-4 text-orange-600" />
+              <span className="text-xs font-medium text-orange-900 dark:text-orange-100">Monitoring</span>
             </div>
-            <div className={cn(
-              "font-bold text-orange-900 dark:text-orange-100",
-              isMobile || isCompact ? "text-sm" : "text-lg"
-            )}>
+            <div className="text-sm font-bold text-orange-900 dark:text-orange-100">
               {containerStatus?.monitoring ? 'ON' : 'OFF'}
             </div>
-            {!isCompact && !isMobile && (
-              <div className="text-xs text-orange-700 dark:text-orange-300">
-                port monitor
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -311,8 +251,20 @@ export const statusOverviewDefinition: WidgetDefinition = {
   description: 'Real-time system overview with health indicators',
   category: 'system',
   icon: Activity,
-  defaultSize: createResponsiveSizes({ w: 16, h: 6 }, { xsRatio: 1.0, xxsRatio: 1.0 }),
-  minSize: createResponsiveSizes({ w: 8, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0, xxsRatio: 1.0 }),
+  defaultSize: {
+    lg: { w: 16, h: 6 },
+    md: { w: 13, h: 6 },
+    sm: { w: 10, h: 6 },
+    xs: { w: 4, h: 6 },
+    xxs: { w: 2, h: 7 }
+  },
+  minSize: {
+    lg: { w: 8, h: 4 },
+    md: { w: 7, h: 4 },
+    sm: { w: 6, h: 4 },
+    xs: { w: 4, h: 5 },
+    xxs: { w: 2, h: 6 }
+  },
   maxSize: createResponsiveSizes({ w: 24, h: 12 }),
   responsiveDisplay: {
     lg: 'detailed',

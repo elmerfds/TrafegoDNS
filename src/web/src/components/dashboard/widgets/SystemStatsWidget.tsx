@@ -190,23 +190,15 @@ export function SystemStatsWidget(props: WidgetProps) {
         </Badge>
       }
     >
-      <div className={cn(
-        "grid gap-3",
-        displayMode === 'compact' || currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' 
-          ? "grid-cols-2" 
-          : displayMode === 'detailed' && currentBreakpoint === 'lg'
-          ? "grid-cols-4"
-          : "grid-cols-2 md:grid-cols-4"
-      )}>
+      <div className="grid grid-cols-2 gap-3">
         {statCards.map((stat) => {
           const IconComponent = stat.icon
           return (
             <div
               key={stat.label}
               className={cn(
-                "rounded-xl border transition-all hover:shadow-md",
-                getColorClasses(stat.color),
-                currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? "p-3" : "p-4"
+                "rounded-xl border transition-all hover:shadow-md p-3",
+                getColorClasses(stat.color)
               )}
             >
               <div className="flex items-center justify-between mb-3">
@@ -215,16 +207,10 @@ export function SystemStatsWidget(props: WidgetProps) {
               </div>
               
               <div className="space-y-1">
-                <div className={cn(
-                  "font-bold text-gray-900 dark:text-gray-100",
-                  currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? "text-lg" : "text-2xl"
-                )}>
+                <div className="text-xl font-bold text-gray-900 dark:text-gray-100">
                   {stat.value}
                 </div>
-                <div className={cn(
-                  "font-medium text-gray-700 dark:text-gray-300",
-                  currentBreakpoint === 'xs' || currentBreakpoint === 'xxs' ? "text-xs" : "text-xs"
-                )}>
+                <div className="text-xs font-medium text-gray-700 dark:text-gray-300">
                   {stat.label}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
@@ -257,8 +243,20 @@ export const systemStatsDefinition: WidgetDefinition = {
   description: 'Real-time system statistics and health indicators',
   category: 'system',
   icon: Activity,
-  defaultSize: createResponsiveSizes({ w: 16, h: 4 }, { xsRatio: 1.0, xxsRatio: 1.0 }),
-  minSize: createResponsiveSizes({ w: 8, h: 3 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0, xxsRatio: 1.0 }),
+  defaultSize: {
+    lg: { w: 16, h: 4 },
+    md: { w: 13, h: 4 },
+    sm: { w: 10, h: 4 },
+    xs: { w: 4, h: 4 },
+    xxs: { w: 2, h: 5 }
+  },
+  minSize: {
+    lg: { w: 8, h: 3 },
+    md: { w: 7, h: 3 },
+    sm: { w: 6, h: 3 },
+    xs: { w: 4, h: 4 },
+    xxs: { w: 2, h: 5 }
+  },
   maxSize: createResponsiveSizes({ w: 24, h: 10 }),
   responsiveDisplay: {
     lg: 'detailed',
