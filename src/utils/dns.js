@@ -152,7 +152,7 @@ function extractDnsConfigFromLabels(labels, config, hostname) {
       // Get IP if available, otherwise set flag for async IP lookup
       const ip = config.getPublicIPSync();
       if (ip) {
-        recordConfig.content = ip;
+        recordConfig.content = String(ip);
         logger.trace(`dns.extractDnsConfigFromLabels: Using IP from cache: ${ip}`);
       } else {
         // Flag this record as needing async IP lookup
@@ -169,7 +169,7 @@ function extractDnsConfigFromLabels(labels, config, hostname) {
       // Get IPv6 if available, otherwise set flag for async IPv6 lookup
       const ipv6 = config.getPublicIPv6Sync();
       if (ipv6) {
-        recordConfig.content = ipv6;
+        recordConfig.content = String(ipv6);
         logger.trace(`dns.extractDnsConfigFromLabels: Using IPv6 from cache: ${ipv6}`);
       } else {
         // Flag this record as needing async IPv6 lookup
@@ -186,7 +186,7 @@ function extractDnsConfigFromLabels(labels, config, hostname) {
       // Get IPv6 if available, otherwise set flag for async IPv6 lookup
       const ipv6 = config.getPublicIPv6Sync();
       if (ipv6) {
-        recordConfig.content = ipv6;
+        recordConfig.content = String(ipv6);
         logger.trace(`dns.extractDnsConfigFromLabels: Using IPv6 from cache: ${ipv6}`);
       } else {
         // Flag this record as needing async IPv6 lookup

@@ -866,7 +866,7 @@ async handleApexDomain(record) {
             const ipv6 = await this.config.getPublicIPv6();
             if (ipv6) {
               logger.trace(`DigitalOceanProvider.batchEnsureRecords: Retrieved IPv6 address: ${ipv6}`);
-              recordConfig.content = ipv6;
+              recordConfig.content = String(ipv6);
               logger.debug(`Retrieved public IPv6 for apex domain ${recordConfig.name}: ${ipv6}`);
             } else {
               logger.trace(`DigitalOceanProvider.batchEnsureRecords: Failed to retrieve IPv6 address`);
