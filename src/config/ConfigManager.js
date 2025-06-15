@@ -709,6 +709,22 @@ class ConfigManager {
     await this.updatePublicIPs();
     return this.ipCache.ipv4;
   }
+
+  /**
+   * Get public IPv6 address asynchronously
+   * Returns a promise that resolves to the public IPv6
+   */
+  async getPublicIPv6() {
+    // Check if cache is fresh (less than 1 hour old)
+    const cacheAge = Date.now() - this.ipCache.lastCheck;
+    if (this.ipCache.ipv6 && cacheAge < this.ipRefreshInterval) {
+      return this.ipCache.ipv6;
+    }
+    
+    // Cache is stale or empty, update it
+    await this.updatePublicIPs();
+    return this.ipCache.ipv6;
+  }
   
   /**
    * Update the public IP cache by calling external IP services
