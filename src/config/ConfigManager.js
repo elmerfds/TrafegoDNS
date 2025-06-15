@@ -263,6 +263,22 @@ class ConfigManager {
   }
   
   /**
+   * Get public IPv6 address asynchronously
+   * Returns a promise that resolves to the public IPv6
+   */
+  async getPublicIPv6() {
+    // Check if cache is fresh (less than 1 hour old)
+    const cacheAge = Date.now() - this.ipCache.lastCheck;
+    if (this.ipCache.ipv6 && cacheAge < this.ipRefreshInterval) {
+      return this.ipCache.ipv6;
+    }
+    
+    // Cache is stale or empty, update it
+    await this.updatePublicIPs();
+    return this.ipCache.ipv6;
+  }
+
+  /**
    * Update the public IP cache by calling external IP services
    * Uses a semaphore to prevent concurrent updates
    */
@@ -312,11 +328,40 @@ class ConfigManager {
       // Try to get IPv6 if not set in environment
       if (!ipv6) {
         try {
+          // First try external API (works for most setups)
           const response = await axios.get('https://api6.ipify.org', { timeout: 5000 });
           ipv6 = response.data;
         } catch (error) {
-          // IPv6 fetch failure is not critical, just log it
-          logger.debug('Failed to fetch public IPv6 address (this is normal if you don\'t have IPv6)');
+          logger.debug('Failed to fetch IPv6 from external API, trying local interface detection...');
+          
+          // Fallback: Try to detect IPv6 from local network interfaces
+          // This helps in cases where host has no IPv6 but container does
+          try {
+            const { execSync } = require('child_process');
+            
+            // Get global IPv6 addresses from network interfaces
+            const ipOutput = execSync('ip -6 addr show scope global', { encoding: 'utf8', timeout: 3000 });
+            
+            // Extract IPv6 addresses (look for inet6 with global scope)
+            const ipv6Matches = ipOutput.match(/inet6\s+([0-9a-f:]+)\/\d+\s+scope\s+global/gi);
+            
+            if (ipv6Matches && ipv6Matches.length > 0) {
+              // Extract the first global IPv6 address
+              const firstMatch = ipv6Matches[0];
+              const addressMatch = firstMatch.match(/inet6\s+([0-9a-f:]+)/i);
+              
+              if (addressMatch) {
+                ipv6 = addressMatch[1];
+                logger.debug(`Detected local IPv6 address: ${ipv6}`);
+              }
+            }
+          } catch (localError) {
+            logger.debug('Failed to detect local IPv6 address via network interfaces');
+          }
+          
+          if (!ipv6) {
+            logger.debug('No IPv6 address could be determined (this is normal if you don\'t have IPv6 connectivity)');
+          }
         }
       }
       

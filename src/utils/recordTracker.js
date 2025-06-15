@@ -398,7 +398,11 @@ class RecordTracker {
           return {
             hostname: hostname,
             type: parts[1] || 'A',
-            content: parts[2] || (parts[1] === 'CNAME' ? this.config.getProviderDomain() : this.config.getPublicIPSync()),
+            content: parts[2] || (
+              parts[1] === 'CNAME' ? this.config.getProviderDomain() : 
+              parts[1] === 'AAAA' ? this.config.getPublicIPv6Sync() : 
+              this.config.getPublicIPSync()
+            ),
             ttl: parseInt(parts[3] || '3600', 10),
             proxied: parts[4] ? parts[4].toLowerCase() === 'true' : this.config.defaultProxied
           };
