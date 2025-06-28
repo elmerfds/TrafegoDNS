@@ -144,8 +144,25 @@ class ConfigManager {
     this.updatePublicIPs().then(() => {
       // Update A record defaults after IP discovery
       this.recordDefaults.A.content = process.env.DNS_DEFAULT_A_CONTENT || this.ipCache.ipv4 || '';
-      this.recordDefaults.AAAA.content = process.env.DNS_DEFAULT_AAAA_CONTENT || this.ipCache.ipv6 || '';
+      
+      // For AAAA records, ensure we don't set boolean values as content
+      let aaaContent = process.env.DNS_DEFAULT_AAAA_CONTENT || this.ipCache.ipv6 || '';
+      
+      // Debug: Log what we found
+      logger.debug(`ConfigManager init: AAAA content from env: ${process.env.DNS_DEFAULT_AAAA_CONTENT} (type: ${typeof process.env.DNS_DEFAULT_AAAA_CONTENT})`);
+      logger.debug(`ConfigManager init: AAAA content from cache: ${this.ipCache.ipv6} (type: ${typeof this.ipCache.ipv6})`);
+      logger.debug(`ConfigManager init: Final AAAA content: ${aaaContent} (type: ${typeof aaaContent})`);
+      
+      if (aaaContent === true || aaaContent === 'true' || typeof aaaContent === 'boolean') {
+        logger.error(`ConfigManager init: Invalid AAAA default content detected: ${aaaContent} (type: ${typeof aaaContent})`);
+        logger.error(`ConfigManager init: This is likely due to DNS_DEFAULT_AAAA_CONTENT being set to "true" instead of an IPv6 address`);
+        logger.error(`ConfigManager init: To fix this, either remove DNS_DEFAULT_AAAA_CONTENT or set it to a valid IPv6 address`);
+        aaaContent = '';
+      }
+      this.recordDefaults.AAAA.content = aaaContent;
+      
       logger.debug(`Updated A record defaults with IP: ${this.recordDefaults.A.content}`);
+      logger.debug(`Updated AAAA record defaults with IPv6: ${this.recordDefaults.AAAA.content}`);
     });
 
     // Set up periodic IP refresh
@@ -243,7 +260,17 @@ class ConfigManager {
     if (!this.ipCache.ipv6) {
       this.updatePublicIPs();
     }
-    return this.ipCache?.ipv6 || null;
+    
+    const ipv6Value = this.ipCache?.ipv6 || null;
+    
+    // Debug logging to trace boolean issue
+    if (typeof ipv6Value === 'boolean') {
+      logger.error(`ConfigManager.getPublicIPv6Sync: Detected boolean IPv6 value: ${ipv6Value} (type: ${typeof ipv6Value})`);
+      logger.error(`ConfigManager.getPublicIPv6Sync: Stack trace:`, new Error().stack);
+      return null; // Return null instead of boolean
+    }
+    
+    return ipv6Value;
   }
   
   /**
@@ -308,6 +335,13 @@ class ConfigManager {
       let ipv4 = process.env.PUBLIC_IP;
       let ipv6 = process.env.PUBLIC_IPV6;
       
+      // Debug: Check if environment variables contain boolean values
+      if (ipv6 && (ipv6 === 'true' || ipv6 === 'false' || typeof ipv6 === 'boolean')) {
+        logger.error(`ConfigManager.updatePublicIPs: PUBLIC_IPV6 contains invalid boolean value: ${ipv6} (type: ${typeof ipv6})`);
+        logger.error(`ConfigManager.updatePublicIPs: This will cause DNS record content to be set to "${ipv6}"`);
+        ipv6 = null; // Clear the invalid value to trigger proper detection
+      }
+      
       // If IP not set via environment, fetch from service
       if (!ipv4) {
         try {
@@ -327,6 +361,16 @@ class ConfigManager {
       
       // Try to get IPv6 if not set in environment
       if (!ipv6) {
+        // Test mode: Use mock IPv6 if TEST_IPV6 is set
+        if (process.env.TEST_IPV6) {
+          ipv6 = process.env.TEST_IPV6;
+          logger.debug(`Using test IPv6 address: ${ipv6} (type: ${typeof ipv6})`);
+          
+          // Debug: Check if TEST_IPV6 is a boolean string
+          if (ipv6 === 'true' || ipv6 === 'false' || typeof ipv6 === 'boolean') {
+            logger.error(`ConfigManager.updatePublicIPs: TEST_IPV6 contains invalid value: ${ipv6} (type: ${typeof ipv6})`);
+          }
+        } else {
         try {
           // First try external API (works for most setups)
           const response = await axios.get('https://api6.ipify.org', { timeout: 5000 });
@@ -363,14 +407,32 @@ class ConfigManager {
             logger.debug('No IPv6 address could be determined (this is normal if you don\'t have IPv6 connectivity)');
           }
         }
+        }
       }
       
-      // Update cache
+      // Update cache - ensure IPv6 is a valid string or null
+      let validIPv6 = ipv6;
+      
+      // Debug: Log what we're about to cache
+      logger.debug(`ConfigManager.updatePublicIPs: About to cache IPv6: ${ipv6} (type: ${typeof ipv6})`);
+      
+      if (ipv6 && (typeof ipv6 === 'boolean' || ipv6 === 'true' || ipv6 === 'false')) {
+        logger.error(`ConfigManager.updatePublicIPs: Invalid IPv6 value detected during cache update: ${ipv6} (type: ${typeof ipv6})`);
+        logger.error(`ConfigManager.updatePublicIPs: This would cause DNS records to have content="${ipv6}"`);
+        validIPv6 = null;
+      }
+      
       this.ipCache = {
         ipv4: ipv4,
-        ipv6: ipv6,
+        ipv6: validIPv6,
         lastCheck: Date.now()
       };
+      
+      // Debug: Log what was actually cached
+      logger.debug(`ConfigManager.updatePublicIPs: Cached IPv6: ${this.ipCache.ipv6} (type: ${typeof this.ipCache.ipv6})`);
+      if (typeof this.ipCache.ipv6 === 'boolean') {
+        logger.error(`ConfigManager.updatePublicIPs: CRITICAL - Boolean value still in cache after validation!`);
+      }
       
       // Only log once if IP has changed
       if (ipv4 && ipv4 !== oldIpv4) {
