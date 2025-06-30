@@ -132,6 +132,12 @@ function extractDnsConfigFromLabels(labels, config, hostname) {
   const defaults = config.getDefaultsForType(recordType);
   logger.trace(`dns.extractDnsConfigFromLabels: Using defaults for type ${recordType}: ${JSON.stringify(defaults)}`);
   
+  // For AAAA records, ensure we don't use invalid default content
+  if (recordType === 'AAAA' && (defaults.content === true || defaults.content === 'true' || typeof defaults.content === 'boolean')) {
+    logger.debug(`dns.extractDnsConfigFromLabels: Invalid AAAA default content detected (${defaults.content}), clearing it`);
+    defaults.content = '';
+  }
+  
   // Build basic record config
   const recordConfig = {
     type: recordType,
