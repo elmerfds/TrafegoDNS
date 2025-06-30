@@ -370,24 +370,51 @@ export function PortSuggestionsWidget(props: WidgetProps) {
       isRecommended: false
     })
 
-    // Find alternatives around the requested port
+    // First, find the immediate next available port
+    let nextAvailablePort: number | null = null
+    for (let port = requestedPort + 1; port <= Math.min(requestedPort + 100, 65535); port++) {
+      try {
+        const response = await api.get(`/ports/check/${port}`)
+        const available = response.data.data?.available ?? true
+        if (available) {
+          nextAvailablePort = port
+          break
+        }
+      } catch {
+        // If check fails, assume available
+        nextAvailablePort = port
+        break
+      }
+    }
+
+    // Add the immediate next available port as top recommendation
+    if (nextAvailablePort) {
+      alternatives.push({
+        port: nextAvailablePort,
+        reason: `Next available port after ${requestedPort}`,
+        available: true,
+        isRecommended: true
+      })
+    }
+
+    // Find additional alternatives around the requested port
     const searchRanges = [
-      // Try ports close to the requested port first
-      [requestedPort + 1, requestedPort + 10],
+      // Try ports close to the requested port first (but skip the next immediate one we already found)
+      [requestedPort + 2, requestedPort + 10],
       [Math.max(1, requestedPort - 10), requestedPort - 1],
       // Then try common alternative patterns
       [requestedPort + 100, requestedPort + 110],
       [Math.max(1, requestedPort - 100), requestedPort - 90]
     ]
 
-    let foundAlternatives = 0
+    let foundAlternatives = nextAvailablePort ? 1 : 0 // Count the next available port we already found
     const maxAlternatives = 6
 
     for (const [start, end] of searchRanges) {
       if (foundAlternatives >= maxAlternatives) break
 
       for (let port = start; port <= end && port <= 65535 && foundAlternatives < maxAlternatives; port++) {
-        if (port === requestedPort) continue // Skip the original port
+        if (port === requestedPort || port === nextAvailablePort) continue // Skip the original port and already found next port
 
         try {
           const response = await api.get(`/ports/check/${port}`)
@@ -631,8 +658,11 @@ export function PortSuggestionsWidget(props: WidgetProps) {
           </div>
         )}
 
-        {/* Quick Generate for Common Services - single row */}
-        <div className="mt-auto">
+        {/* Quick Generate for Common Services - dynamic spacing */}
+        <div className={cn(
+          "border-t border-muted/50 pt-2",
+          suggestions.length === 0 ? "mt-4" : "mt-2"
+        )}>
           <h4 className="text-xs font-medium text-muted-foreground mb-1">Quick Generate</h4>
           <div className="flex gap-1">
             {serviceTypes.slice(0, 4).map(service => (
