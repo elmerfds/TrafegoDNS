@@ -487,76 +487,70 @@ export function PortSuggestionsWidget(props: WidgetProps) {
       currentHeight={currentHeight}
       onSizeChange={props.onSizeChange}
     >
-      <div className="flex flex-col h-full">
-        {/* Service Type Selection */}
-        <div className="space-y-2 mb-3">
-          <label className="text-sm font-medium">Service Type</label>
-          <Select value={serviceType} onValueChange={setServiceType}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {serviceTypes.map(service => (
-                <SelectItem key={service.value} value={service.value}>
-                  {service.label} ({service.range[0]}-{service.range[1]})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Custom Port Check */}
-        <div className="space-y-2 mb-3">
-          <label className="text-sm font-medium">Check Specific Port (Optional)</label>
-          <div className="flex gap-2">
-            <Input
-              type="number"
-              placeholder="Enter port number"
-              value={customPort}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomPort(e.target.value)}
-              onKeyPress={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && checkCustomPort()}
-              min="1"
-              max="65535"
-              className="[&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield]"
-            />
-            <Button 
-              onClick={checkCustomPort} 
-              disabled={checkingCustom || !customPort}
-              size="sm"
-              variant="outline"
-            >
-              {checkingCustom ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : (
-                <Search className="h-4 w-4" />
-              )}
-            </Button>
+      <div className="flex flex-col h-full space-y-3">
+        {/* Service Type and Custom Port in a compact layout */}
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Service Type</label>
+              <Select value={serviceType} onValueChange={setServiceType}>
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {serviceTypes.map(service => (
+                    <SelectItem key={service.value} value={service.value}>
+                      {service.label} ({service.range[0]}-{service.range[1]})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Check Port</label>
+              <div className="flex gap-1">
+                <Input
+                  type="number"
+                  placeholder="Port"
+                  value={customPort}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomPort(e.target.value)}
+                  onKeyPress={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && checkCustomPort()}
+                  min="1"
+                  max="65535"
+                  className="h-8 text-xs [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield]"
+                />
+                <Button 
+                  onClick={checkCustomPort} 
+                  disabled={checkingCustom || !customPort}
+                  size="sm"
+                  variant="outline"
+                  className="h-8 w-8 p-0"
+                >
+                  {checkingCustom ? (
+                    <RefreshCw className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Search className="h-3 w-3" />
+                  )}
+                </Button>
+              </div>
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Check if a specific port is available or get alternatives
-          </p>
         </div>
 
-        {/* Separator */}
-        <div className="flex items-center gap-2 mb-3">
-          <div className="flex-1 border-t border-gray-200 dark:border-gray-700"></div>
-          <span className="text-xs text-muted-foreground">OR</span>
-          <div className="flex-1 border-t border-gray-200 dark:border-gray-700"></div>
-        </div>
-
-        {/* Generate Button */}
-        <div className="flex gap-2 mb-3">
+        {/* Generate Button - more compact */}
+        <div className="flex gap-2">
           <Button 
             onClick={generateSuggestions} 
             disabled={loading}
-            className="flex-1"
+            className="flex-1 h-8"
+            size="sm"
           >
             {loading ? (
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
             ) : (
-              <Eye className="h-4 w-4 mr-2" />
+              <Eye className="h-3 w-3 mr-1" />
             )}
-            Generate Service Suggestions
+            Generate Suggestions
           </Button>
           {isLoadedFromCache && (
             <Button 
@@ -568,105 +562,79 @@ export function PortSuggestionsWidget(props: WidgetProps) {
               variant="outline"
               size="sm"
               title="Refresh cached data"
+              className="h-8 w-8 p-0"
             >
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className="h-3 w-3" />
             </Button>
           )}
         </div>
 
-        {/* Suggestions List */}
+        {/* Suggestions List - more compact */}
         {suggestions.length > 0 ? (
-          <div className="flex-1 space-y-2 overflow-y-auto min-h-0 mb-3">
+          <div className="flex-1 space-y-2 overflow-y-auto min-h-0">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <h4 className="text-xs font-medium text-muted-foreground">
                 Suggested Ports
               </h4>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
                 {isLoadedFromCache && (
-                  <div className="text-xs text-amber-600 dark:text-amber-400" title="Data loaded from cache">
-                    📋 Cached
-                  </div>
+                  <Badge variant="outline" className="text-xs h-5 px-1">
+                    Cached
+                  </Badge>
                 )}
-                <div className="text-xs text-muted-foreground" title="Real-time port availability check">
-                  ℹ️ Live Status
-                </div>
+                <Badge variant="outline" className="text-xs h-5 px-1">
+                  Live
+                </Badge>
               </div>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               {suggestions.slice(0, getMaxItems()).map((suggestion) => (
                 <div
                   key={suggestion.port}
-                  className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
+                  className="flex items-center justify-between p-2 bg-muted/30 rounded border border-muted/50 hover:border-muted"
                 >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono font-bold text-lg">
-                        {suggestion.port}
-                      </span>
-                      <Badge 
-                        variant="outline" 
-                        className={getStatusColor(suggestion)}
-                      >
-                        {getStatusText(suggestion)}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {suggestion.reason}
-                    </p>
-                    {!suggestion.available && (suggestion.service || suggestion.container) && (
-                      <p className="text-xs text-red-600 dark:text-red-400">
-                        Used by: {suggestion.service || 'Unknown'} 
-                        {suggestion.container && ` (${suggestion.container})`}
-                      </p>
-                    )}
+                  <div className="flex items-center gap-2 flex-1">
+                    <span className="font-mono font-bold text-sm">
+                      {suggestion.port}
+                    </span>
+                    <Badge 
+                      variant="outline" 
+                      className={cn(getStatusColor(suggestion), "text-xs h-4 px-1")}
+                    >
+                      {suggestion.available ? (suggestion.isRecommended ? 'Rec' : 'Avail') : 'Used'}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground truncate">
+                      {suggestion.reason.length > 30 ? `${suggestion.reason.substring(0, 30)}...` : suggestion.reason}
+                    </span>
                   </div>
                   
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => copyPort(suggestion.port)}
-                    className="ml-2"
+                    className="h-6 w-6 p-0 ml-1"
                   >
                     {copiedPort === suggestion.port ? (
-                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <CheckCircle className="h-3 w-3 text-green-600" />
                     ) : (
-                      <Copy className="h-4 w-4" />
+                      <Copy className="h-3 w-3" />
                     )}
                   </Button>
                 </div>
               ))}
             </div>
-            
-            {/* Status Legend */}
-            <div className="mt-3 p-2 bg-muted/30 rounded-lg">
-              <div className="text-xs text-muted-foreground space-y-1">
-                <div className="font-medium mb-1">Port Status:</div>
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded bg-green-500"></div>
-                  <span>Recommended: Best choice for this service</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded bg-blue-500"></div>
-                  <span>Available: Free to use</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded bg-red-500"></div>
-                  <span>In Use: Currently occupied</span>
-                </div>
-              </div>
-            </div>
           </div>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
-            <Eye className="h-8 w-8 mb-2 opacity-50" />
-            <p className="text-sm">No suggestions yet</p>
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground py-4">
+            <Eye className="h-6 w-6 mb-1 opacity-50" />
+            <p className="text-xs">No suggestions yet</p>
           </div>
         )}
 
-        {/* Quick Generate for Common Services */}
-        <div className="space-y-2 mt-auto">
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Quick Generate</h4>
-          <div className="grid grid-cols-2 gap-2">
+        {/* Quick Generate for Common Services - single row */}
+        <div className="mt-auto">
+          <h4 className="text-xs font-medium text-muted-foreground mb-1">Quick Generate</h4>
+          <div className="flex gap-1">
             {serviceTypes.slice(0, 4).map(service => (
               <Button
                 key={service.value}
@@ -676,7 +644,7 @@ export function PortSuggestionsWidget(props: WidgetProps) {
                   setServiceType(service.value)
                   setTimeout(() => generateSuggestions(), 100)
                 }}
-                className="text-xs"
+                className="text-xs h-6 px-2 flex-1"
               >
                 {service.label.split(' ')[0]}
               </Button>
