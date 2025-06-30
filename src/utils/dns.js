@@ -168,6 +168,23 @@ function extractDnsConfigFromLabels(labels, config, hostname) {
       }
       
       logger.debug(`Apex domain detected for ${hostname}, using A record with IP: ${recordConfig.content || 'to be determined'}`);
+    } else if (isApex && recordType === 'AAAA') {
+      // For apex domains with AAAA records, attempt IPv6 detection
+      logger.trace(`dns.extractDnsConfigFromLabels: Handling AAAA record for apex domain`);
+
+      // Get IPv6 if available, otherwise set flag for async IPv6 lookup
+      const ipv6 = config.getPublicIPv6Sync();
+      if (ipv6) {
+        recordConfig.content = ipv6;
+        logger.trace(`dns.extractDnsConfigFromLabels: Using IPv6 from cache: ${ipv6}`);
+      } else {
+        // Flag this record as needing async IPv6 lookup
+        recordConfig.needsIpLookup = true;
+        recordConfig.content = 'pending'; // Temporary placeholder
+        logger.trace(`dns.extractDnsConfigFromLabels: Flagging for async IPv6 lookup`);
+      }
+
+      logger.debug(`Apex domain detected for ${hostname}, using AAAA record with IPv6: ${recordConfig.content || 'to be determined'}`);
     } else {
       recordConfig.content = defaults.content;
       logger.trace(`dns.extractDnsConfigFromLabels: Using default content: ${defaults.content}`);

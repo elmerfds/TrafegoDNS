@@ -12,7 +12,7 @@ export const BREAKPOINTS = {
   lg: 1200,
   md: 996,
   sm: 768,
-  xs: 480
+  xs: 320   // All mobile devices use xs breakpoint
 } as const
 
 // Column counts per breakpoint (must match ModernDashboard.tsx)
@@ -20,7 +20,7 @@ export const COLUMNS = {
   lg: 24,
   md: 20,
   sm: 12,
-  xs: 8
+  xs: 2     // Mobile uses 2 columns for full-width widgets
 } as const
 
 /**
@@ -34,7 +34,7 @@ export const getCurrentBreakpoint = (): Breakpoint => {
   if (width >= BREAKPOINTS.lg) return 'lg'
   if (width >= BREAKPOINTS.md) return 'md'
   if (width >= BREAKPOINTS.sm) return 'sm'
-  return 'xs'
+  return 'xs' // All mobile devices below 768px use xs
 }
 
 /**
@@ -85,7 +85,7 @@ export const createResponsiveSizes = (
     xsRatio?: number
   }
 ): ResponsiveWidgetSizes => {
-  const { mdRatio = 0.8, smRatio = 0.6, xsRatio = 0.4 } = options || {}
+  const { mdRatio = 0.8, smRatio = 0.6, xsRatio = 1.0 } = options || {}
   
   return {
     lg: constrainSizeToBreakpoint(lgSize, 'lg'),
@@ -98,8 +98,8 @@ export const createResponsiveSizes = (
       h: lgSize.h
     }, 'sm'),
     xs: constrainSizeToBreakpoint({
-      w: Math.max(Math.round(lgSize.w * xsRatio), 1),
-      h: lgSize.h
+      w: 2, // Force full width on mobile (2 columns)
+      h: Math.max(lgSize.h + 2, 6) // Taller for mobile readability
     }, 'xs')
   }
 }

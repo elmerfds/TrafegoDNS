@@ -21,6 +21,7 @@ import {
 import { toast } from '@/hooks/use-toast'
 import { api } from '@/lib/api'
 import { createResponsiveSizes } from '@/lib/responsiveUtils'
+import { cn } from '@/lib/utils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface PauseStatus {
@@ -36,6 +37,8 @@ interface PauseStatus {
 export function PauseControlWidget(props: WidgetProps) {
   const queryClient = useQueryClient()
   const [selectedDuration, setSelectedDuration] = useState<string>('')
+  const { displayMode, currentBreakpoint } = props
+  const isMobile = currentBreakpoint === 'xs'
 
   // Query pause status
   const { data: pauseStatus, isLoading } = useQuery<{ success: boolean; data: PauseStatus }>({
@@ -171,7 +174,10 @@ export function PauseControlWidget(props: WidgetProps) {
         {/* Status Info */}
         {isPaused && status?.autoResumeScheduled && status.timeRemaining !== null && (
           <div className="space-y-2">
-            <div className="flex justify-between text-sm">
+            <div className={cn(
+              "flex justify-between",
+              isMobile ? "text-base" : "text-sm"
+            )}>
               <span>Auto-resume:</span>
               <span className="font-mono">{formatTimeRemaining(status.timeRemaining)}</span>
             </div>
@@ -179,13 +185,16 @@ export function PauseControlWidget(props: WidgetProps) {
               value={status.pauseDuration && status.timeRemaining ? 
                 ((status.pauseDuration * 60 - status.timeRemaining) / (status.pauseDuration * 60)) * 100 : 0
               } 
-              className="h-2"
+              className={cn(isMobile ? "h-3" : "h-2")}
             />
           </div>
         )}
 
         {isPaused && status?.pauseReason && (
-          <div className="text-sm text-muted-foreground">
+          <div className={cn(
+            "text-muted-foreground",
+            isMobile ? "text-base" : "text-sm"
+          )}>
             Reason: <span className="capitalize">{status.pauseReason}</span>
           </div>
         )}
@@ -196,10 +205,13 @@ export function PauseControlWidget(props: WidgetProps) {
             <Button 
               onClick={handleResume}
               disabled={resumeMutation.isPending}
-              className="w-full"
-              size="sm"
+              className={cn(
+                "w-full",
+                isMobile && "min-h-[44px]"
+              )}
+              size={isMobile ? "default" : "sm"}
             >
-              <Play className="h-3 w-3 mr-2" />
+              <Play className={cn(isMobile ? "h-4 w-4" : "h-3 w-3", "mr-2")} />
               {resumeMutation.isPending ? 'Resuming...' : 'Resume'}
             </Button>
           ) : (
@@ -208,21 +220,30 @@ export function PauseControlWidget(props: WidgetProps) {
                 onClick={handlePause}
                 disabled={pauseMutation.isPending}
                 variant="destructive"
-                className="w-full"
-                size="sm"
+                className={cn(
+                  "w-full",
+                  isMobile && "min-h-[44px]"
+                )}
+                size={isMobile ? "default" : "sm"}
               >
-                <Pause className="h-3 w-3 mr-2" />
+                <Pause className={cn(isMobile ? "h-4 w-4" : "h-3 w-3", "mr-2")} />
                 {pauseMutation.isPending ? 'Pausing...' : 'Pause'}
               </Button>
 
               {/* Quick Schedule */}
               <div className="space-y-2">
-                <div className="text-xs font-medium text-muted-foreground">
+                <div className={cn(
+                  "font-medium text-muted-foreground",
+                  isMobile ? "text-sm" : "text-xs"
+                )}>
                   Schedule Pause
                 </div>
                 <div className="flex gap-2">
                   <Select value={selectedDuration} onValueChange={setSelectedDuration}>
-                    <SelectTrigger className="flex-1 h-8 text-xs">
+                    <SelectTrigger className={cn(
+                      "flex-1",
+                      isMobile ? "h-10 text-sm" : "h-8 text-xs"
+                    )}>
                       <SelectValue placeholder="Duration" />
                     </SelectTrigger>
                     <SelectContent>
@@ -236,10 +257,13 @@ export function PauseControlWidget(props: WidgetProps) {
                     onClick={handleSchedulePause}
                     disabled={!selectedDuration || schedulePauseMutation.isPending}
                     variant="outline"
-                    size="sm"
-                    className="px-2"
+                    size={isMobile ? "default" : "sm"}
+                    className={cn(
+                      "px-2",
+                      isMobile && "min-h-[44px] px-3"
+                    )}
                   >
-                    <Timer className="h-3 w-3" />
+                    <Timer className={cn(isMobile ? "h-4 w-4" : "h-3 w-3")} />
                   </Button>
                 </div>
               </div>
@@ -248,7 +272,10 @@ export function PauseControlWidget(props: WidgetProps) {
         </div>
 
         {/* Help text */}
-        <div className="text-xs text-muted-foreground">
+        <div className={cn(
+          "text-muted-foreground",
+          isMobile ? "text-sm" : "text-xs"
+        )}>
           Pausing stops DNS processing and monitoring
         </div>
       </div>
@@ -263,7 +290,7 @@ export const pauseControlDefinition: WidgetDefinition = {
   category: 'system',
   icon: Settings,
   defaultSize: createResponsiveSizes({ w: 8, h: 5 }),
-  minSize: createResponsiveSizes({ w: 6, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  minSize: createResponsiveSizes({ w: 6, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0 }),
   maxSize: createResponsiveSizes({ w: 12, h: 6 }),
   responsiveDisplay: {
     lg: 'detailed',

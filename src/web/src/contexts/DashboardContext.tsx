@@ -8,7 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Layout } from 'react-grid-layout'
 import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
-import { getSizeForBreakpoint, getCurrentBreakpoint, constrainSizeToBreakpoint, getMaxColumnsForBreakpoint } from '@/lib/responsiveUtils'
+import { getSizeForBreakpoint, getCurrentBreakpoint, constrainSizeToBreakpoint, getMaxColumnsForBreakpoint, type Breakpoint } from '@/lib/responsiveUtils'
 import type { 
   DashboardContextType, 
   SavedLayout, 
@@ -41,6 +41,12 @@ const defaultLayouts: Record<string, Layout[]> = {
     { i: 'system-stats', x: 0, y: 6, w: 12, h: 4, minW: 4, minH: 3 },
     { i: 'dns-health', x: 0, y: 10, w: 12, h: 8, minW: 4, minH: 6 },
     { i: 'port-monitoring', x: 0, y: 18, w: 12, h: 8, minW: 4, minH: 6 }
+  ],
+  xs: [
+    { i: 'status-overview', x: 0, y: 0, w: 2, h: 8, minW: 2, minH: 6 },
+    { i: 'system-stats', x: 0, y: 8, w: 2, h: 6, minW: 2, minH: 4 },
+    { i: 'dns-health', x: 0, y: 14, w: 2, h: 12, minW: 2, minH: 8 },
+    { i: 'port-monitoring', x: 0, y: 26, w: 2, h: 8, minW: 2, minH: 6 }
   ]
 }
 
@@ -183,7 +189,7 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
         }
 
         // Get responsive sizing configurations using "Medium" preset as default
-        const breakpoints: Array<'lg' | 'md' | 'sm' | 'xs'> = ['lg', 'md', 'sm', 'xs']
+        const breakpoints: Array<Breakpoint> = ['lg', 'md', 'sm', 'xs']
         const breakpointConfigs = breakpoints.reduce((configs, breakpoint) => {
           const cols = getMaxColumnsForBreakpoint(breakpoint)
           
@@ -204,28 +210,29 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
             defaultSize: mediumPresetSize
           }
           return configs
-        }, {} as Record<string, { cols: number; defaultSize: { w: number; h: number } }>)
+        }, {} as Record<Breakpoint, { cols: number; defaultSize: { w: number; h: number } }>)
 
         // Create layout entry for each breakpoint
         Object.entries(breakpointConfigs).forEach(([breakpoint, config]) => {
-          if (!newLayouts[breakpoint]) {
-            newLayouts[breakpoint] = []
+          const breakpointTyped = breakpoint as Breakpoint
+          if (!newLayouts[breakpointTyped]) {
+            newLayouts[breakpointTyped] = []
           }
           
           // Check if widget already exists in this breakpoint
-          const existingIndex = newLayouts[breakpoint].findIndex(item => item.i === widgetId)
+          const existingIndex = newLayouts[breakpointTyped].findIndex(item => item.i === widgetId)
           
           if (existingIndex === -1) {
             // Find optimal position and add new layout item
-            const position = findOptimalPosition(breakpoint, config.cols, config.defaultSize)
+            const position = findOptimalPosition(breakpointTyped, config.cols, config.defaultSize)
             
             // Get responsive constraints for this breakpoint
-            const minSize = getSizeForBreakpoint(widgetDefinition.minSize, breakpoint as 'lg' | 'md' | 'sm' | 'xs')
-            const maxSize = getSizeForBreakpoint(widgetDefinition.maxSize || { w: config.cols, h: 20 }, breakpoint as 'lg' | 'md' | 'sm' | 'xs')
-            const constrainedMinSize = constrainSizeToBreakpoint(minSize, breakpoint as 'lg' | 'md' | 'sm' | 'xs')
-            const constrainedMaxSize = constrainSizeToBreakpoint(maxSize, breakpoint as 'lg' | 'md' | 'sm' | 'xs')
+            const minSize = getSizeForBreakpoint(widgetDefinition.minSize, breakpointTyped)
+            const maxSize = getSizeForBreakpoint(widgetDefinition.maxSize || { w: config.cols, h: 20 }, breakpointTyped)
+            const constrainedMinSize = constrainSizeToBreakpoint(minSize, breakpointTyped)
+            const constrainedMaxSize = constrainSizeToBreakpoint(maxSize, breakpointTyped)
             
-            newLayouts[breakpoint].push({
+            newLayouts[breakpointTyped].push({
               i: widgetId,
               ...position,
               minW: constrainedMinSize.w,
@@ -293,8 +300,7 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
           const item = layoutItems[itemIndex]
           
           // Apply responsive constraints for this breakpoint
-          const breakpointTyped = breakpoint as 'lg' | 'md' | 'sm' | 'xs'
-          let scaledSize = constrainSizeToBreakpoint(size, breakpointTyped)
+          let scaledSize = constrainSizeToBreakpoint(size, breakpoint as Breakpoint)
           
           // Respect layout item's min/max constraints
           scaledSize.w = Math.max(scaledSize.w, item.minW || 1)

@@ -85,29 +85,48 @@ function loadManagedHostnames(config) {
     
     const managedHostnames = [];
     
-    for (const config of hostnameConfigs) {
+    for (const configStr of hostnameConfigs) {
       // Parse the configuration string - format: hostname:type:content:ttl:proxied
-      const parts = config.split(':');
+      const parts = configStr.split(':');
       
-      if (parts.length < 3) {
-        logger.warn(`Invalid managed hostname configuration: ${config} (format should be hostname:type:content[:ttl][:proxied])`);
+      if (parts.length < 2) {
+        logger.warn(`Invalid managed hostname configuration: ${configStr} (format should be hostname:type[:content][:ttl][:proxied])`);
         continue;
       }
       
       const hostname = parts[0];
       const type = parts[1].toUpperCase();
-      const content = parts[2];
       
-      // Optional TTL
-      let ttl = config.defaultTTL || 1;
-      if (parts.length > 3 && !isNaN(parseInt(parts[3]))) {
-        ttl = parseInt(parts[3]);
+      // Handle content with auto-detection for A and AAAA records
+      let content;
+      if (parts.length >= 3 && parts[2]) {
+        content = parts[2];
+      } else {
+        // Auto-detect content based on record type
+        if (type === 'CNAME') {
+          content = config.getProviderDomain();
+        } else if (type === 'AAAA') {
+          content = config.getPublicIPv6Sync();
+        } else if (type === 'A') {
+          content = config.getPublicIPSync();
+        } else {
+          logger.warn(`Invalid managed hostname configuration: ${configStr} (${type} records require explicit content)`);
+          continue;
+        }
       }
       
-      // Optional proxied flag (Cloudflare only)
+      // Optional TTL - adjust index based on whether content was provided
+      let ttl = config.defaultTTL || 1;
+      const ttlIndex = parts.length >= 3 && parts[2] ? 3 : 2; // TTL is after content if provided, otherwise position 2
+      if (parts.length > ttlIndex && !isNaN(parseInt(parts[ttlIndex]))) {
+        ttl = parseInt(parts[ttlIndex]);
+      }
+      
+      // Optional proxied flag (Cloudflare only) - adjust index based on whether content was provided
       let proxied = false;
-      if (parts.length > 4) {
-        proxied = parts[4].toLowerCase() === 'true';
+      const proxiedIndex = parts.length >= 3 && parts[2] ? 4 : 3; // Proxied is after TTL
+      if (parts.length > proxiedIndex) {
+        proxied = parts[proxiedIndex].toLowerCase() === 'true';
       }
       
       managedHostnames.push({

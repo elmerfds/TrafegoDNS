@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
 import { createResponsiveSizes } from '@/lib/responsiveUtils'
+import { cn } from '@/lib/utils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface PortReservation {
@@ -87,6 +88,7 @@ export function PortReservationsWidget(props: WidgetProps) {
   const [quickReserveService, setQuickReserveService] = useState('')
   const { data: reservations = [], isLoading, error } = usePortReservations()
   const { displayMode = 'normal', currentBreakpoint = 'lg', layout } = props
+  const isMobile = currentBreakpoint === 'xs'
   
   // Get current widget height from layout for dynamic sizing
   const currentHeight = layout?.h || 4
@@ -96,6 +98,7 @@ export function PortReservationsWidget(props: WidgetProps) {
     if (displayMode === 'compact') return 3
     if (currentBreakpoint === 'lg') return 10  // More items on larger screens
     if (currentBreakpoint === 'md') return 6
+    if (isMobile) return 3
     return 4
   }
 
@@ -215,14 +218,19 @@ export function PortReservationsWidget(props: WidgetProps) {
       <div className="flex flex-col h-full">
         {/* Quick Reserve */}
         <div className="space-y-2 mb-3">
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Quick Reserve</h4>
+          <h4 className={cn(
+            "font-medium text-gray-700 dark:text-gray-300",
+            isMobile ? "text-base" : "text-sm"
+          )}>Quick Reserve</h4>
           <div className="flex gap-2">
             <Input
               type="number"
               placeholder="Port"
               value={quickReservePort}
               onChange={(e) => setQuickReservePort(e.target.value)}
-              className="w-20"
+              className={cn(
+                isMobile ? "w-24 text-base h-12" : "w-20"
+              )}
               min="1"
               max="65535"
             />
@@ -230,14 +238,20 @@ export function PortReservationsWidget(props: WidgetProps) {
               placeholder="Service name"
               value={quickReserveService}
               onChange={(e) => setQuickReserveService(e.target.value)}
-              className="flex-1"
+              className={cn(
+                "flex-1",
+                isMobile && "text-base h-12"
+              )}
             />
             <Button
-              size="sm"
+              size={isMobile ? "default" : "sm"}
               onClick={quickReserve}
               disabled={!quickReservePort || !quickReserveService || reservePortMutation.isPending}
+              className={cn(
+                isMobile && "min-h-[44px]"
+              )}
             >
-              <Plus className="h-4 w-4" />
+              <Plus className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
             </Button>
           </div>
         </div>
@@ -245,16 +259,25 @@ export function PortReservationsWidget(props: WidgetProps) {
         {/* Active Reservations */}
         {activeReservations.length > 0 ? (
           <div className="flex-1 space-y-2 overflow-y-auto min-h-0 mb-3">
-            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Active Reservations</h4>
+            <h4 className={cn(
+              "font-medium text-gray-700 dark:text-gray-300",
+              isMobile ? "text-base" : "text-sm"
+            )}>Active Reservations</h4>
             <div className="space-y-2">
               {activeReservations.slice(0, getMaxItems()).map((reservation) => (
                 <div
                   key={reservation.id}
-                  className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
+                  className={cn(
+                    "flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded-lg",
+                    isMobile ? "p-4" : "p-3"
+                  )}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono font-bold text-sm">
+                      <span className={cn(
+                        "font-mono font-bold",
+                        isMobile ? "text-base" : "text-sm"
+                      )}>
                         Port {reservation.port}
                       </span>
                       {reservation.expires_at && (
@@ -264,32 +287,44 @@ export function PortReservationsWidget(props: WidgetProps) {
                         </Badge>
                       )}
                     </div>
-                    <p className="text-sm font-medium truncate">
+                    <p className={cn(
+                      "font-medium truncate",
+                      isMobile ? "text-base" : "text-sm"
+                    )}>
                       {reservation.service_name}
                     </p>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <User className="h-3 w-3" />
+                    <div className={cn(
+                      "flex items-center gap-2 text-muted-foreground",
+                      isMobile ? "text-sm" : "text-xs"
+                    )}>
+                      <User className={cn(isMobile ? "h-4 w-4" : "h-3 w-3")} />
                       <span>{reservation.reserved_by}</span>
                       {reservation.server && (
                         <>
-                          <Server className="h-3 w-3" />
+                          <Server className={cn(isMobile ? "h-4 w-4" : "h-3 w-3")} />
                           <span>{reservation.server}</span>
                         </>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground">
+                    <p className={cn(
+                      "text-muted-foreground",
+                      isMobile ? "text-sm" : "text-xs"
+                    )}>
                       Reserved {formatTimeAgo(reservation.created_at)}
                     </p>
                   </div>
                   
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size={isMobile ? "default" : "sm"}
                     onClick={() => releasePortMutation.mutate(reservation.id)}
                     disabled={releasePortMutation.isPending}
-                    className="ml-2"
+                    className={cn(
+                      "ml-2",
+                      isMobile && "min-h-[44px] min-w-[44px]"
+                    )}
                   >
-                    <X className="h-4 w-4 text-red-600" />
+                    <X className={cn("text-red-600", isMobile ? "h-5 w-5" : "h-4 w-4")} />
                   </Button>
                 </div>
               ))}
@@ -297,13 +332,16 @@ export function PortReservationsWidget(props: WidgetProps) {
           </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
-            <Shield className="h-8 w-8 mb-2 opacity-50" />
-            <p className="text-sm">No active reservations</p>
+            <Shield className={cn(
+              "mb-2 opacity-50",
+              isMobile ? "h-10 w-10" : "h-8 w-8"
+            )} />
+            <p className={cn(isMobile ? "text-base" : "text-sm")}>No active reservations</p>
           </div>
         )}
 
         {/* Summary Stats - only in detailed mode */}
-        {reservations.length > 0 && displayMode === 'detailed' && currentBreakpoint === 'lg' && (
+        {reservations.length > 0 && displayMode === 'detailed' && !isMobile && (
           <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-200 dark:border-gray-700 mb-3">
             <div className="text-center">
               <div className="text-lg font-bold text-blue-600">
@@ -326,8 +364,14 @@ export function PortReservationsWidget(props: WidgetProps) {
 
         {/* Quick Suggestions */}
         <div className="space-y-2 mt-auto">
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Quick Reserve</h4>
-          <div className="grid grid-cols-2 gap-2">
+          <h4 className={cn(
+            "font-medium text-gray-700 dark:text-gray-300",
+            isMobile ? "text-base" : "text-sm"
+          )}>Quick Reserve</h4>
+          <div className={cn(
+            "grid gap-2",
+            isMobile ? "grid-cols-1" : "grid-cols-2"
+          )}>
             {[
               { port: 3000, service: 'Dev Server' },
               { port: 8080, service: 'HTTP Proxy' },
@@ -337,12 +381,14 @@ export function PortReservationsWidget(props: WidgetProps) {
               <Button
                 key={port}
                 variant="outline"
-                size="sm"
+                size={isMobile ? "default" : "sm"}
                 onClick={() => {
                   setQuickReservePort(port.toString())
                   setQuickReserveService(service)
                 }}
-                className="text-xs"
+                className={cn(
+                  isMobile ? "text-base min-h-[44px]" : "text-xs"
+                )}
               >
                 {port} - {service}
               </Button>
@@ -361,7 +407,7 @@ export const portReservationsDefinition: WidgetDefinition = {
   category: 'ports',
   icon: Shield,
   defaultSize: createResponsiveSizes({ w: 6, h: 6 }), // Medium preset: min + 4 width, min + 2 height
-  minSize: createResponsiveSizes({ w: 4, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  minSize: createResponsiveSizes({ w: 4, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0 }),
   maxSize: createResponsiveSizes({ w: 12, h: 12 }),
   responsiveDisplay: {
     lg: 'detailed',

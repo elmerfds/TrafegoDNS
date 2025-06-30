@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
 import { createResponsiveSizes } from '@/lib/responsiveUtils'
+import { cn } from '@/lib/utils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface PortSuggestion {
@@ -54,6 +55,7 @@ export function PortSuggestionsWidget(props: WidgetProps) {
   const [checkingCustom, setCheckingCustom] = useState(false)
   const [isLoadedFromCache, setIsLoadedFromCache] = useState(false)
   const { displayMode = 'normal', currentBreakpoint = 'lg', layout } = props
+  const isMobile = currentBreakpoint === 'xs'
   
   // Get current widget height from layout for dynamic sizing
   const currentHeight = layout?.h || 4
@@ -693,7 +695,7 @@ export const portSuggestionsDefinition: WidgetDefinition = {
   category: 'ports',
   icon: Eye,
   defaultSize: createResponsiveSizes({ w: 6, h: 6 }), // Medium preset: min + 4 width, min + 2 height
-  minSize: createResponsiveSizes({ w: 4, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  minSize: createResponsiveSizes({ w: 4, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0 }),
   maxSize: createResponsiveSizes({ w: 12, h: 12 }),
   responsiveDisplay: {
     lg: 'detailed',

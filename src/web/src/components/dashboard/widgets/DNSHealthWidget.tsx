@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { createResponsiveSizes } from '@/lib/responsiveUtils'
+import { cn } from '@/lib/utils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface DNSHealth {
@@ -160,7 +161,8 @@ function useDNSHealth() {
 export function DNSHealthWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data: health, isLoading, error } = useDNSHealth()
-  const { layout } = props
+  const { layout, displayMode, currentBreakpoint } = props
+  const isMobile = currentBreakpoint === 'xs'
   
   // Get current widget height from layout for dynamic sizing
   const currentHeight = layout?.h || 4
@@ -214,7 +216,7 @@ export function DNSHealthWidget(props: WidgetProps) {
       <div className="space-y-4">
         {/* DNS Metrics Grid */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-3 border border-blue-200 dark:border-blue-800">
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl border border-blue-200 dark:border-blue-800 p-3">
             <div className="flex items-center gap-2 mb-2">
               <Database className="h-4 w-4 text-blue-600" />
               <span className="text-xs font-medium text-blue-900 dark:text-blue-100">Hostnames</span>
@@ -227,7 +229,7 @@ export function DNSHealthWidget(props: WidgetProps) {
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl p-3 border border-purple-200 dark:border-purple-800">
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl border border-purple-200 dark:border-purple-800 p-3">
             <div className="flex items-center gap-2 mb-2">
               <Globe className="h-4 w-4 text-purple-600" />
               <span className="text-xs font-medium text-purple-900 dark:text-purple-100">Providers</span>
@@ -247,7 +249,7 @@ export function DNSHealthWidget(props: WidgetProps) {
             <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Providers</h4>
             <div className="space-y-2">
               {health.providers.map((provider) => (
-                <div key={provider.name} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <div key={provider.name} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
                   <div className="flex items-center gap-3">
                     {getStatusIcon(provider.status)}
                     <div>
@@ -269,7 +271,7 @@ export function DNSHealthWidget(props: WidgetProps) {
 
         {/* Orphaned Records Alert */}
         {(health?.records.orphaned || 0) > 0 && (
-          <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
             <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-200">
               <Trash2 className="h-4 w-4" />
               <span className="text-sm font-medium">
@@ -284,7 +286,7 @@ export function DNSHealthWidget(props: WidgetProps) {
           <Button
             variant="outline"
             size="sm"
-            className="flex-1"
+            className="flex-1 min-h-[40px]"
             onClick={() => navigate('/dns-records')}
           >
             Manage DNS
@@ -293,7 +295,7 @@ export function DNSHealthWidget(props: WidgetProps) {
             <Button
               variant="outline"
               size="sm"
-              className="flex-1"
+              className="flex-1 min-h-[40px]"
               onClick={() => navigate('/orphaned-records')}
             >
               Clean Up
@@ -311,9 +313,24 @@ export const dnsHealthDefinition: WidgetDefinition = {
   description: 'DNS provider status and record health',
   category: 'dns',
   icon: Globe,
-  defaultSize: createResponsiveSizes({ w: 8, h: 8 }),
-  minSize: createResponsiveSizes({ w: 6, h: 6 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
-  maxSize: createResponsiveSizes({ w: 16, h: 16 }),
+  defaultSize: {
+    lg: { w: 8, h: 8 },
+    md: { w: 7, h: 8 },
+    sm: { w: 6, h: 8 },
+    xs: { w: 2, h: 12 } // Full width on mobile (2 cols), tall for content
+  },
+  minSize: {
+    lg: { w: 6, h: 6 },
+    md: { w: 5, h: 6 },
+    sm: { w: 5, h: 6 },
+    xs: { w: 2, h: 8 } // Full width on mobile
+  },
+  maxSize: {
+    lg: { w: 16, h: 16 },
+    md: { w: 15, h: 16 },
+    sm: { w: 12, h: 16 },
+    xs: { w: 2, h: 20 } // Full width on mobile
+  },
   responsiveDisplay: {
     lg: 'detailed',
     md: 'normal',

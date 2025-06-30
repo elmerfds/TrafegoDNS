@@ -18,10 +18,13 @@ import { WidgetBase } from '../Widget'
 import { Button } from '@/components/ui/button'
 import { useNavigate } from 'react-router-dom'
 import { createResponsiveSizes } from '@/lib/responsiveUtils'
+import { cn } from '@/lib/utils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 export function QuickActionsWidget(props: WidgetProps) {
   const navigate = useNavigate()
+  const { displayMode, currentBreakpoint } = props
+  const isMobile = currentBreakpoint === 'xs'
 
   const quickActions = [
     {
@@ -76,18 +79,32 @@ export function QuickActionsWidget(props: WidgetProps) {
       description="Quick access to common tasks"
       widgetDefinition={props.widgetDefinition}
     >
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+      <div className={cn(
+        "grid gap-3",
+        isMobile ? "grid-cols-2" : "grid-cols-2 md:grid-cols-3"
+      )}>
         {quickActions.map((action) => (
           <Button
             key={action.path}
             variant="ghost"
-            className={`${action.color} h-auto p-4 flex flex-col items-center gap-2 text-center`}
+            className={cn(
+              action.color,
+              "h-auto flex flex-col items-center gap-2 text-center touch-manipulation",
+              isMobile ? "p-3 min-h-[64px]" : "p-4"
+            )}
             onClick={() => navigate(action.path)}
           >
-            <action.icon className="h-6 w-6" />
+            <action.icon className={cn(
+              isMobile ? "h-5 w-5" : "h-6 w-6"
+            )} />
             <div>
-              <div className="font-medium text-sm">{action.title}</div>
-              <div className="text-xs opacity-70">{action.description}</div>
+              <div className={cn(
+                "font-medium",
+                isMobile ? "text-xs" : "text-sm"
+              )}>{action.title}</div>
+              {!isMobile && (
+                <div className="text-xs opacity-70">{action.description}</div>
+              )}
             </div>
           </Button>
         ))}
@@ -102,8 +119,8 @@ export const quickActionsDefinition: WidgetDefinition = {
   description: 'Quick access to common dashboard tasks',
   category: 'system',
   icon: Settings,
-  defaultSize: createResponsiveSizes({ w: 12, h: 6 }),
-  minSize: createResponsiveSizes({ w: 8, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  defaultSize: createResponsiveSizes({ w: 12, h: 6 }, { xsRatio: 1.0 }),
+  minSize: createResponsiveSizes({ w: 8, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0 }),
   maxSize: createResponsiveSizes({ w: 16, h: 8 }),
   responsiveDisplay: {
     lg: 'detailed',

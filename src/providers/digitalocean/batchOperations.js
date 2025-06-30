@@ -67,6 +67,24 @@ async function batchEnsureRecords(client, domain, config, recordConfigs, recordC
           // Remove the flag to avoid confusion
           delete recordConfig.needsIpLookup;
         }
+
+        // Handle apex domains that need IPv6 lookup
+        if ((recordConfig.needsIpLookup || recordConfig.content === 'pending') && recordConfig.type === 'AAAA') {
+          logger.trace(`Record needs IPv6 lookup: ${recordConfig.name}`);
+          
+          // Get public IPv6 asynchronously
+          const ipv6 = await config.getPublicIPv6();
+          if (ipv6) {
+            logger.trace(`Retrieved IPv6 address: ${ipv6}`);
+            recordConfig.content = ipv6;
+            logger.debug(`Retrieved public IPv6 for apex domain ${recordConfig.name}: ${ipv6}`);
+          } else {
+            logger.trace(`Failed to retrieve IPv6 address`);
+            throw new Error(`Unable to determine public IPv6 for apex domain AAAA record: ${recordConfig.name}`);
+          }
+          // Remove the flag to avoid confusion
+          delete recordConfig.needsIpLookup;
+        }
         
         // Validate the record
         validateRecord(recordConfig);

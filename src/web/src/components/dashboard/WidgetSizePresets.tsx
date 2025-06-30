@@ -16,7 +16,7 @@ import {
 import { Maximize2 } from 'lucide-react'
 import { useDashboard } from '@/contexts/DashboardContext'
 import type { WidgetDefinition } from '@/types/dashboard'
-import { getCurrentBreakpoint, getSizeForBreakpoint, getMaxColumnsForBreakpoint } from '@/lib/responsiveUtils'
+import { getCurrentBreakpoint, getSizeForBreakpoint, getMaxColumnsForBreakpoint, type Breakpoint } from '@/lib/responsiveUtils'
 
 interface WidgetSizePresetsProps {
   widgetId: string
@@ -35,7 +35,7 @@ const getSizePresets = (
   category: string, 
   minSize: { w: number; h: number }, 
   maxSize: { w: number; h: number },
-  breakpoint: 'lg' | 'md' | 'sm' | 'xs'
+  breakpoint: Breakpoint
 ): SizePreset[] => {
   // Get max columns for current breakpoint
   const maxCols = getMaxColumnsForBreakpoint(breakpoint)

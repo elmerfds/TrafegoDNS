@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { createResponsiveSizes } from '@/lib/responsiveUtils'
+import { cn } from '@/lib/utils'
 import type { WidgetProps, WidgetDefinition } from '@/types/dashboard'
 
 interface PortActivity {
@@ -100,6 +101,7 @@ export function PortActivityWidget(props: WidgetProps) {
   const navigate = useNavigate()
   const { data: activities = [], isLoading, error } = usePortActivity()
   const { displayMode = 'normal', currentBreakpoint = 'lg', layout } = props
+  const isMobile = currentBreakpoint === 'xs'
   
   // Get current widget height from layout for dynamic sizing
   const currentHeight = layout?.h || 4
@@ -109,6 +111,7 @@ export function PortActivityWidget(props: WidgetProps) {
     if (displayMode === 'compact') return 3
     if (currentBreakpoint === 'lg') return 10
     if (currentBreakpoint === 'md') return 6
+    if (isMobile) return 3
     return 4
   }
 
@@ -126,13 +129,13 @@ export function PortActivityWidget(props: WidgetProps) {
 
   const getActionIcon = (action: string) => {
     switch (action) {
-      case 'opened': return <Plus className="h-4 w-4" />
-      case 'closed': return <Minus className="h-4 w-4" />
-      case 'reserved': return <Clock className="h-4 w-4" />
-      case 'released': return <RefreshCw className="h-4 w-4" />
-      case 'scanned': return <TrendingUp className="h-4 w-4" />
-      case 'conflict': return <Activity className="h-4 w-4" />
-      default: return <Activity className="h-4 w-4" />
+      case 'opened': return <Plus className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+      case 'closed': return <Minus className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+      case 'reserved': return <Clock className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+      case 'released': return <RefreshCw className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+      case 'scanned': return <TrendingUp className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+      case 'conflict': return <Activity className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+      default: return <Activity className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
     }
   }
 
@@ -178,14 +181,20 @@ export function PortActivityWidget(props: WidgetProps) {
             {activities.slice(0, getMaxItems()).map((activity) => (
               <div
                 key={activity.id}
-                className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
+                className={cn(
+                  "flex items-start gap-3 bg-gray-50 dark:bg-gray-800 rounded-lg",
+                  isMobile ? "p-4" : "p-3"
+                )}
               >
                 <div className="flex-shrink-0 mt-0.5">
                   {getActionIcon(activity.action)}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="font-mono font-medium text-sm">
+                    <span className={cn(
+                      "font-mono font-medium",
+                      isMobile ? "text-base" : "text-sm"
+                    )}>
                       Port {activity.port}
                     </span>
                     <Badge variant="outline" className={getActionColor(activity.action)}>
@@ -194,12 +203,18 @@ export function PortActivityWidget(props: WidgetProps) {
                   </div>
                   
                   {activity.service && (
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    <p className={cn(
+                      "font-medium text-gray-900 dark:text-gray-100",
+                      isMobile ? "text-base" : "text-sm"
+                    )}>
                       {activity.service}
                     </p>
                   )}
                   
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <div className={cn(
+                    "flex items-center gap-2 text-muted-foreground",
+                    isMobile ? "text-sm" : "text-xs"
+                  )}>
                     {activity.container && (
                       <span>Container: {activity.container}</span>
                     )}
@@ -209,12 +224,18 @@ export function PortActivityWidget(props: WidgetProps) {
                   </div>
                   
                   {activity.details && (
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className={cn(
+                      "text-muted-foreground mt-1",
+                      isMobile ? "text-sm" : "text-xs"
+                    )}>
                       {activity.details}
                     </p>
                   )}
                   
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className={cn(
+                    "text-muted-foreground mt-1",
+                    isMobile ? "text-sm" : "text-xs"
+                  )}>
                     {formatTimeAgo(activity.timestamp)}
                   </p>
                 </div>
@@ -223,8 +244,11 @@ export function PortActivityWidget(props: WidgetProps) {
           </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
-            <Activity className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No recent port activity</p>
+            <Activity className={cn(
+              "mx-auto mb-2 opacity-50",
+              isMobile ? "h-10 w-10" : "h-8 w-8"
+            )} />
+            <p className={cn(isMobile ? "text-base" : "text-sm")}>No recent port activity</p>
           </div>
         )}
 
@@ -262,8 +286,11 @@ export function PortActivityWidget(props: WidgetProps) {
         <div className="flex gap-2 mt-auto">
           <Button
             variant="outline"
-            size="sm"
-            className="flex-1"
+            size={isMobile ? "default" : "sm"}
+            className={cn(
+              "flex-1",
+              isMobile && "min-h-[44px]"
+            )}
             onClick={() => navigate('/port-monitoring')}
           >
             View All
@@ -271,8 +298,11 @@ export function PortActivityWidget(props: WidgetProps) {
           {conflictCount > 0 && (
             <Button
               variant="outline"
-              size="sm"
-              className="flex-1"
+              size={isMobile ? "default" : "sm"}
+              className={cn(
+                "flex-1",
+                isMobile && "min-h-[44px]"
+              )}
               onClick={() => navigate('/port-management')}
             >
               Resolve
@@ -291,7 +321,7 @@ export const portActivityDefinition: WidgetDefinition = {
   category: 'ports',
   icon: Activity,
   defaultSize: createResponsiveSizes({ w: 6, h: 6 }), // Medium preset: min + 4 width, min + 2 height
-  minSize: createResponsiveSizes({ w: 4, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 0.7 }),
+  minSize: createResponsiveSizes({ w: 4, h: 4 }, { mdRatio: 0.9, smRatio: 0.8, xsRatio: 1.0 }),
   maxSize: createResponsiveSizes({ w: 12, h: 12 }),
   responsiveDisplay: {
     lg: 'detailed',
