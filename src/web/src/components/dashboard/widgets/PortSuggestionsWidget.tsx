@@ -344,15 +344,24 @@ export function PortSuggestionsWidget(props: WidgetProps) {
 
         // Find the best alternatives
         const alternatives = await findPortAlternatives(portNum, service, container)
+        console.log('Generated alternatives:', alternatives)
         setSuggestions(alternatives)
         
         // Show success message with found alternatives
         const availableAlternatives = alternatives.filter(alt => alt.available)
+        console.log('Available alternatives:', availableAlternatives)
         if (availableAlternatives.length > 0) {
           const nextPort = availableAlternatives[0]?.port
           toast({
             title: 'Alternatives Found',
             description: `Found ${availableAlternatives.length} available ports. Next available: ${nextPort}`,
+          })
+        } else {
+          console.log('No available alternatives found')
+          toast({
+            title: 'No Alternatives',
+            description: 'Could not find any available alternative ports in the nearby range',
+            variant: 'destructive'
           })
         }
       }
@@ -368,6 +377,7 @@ export function PortSuggestionsWidget(props: WidgetProps) {
   }
 
   const findPortAlternatives = async (requestedPort: number, occupyingService?: string, occupyingContainer?: string): Promise<PortSuggestion[]> => {
+    console.log(`Finding alternatives for port ${requestedPort}`)
     const alternatives: PortSuggestion[] = []
     
     // Add the requested port (unavailable) for reference
@@ -379,18 +389,23 @@ export function PortSuggestionsWidget(props: WidgetProps) {
       container: occupyingContainer,
       isRecommended: false
     })
+    console.log(`Added requested port ${requestedPort} to alternatives`)
 
     // First, find the immediate next available port
     let nextAvailablePort: number | null = null
     for (let port = requestedPort + 1; port <= Math.min(requestedPort + 50, 65535); port++) {
       try {
+        console.log(`Checking port ${port} for availability`)
         const response = await api.get(`/ports/check/${port}`)
+        console.log(`Port ${port} response:`, response.data)
         const available = response.data.data?.available ?? response.data.available ?? true
+        console.log(`Port ${port} available: ${available}`)
         if (available) {
           nextAvailablePort = port
           break
         }
-      } catch {
+      } catch (error) {
+        console.log(`Error checking port ${port}:`, error)
         // If check fails, assume available
         nextAvailablePort = port
         break
@@ -399,81 +414,57 @@ export function PortSuggestionsWidget(props: WidgetProps) {
 
     // Add the immediate next available port as top recommendation
     if (nextAvailablePort) {
+      console.log(`Found next available port: ${nextAvailablePort}`)
       alternatives.push({
         port: nextAvailablePort,
         reason: `Next available port after ${requestedPort}`,
         available: true,
         isRecommended: true
       })
+    } else {
+      console.log('No immediate next available port found')
     }
 
-    // Find additional alternatives around the requested port
-    const searchRanges = [
-      // Try ports close to the requested port first (but skip the next immediate one we already found)
-      [requestedPort + (nextAvailablePort ? nextAvailablePort + 1 : 2), requestedPort + 20],
-      [Math.max(1, requestedPort - 20), requestedPort - 1],
-      // Then try increments of 10
-      [requestedPort + 10, requestedPort + 30],
-      [Math.max(1, requestedPort - 30), requestedPort - 10]
-    ]
+    // Add a few more simple alternatives in sequence
+    let foundAlternatives = nextAvailablePort ? 1 : 0
+    const maxAlternatives = 5
 
-    let foundAlternatives = nextAvailablePort ? 1 : 0 // Count the next available port we already found
-    const maxAlternatives = 7
+    // Just check the next few ports in sequence for simplicity
+    for (let port = requestedPort + 1; port <= requestedPort + 20 && foundAlternatives < maxAlternatives; port++) {
+      if (port === nextAvailablePort) continue // Skip the one we already found
 
-    for (const [start, end] of searchRanges) {
-      if (foundAlternatives >= maxAlternatives) break
+      try {
+        console.log(`Checking additional port ${port}`)
+        const response = await api.get(`/ports/check/${port}`)
+        const available = response.data.data?.available ?? response.data.available ?? true
+        console.log(`Additional port ${port} available: ${available}`)
 
-      for (let port = start; port <= end && port <= 65535 && foundAlternatives < maxAlternatives; port++) {
-        if (port === requestedPort || port === nextAvailablePort) continue // Skip the original port and already found next port
-
-        try {
-          const response = await api.get(`/ports/check/${port}`)
-          const available = response.data.data?.available ?? response.data.available ?? true
-
-          if (available) {
-            alternatives.push({
-              port,
-              reason: `Alternative to ${requestedPort} (+${port - requestedPort})`,
-              available: true,
-              isRecommended: port <= requestedPort + 10 || port >= requestedPort - 10 // Mark close ports as recommended
-            })
-            foundAlternatives++
-          }
-        } catch {
-          // If check fails, assume available and add it
-          alternatives.push({
-            port,
-            reason: `Alternative to ${requestedPort} (+${port - requestedPort}, likely available)`,
-            available: true,
-            isRecommended: port <= requestedPort + 10 || port >= requestedPort - 10
-          })
-          foundAlternatives++
-        }
-      }
-    }
-
-    // If we couldn't find enough alternatives in nearby ranges, 
-    // add some from the service type range
-    if (foundAlternatives < 3) {
-      const selectedService = serviceTypes.find(s => s.value === serviceType)
-      if (selectedService) {
-        const [min, max] = selectedService.range
-        const additionalSuggestions = await generateSmartSuggestions([min, max])
+        alternatives.push({
+          port,
+          reason: available ? `Next available (+${port - requestedPort})` : `Port ${port} in use`,
+          available,
+          isRecommended: available,
+          service: available ? undefined : (response.data.data?.service ?? response.data.service),
+          container: available ? undefined : (response.data.data?.container ?? response.data.container)
+        })
         
-        // Add available suggestions that we haven't already included
-        for (const suggestion of additionalSuggestions) {
-          if (foundAlternatives >= maxAlternatives) break
-          if (!alternatives.some(alt => alt.port === suggestion.port) && suggestion.available) {
-            alternatives.push({
-              ...suggestion,
-              reason: `Alternative in ${selectedService.label} range`
-            })
-            foundAlternatives++
-          }
-        }
+        if (available) foundAlternatives++
+      } catch (error) {
+        console.log(`Error checking additional port ${port}:`, error)
+        // Add as likely available
+        alternatives.push({
+          port,
+          reason: `Port ${port} (likely available)`,
+          available: true,
+          isRecommended: true
+        })
+        foundAlternatives++
       }
     }
 
+    console.log(`Found ${foundAlternatives} alternative ports (excluding requested port)`)
+
+    console.log(`Returning ${alternatives.length} total alternatives:`, alternatives)
     return alternatives
   }
 
