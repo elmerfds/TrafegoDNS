@@ -221,14 +221,14 @@ export function PortSuggestionsWidget(props: WidgetProps) {
       if (port >= min && port <= max) {
         try {
           const response = await api.get(`/ports/check/${port}`)
-          const available = response.data.data?.available ?? true
+          const available = response.data.data?.available ?? response.data.available ?? true
           
           suggestions.push({
             port,
             reason: available ? `Recommended for ${serviceTypes.find(s => s.value === serviceType)?.label}` : 'Recommended port (currently in use)',
             available,
-            service: available ? undefined : response.data.data?.service,
-            container: available ? undefined : response.data.data?.container,
+            service: available ? undefined : (response.data.data?.service ?? response.data.service),
+            container: available ? undefined : (response.data.data?.container ?? response.data.container),
             isRecommended: true
           })
         } catch {
@@ -261,14 +261,14 @@ export function PortSuggestionsWidget(props: WidgetProps) {
     for (const port of additionalPorts) {
       try {
         const response = await api.get(`/ports/check/${port}`)
-        const available = response.data.data?.available ?? true
+        const available = response.data.data?.available ?? response.data.available ?? true
         
         suggestions.push({
           port,
           reason: available ? `Available in ${serviceTypes.find(s => s.value === serviceType)?.label} range` : 'Port currently in use',
           available,
-          service: available ? undefined : response.data.data?.service,
-          container: available ? undefined : response.data.data?.container,
+          service: available ? undefined : (response.data.data?.service ?? response.data.service),
+          container: available ? undefined : (response.data.data?.container ?? response.data.container),
           isRecommended: false
         })
       } catch {
@@ -317,9 +317,9 @@ export function PortSuggestionsWidget(props: WidgetProps) {
     try {
       // Check the requested port
       const response = await api.get(`/ports/check/${portNum}`)
-      const available = response.data.data?.available ?? true
-      const service = response.data.data?.service
-      const container = response.data.data?.container
+      const available = response.data.data?.available ?? response.data.available ?? true
+      const service = response.data.data?.service ?? response.data.service
+      const container = response.data.data?.container ?? response.data.container
 
       if (available) {
         // Port is available - show it as the main suggestion
@@ -385,7 +385,7 @@ export function PortSuggestionsWidget(props: WidgetProps) {
     for (let port = requestedPort + 1; port <= Math.min(requestedPort + 50, 65535); port++) {
       try {
         const response = await api.get(`/ports/check/${port}`)
-        const available = response.data.data?.available ?? true
+        const available = response.data.data?.available ?? response.data.available ?? true
         if (available) {
           nextAvailablePort = port
           break
@@ -428,7 +428,7 @@ export function PortSuggestionsWidget(props: WidgetProps) {
 
         try {
           const response = await api.get(`/ports/check/${port}`)
-          const available = response.data.data?.available ?? true
+          const available = response.data.data?.available ?? response.data.available ?? true
 
           if (available) {
             alternatives.push({
