@@ -28,7 +28,7 @@ jobs:
     
     steps:
       - name: Checkout PR
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: refs/pull/${{ github.event.inputs.pr_number }}/head
           fetch-depth: 0  # Fetch all history for all tags and branches
