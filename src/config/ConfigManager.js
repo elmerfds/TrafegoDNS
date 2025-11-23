@@ -41,7 +41,16 @@ class ConfigManager {
     // Digital Ocean settings
     this.digitalOceanToken = EnvironmentLoader.getSecret('DO_TOKEN');
     this.digitalOceanDomain = EnvironmentLoader.getString('DO_DOMAIN');
-    
+
+    // UniFi settings
+    this.unifiHost = EnvironmentLoader.getString('UNIFI_HOST');
+    this.unifiApiKey = EnvironmentLoader.getSecret('UNIFI_API_KEY');
+    this.unifiUsername = EnvironmentLoader.getString('UNIFI_USERNAME');
+    this.unifiPassword = EnvironmentLoader.getSecret('UNIFI_PASSWORD');
+    this.unifiSite = EnvironmentLoader.getString('UNIFI_SITE', 'default');
+    this.unifiSkipTlsVerify = EnvironmentLoader.getBool('UNIFI_SKIP_TLS_VERIFY', false);
+    this.unifiExternalController = EnvironmentLoader.getBool('UNIFI_EXTERNAL_CONTROLLER', false);
+
     // Validate required settings based on provider
     this.validateProviderConfig();
     
@@ -71,8 +80,11 @@ class ConfigManager {
       case 'route53':
         this.defaultTTL = EnvironmentLoader.getInt('DNS_DEFAULT_TTL', 60); // Route53 minimum is 60
         break;
+      case 'unifi':
+        this.defaultTTL = EnvironmentLoader.getInt('DNS_DEFAULT_TTL', 300); // UniFi default is 300 (5 minutes)
+        break;
       default:
-        this.defaultTTL = EnvironmentLoader.getInt('DNS_DEFAULT_TTL', 1); // Default fallback
+        this.defaultTTL = EnvironmentLoader.getInt('DNS_DEFAULT_TTL', 300); // Default fallback
     }
     
     this.defaultManage = EnvironmentLoader.getBool('DNS_DEFAULT_MANAGE', true);
@@ -190,7 +202,17 @@ class ConfigManager {
           throw new Error('DO_DOMAIN environment variable is required for DigitalOcean provider');
         }
         break;
-        
+
+      case 'unifi':
+        if (!this.unifiHost) {
+          throw new Error('UNIFI_HOST environment variable is required for UniFi provider');
+        }
+        // Require either API key OR username/password
+        if (!this.unifiApiKey && (!this.unifiUsername || !this.unifiPassword)) {
+          throw new Error('Either UNIFI_API_KEY or both UNIFI_USERNAME and UNIFI_PASSWORD environment variables are required for UniFi provider');
+        }
+        break;
+
       default:
         throw new Error(`Unsupported DNS provider: ${this.dnsProvider}`);
     }

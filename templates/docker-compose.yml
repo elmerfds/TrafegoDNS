@@ -14,22 +14,31 @@ services:
       - OPERATION_MODE=traefik  # Options: traefik, direct
       
       # DNS Provider (choose one)
-      - DNS_PROVIDER=cloudflare  # Options: cloudflare, digitalocean, route53
-      
+      - DNS_PROVIDER=cloudflare  # Options: cloudflare, digitalocean, route53, unifi
+
       # Cloudflare settings (if using Cloudflare)
       - CLOUDFLARE_TOKEN=your_cloudflare_api_token
       - CLOUDFLARE_ZONE=example.com
-      
+
       # DigitalOcean settings (if using DigitalOcean)
       # - DO_TOKEN=your_digitalocean_api_token
       # - DO_DOMAIN=example.com
-      
+
       # Route53 settings (if using Route53)
       # - ROUTE53_ACCESS_KEY=your_aws_access_key
       # - ROUTE53_SECRET_KEY=your_aws_secret_key
       # - ROUTE53_ZONE=example.com
       # - ROUTE53_ZONE_ID=Z1234567890ABC  # Alternative to ROUTE53_ZONE
       # - ROUTE53_REGION=eu-west-2  # Optional, defaults to eu-west-2 (London)
+
+      # UniFi settings (if using UniFi)
+      # - UNIFI_HOST=https://unifi.local:8443
+      # - UNIFI_API_KEY=your_unifi_api_key  # Recommended for v9+
+      # - UNIFI_USERNAME=admin  # Deprecated - use API key instead
+      # - UNIFI_PASSWORD=your_password  # Deprecated - use API key instead
+      # - UNIFI_SITE=default  # Optional, defaults to 'default'
+      # - UNIFI_SKIP_TLS_VERIFY=false  # Set to true for self-signed certificates
+      # - UNIFI_EXTERNAL_CONTROLLER=false  # Set to true for non-UniFi hardware
       
       # Traefik API settings (for traefik mode)
       - TRAEFIK_API_URL=http://traefik:8080/api

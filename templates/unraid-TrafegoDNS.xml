@@ -10,7 +10,7 @@
     <Project>https://github.com/elmerfds/TrafegoDNS</Project>
     <Overview>TrafegoDNS automatically manages DNS records based on container configuration. It supports both Traefik integration and direct Docker container label mode, making it compatible with any web server or reverse proxy solution.
     Key Features:
-    - Supports multiple DNS providers (Cloudflare, DigitalOcean, Route53)
+    - Supports multiple DNS providers (Cloudflare, DigitalOcean, Route53, UniFi)
     - Two operation modes: Traefik API integration or direct Docker labels
     - Optional cleanup of orphaned DNS records
     - Real-time monitoring of Docker container events
@@ -21,7 +21,7 @@
     <DonateText>If you appreciate my work, please consider donating!</DonateText>
     <DonateLink>https://github.com/elmerfds/TrafegoDNS</DonateLink>
     <Config Name="Operation Mode" Target="OPERATION_MODE" Default="traefik|direct" Mode="" Description="Choose how to detect hostnames: Traefik API or direct container labels" Type="Variable" Display="always" Required="true" Mask="false">traefik</Config>
-    <Config Name="DNS Provider" Target="DNS_PROVIDER" Default="cloudflare|digitalocean|route53" Mode="" Description="Select DNS provider to use" Type="Variable" Display="always" Required="true" Mask="false">cloudflare</Config>
+    <Config Name="DNS Provider" Target="DNS_PROVIDER" Default="cloudflare|digitalocean|route53|unifi" Mode="" Description="Select DNS provider to use" Type="Variable" Display="always" Required="true" Mask="false">cloudflare</Config>
     <Config Name="Cloudflare Token" Target="CLOUDFLARE_TOKEN" Default="" Mode="" Description="Cloudflare API token (requires DNS edit permissions) - Required when using Cloudflare provider" Type="Variable" Display="always" Required="false" Mask="true"></Config>
     <Config Name="Cloudflare Zone" Target="CLOUDFLARE_ZONE" Default="" Mode="" Description="Your domain name managed in Cloudflare (e.g., example.com) - Required when using Cloudflare provider" Type="Variable" Display="always" Required="false" Mask="false"></Config>
     <Config Name="DigitalOcean Token" Target="DO_TOKEN" Default="" Mode="" Description="DigitalOcean API token (requires write access) - Required when using DigitalOcean provider" Type="Variable" Display="always" Required="false" Mask="true"></Config>
@@ -29,6 +29,10 @@
     <Config Name="Route53 Access Key" Target="ROUTE53_ACCESS_KEY" Default="" Mode="" Description="AWS IAM access key with Route53 permissions - Required when using Route53 provider" Type="Variable" Display="always" Required="false" Mask="true"></Config>
     <Config Name="Route53 Secret Key" Target="ROUTE53_SECRET_KEY" Default="" Mode="" Description="AWS IAM secret key - Required when using Route53 provider" Type="Variable" Display="always" Required="false" Mask="true"></Config>
     <Config Name="Route53 Zone" Target="ROUTE53_ZONE" Default="" Mode="" Description="Your domain name managed in Route53 (e.g., example.com) - Required when using Route53 provider" Type="Variable" Display="always" Required="false" Mask="false"></Config>
+    <Config Name="UniFi Host" Target="UNIFI_HOST" Default="" Mode="" Description="UniFi Controller URL (e.g., https://unifi.local:8443) - Required when using UniFi provider" Type="Variable" Display="always" Required="false" Mask="false"></Config>
+    <Config Name="UniFi API Key" Target="UNIFI_API_KEY" Default="" Mode="" Description="UniFi API key (recommended for v9+) - Required when using UniFi provider (or use username/password)" Type="Variable" Display="always" Required="false" Mask="true"></Config>
+    <Config Name="UniFi Username" Target="UNIFI_USERNAME" Default="" Mode="" Description="UniFi admin username (deprecated - use API key instead) - Required when using UniFi provider without API key" Type="Variable" Display="always" Required="false" Mask="false"></Config>
+    <Config Name="UniFi Password" Target="UNIFI_PASSWORD" Default="" Mode="" Description="UniFi admin password (deprecated - use API key instead) - Required when using UniFi provider without API key" Type="Variable" Display="always" Required="false" Mask="true"></Config>
     <Config Name="Traefik API URL" Target="TRAEFIK_API_URL" Default="http://traefik:8080/api" Mode="" Description="URL to Traefik API (including protocol and port) - Only used when Operation Mode is 'traefik'" Type="Variable" Display="always" Required="false" Mask="false">http://traefik:8080/api</Config>
     <Config Name="Cleanup Orphaned" Target="CLEANUP_ORPHANED" Default="true|false" Mode="" Description="Whether to automatically remove orphaned DNS records" Type="Variable" Display="always" Required="false" Mask="false">false</Config>  
     <Config Name="Config Path" Target="/config" Default="/mnt/user/appdata/trafegodns" Mode="rw" Description="Configuration storage path" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/trafegodns</Config>
@@ -42,4 +46,7 @@
     <Config Name="Traefik API Password" Target="TRAEFIK_API_PASSWORD" Default="" Mode="" Description="Optional basic auth password for Traefik API - Only used when Operation Mode is 'traefik'" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
     <Config Name="Route53 Zone ID" Target="ROUTE53_ZONE_ID" Default="" Mode="" Description="Alternative to ROUTE53_ZONE: Your Route53 hosted zone ID - Only used when DNS Provider is 'route53'" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
     <Config Name="Route53 Region" Target="ROUTE53_REGION" Default="eu-west-2" Mode="" Description="AWS region for Route53 API calls - Only used when DNS Provider is 'route53'" Type="Variable" Display="advanced" Required="false" Mask="false">eu-west-2</Config>
+    <Config Name="UniFi Site" Target="UNIFI_SITE" Default="default" Mode="" Description="UniFi site name - Only used when DNS Provider is 'unifi'" Type="Variable" Display="advanced" Required="false" Mask="false">default</Config>
+    <Config Name="UniFi Skip TLS Verify" Target="UNIFI_SKIP_TLS_VERIFY" Default="true|false" Mode="" Description="Skip TLS certificate verification for self-signed certs - Only used when DNS Provider is 'unifi'" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+    <Config Name="UniFi External Controller" Target="UNIFI_EXTERNAL_CONTROLLER" Default="true|false" Mode="" Description="Use external controller API paths for non-UniFi hardware - Only used when DNS Provider is 'unifi'" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
 </Container>
