@@ -18,6 +18,7 @@ interface DNSManagerStats {
   updated: number;
   upToDate: number;
   errors: number;
+  skipped: number;
   total: number;
 }
 
@@ -44,6 +45,7 @@ export class DNSManager {
     updated: 0,
     upToDate: 0,
     errors: 0,
+    skipped: 0,
     total: 0,
   };
   private initialized: boolean = false;
@@ -250,16 +252,14 @@ export class DNSManager {
       return [zoneMatch];
     }
 
-    // Fallback to default provider
-    if (this.defaultProviderId) {
-      const defaultProvider = this.providerInstances.get(this.defaultProviderId);
-      if (defaultProvider) {
-        this.logger.debug({ hostname, providerId: this.defaultProviderId }, 'Using default provider');
-        return [{ id: this.defaultProviderId, provider: defaultProvider }];
-      }
-    }
-
-    this.logger.warn({ hostname }, 'No provider found for hostname');
+    // No matching zone - skip this hostname
+    const configuredZones = Array.from(this.providerInstances.values())
+      .map(p => p.getZoneName())
+      .filter(Boolean);
+    this.logger.debug(
+      { hostname, configuredZones },
+      'Skipping hostname - no matching zone configured'
+    );
     return [];
   }
 
@@ -309,8 +309,7 @@ export class DNSManager {
         const targetProviders = this.getProvidersForHostname(hostname, labels, labelPrefix);
 
         if (targetProviders.length === 0) {
-          this.logger.warn({ hostname }, 'No provider available for hostname');
-          this.stats.errors++;
+          this.stats.skipped++;
           continue;
         }
 
@@ -708,6 +707,7 @@ export class DNSManager {
       updated: 0,
       upToDate: 0,
       errors: 0,
+      skipped: 0,
       total: 0,
     };
   }
@@ -728,6 +728,10 @@ export class DNSManager {
 
     if (this.stats.upToDate > 0) {
       this.logger.debug({ count: this.stats.upToDate }, 'DNS records up to date');
+    }
+
+    if (this.stats.skipped > 0) {
+      this.logger.debug({ count: this.stats.skipped }, 'Hostnames skipped (no matching zone)');
     }
 
     if (this.stats.errors > 0) {

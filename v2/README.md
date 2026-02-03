@@ -268,6 +268,86 @@ TECHNITIUM_PASSWORD=password
 TECHNITIUM_ZONE=example.com
 ```
 
+## Multi-Provider Configuration (New in v2)
+
+v2 supports **automatic multi-provider routing** based on zone matching. Configure multiple providers simultaneously, and TrafegoDNS will automatically route DNS records to the correct provider based on the hostname's domain suffix.
+
+### How It Works
+
+1. Configure all providers you need in your environment variables
+2. TrafegoDNS detects all configured providers at startup
+3. When processing hostnames, it matches each to the provider that manages its zone
+4. Records are created/updated only in the appropriate provider
+
+### Example: Split DNS (Public + Internal)
+
+```yaml
+# docker-compose.yml for multi-provider setup
+services:
+  trafegodns:
+    image: trafegodns:v2
+    environment:
+      # Public domains -> Cloudflare
+      - CLOUDFLARE_TOKEN=cf-api-token-here
+      - CLOUDFLARE_ZONE=example.com
+
+      # Internal domains -> Technitium (self-hosted DNS)
+      - TECHNITIUM_URL=http://technitium:5380
+      - TECHNITIUM_API_TOKEN=tech-token-here
+      - TECHNITIUM_ZONE=home.lab
+
+      # App settings
+      - OPERATION_MODE=traefik
+      - TRAEFIK_API_URL=http://traefik:8080/api
+```
+
+With this configuration:
+- `app.example.com` → Cloudflare (matches `example.com` zone)
+- `api.example.com` → Cloudflare (matches `example.com` zone)
+- `nas.home.lab` → Technitium (matches `home.lab` zone)
+- `plex.home.lab` → Technitium (matches `home.lab` zone)
+
+### Zone Matching Rules
+
+1. **Exact match**: If hostname equals zone name exactly
+2. **Suffix match**: If hostname ends with `.{zone}`
+3. **Longest match wins**: If multiple zones match, the longest (most specific) zone is selected
+4. **No match = skip**: Hostnames that don't match any configured zone are skipped
+
+### What Happens When a Provider Isn't Configured?
+
+If `nas.home.lab` is detected but no provider manages `home.lab`:
+
+```
+[INFO] Skipping hostname - no matching zone configured
+       hostname: "nas.home.lab"
+       configuredZones: ["elabx.app"]
+```
+
+No errors, no failed API calls - the record is simply not created until you configure a provider for that zone.
+
+### Override with Labels
+
+You can override automatic routing using container labels:
+
+```yaml
+# Force specific provider by name
+labels:
+  - "dns.provider=cloudflare"
+
+# Force specific provider by ID
+labels:
+  - "dns.provider.id=provider-uuid-here"
+
+# Broadcast to multiple providers
+labels:
+  - "dns.providers=cloudflare,technitium"
+
+# Broadcast to ALL providers
+labels:
+  - "dns.providers=all"
+```
+
 ## Security Features
 
 ### Authentication

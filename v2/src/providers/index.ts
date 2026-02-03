@@ -9,7 +9,10 @@ export { TechnitiumProvider, type TechnitiumProviderCredentials } from './techni
 export {
   createProvider,
   createProviderFromEnv,
+  createAllProvidersFromEnv,
+  detectProvidersFromEnv,
   validateCredentials,
   getSupportedProviders,
   type CreateProviderOptions,
+  type DetectedProviderConfig,
 } from './ProviderFactory.js';

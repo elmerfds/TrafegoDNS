@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { logger, createChildLogger } from '../core/Logger.js';
 import { getDatabase } from '../database/connection.js';
 import { dnsRecords, providers, settings, preservedHostnames, managedHostnames } from '../database/schema/index.js';
+import { detectProvidersFromEnv, type DetectedProviderConfig } from '../providers/ProviderFactory.js';
 import type { ProviderType } from '../types/index.js';
 import type { Logger } from 'pino';
 
@@ -69,14 +70,17 @@ export class V1Migrator {
         return { success: true, message: 'Migration already performed' };
       }
 
-      // Create default provider from environment variables
-      const providerId = await this.createDefaultProvider();
-      if (!providerId) {
-        return { success: false, message: 'Failed to create provider from environment' };
+      // Create all providers from environment variables
+      const providerMap = await this.createProvidersFromEnv();
+      if (providerMap.size === 0) {
+        return { success: false, message: 'No providers configured in environment' };
       }
 
+      // Get default provider (first one created)
+      const defaultProviderId = providerMap.values().next().value as string;
+
       // Import DNS records
-      const recordsImported = await this.importRecords(providerId);
+      const recordsImported = await this.importRecords(defaultProviderId);
 
       // Import settings from environment
       await this.importSettings();
@@ -85,7 +89,7 @@ export class V1Migrator {
       await this.importPreservedHostnames();
 
       // Import managed hostnames from environment
-      await this.importManagedHostnames(providerId);
+      await this.importManagedHostnames(providerMap);
 
       this.logger.info({ recordsImported }, 'Migration completed successfully');
 
@@ -101,83 +105,61 @@ export class V1Migrator {
   }
 
   /**
-   * Create default provider from v1 environment variables
+   * Create all providers from environment variables
+   * Returns a Map of zone -> providerId for routing
    */
-  private async createDefaultProvider(): Promise<string | null> {
+  private async createProvidersFromEnv(): Promise<Map<string, string>> {
     const db = getDatabase();
-    const env = process.env;
+    const detected = detectProvidersFromEnv();
+    const providerMap = new Map<string, string>();
 
-    // Determine provider type from environment
-    let providerType: ProviderType | null = null;
-    let credentials: Record<string, string> = {};
-    let providerSettings: Record<string, unknown> = {};
-
-    // Cloudflare
-    if (env.CLOUDFLARE_TOKEN || env.CF_API_TOKEN || env.CLOUDFLARE_API_TOKEN) {
-      providerType = 'cloudflare';
-      credentials = {
-        apiToken: env.CLOUDFLARE_TOKEN || env.CF_API_TOKEN || env.CLOUDFLARE_API_TOKEN || '',
-      };
-      if (env.CLOUDFLARE_ZONE || env.CF_ZONE_ID) {
-        credentials.zoneId = env.CLOUDFLARE_ZONE || env.CF_ZONE_ID || '';
-      }
-      if (env.CLOUDFLARE_ACCOUNT_ID || env.CF_ACCOUNT_ID) {
-        credentials.accountId = env.CLOUDFLARE_ACCOUNT_ID || env.CF_ACCOUNT_ID || '';
-      }
-    }
-    // DigitalOcean
-    else if (env.DO_TOKEN || env.DIGITALOCEAN_TOKEN) {
-      providerType = 'digitalocean';
-      credentials = {
-        token: env.DO_TOKEN || env.DIGITALOCEAN_TOKEN || '',
-      };
-      if (env.DO_DOMAIN) {
-        providerSettings.domain = env.DO_DOMAIN;
-      }
-    }
-    // Route53
-    else if (env.ROUTE53_ACCESS_KEY || env.AWS_ACCESS_KEY_ID) {
-      providerType = 'route53';
-      credentials = {
-        accessKey: env.ROUTE53_ACCESS_KEY || env.AWS_ACCESS_KEY_ID || '',
-        secretKey: env.ROUTE53_SECRET_KEY || env.AWS_SECRET_ACCESS_KEY || '',
-        hostedZoneId: env.ROUTE53_ZONE || env.ROUTE53_HOSTED_ZONE_ID || '',
-        region: env.ROUTE53_REGION || env.AWS_REGION || 'us-east-1',
-      };
-    }
-    // Technitium
-    else if (env.TECHNITIUM_URL) {
-      providerType = 'technitium';
-      credentials = {
-        url: env.TECHNITIUM_URL,
-        apiToken: env.TECHNITIUM_API_TOKEN || '',
-        zone: env.TECHNITIUM_ZONE || '',
-      };
-    }
-
-    if (!providerType) {
+    if (detected.length === 0) {
       this.logger.warn('No provider configuration found in environment');
-      return null;
+      return providerMap;
     }
 
-    const providerId = uuidv4();
+    this.logger.info(
+      { count: detected.length, providers: detected.map(d => `${d.type}:${d.zone}`) },
+      'Detected providers from environment'
+    );
+
     const now = new Date();
+    let isFirst = true;
 
-    await db.insert(providers).values({
-      id: providerId,
-      name: `${providerType} (migrated)`,
-      type: providerType,
-      isDefault: true,
-      credentials: JSON.stringify(credentials),
-      settings: JSON.stringify(providerSettings),
-      enabled: true,
-      createdAt: now,
-      updatedAt: now,
-    });
+    for (const config of detected) {
+      try {
+        const providerId = uuidv4();
 
-    this.logger.info({ providerId, providerType }, 'Created provider from environment');
+        await db.insert(providers).values({
+          id: providerId,
+          name: config.name,
+          type: config.type,
+          isDefault: isFirst, // First provider is default
+          credentials: JSON.stringify(config.credentials),
+          settings: JSON.stringify({}),
+          enabled: true,
+          createdAt: now,
+          updatedAt: now,
+        });
 
-    return providerId;
+        providerMap.set(config.zone.toLowerCase(), providerId);
+
+        this.logger.info(
+          { providerId, providerType: config.type, zone: config.zone, isDefault: isFirst },
+          'Created provider from environment'
+        );
+
+        isFirst = false;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          { providerType: config.type, zone: config.zone, error: message },
+          'Failed to create provider from environment'
+        );
+      }
+    }
+
+    return providerMap;
   }
 
   /**
@@ -363,8 +345,9 @@ export class V1Migrator {
    * Import managed hostnames from environment variable
    * Format: MANAGED_HOSTNAMES=hostname:type:content:ttl,hostname2:type2:content2
    * Example: mail.example.com:MX:mailserver.example.com:300:10
+   * Automatically routes hostnames to the correct provider based on zone matching
    */
-  private async importManagedHostnames(defaultProviderId: string): Promise<void> {
+  private async importManagedHostnames(providerMap: Map<string, string>): Promise<void> {
     const managedStr = process.env.MANAGED_HOSTNAMES;
     if (!managedStr) {
       return;
@@ -372,6 +355,13 @@ export class V1Migrator {
 
     const db = getDatabase();
     const now = new Date();
+
+    // Get default provider (first entry in map)
+    const defaultProviderId = providerMap.values().next().value as string | undefined;
+    if (!defaultProviderId) {
+      this.logger.warn('No default provider available for managed hostnames');
+      return;
+    }
 
     const configs = managedStr.split(',').map((c) => c.trim()).filter((c) => c.length > 0);
 
@@ -385,11 +375,15 @@ export class V1Migrator {
         }
 
         const [hostname, recordType, content, ttlStr, priorityStr] = parts;
+        const normalizedHostname = hostname!.toLowerCase();
+
+        // Find the best matching provider for this hostname
+        const providerId = this.findProviderForHostname(normalizedHostname, providerMap) ?? defaultProviderId;
 
         await db.insert(managedHostnames).values({
           id: uuidv4(),
-          hostname: hostname!.toLowerCase(),
-          providerId: defaultProviderId,
+          hostname: normalizedHostname,
+          providerId,
           recordType: (recordType!.toUpperCase() as 'A' | 'AAAA' | 'CNAME' | 'MX' | 'TXT' | 'SRV' | 'CAA' | 'NS'),
           content: content!,
           ttl: ttlStr ? parseInt(ttlStr, 10) : 300,
@@ -407,5 +401,25 @@ export class V1Migrator {
     if (imported > 0) {
       this.logger.info({ count: imported }, 'Imported managed hostnames from environment');
     }
+  }
+
+  /**
+   * Find the provider that manages a given hostname based on zone matching
+   * Uses longest suffix match for most specific routing
+   */
+  private findProviderForHostname(hostname: string, providerMap: Map<string, string>): string | undefined {
+    let bestMatch: { zone: string; providerId: string } | undefined;
+
+    for (const [zone, providerId] of providerMap) {
+      // Check if hostname matches this zone (exact match or subdomain)
+      if (hostname === zone || hostname.endsWith(`.${zone}`)) {
+        // Keep the longest matching zone (most specific)
+        if (!bestMatch || zone.length > bestMatch.zone.length) {
+          bestMatch = { zone, providerId };
+        }
+      }
+    }
+
+    return bestMatch?.providerId;
   }
 }
