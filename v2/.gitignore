@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Test coverage
+coverage/
+
+# Logs
+*.log
+
+# SQLite databases (local dev only)
+*.db
+*.db-journal
+*.sqlite
+
+# Drizzle
+drizzle/meta/
+
+# IDE
+.vscode/
+.idea/

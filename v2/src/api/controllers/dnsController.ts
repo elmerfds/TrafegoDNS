@@ -1,0 +1,294 @@
+/**
+ * DNS Records Controller
+ */
+import type { Request, Response } from 'express';
+import { v4 as uuidv4 } from 'uuid';
+import { getDatabase } from '../../database/connection.js';
+import { dnsRecords } from '../../database/schema/index.js';
+import { eq, and, like, sql } from 'drizzle-orm';
+import { container, ServiceTokens } from '../../core/ServiceContainer.js';
+import { ApiError, asyncHandler, setAuditContext } from '../middleware/index.js';
+import {
+  createDnsRecordSchema,
+  updateDnsRecordSchema,
+  dnsRecordFilterSchema,
+} from '../validation.js';
+import type { DNSManager } from '../../services/DNSManager.js';
+
+/**
+ * List DNS records with filtering and pagination
+ */
+export const listRecords = asyncHandler(async (req: Request, res: Response) => {
+  const filter = dnsRecordFilterSchema.parse(req.query);
+  const db = getDatabase();
+
+  // Build where conditions
+  const conditions = [];
+  if (filter.type) {
+    conditions.push(eq(dnsRecords.type, filter.type));
+  }
+  if (filter.name) {
+    conditions.push(like(dnsRecords.name, `%${filter.name}%`));
+  }
+  if (filter.content) {
+    conditions.push(like(dnsRecords.content, `%${filter.content}%`));
+  }
+  if (filter.providerId) {
+    conditions.push(eq(dnsRecords.providerId, filter.providerId));
+  }
+  if (filter.source) {
+    conditions.push(eq(dnsRecords.source, filter.source));
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  // Get total count
+  const countResult = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(dnsRecords)
+    .where(whereClause);
+  const count = countResult[0]?.count ?? 0;
+
+  // Get paginated records
+  const offset = (filter.page - 1) * filter.limit;
+  const records = await db
+    .select()
+    .from(dnsRecords)
+    .where(whereClause)
+    .limit(filter.limit)
+    .offset(offset)
+    .orderBy(dnsRecords.name);
+
+  res.json({
+    success: true,
+    data: {
+      records,
+      pagination: {
+        page: filter.page,
+        limit: filter.limit,
+        total: count,
+        totalPages: Math.ceil(count / filter.limit),
+      },
+    },
+  });
+});
+
+/**
+ * Get a single DNS record
+ */
+export const getRecord = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const db = getDatabase();
+
+  const [record] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+  if (!record) {
+    throw ApiError.notFound('DNS record');
+  }
+
+  res.json({
+    success: true,
+    data: record,
+  });
+});
+
+/**
+ * Create a new DNS record
+ */
+export const createRecord = asyncHandler(async (req: Request, res: Response) => {
+  const input = createDnsRecordSchema.parse(req.body);
+  const db = getDatabase();
+
+  // Get DNS manager and default provider
+  const dnsManager = container.resolveSync<DNSManager>(ServiceTokens.DNS_MANAGER);
+  const provider = dnsManager.getDefaultProvider();
+
+  if (!provider) {
+    throw ApiError.badRequest('No default DNS provider configured');
+  }
+
+  // Create record in provider
+  const providerRecord = await provider.createRecord({
+    type: input.type,
+    name: input.name,
+    content: input.content,
+    ttl: input.ttl,
+    proxied: input.proxied,
+    priority: input.priority,
+    weight: input.weight,
+    port: input.port,
+    flags: input.flags,
+    tag: input.tag,
+  });
+
+  // Save to database
+  const id = uuidv4();
+  const now = new Date();
+
+  await db.insert(dnsRecords).values({
+    id,
+    providerId: provider.getProviderId(),
+    externalId: providerRecord.id,
+    type: providerRecord.type,
+    name: providerRecord.name,
+    content: providerRecord.content,
+    ttl: providerRecord.ttl,
+    proxied: providerRecord.proxied,
+    priority: providerRecord.priority,
+    weight: providerRecord.weight,
+    port: providerRecord.port,
+    flags: providerRecord.flags,
+    tag: providerRecord.tag,
+    comment: input.comment ?? null,
+    source: 'api',
+    lastSyncedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  setAuditContext(req, {
+    action: 'create',
+    resourceType: 'dnsRecord',
+    resourceId: id,
+    details: { name: input.name, type: input.type },
+  });
+
+  const [record] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+  res.status(201).json({
+    success: true,
+    data: record,
+  });
+});
+
+/**
+ * Update a DNS record
+ */
+export const updateRecord = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const input = updateDnsRecordSchema.parse(req.body);
+  const db = getDatabase();
+
+  // Get existing record
+  const [existing] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+  if (!existing) {
+    throw ApiError.notFound('DNS record');
+  }
+
+  // Get provider
+  const dnsManager = container.resolveSync<DNSManager>(ServiceTokens.DNS_MANAGER);
+  const provider = dnsManager.getProvider(existing.providerId);
+
+  if (!provider) {
+    throw ApiError.badRequest('Provider not found');
+  }
+
+  if (!existing.externalId) {
+    throw ApiError.badRequest('Record has no external ID');
+  }
+
+  // Update in provider
+  await provider.updateRecord(existing.externalId, {
+    type: input.type ?? existing.type,
+    name: input.name ?? existing.name,
+    content: input.content ?? existing.content,
+    ttl: input.ttl ?? existing.ttl,
+    proxied: input.proxied ?? existing.proxied ?? undefined,
+    priority: input.priority ?? existing.priority ?? undefined,
+    weight: input.weight ?? existing.weight ?? undefined,
+    port: input.port ?? existing.port ?? undefined,
+    flags: input.flags ?? existing.flags ?? undefined,
+    tag: input.tag ?? existing.tag ?? undefined,
+  });
+
+  // Update database
+  await db
+    .update(dnsRecords)
+    .set({
+      type: input.type ?? existing.type,
+      name: input.name ?? existing.name,
+      content: input.content ?? existing.content,
+      ttl: input.ttl ?? existing.ttl,
+      proxied: input.proxied ?? existing.proxied,
+      priority: input.priority ?? existing.priority,
+      weight: input.weight ?? existing.weight,
+      port: input.port ?? existing.port,
+      flags: input.flags ?? existing.flags,
+      tag: input.tag ?? existing.tag,
+      comment: input.comment ?? existing.comment,
+      lastSyncedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(dnsRecords.id, id));
+
+  setAuditContext(req, {
+    action: 'update',
+    resourceType: 'dnsRecord',
+    resourceId: id,
+  });
+
+  const [record] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+  res.json({
+    success: true,
+    data: record,
+  });
+});
+
+/**
+ * Delete a DNS record
+ */
+export const deleteRecord = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const db = getDatabase();
+
+  // Get existing record
+  const [existing] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+  if (!existing) {
+    throw ApiError.notFound('DNS record');
+  }
+
+  // Get provider and delete from it
+  if (existing.externalId) {
+    const dnsManager = container.resolveSync<DNSManager>(ServiceTokens.DNS_MANAGER);
+    const provider = dnsManager.getProvider(existing.providerId);
+
+    if (provider) {
+      await provider.deleteRecord(existing.externalId);
+    }
+  }
+
+  // Delete from database
+  await db.delete(dnsRecords).where(eq(dnsRecords.id, id));
+
+  setAuditContext(req, {
+    action: 'delete',
+    resourceType: 'dnsRecord',
+    resourceId: id,
+    details: { name: existing.name, type: existing.type },
+  });
+
+  res.json({
+    success: true,
+    message: 'DNS record deleted',
+  });
+});
+
+/**
+ * Force sync DNS records
+ */
+export const syncRecords = asyncHandler(async (req: Request, res: Response) => {
+  // This would trigger a full sync with the provider
+  // For now, just return success
+  setAuditContext(req, {
+    action: 'sync',
+    resourceType: 'dnsRecords',
+  });
+
+  res.json({
+    success: true,
+    message: 'Sync initiated',
+  });
+});

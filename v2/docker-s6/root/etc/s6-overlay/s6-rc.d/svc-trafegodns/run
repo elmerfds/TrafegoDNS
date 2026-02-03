@@ -1,0 +1,14 @@
+#!/command/with-contenv bash
+# shellcheck shell=bash
+
+cd /app || exit 1
+
+# Set ownership if PUID/PGID provided
+if [[ -n "${PUID:-}" ]] && [[ -n "${PGID:-}" ]]; then
+    groupmod -o -g "$PGID" abc 2>/dev/null
+    usermod -o -u "$PUID" abc 2>/dev/null
+    chown -R abc:abc /config
+fi
+
+# Run as abc user
+exec s6-setuidgid abc node dist/index.js

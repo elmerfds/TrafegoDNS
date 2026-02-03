@@ -1,9 +1,55 @@
 /**
- * Configuration management for Traefik DNS Manager 
+ * Configuration management for Traefik DNS Manager
  */
 const axios = require('axios');
 const logger = require('../utils/logger');
 const EnvironmentLoader = require('./EnvironmentLoader');
+
+/**
+ * Validate URL format and scheme for security
+ * Prevents SSRF by ensuring only allowed schemes are used
+ * @param {string} url - The URL to validate
+ * @param {string[]} allowedSchemes - Allowed URL schemes (default: http, https)
+ * @returns {boolean} - True if URL is valid and safe
+ */
+function isValidUrl(url, allowedSchemes = ['http:', 'https:']) {
+  if (!url || typeof url !== 'string') return false;
+
+  try {
+    const parsed = new URL(url);
+    return allowedSchemes.includes(parsed.protocol);
+  } catch {
+    return false;
+  }
+}
+
+// Security: IPv4 validation regex
+const IPV4_REGEX = /^(25[0-5]|2[0-4]\d|[01]?\d?\d)(\.(25[0-5]|2[0-4]\d|[01]?\d?\d)){3}$/;
+
+// Security: IPv6 validation regex (simplified but covers common formats)
+const IPV6_REGEX = /^(?:(?:[A-Fa-f0-9]{1,4}:){7}[A-Fa-f0-9]{1,4}|(?:[A-Fa-f0-9]{1,4}:){1,7}:|(?:[A-Fa-f0-9]{1,4}:){1,6}:[A-Fa-f0-9]{1,4}|(?:[A-Fa-f0-9]{1,4}:){1,5}(?::[A-Fa-f0-9]{1,4}){1,2}|(?:[A-Fa-f0-9]{1,4}:){1,4}(?::[A-Fa-f0-9]{1,4}){1,3}|(?:[A-Fa-f0-9]{1,4}:){1,3}(?::[A-Fa-f0-9]{1,4}){1,4}|(?:[A-Fa-f0-9]{1,4}:){1,2}(?::[A-Fa-f0-9]{1,4}){1,5}|[A-Fa-f0-9]{1,4}:(?:(?::[A-Fa-f0-9]{1,4}){1,6})|:(?:(?::[A-Fa-f0-9]{1,4}){1,7}|:))$/;
+
+/**
+ * Validate IPv4 address format
+ * Security: Ensures response from external services is a valid IP
+ * @param {string} ip - The IP address to validate
+ * @returns {boolean} - True if valid IPv4
+ */
+function isValidIPv4(ip) {
+  if (!ip || typeof ip !== 'string') return false;
+  return IPV4_REGEX.test(ip.trim());
+}
+
+/**
+ * Validate IPv6 address format
+ * Security: Ensures response from external services is a valid IP
+ * @param {string} ip - The IP address to validate
+ * @returns {boolean} - True if valid IPv6
+ */
+function isValidIPv6(ip) {
+  if (!ip || typeof ip !== 'string') return false;
+  return IPV6_REGEX.test(ip.trim());
+}
 
 // Semaphore for IP update process
 let ipUpdateInProgress = false;
@@ -49,6 +95,14 @@ class ConfigManager {
     this.traefikApiUrl = EnvironmentLoader.getString('TRAEFIK_API_URL', 'http://traefik:8080/api');
     this.traefikApiUsername = EnvironmentLoader.getString('TRAEFIK_API_USERNAME');
     this.traefikApiPassword = EnvironmentLoader.getSecret('TRAEFIK_API_PASSWORD');
+
+    // Security: Validate Traefik API URL format to prevent SSRF
+    if (this.operationMode === 'traefik' && !isValidUrl(this.traefikApiUrl)) {
+      throw new Error(
+        `Security error: Invalid TRAEFIK_API_URL format "${this.traefikApiUrl}". ` +
+        `Must be a valid HTTP or HTTPS URL.`
+      );
+    }
     
     // Label prefixes
     this.genericLabelPrefix = EnvironmentLoader.getString('DNS_LABEL_PREFIX', 'dns.');
@@ -297,23 +351,41 @@ class ConfigManager {
         try {
           // First try ipify.org
           const response = await axios.get('https://api.ipify.org', { timeout: 5000 });
-          ipv4 = response.data;
+          const fetchedIp = String(response.data).trim();
+          // Security: Validate the response is actually an IPv4 address
+          if (isValidIPv4(fetchedIp)) {
+            ipv4 = fetchedIp;
+          } else {
+            logger.warn(`Security: Invalid IPv4 format received from ipify: ${fetchedIp}`);
+          }
         } catch (error) {
           // Fallback to ifconfig.me if ipify fails
           try {
             const response = await axios.get('https://ifconfig.me/ip', { timeout: 5000 });
-            ipv4 = response.data;
+            const fetchedIp = String(response.data).trim();
+            // Security: Validate the response is actually an IPv4 address
+            if (isValidIPv4(fetchedIp)) {
+              ipv4 = fetchedIp;
+            } else {
+              logger.warn(`Security: Invalid IPv4 format received from ifconfig.me: ${fetchedIp}`);
+            }
           } catch (fallbackError) {
             logger.error(`Failed to fetch public IPv4 address: ${fallbackError.message}`);
           }
         }
       }
-      
+
       // Try to get IPv6 if not set in environment
       if (!ipv6) {
         try {
           const response = await axios.get('https://api6.ipify.org', { timeout: 5000 });
-          ipv6 = response.data;
+          const fetchedIp = String(response.data).trim();
+          // Security: Validate the response is actually an IPv6 address
+          if (isValidIPv6(fetchedIp)) {
+            ipv6 = fetchedIp;
+          } else {
+            logger.warn(`Security: Invalid IPv6 format received from ipify: ${fetchedIp}`);
+          }
         } catch (error) {
           // IPv6 fetch failure is not critical, just log it
           logger.debug('Failed to fetch public IPv6 address (this is normal if you don\'t have IPv6)');

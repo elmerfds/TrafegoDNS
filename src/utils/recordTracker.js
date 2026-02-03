@@ -15,10 +15,11 @@ class RecordTracker {
     // Define config directory path for data storage
     const configDir = path.join('/config', 'data');
     
-    // Ensure the config directory exists
+    // Ensure the config directory exists with secure permissions
     if (!fs.existsSync(configDir)) {
       try {
-        fs.mkdirSync(configDir, { recursive: true });
+        // Security: Create directory with restrictive permissions (owner rwx only)
+        fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
         logger.debug(`Created directory: ${configDir}`);
       } catch (error) {
         logger.error(`Failed to create config directory: ${error.message}`);
@@ -129,11 +130,16 @@ class RecordTracker {
   
   /**
    * Save tracked records to file
+   * Security: Sets restrictive file permissions (0600 - owner read/write only)
    */
   saveTrackedRecords() {
     try {
       const records = Array.from(this.trackedRecords.values());
-      fs.writeFileSync(this.trackerFile, JSON.stringify(records, null, 2), 'utf8');
+      // Security: Write with restrictive permissions (owner read/write only)
+      fs.writeFileSync(this.trackerFile, JSON.stringify(records, null, 2), {
+        encoding: 'utf8',
+        mode: 0o600 // rw------- (owner read/write only)
+      });
       logger.debug(`Saved ${records.length} tracked DNS records to ${this.trackerFile}`);
     } catch (error) {
       logger.error(`Error saving tracked DNS records: ${error.message}`);

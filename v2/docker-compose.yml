@@ -1,0 +1,71 @@
+version: "3.8"
+
+services:
+  trafegodns:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trafegodns
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # General
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+      - LOG_LEVEL=info
+
+      # Operation Mode: 'traefik' or 'direct'
+      - OPERATION_MODE=traefik
+
+      # Traefik settings (if using traefik mode)
+      - TRAEFIK_API_URL=http://traefik:8080
+
+      # DNS Provider (cloudflare, digitalocean, route53, technitium)
+      # Uncomment and configure your provider below
+
+      # Cloudflare
+      # - CLOUDFLARE_TOKEN=your_api_token
+      # - CLOUDFLARE_ZONE=your_zone_id (optional)
+      # - CLOUDFLARE_ACCOUNT_ID=your_account_id (required for tunnels)
+
+      # DigitalOcean
+      # - DO_TOKEN=your_api_token
+      # - DO_DOMAIN=example.com
+
+      # Route53
+      # - ROUTE53_ACCESS_KEY=your_access_key
+      # - ROUTE53_SECRET_KEY=your_secret_key
+      # - ROUTE53_ZONE=your_hosted_zone_id
+
+      # Technitium DNS
+      # - TECHNITIUM_URL=http://technitium:5380
+      # - TECHNITIUM_API_TOKEN=your_api_token
+      # - TECHNITIUM_ZONE=your_zone
+
+      # Cleanup settings
+      - CLEANUP_ORPHANED=true
+      - CLEANUP_GRACE_PERIOD=15
+
+      # JWT Secret (for API authentication)
+      - JWT_SECRET=change-this-to-a-random-secret
+
+    volumes:
+      - ./config:/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - "traefik.enable=false"
+
+  # Example: Traefik reverse proxy
+  # traefik:
+  #   image: traefik:v3.0
+  #   command:
+  #     - "--api.insecure=true"
+  #     - "--providers.docker=true"
+  #     - "--entrypoints.web.address=:80"
+  #   ports:
+  #     - "80:80"
+  #     - "8080:8080"
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
