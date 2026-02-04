@@ -115,7 +115,7 @@ export const standardRateLimit = rateLimit({
  */
 export const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 10, // 10 requests per 15 minutes
+  maxRequests: 30, // 30 requests per 15 minutes
   message: 'Too many authentication attempts, please try again later',
 });
 
