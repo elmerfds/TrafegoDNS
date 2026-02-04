@@ -3,11 +3,52 @@
  */
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, RefreshCw, Trash2, Edit } from 'lucide-react';
-import { dnsApi, providersApi, type DNSRecord, type CreateDNSRecordInput, type UpdateDNSRecordInput } from '../api';
+import { Plus, RefreshCw, Trash2, Edit, Shield, Globe } from 'lucide-react';
+import { dnsApi, providersApi, preservedHostnamesApi, type DNSRecord, type CreateDNSRecordInput, type UpdateDNSRecordInput, type PreservedHostname } from '../api';
 import { Button, Table, Pagination, Badge, Modal, ModalFooter, Alert, Select } from '../components/common';
 
+type TabType = 'records' | 'preserved';
+
 export function DNSRecordsPage() {
+  const [activeTab, setActiveTab] = useState<TabType>('records');
+
+  return (
+    <div className="space-y-6">
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200 dark:border-gray-700">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => setActiveTab('records')}
+            className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'records'
+                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+            }`}
+          >
+            <Globe className="w-4 h-4" />
+            DNS Records
+          </button>
+          <button
+            onClick={() => setActiveTab('preserved')}
+            className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'preserved'
+                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+            }`}
+          >
+            <Shield className="w-4 h-4" />
+            Preserved Hostnames
+          </button>
+        </nav>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'records' ? <DNSRecordsTab /> : <PreservedHostnamesTab />}
+    </div>
+  );
+}
+
+function DNSRecordsTab() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -44,7 +85,7 @@ export function DNSRecordsPage() {
       key: 'hostname',
       header: 'Hostname',
       render: (row: DNSRecord) => (
-        <span className="font-medium text-gray-900">{row.hostname}</span>
+        <span className="font-medium text-gray-900 dark:text-gray-100">{row.hostname}</span>
       ),
     },
     {
@@ -84,7 +125,7 @@ export function DNSRecordsPage() {
       key: 'source',
       header: 'Source',
       render: (row: DNSRecord) => (
-        <span className="text-xs text-gray-500">{row.source}</span>
+        <span className="text-xs text-gray-500 dark:text-gray-400">{row.source}</span>
       ),
     },
     {
@@ -93,14 +134,14 @@ export function DNSRecordsPage() {
       render: (row: DNSRecord) => (
         <div className="flex items-center space-x-2">
           <button
-            className="p-1 text-gray-400 hover:text-gray-600"
+            className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
             onClick={() => setEditRecord(row)}
             title="Edit record"
           >
             <Edit className="w-4 h-4" />
           </button>
           <button
-            className="p-1 text-gray-400 hover:text-red-600"
+            className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
             onClick={() => setDeleteRecord(row)}
             title="Delete record"
           >
@@ -112,10 +153,10 @@ export function DNSRecordsPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <>
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-medium text-gray-900">DNS Records</h2>
+        <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">DNS Records</h2>
         <div className="flex items-center space-x-3">
           <Button
             variant="secondary"
@@ -175,7 +216,7 @@ export function DNSRecordsPage() {
         title="Delete DNS Record"
         size="sm"
       >
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
           Are you sure you want to delete the record for{' '}
           <strong>{deleteRecord?.hostname}</strong>? This action cannot be undone.
         </p>
@@ -192,7 +233,223 @@ export function DNSRecordsPage() {
           </Button>
         </ModalFooter>
       </Modal>
-    </div>
+    </>
+  );
+}
+
+function PreservedHostnamesTab() {
+  const queryClient = useQueryClient();
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [deleteHostname, setDeleteHostname] = useState<PreservedHostname | null>(null);
+
+  const { data: preservedHostnames, isLoading } = useQuery({
+    queryKey: ['preserved-hostnames'],
+    queryFn: () => preservedHostnamesApi.list(),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => preservedHostnamesApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['preserved-hostnames'] });
+      setDeleteHostname(null);
+    },
+  });
+
+  const columns = [
+    {
+      key: 'hostname',
+      header: 'Hostname',
+      render: (row: PreservedHostname) => (
+        <div className="flex items-center gap-2">
+          <Shield className="w-4 h-4 text-green-500" />
+          <span className="font-medium text-gray-900 dark:text-gray-100">{row.hostname}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'reason',
+      header: 'Reason',
+      render: (row: PreservedHostname) => (
+        <span className="text-sm text-gray-500 dark:text-gray-400">{row.reason || '-'}</span>
+      ),
+    },
+    {
+      key: 'createdAt',
+      header: 'Created',
+      render: (row: PreservedHostname) => (
+        <span className="text-sm text-gray-500 dark:text-gray-400">
+          {new Date(row.createdAt).toLocaleDateString()}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      render: (row: PreservedHostname) => (
+        <button
+          className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+          onClick={() => setDeleteHostname(row)}
+          title="Remove preservation"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">Preserved Hostnames</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Hostnames that will never be deleted during orphan cleanup, even when their containers go offline.
+          </p>
+        </div>
+        <Button
+          leftIcon={<Plus className="w-4 h-4" />}
+          onClick={() => setIsCreateModalOpen(true)}
+        >
+          Preserve Hostname
+        </Button>
+      </div>
+
+      {/* Info Box */}
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+        <div className="flex gap-3">
+          <Shield className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-blue-700 dark:text-blue-300">
+            <p className="font-medium">How preservation works</p>
+            <p className="mt-1 text-blue-600 dark:text-blue-400">
+              When a container goes offline, its DNS records are normally marked as orphaned and deleted after the grace period.
+              Preserved hostnames bypass this cleanup - their records remain intact even when containers are stopped.
+            </p>
+            <p className="mt-2 text-blue-600 dark:text-blue-400">
+              <strong>Wildcard support:</strong> Use <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">*.example.com</code> to preserve all subdomains.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="card p-0">
+        <Table
+          columns={columns}
+          data={preservedHostnames ?? []}
+          keyField="id"
+          isLoading={isLoading}
+          emptyMessage="No preserved hostnames. Add one to prevent automatic cleanup of specific DNS records."
+        />
+      </div>
+
+      {/* Create Modal */}
+      <CreatePreservedHostnameModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={!!deleteHostname}
+        onClose={() => setDeleteHostname(null)}
+        title="Remove Preservation"
+        size="sm"
+      >
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Are you sure you want to remove preservation for{' '}
+          <strong>{deleteHostname?.hostname}</strong>? The DNS record may be automatically deleted if its container goes offline.
+        </p>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setDeleteHostname(null)}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => deleteHostname && deleteMutation.mutate(deleteHostname.id)}
+            isLoading={deleteMutation.isPending}
+          >
+            Remove
+          </Button>
+        </ModalFooter>
+      </Modal>
+    </>
+  );
+}
+
+interface CreatePreservedHostnameModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+function CreatePreservedHostnameModal({ isOpen, onClose }: CreatePreservedHostnameModalProps) {
+  const queryClient = useQueryClient();
+  const [hostname, setHostname] = useState('');
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const createMutation = useMutation({
+    mutationFn: () => preservedHostnamesApi.create({ hostname, reason: reason || undefined }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['preserved-hostnames'] });
+      onClose();
+      setHostname('');
+      setReason('');
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Failed to preserve hostname');
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!hostname) {
+      setError('Hostname is required');
+      return;
+    }
+    createMutation.mutate();
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Preserve Hostname" size="md">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
+
+        <div>
+          <label className="label">Hostname *</label>
+          <input
+            type="text"
+            className="input mt-1"
+            value={hostname}
+            onChange={(e) => setHostname(e.target.value)}
+            placeholder="app.example.com or *.example.com"
+          />
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Use *.domain.com for wildcard preservation of all subdomains
+          </p>
+        </div>
+
+        <div>
+          <label className="label">Reason (optional)</label>
+          <input
+            type="text"
+            className="input mt-1"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g., Production critical service"
+          />
+        </div>
+
+        <ModalFooter>
+          <Button variant="secondary" onClick={onClose} type="button">
+            Cancel
+          </Button>
+          <Button type="submit" isLoading={createMutation.isPending}>
+            Preserve
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
   );
 }
 

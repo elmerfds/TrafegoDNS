@@ -10,3 +10,4 @@ export * from './webhooksController.js';
 export * from './usersController.js';
 export * from './settingsController.js';
 export * from './auditController.js';
+export * from './preservedHostnamesController.js';

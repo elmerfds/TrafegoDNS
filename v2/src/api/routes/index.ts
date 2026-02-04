@@ -94,6 +94,14 @@ import {
   getAuditStats,
 } from '../controllers/auditController.js';
 
+import {
+  listPreservedHostnames,
+  getPreservedHostname,
+  createPreservedHostname,
+  updatePreservedHostname,
+  deletePreservedHostname,
+} from '../controllers/preservedHostnamesController.js';
+
 const router = Router();
 
 // Apply standard rate limiting to all routes
@@ -200,5 +208,16 @@ auditRouter.get('/', listAuditLogs);
 auditRouter.get('/stats', getAuditStats);
 auditRouter.get('/:id', getAuditLog);
 router.use('/audit', auditRouter);
+
+// Preserved Hostnames routes
+const preservedRouter = Router();
+preservedRouter.use(authenticate);
+preservedRouter.use(auditMiddleware);
+preservedRouter.get('/', requirePermission('read'), listPreservedHostnames);
+preservedRouter.get('/:id', requirePermission('read'), getPreservedHostname);
+preservedRouter.post('/', requirePermission('write'), createPreservedHostname);
+preservedRouter.put('/:id', requirePermission('write'), updatePreservedHostname);
+preservedRouter.delete('/:id', requirePermission('write'), deletePreservedHostname);
+router.use('/preserved-hostnames', preservedRouter);
 
 export { router as apiRouter };
