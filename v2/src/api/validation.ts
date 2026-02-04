@@ -101,6 +101,7 @@ export const dnsRecordFilterSchema = z.object({
   content: z.string().optional(),
   providerId: z.string().uuid().optional(),
   source: z.enum(['traefik', 'direct', 'api', 'managed']).optional(),
+  search: z.string().optional(), // General search across name and content
 }).merge(paginationSchema);
 
 // Provider schemas

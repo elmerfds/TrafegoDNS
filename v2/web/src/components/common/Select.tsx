@@ -116,23 +116,23 @@ export function Select({
         onClick={() => !disabled && setIsOpen(!isOpen)}
         className={`
           w-full flex items-center justify-between
-          bg-white border rounded-md transition-colors
+          bg-white dark:bg-gray-800 border rounded-md transition-colors
           ${sizeClasses[size]}
           ${error
             ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
-            : 'border-gray-300 focus:ring-primary-500 focus:border-primary-500'
+            : 'border-gray-300 dark:border-gray-600 focus:ring-primary-500 focus:border-primary-500'
           }
           ${disabled
-            ? 'bg-gray-50 text-gray-400 cursor-not-allowed'
-            : 'hover:border-gray-400 cursor-pointer'
+            ? 'bg-gray-50 dark:bg-gray-900 text-gray-400 cursor-not-allowed'
+            : 'hover:border-gray-400 dark:hover:border-gray-500 cursor-pointer'
           }
-          focus:outline-none focus:ring-2 focus:ring-offset-0
+          focus:outline-none focus:ring-2 focus:ring-offset-0 dark:focus:ring-offset-gray-900
         `}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
-        <span className={`truncate ${!selectedOption ? 'text-gray-400' : 'text-gray-900'}`}>
+        <span className={`truncate ${!selectedOption ? 'text-gray-400' : 'text-gray-900 dark:text-white'}`}>
           {selectedOption?.label || placeholder}
         </span>
         <ChevronDown
@@ -146,11 +146,11 @@ export function Select({
       {isOpen && (
         <ul
           ref={listRef}
-          className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto py-1"
+          className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg max-h-60 overflow-auto py-1"
           role="listbox"
         >
           {options.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-gray-500 text-center">
+            <li className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 text-center">
               No options available
             </li>
           ) : (
@@ -171,24 +171,24 @@ export function Select({
                   className={`
                     flex items-center px-3 py-2 cursor-pointer transition-colors
                     ${option.disabled ? 'opacity-50 cursor-not-allowed' : ''}
-                    ${isHighlighted && !option.disabled ? 'bg-primary-50' : ''}
-                    ${isSelected ? 'bg-primary-100' : ''}
+                    ${isHighlighted && !option.disabled ? 'bg-primary-50 dark:bg-primary-900/30' : ''}
+                    ${isSelected ? 'bg-primary-100 dark:bg-primary-900/50' : ''}
                   `}
                   role="option"
                   aria-selected={isSelected}
                 >
                   <div className="flex-1 min-w-0">
-                    <span className={`block text-sm ${isSelected ? 'font-medium text-primary-900' : 'text-gray-900'}`}>
+                    <span className={`block text-sm ${isSelected ? 'font-medium text-primary-900 dark:text-primary-300' : 'text-gray-900 dark:text-white'}`}>
                       {option.label}
                     </span>
                     {option.description && (
-                      <span className="block text-xs text-gray-500 truncate">
+                      <span className="block text-xs text-gray-500 dark:text-gray-400 truncate">
                         {option.description}
                       </span>
                     )}
                   </div>
                   {isSelected && (
-                    <Check className="w-4 h-4 text-primary-600 ml-2 flex-shrink-0" />
+                    <Check className="w-4 h-4 text-primary-600 dark:text-primary-400 ml-2 flex-shrink-0" />
                   )}
                 </li>
               );
@@ -212,13 +212,13 @@ export function NativeSelect({ className = '', error = false, children, ...props
     <div className="relative">
       <select
         className={`
-          block w-full h-10 pl-3 pr-10 text-sm bg-white border rounded-md appearance-none
+          block w-full h-10 pl-3 pr-10 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white border rounded-md appearance-none
           ${error
             ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
-            : 'border-gray-300 focus:ring-primary-500 focus:border-primary-500'
+            : 'border-gray-300 dark:border-gray-600 focus:ring-primary-500 focus:border-primary-500'
           }
-          ${props.disabled ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'cursor-pointer'}
-          focus:outline-none focus:ring-2 focus:ring-offset-0
+          ${props.disabled ? 'bg-gray-50 dark:bg-gray-900 text-gray-400 cursor-not-allowed' : 'cursor-pointer'}
+          focus:outline-none focus:ring-2 focus:ring-offset-0 dark:focus:ring-offset-gray-900
           ${className}
         `}
         {...props}

@@ -5,7 +5,7 @@ import type { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabase } from '../../database/connection.js';
 import { dnsRecords } from '../../database/schema/index.js';
-import { eq, and, like, sql } from 'drizzle-orm';
+import { eq, and, like, or, sql } from 'drizzle-orm';
 import { container, ServiceTokens } from '../../core/ServiceContainer.js';
 import { ApiError, asyncHandler, setAuditContext } from '../middleware/index.js';
 import {
@@ -38,6 +38,15 @@ export const listRecords = asyncHandler(async (req: Request, res: Response) => {
   }
   if (filter.source) {
     conditions.push(eq(dnsRecords.source, filter.source));
+  }
+  // General search - searches across name and content
+  if (filter.search) {
+    conditions.push(
+      or(
+        like(dnsRecords.name, `%${filter.search}%`),
+        like(dnsRecords.content, `%${filter.search}%`)
+      )
+    );
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;

@@ -44,6 +44,7 @@ export interface DNSRecordFilters {
   type?: DNSRecordType;
   status?: string;
   providerId?: string;
+  search?: string;
   page?: number;
   limit?: number;
 }

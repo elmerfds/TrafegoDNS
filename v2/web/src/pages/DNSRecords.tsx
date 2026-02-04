@@ -3,7 +3,7 @@
  */
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, RefreshCw, Trash2, Edit, Shield, Globe } from 'lucide-react';
+import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X } from 'lucide-react';
 import { dnsApi, providersApi, preservedHostnamesApi, type DNSRecord, type CreateDNSRecordInput, type UpdateDNSRecordInput, type PreservedHostname } from '../api';
 import { Button, Table, Pagination, Badge, Modal, ModalFooter, Alert, Select } from '../components/common';
 
@@ -51,14 +51,28 @@ export function DNSRecordsPage() {
 function DNSRecordsTab() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editRecord, setEditRecord] = useState<DNSRecord | null>(null);
   const [deleteRecord, setDeleteRecord] = useState<DNSRecord | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['dns-records', { page, limit: 20 }],
-    queryFn: () => dnsApi.listRecords({ page, limit: 20 }),
+    queryKey: ['dns-records', { page, limit: 20, search }],
+    queryFn: () => dnsApi.listRecords({ page, limit: 20, search: search || undefined }),
   });
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSearch(searchInput);
+    setPage(1);
+  };
+
+  const clearSearch = () => {
+    setSearchInput('');
+    setSearch('');
+    setPage(1);
+  };
 
   const { data: providers } = useQuery({
     queryKey: ['providers'],
@@ -155,9 +169,29 @@ function DNSRecordsTab() {
   return (
     <>
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">DNS Records</h2>
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center gap-3">
+          {/* Search Box */}
+          <form onSubmit={handleSearch} className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search records..."
+              className="pl-9 pr-8 py-2 w-64 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            />
+            {(searchInput || search) && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </form>
           <Button
             variant="secondary"
             leftIcon={<RefreshCw className="w-4 h-4" />}
@@ -174,6 +208,16 @@ function DNSRecordsTab() {
           </Button>
         </div>
       </div>
+
+      {/* Search indicator */}
+      {search && (
+        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+          <span>Showing results for "<span className="font-medium text-gray-700 dark:text-gray-300">{search}</span>"</span>
+          <button onClick={clearSearch} className="text-primary-600 hover:text-primary-700 dark:text-primary-400">
+            Clear
+          </button>
+        </div>
+      )}
 
       {/* Table */}
       <div className="card p-0">
