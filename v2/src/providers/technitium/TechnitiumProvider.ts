@@ -146,7 +146,8 @@ export class TechnitiumProvider extends DNSProvider {
 
     try {
       const token = await this.getAuthToken();
-      const url = `${this.baseUrl}/api/zones/records/get?token=${token}&domain=${this.zoneName}&zone=${this.zoneName}`;
+      // Use listZone=true to get ALL records in the zone, not just the apex
+      const url = `${this.baseUrl}/api/zones/records/get?token=${token}&domain=${this.zoneName}&zone=${this.zoneName}&listZone=true`;
 
       const response = await fetch(url);
       const data = (await response.json()) as TechnitiumResponse<{ records: TechnitiumRecord[] }>;
@@ -168,7 +169,14 @@ export class TechnitiumProvider extends DNSProvider {
         lastUpdated: Date.now(),
       };
 
-      this.logger.debug({ count: records.length }, 'DNS record cache refreshed');
+      this.logger.debug(
+        {
+          count: records.length,
+          types: [...new Set(records.map(r => r.type))],
+          sampleNames: records.slice(0, 5).map(r => r.name)
+        },
+        'DNS record cache refreshed'
+      );
       return records;
     } catch (error) {
       this.logger.error({ error }, 'Failed to refresh DNS record cache');

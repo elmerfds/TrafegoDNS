@@ -161,9 +161,11 @@ export class DigitalOceanProvider extends DNSProvider {
   }
 
   async createRecord(input: DNSRecordCreateInput): Promise<DNSRecord> {
-    this.validateRecord(input);
+    // Normalize TTL for DigitalOcean (minimum 30 seconds)
+    const normalizedInput = this.normalizeTTL(input);
+    this.validateRecord(normalizedInput);
 
-    const doRecord = this.convertToDigitalOcean(input);
+    const doRecord = this.convertToDigitalOcean(normalizedInput);
 
     this.logger.debug({ record: doRecord }, 'Creating DNS record');
 
@@ -210,7 +212,9 @@ export class DigitalOceanProvider extends DNSProvider {
       tag: input.tag ?? existing.tag,
     };
 
-    const doRecord = this.convertToDigitalOcean(mergedInput);
+    // Normalize TTL for DigitalOcean (minimum 30 seconds)
+    const normalizedInput = this.normalizeTTL(mergedInput);
+    const doRecord = this.convertToDigitalOcean(normalizedInput);
 
     this.logger.debug({ id, record: doRecord }, 'Updating DNS record');
 
@@ -317,6 +321,26 @@ export class DigitalOceanProvider extends DNSProvider {
         throw new Error('TTL must be between 30 and 86400');
       }
     }
+  }
+
+  /**
+   * Normalize TTL to DigitalOcean's valid range (30-86400)
+   * Cloudflare uses TTL=1 for "auto", which is invalid for DigitalOcean
+   */
+  private normalizeTTL(input: DNSRecordCreateInput): DNSRecordCreateInput {
+    const { ttlMin, ttlMax } = this.getInfo().features;
+    let ttl = input.ttl;
+
+    if (ttl === undefined || ttl < ttlMin) {
+      // Use minimum valid TTL (30 for DigitalOcean)
+      ttl = ttlMin;
+      this.logger.debug({ originalTtl: input.ttl, normalizedTtl: ttl }, 'Normalized TTL to provider minimum');
+    } else if (ttl > ttlMax) {
+      ttl = ttlMax;
+      this.logger.debug({ originalTtl: input.ttl, normalizedTtl: ttl }, 'Normalized TTL to provider maximum');
+    }
+
+    return { ...input, ttl };
   }
 
   /**
