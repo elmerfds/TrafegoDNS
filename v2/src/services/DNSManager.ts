@@ -248,15 +248,15 @@ export class DNSManager {
     // Auto-detect by zone
     const zoneMatch = this.getProviderForZone(hostname);
     if (zoneMatch) {
-      this.logger.debug({ hostname, providerId: zoneMatch.id, zone: zoneMatch.provider.getZoneName() }, 'Auto-routed to provider by zone');
+      this.logger.info({ hostname, providerId: zoneMatch.id, providerName: zoneMatch.provider.getProviderName(), zone: zoneMatch.provider.getZoneName() }, 'Auto-routed to provider by zone');
       return [zoneMatch];
     }
 
-    // No matching zone - skip this hostname
+    // No matching zone - skip this hostname (log at info level to make it visible)
     const configuredZones = Array.from(this.providerInstances.values())
-      .map(p => p.getZoneName())
-      .filter(Boolean);
-    this.logger.debug(
+      .map(p => ({ name: p.getProviderName(), zone: p.getZoneName() }))
+      .filter(z => z.zone);
+    this.logger.info(
       { hostname, configuredZones },
       'Skipping hostname - no matching zone configured'
     );
@@ -282,7 +282,13 @@ export class DNSManager {
     hostnames: string[],
     containerLabels: Record<string, Record<string, string>>
   ): Promise<{ stats: DNSManagerStats; processedHostnames: ProcessedHostname[] }> {
-    this.logger.debug({ count: hostnames.length }, 'Processing hostnames');
+    // Log all hostnames being processed and available providers
+    const availableProviders = Array.from(this.providerInstances.entries()).map(([id, p]) => ({
+      id,
+      name: p.getProviderName(),
+      zone: p.getZoneName(),
+    }));
+    this.logger.info({ count: hostnames.length, hostnames, providers: availableProviders }, 'Processing hostnames from Traefik');
 
     // Reset stats
     this.resetStats();
@@ -302,6 +308,7 @@ export class DNSManager {
 
         // Check if we should manage this hostname
         if (!this.shouldManageHostname(hostname, labels, labelPrefix)) {
+          this.stats.skipped++;
           continue;
         }
 
@@ -403,7 +410,7 @@ export class DNSManager {
 
     // Check skip label first (takes precedence)
     if (labels[skipKey]?.toLowerCase() === 'true') {
-      this.logger.debug({ hostname }, 'Skipping hostname (skip=true)');
+      this.logger.info({ hostname, reason: 'skip label set to true' }, 'Skipping hostname');
       return false;
     }
 
@@ -412,7 +419,7 @@ export class DNSManager {
     const defaultManage = this.config.dnsDefaults.manage;
 
     if (!defaultManage && manageLabel !== 'true') {
-      this.logger.debug({ hostname }, 'Not managing hostname (default manage=false, no manage=true label)');
+      this.logger.info({ hostname, defaultManage, manageLabel, reason: 'default manage=false and no manage=true label' }, 'Not managing hostname');
       return false;
     }
 
