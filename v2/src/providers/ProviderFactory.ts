@@ -9,13 +9,14 @@ import { CloudflareProvider, type CloudflareProviderCredentials } from './cloudf
 import { DigitalOceanProvider, type DigitalOceanProviderCredentials } from './digitalocean/index.js';
 import { Route53Provider, type Route53ProviderCredentials } from './route53/index.js';
 import { TechnitiumProvider, type TechnitiumProviderCredentials } from './technitium/index.js';
-import type { ProviderType } from '../types/index.js';
+import type { ProviderType, ProviderSettingsData } from '../types/index.js';
 
 export interface CreateProviderOptions {
   id?: string;
   name: string;
   type: ProviderType;
   credentials: ProviderCredentials;
+  settings?: ProviderSettingsData;
   cacheRefreshInterval?: number;
 }
 
@@ -23,7 +24,7 @@ export interface CreateProviderOptions {
  * Create a DNS provider instance
  */
 export function createProvider(options: CreateProviderOptions): DNSProvider {
-  const { id = uuidv4(), name, type, credentials, cacheRefreshInterval } = options;
+  const { id = uuidv4(), name, type, credentials, settings, cacheRefreshInterval } = options;
 
   logger.debug({ type, name }, 'Creating DNS provider');
 
@@ -33,7 +34,7 @@ export function createProvider(options: CreateProviderOptions): DNSProvider {
         id,
         name,
         credentials as CloudflareProviderCredentials,
-        { cacheRefreshInterval }
+        { cacheRefreshInterval, settings }
       );
 
     case 'digitalocean':
@@ -41,7 +42,7 @@ export function createProvider(options: CreateProviderOptions): DNSProvider {
         id,
         name,
         credentials as DigitalOceanProviderCredentials,
-        { cacheRefreshInterval }
+        { cacheRefreshInterval, settings }
       );
 
     case 'route53':
@@ -49,7 +50,7 @@ export function createProvider(options: CreateProviderOptions): DNSProvider {
         id,
         name,
         credentials as Route53ProviderCredentials,
-        { cacheRefreshInterval }
+        { cacheRefreshInterval, settings }
       );
 
     case 'technitium':
@@ -57,7 +58,7 @@ export function createProvider(options: CreateProviderOptions): DNSProvider {
         id,
         name,
         credentials as TechnitiumProviderCredentials,
-        { cacheRefreshInterval }
+        { cacheRefreshInterval, settings }
       );
 
     default:

@@ -2,7 +2,7 @@
  * Abstract DNS Provider Interface
  * Base class for all DNS provider implementations
  */
-import type { DNSRecord, DNSRecordCreateInput, DNSRecordUpdateInput, DNSRecordType } from '../../types/index.js';
+import type { DNSRecord, DNSRecordCreateInput, DNSRecordUpdateInput, DNSRecordType, ProviderSettingsData } from '../../types/index.js';
 import { logger, createChildLogger } from '../../core/Logger.js';
 import type { Logger } from 'pino';
 
@@ -49,12 +49,13 @@ export abstract class DNSProvider {
   protected recordCache: RecordCache;
   protected cacheRefreshInterval: number;
   protected initialized: boolean = false;
+  protected settings: ProviderSettingsData;
 
   constructor(
     protected readonly providerId: string,
     protected readonly providerName: string,
     protected readonly credentials: ProviderCredentials,
-    options: { cacheRefreshInterval?: number } = {}
+    options: { cacheRefreshInterval?: number; settings?: ProviderSettingsData } = {}
   ) {
     this.logger = createChildLogger({ provider: providerName, providerId });
     this.recordCache = {
@@ -62,6 +63,21 @@ export abstract class DNSProvider {
       lastUpdated: 0,
     };
     this.cacheRefreshInterval = options.cacheRefreshInterval ?? 3600000; // 1 hour default
+    this.settings = options.settings ?? {};
+  }
+
+  /**
+   * Get provider settings (including defaults for DNS records)
+   */
+  getSettings(): ProviderSettingsData {
+    return this.settings;
+  }
+
+  /**
+   * Update provider settings
+   */
+  updateSettings(settings: ProviderSettingsData): void {
+    this.settings = settings;
   }
 
   /**

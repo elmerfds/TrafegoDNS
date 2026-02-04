@@ -10,8 +10,27 @@ import { dnsRecords, providers, preservedHostnames } from '../database/schema/in
 import { eq, and, isNull, lt } from 'drizzle-orm';
 import { DNSProvider, createProvider, type BatchResult } from '../providers/index.js';
 import type { ConfigManager } from '../config/ConfigManager.js';
-import type { DNSRecord, DNSRecordCreateInput, DNSRecordType, ProviderType } from '../types/index.js';
+import type { DNSRecord, DNSRecordCreateInput, DNSRecordType, ProviderType, ProviderDefaults, SettingSource } from '../types/index.js';
 import type { Logger } from 'pino';
+import { getSettingsService } from './SettingsService.js';
+
+/**
+ * Resolved defaults for creating a DNS record
+ */
+interface ResolvedDefaults {
+  recordType: DNSRecordType;
+  content: string;
+  ttl: number;
+  proxied: boolean;
+  publicIp: string;
+  publicIpv6: string;
+  sources: {
+    recordType: SettingSource;
+    content: SettingSource;
+    ttl: SettingSource;
+    proxied: SettingSource;
+  };
+}
 
 interface DNSManagerStats {
   created: number;
@@ -93,11 +112,15 @@ export class DNSManager {
         // Decrypt credentials
         const credentials = JSON.parse(record.credentials) as Record<string, string>;
 
+        // Parse settings JSON (includes defaults configuration)
+        const settings = record.settings ? JSON.parse(record.settings) : {};
+
         const provider = createProvider({
           id: record.id,
           name: record.name,
           type: record.type as ProviderType,
           credentials,
+          settings,
         });
 
         await provider.init();
@@ -481,7 +504,171 @@ export class DNSManager {
   }
 
   /**
+   * Resolve default settings for a DNS record
+   * Priority: label > provider-type-specific > provider-general > global-setting > env-var > builtin
+   */
+  private resolveRecordDefaults(
+    recordType: DNSRecordType,
+    provider?: DNSProvider
+  ): ResolvedDefaults {
+    const settingsService = getSettingsService();
+
+    // Get provider settings if available
+    const providerSettings = provider?.getSettings() as { defaults?: ProviderDefaults } | undefined;
+    const providerDefaults = providerSettings?.defaults;
+    const typeDefaults = providerDefaults?.byType?.[recordType];
+
+    // Get env var defaults from ConfigManager
+    const envDefaults = this.config.getRecordTypeDefaults(recordType);
+
+    // Builtin defaults
+    const BUILTIN = {
+      recordType: 'CNAME' as DNSRecordType,
+      content: '',
+      ttl: 1,
+      proxied: true,
+      publicIp: '',
+      publicIpv6: '',
+    };
+
+    // Resolve each setting with priority chain
+    const result: ResolvedDefaults = {
+      recordType: BUILTIN.recordType,
+      content: BUILTIN.content,
+      ttl: BUILTIN.ttl,
+      proxied: BUILTIN.proxied,
+      publicIp: BUILTIN.publicIp,
+      publicIpv6: BUILTIN.publicIpv6,
+      sources: {
+        recordType: 'builtin',
+        content: 'builtin',
+        ttl: 'builtin',
+        proxied: 'builtin',
+      },
+    };
+
+    // Resolve recordType
+    // 1. Provider type-specific (N/A for recordType)
+    // 2. Provider general
+    if (providerDefaults?.recordType !== undefined) {
+      result.recordType = providerDefaults.recordType;
+      result.sources.recordType = 'provider';
+    }
+    // 3. Global setting
+    else {
+      const globalType = settingsService.get('dns_default_type');
+      if (globalType) {
+        result.recordType = globalType as DNSRecordType;
+        result.sources.recordType = 'global';
+      }
+      // 4. Env var (via ConfigManager dnsDefaults)
+      else if (this.config.dnsDefaults.recordType) {
+        result.recordType = this.config.dnsDefaults.recordType;
+        result.sources.recordType = 'env';
+      }
+    }
+
+    // Resolve content
+    // 1. Provider type-specific
+    if (typeDefaults?.content !== undefined && typeDefaults.content !== '') {
+      result.content = typeDefaults.content;
+      result.sources.content = 'provider-type';
+    }
+    // 2. Provider general
+    else if (providerDefaults?.content !== undefined && providerDefaults.content !== '') {
+      result.content = providerDefaults.content;
+      result.sources.content = 'provider';
+    }
+    // 3. Global setting
+    else {
+      const globalContent = settingsService.get('dns_default_content');
+      if (globalContent) {
+        result.content = String(globalContent);
+        result.sources.content = 'global';
+      }
+      // 4. Env var (via ConfigManager type defaults)
+      else if (envDefaults.content) {
+        result.content = envDefaults.content;
+        result.sources.content = 'env';
+      }
+    }
+
+    // Resolve TTL
+    // 1. Provider type-specific
+    if (typeDefaults?.ttl !== undefined) {
+      result.ttl = typeDefaults.ttl;
+      result.sources.ttl = 'provider-type';
+    }
+    // 2. Provider general
+    else if (providerDefaults?.ttl !== undefined) {
+      result.ttl = providerDefaults.ttl;
+      result.sources.ttl = 'provider';
+    }
+    // 3. Global setting
+    else {
+      const globalTtl = settingsService.get('dns_default_ttl');
+      if (globalTtl !== undefined) {
+        result.ttl = typeof globalTtl === 'number' ? globalTtl : parseInt(String(globalTtl), 10);
+        result.sources.ttl = 'global';
+      }
+      // 4. Env var
+      else if (envDefaults.ttl !== undefined) {
+        result.ttl = envDefaults.ttl;
+        result.sources.ttl = 'env';
+      }
+    }
+
+    // Resolve proxied
+    // 1. Provider type-specific
+    if (typeDefaults?.proxied !== undefined) {
+      result.proxied = typeDefaults.proxied;
+      result.sources.proxied = 'provider-type';
+    }
+    // 2. Provider general
+    else if (providerDefaults?.proxied !== undefined) {
+      result.proxied = providerDefaults.proxied;
+      result.sources.proxied = 'provider';
+    }
+    // 3. Global setting
+    else {
+      const globalProxied = settingsService.get('dns_default_proxied');
+      if (globalProxied !== undefined) {
+        result.proxied = globalProxied === 'true';
+        result.sources.proxied = 'global';
+      }
+      // 4. Env var
+      else if (envDefaults.proxied !== undefined) {
+        result.proxied = envDefaults.proxied;
+        result.sources.proxied = 'env';
+      }
+    }
+
+    // Resolve publicIp (for A records)
+    // 1. Provider setting
+    if (providerDefaults?.publicIp) {
+      result.publicIp = providerDefaults.publicIp;
+    }
+    // 2. Global / auto-detected
+    else {
+      result.publicIp = this.config.getPublicIPSync() ?? '';
+    }
+
+    // Resolve publicIpv6 (for AAAA records)
+    // 1. Provider setting
+    if (providerDefaults?.publicIpv6) {
+      result.publicIpv6 = providerDefaults.publicIpv6;
+    }
+    // 2. Global / auto-detected
+    else {
+      result.publicIpv6 = this.config.getPublicIPv6Sync() ?? '';
+    }
+
+    return result;
+  }
+
+  /**
    * Extract DNS configuration from container labels
+   * Uses the new settings resolution hierarchy for defaults
    */
   private extractDnsConfig(
     fqdn: string,
@@ -489,38 +676,45 @@ export class DNSManager {
     labelPrefix: string,
     provider?: DNSProvider
   ): DNSRecordCreateInput {
-    // Get record type
+    // Get record type from label or resolved defaults
     const typeKey = `${labelPrefix}type`;
-    const type = (labels[typeKey]?.toUpperCase() ?? this.config.dnsDefaults.recordType) as DNSRecordType;
+    const labelType = labels[typeKey]?.toUpperCase() as DNSRecordType | undefined;
 
-    // Get type-specific defaults
-    const typeDefaults = this.config.getRecordTypeDefaults(type);
+    // Resolve all defaults for this provider/type combination
+    // If type specified in label, use that for type-specific resolution
+    const tempType = labelType ?? 'CNAME'; // Use CNAME as temp for initial resolution
+    const defaults = this.resolveRecordDefaults(tempType, provider);
 
-    // Get content
+    // Final record type: label > resolved default
+    const type = labelType ?? defaults.recordType;
+
+    // Re-resolve if type changed (to get correct type-specific defaults)
+    const finalDefaults = (type !== tempType) ? this.resolveRecordDefaults(type, provider) : defaults;
+
+    // Get content from label or use resolved defaults
     const contentKey = `${labelPrefix}content`;
-    let content = labels[contentKey] ?? typeDefaults.content;
+    let content = labels[contentKey];
 
-    // For A records, use public IP if no content specified
-    if (type === 'A' && !content) {
-      content = this.config.getPublicIPSync() ?? '';
-    }
+    // Apply content defaults based on record type
+    if (!content) {
+      if (type === 'A') {
+        // Use provider-specific or global public IP
+        content = finalDefaults.publicIp;
+      } else if (type === 'AAAA') {
+        // Use provider-specific or global public IPv6
+        content = finalDefaults.publicIpv6;
+      } else if (type === 'CNAME') {
+        // Use resolved default content, or fall back to zone name
+        content = finalDefaults.content || provider?.getZoneName() || this.getDefaultProvider()?.getZoneName() || '';
 
-    // For AAAA records, use public IPv6 if no content specified
-    if (type === 'AAAA' && !content) {
-      content = this.config.getPublicIPv6Sync() ?? '';
-    }
-
-    // For CNAME records, use the zone as default
-    // But skip if this would create a self-referencing CNAME (hostname equals zone)
-    if (type === 'CNAME' && !content) {
-      const zoneName = provider?.getZoneName() ?? this.getDefaultProvider()?.getZoneName() ?? '';
-      // Check if this would be a self-reference (apex domain CNAME pointing to itself)
-      if (fqdn.toLowerCase() === zoneName.toLowerCase()) {
-        // For apex domains, use A record with public IP instead of self-referencing CNAME
-        this.logger.debug({ hostname: fqdn }, 'Apex domain detected, skipping self-referencing CNAME');
-        content = '__SKIP__'; // Special marker to skip this record
+        // Check for self-referencing CNAME (apex domain)
+        if (fqdn.toLowerCase() === content.toLowerCase()) {
+          this.logger.debug({ hostname: fqdn }, 'Apex domain detected, skipping self-referencing CNAME');
+          content = '__SKIP__'; // Special marker to skip this record
+        }
       } else {
-        content = zoneName;
+        // For other types (MX, TXT, SRV, CAA, NS) use resolved default
+        content = finalDefaults.content;
       }
     }
 
@@ -529,31 +723,34 @@ export class DNSManager {
       type,
       name: fqdn,
       content,
-      ttl: parseInt(labels[`${labelPrefix}ttl`] ?? String(typeDefaults.ttl), 10),
+      ttl: parseInt(labels[`${labelPrefix}ttl`] ?? String(finalDefaults.ttl), 10),
     };
 
-    // Add proxied for supported types (only for Cloudflare)
+    // Add proxied for supported types (Cloudflare)
     if (['A', 'AAAA', 'CNAME'].includes(type)) {
       const proxiedKey = `${labelPrefix}proxied`;
       const proxiedLabel = labels[proxiedKey];
-      config.proxied = proxiedLabel !== undefined ? proxiedLabel.toLowerCase() === 'true' : typeDefaults.proxied;
+      config.proxied = proxiedLabel !== undefined
+        ? proxiedLabel.toLowerCase() === 'true'
+        : finalDefaults.proxied;
     }
 
-    // Add priority for MX/SRV
+    // Add priority for MX/SRV (use env defaults for these special fields)
+    const envDefaults = this.config.getRecordTypeDefaults(type);
     if (type === 'MX' || type === 'SRV') {
-      config.priority = parseInt(labels[`${labelPrefix}priority`] ?? String(typeDefaults.priority ?? 10), 10);
+      config.priority = parseInt(labels[`${labelPrefix}priority`] ?? String(envDefaults.priority ?? 10), 10);
     }
 
     // Add SRV-specific fields
     if (type === 'SRV') {
-      config.weight = parseInt(labels[`${labelPrefix}weight`] ?? String(typeDefaults.weight ?? 1), 10);
-      config.port = parseInt(labels[`${labelPrefix}port`] ?? String(typeDefaults.port ?? 80), 10);
+      config.weight = parseInt(labels[`${labelPrefix}weight`] ?? String(envDefaults.weight ?? 1), 10);
+      config.port = parseInt(labels[`${labelPrefix}port`] ?? String(envDefaults.port ?? 80), 10);
     }
 
     // Add CAA-specific fields
     if (type === 'CAA') {
-      config.flags = parseInt(labels[`${labelPrefix}flags`] ?? String(typeDefaults.flags ?? 0), 10);
-      config.tag = labels[`${labelPrefix}tag`] ?? typeDefaults.tag ?? 'issue';
+      config.flags = parseInt(labels[`${labelPrefix}flags`] ?? String(envDefaults.flags ?? 0), 10);
+      config.tag = labels[`${labelPrefix}tag`] ?? envDefaults.tag ?? 'issue';
     }
 
     return config;

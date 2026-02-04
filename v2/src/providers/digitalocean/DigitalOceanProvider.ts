@@ -2,7 +2,7 @@
  * DigitalOcean DNS Provider Implementation
  */
 import { DNSProvider, type ProviderCredentials, type ProviderInfo, type BatchResult } from '../base/DNSProvider.js';
-import type { DNSRecord, DNSRecordCreateInput, DNSRecordUpdateInput, DNSRecordType } from '../../types/index.js';
+import type { DNSRecord, DNSRecordCreateInput, DNSRecordUpdateInput, DNSRecordType, ProviderSettingsData } from '../../types/index.js';
 
 export interface DigitalOceanProviderCredentials extends ProviderCredentials {
   apiToken: string;
@@ -40,7 +40,7 @@ export class DigitalOceanProvider extends DNSProvider {
     providerId: string,
     providerName: string,
     credentials: DigitalOceanProviderCredentials,
-    options: { cacheRefreshInterval?: number } = {}
+    options: { cacheRefreshInterval?: number; settings?: ProviderSettingsData } = {}
   ) {
     super(providerId, providerName, credentials, options);
 

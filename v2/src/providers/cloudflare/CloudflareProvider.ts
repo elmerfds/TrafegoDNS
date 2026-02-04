@@ -4,7 +4,7 @@
  */
 import Cloudflare from 'cloudflare';
 import { DNSProvider, type ProviderCredentials, type ProviderInfo } from '../base/DNSProvider.js';
-import type { DNSRecord, DNSRecordCreateInput, DNSRecordUpdateInput, DNSRecordType } from '../../types/index.js';
+import type { DNSRecord, DNSRecordCreateInput, DNSRecordUpdateInput, DNSRecordType, ProviderSettingsData } from '../../types/index.js';
 
 export interface CloudflareProviderCredentials extends ProviderCredentials {
   apiToken: string;
@@ -45,7 +45,7 @@ export class CloudflareProvider extends DNSProvider {
     providerId: string,
     providerName: string,
     credentials: CloudflareProviderCredentials,
-    options: { cacheRefreshInterval?: number } = {}
+    options: { cacheRefreshInterval?: number; settings?: ProviderSettingsData } = {}
   ) {
     super(providerId, providerName, credentials, options);
 

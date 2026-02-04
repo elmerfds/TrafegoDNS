@@ -11,7 +11,7 @@ import {
   type ChangeAction,
 } from '@aws-sdk/client-route-53';
 import { DNSProvider, type ProviderCredentials, type ProviderInfo } from '../base/DNSProvider.js';
-import type { DNSRecord, DNSRecordCreateInput, DNSRecordUpdateInput, DNSRecordType } from '../../types/index.js';
+import type { DNSRecord, DNSRecordCreateInput, DNSRecordUpdateInput, DNSRecordType, ProviderSettingsData } from '../../types/index.js';
 
 export interface Route53ProviderCredentials extends ProviderCredentials {
   accessKeyId: string;
@@ -33,7 +33,7 @@ export class Route53Provider extends DNSProvider {
     providerId: string,
     providerName: string,
     credentials: Route53ProviderCredentials,
-    options: { cacheRefreshInterval?: number } = {}
+    options: { cacheRefreshInterval?: number; settings?: ProviderSettingsData } = {}
   ) {
     super(providerId, providerName, credentials, options);
 

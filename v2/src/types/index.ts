@@ -345,3 +345,68 @@ export interface DNSDefaults {
   proxied: boolean;
   manage: boolean;
 }
+
+/**
+ * Per-record-type default settings
+ * Used for provider-specific overrides
+ */
+export interface RecordTypeDefaults {
+  content?: string;
+  ttl?: number;
+  proxied?: boolean;
+  priority?: number;
+}
+
+/**
+ * Provider default settings structure
+ * Stored in providers.settings.defaults JSON field
+ */
+export interface ProviderDefaults {
+  /** Default DNS record type for this provider */
+  recordType?: DNSRecordType;
+  /** Default content for all record types (if not overridden per-type) */
+  content?: string;
+  /** Default TTL for all record types */
+  ttl?: number;
+  /** Default proxied setting (Cloudflare only) */
+  proxied?: boolean;
+  /** Override public IPv4 for A records (uses global if not set) */
+  publicIp?: string;
+  /** Override public IPv6 for AAAA records (uses global if not set) */
+  publicIpv6?: string;
+  /** Per-record-type overrides */
+  byType?: Partial<Record<DNSRecordType, RecordTypeDefaults>>;
+}
+
+/**
+ * Extended provider settings structure
+ * This is what gets stored in providers.settings JSON field
+ */
+export interface ProviderSettingsData {
+  /** Provider-specific settings (varies by provider type) */
+  [key: string]: unknown;
+  /** Default record settings for this provider */
+  defaults?: ProviderDefaults;
+}
+
+/** Source of a resolved setting value */
+export type SettingSource = 'provider-type' | 'provider' | 'global' | 'env' | 'builtin' | 'auto';
+
+/**
+ * Resolved default settings for a record
+ * Result of the settings resolution hierarchy
+ */
+export interface ResolvedRecordDefaults {
+  recordType: DNSRecordType;
+  content: string;
+  ttl: number;
+  proxied: boolean;
+  priority?: number;
+  /** Track where each value came from for debugging/UI */
+  source: {
+    recordType: SettingSource;
+    content: SettingSource;
+    ttl: SettingSource;
+    proxied: SettingSource;
+  };
+}
