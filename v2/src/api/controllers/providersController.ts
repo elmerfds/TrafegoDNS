@@ -170,10 +170,18 @@ export const updateProvider = asyncHandler(async (req: Request, res: Response) =
 
   await db.update(providers).set(updateData).where(eq(providers.id, id));
 
+  // Build audit details showing what changed
+  const auditDetails: Record<string, unknown> = { name: existing.name };
+  if (input.name !== undefined && input.name !== existing.name) auditDetails.nameChanged = { from: existing.name, to: input.name };
+  if (input.enabled !== undefined && input.enabled !== existing.enabled) auditDetails.enabledChanged = { from: existing.enabled, to: input.enabled };
+  if (input.isDefault !== undefined && input.isDefault !== existing.isDefault) auditDetails.isDefaultChanged = { from: existing.isDefault, to: input.isDefault };
+  if (input.credentials !== undefined) auditDetails.credentialsUpdated = true;
+
   setAuditContext(req, {
     action: 'update',
     resourceType: 'provider',
     resourceId: id,
+    details: auditDetails,
   });
 
   const [provider] = await db
