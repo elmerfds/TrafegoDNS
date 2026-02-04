@@ -526,20 +526,51 @@ export class DNSManager {
       });
     }
 
-    // Update existing records
+    // Upsert updated and unchanged records
+    // (unchanged records may exist at provider but not in our database - e.g., fresh v2 install)
     for (const record of [...result.updated, ...result.unchanged]) {
       if (record.id) {
-        await db
-          .update(dnsRecords)
-          .set({
+        // Check if record exists in database
+        const existing = await db
+          .select({ id: dnsRecords.id })
+          .from(dnsRecords)
+          .where(eq(dnsRecords.externalId, record.id))
+          .limit(1);
+
+        if (existing.length > 0) {
+          // Update existing record
+          await db
+            .update(dnsRecords)
+            .set({
+              content: record.content,
+              ttl: record.ttl,
+              proxied: record.proxied,
+              priority: record.priority,
+              lastSyncedAt: now,
+              orphanedAt: null, // Clear orphaned status
+            })
+            .where(eq(dnsRecords.externalId, record.id));
+        } else {
+          // Insert record that exists at provider but not in our database
+          await db.insert(dnsRecords).values({
+            id: uuidv4(),
+            providerId,
+            externalId: record.id,
+            type: record.type,
+            name: record.name,
             content: record.content,
             ttl: record.ttl,
             proxied: record.proxied,
             priority: record.priority,
+            weight: record.weight,
+            port: record.port,
+            flags: record.flags,
+            tag: record.tag,
+            source: 'traefik',
             lastSyncedAt: now,
-            orphanedAt: null, // Clear orphaned status
-          })
-          .where(eq(dnsRecords.externalId, record.id));
+          });
+          this.logger.debug({ name: record.name, type: record.type }, 'Imported existing provider record to database');
+        }
       }
     }
   }
