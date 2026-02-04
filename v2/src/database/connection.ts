@@ -299,6 +299,10 @@ function createTablesDirectly(): void {
     )
   `);
 
+  // Run schema migrations for existing databases BEFORE creating indexes
+  // This ensures new columns exist before we try to create indexes on them
+  runSchemaMigrations(sqliteDb);
+
   // Create indexes
   sqliteDb.exec(`
     CREATE INDEX IF NOT EXISTS idx_dns_records_provider ON dns_records(provider_id);
@@ -315,9 +319,6 @@ function createTablesDirectly(): void {
     CREATE INDEX IF NOT EXISTS idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
     CREATE INDEX IF NOT EXISTS idx_managed_hostnames_provider ON managed_hostnames(provider_id);
   `);
-
-  // Run schema migrations for existing databases
-  runSchemaMigrations(sqliteDb);
 
   logger.info('Database tables created directly');
 }
