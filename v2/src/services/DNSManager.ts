@@ -565,6 +565,7 @@ export class DNSManager {
   private async trackRecords(result: BatchResult, providerId: string): Promise<void> {
     const db = getDatabase();
     const now = new Date();
+    const provider = this.providerInstances.get(providerId);
 
     // Track created records
     for (const record of result.created) {
@@ -584,6 +585,7 @@ export class DNSManager {
         flags: record.flags,
         tag: record.tag,
         source: 'traefik',
+        managed: true, // Records we create are always managed
         lastSyncedAt: now,
       });
 
@@ -625,6 +627,9 @@ export class DNSManager {
             .where(eq(dnsRecords.externalId, record.id));
         } else {
           // Insert record that exists at provider but not in our database
+          // Check ownership marker to determine if we should manage it
+          const isOwned = provider?.isOwnedByTrafego(record) ?? false;
+
           await db.insert(dnsRecords).values({
             id: uuidv4(),
             providerId,
@@ -639,10 +644,15 @@ export class DNSManager {
             port: record.port,
             flags: record.flags,
             tag: record.tag,
-            source: 'traefik',
+            comment: record.comment,
+            source: isOwned ? 'traefik' : 'discovered',
+            managed: isOwned, // Only manage if we created it (has ownership marker)
             lastSyncedAt: now,
           });
-          this.logger.debug({ name: record.name, type: record.type }, 'Imported existing provider record to database');
+          this.logger.debug(
+            { name: record.name, type: record.type, managed: isOwned },
+            isOwned ? 'Imported owned record to database' : 'Discovered unmanaged record at provider'
+          );
         }
       }
     }
@@ -697,6 +707,15 @@ export class DNSManager {
         const normalizedHostname = record.name.toLowerCase();
         const isActive = activeHostnames.has(normalizedHostname);
         const isPreserved = this.isHostnamePreserved(normalizedHostname, preservedPatterns);
+
+        // Skip unmanaged records - they were pre-existing and should never be deleted
+        if (!record.managed) {
+          this.logger.debug(
+            { name: record.name, type: record.type, providerId },
+            'Skipping unmanaged record (not created by TrafegoDNS)'
+          );
+          continue;
+        }
 
         if (isActive) {
           // Record is active - clear orphaned status if set

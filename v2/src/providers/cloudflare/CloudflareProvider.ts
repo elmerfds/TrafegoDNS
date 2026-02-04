@@ -74,6 +74,13 @@ export class CloudflareProvider extends DNSProvider {
     };
   }
 
+  /**
+   * Cloudflare supports comments/ownership markers
+   */
+  override supportsOwnershipMarker(): boolean {
+    return true;
+  }
+
   async init(): Promise<void> {
     this.logger.debug('Initializing Cloudflare provider');
 

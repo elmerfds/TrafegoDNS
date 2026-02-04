@@ -102,6 +102,13 @@ export class TechnitiumProvider extends DNSProvider {
     };
   }
 
+  /**
+   * Technitium supports comments/ownership markers
+   */
+  override supportsOwnershipMarker(): boolean {
+    return true;
+  }
+
   async init(): Promise<void> {
     this.logger.debug('Initializing Technitium provider');
 

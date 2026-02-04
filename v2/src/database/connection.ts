@@ -131,7 +131,8 @@ function createTablesDirectly(): void {
       flags INTEGER,
       tag TEXT,
       comment TEXT,
-      source TEXT NOT NULL DEFAULT 'traefik' CHECK(source IN ('traefik', 'direct', 'api', 'managed')),
+      source TEXT NOT NULL DEFAULT 'traefik' CHECK(source IN ('traefik', 'direct', 'api', 'managed', 'discovered')),
+      managed INTEGER NOT NULL DEFAULT 1,
       orphaned_at INTEGER,
       last_synced_at INTEGER,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()),
@@ -304,6 +305,7 @@ function createTablesDirectly(): void {
     CREATE INDEX IF NOT EXISTS idx_dns_records_name ON dns_records(name);
     CREATE INDEX IF NOT EXISTS idx_dns_records_type ON dns_records(type);
     CREATE INDEX IF NOT EXISTS idx_dns_records_orphaned ON dns_records(orphaned_at);
+    CREATE INDEX IF NOT EXISTS idx_dns_records_managed ON dns_records(managed);
     CREATE INDEX IF NOT EXISTS idx_tunnels_provider ON tunnels(provider_id);
     CREATE INDEX IF NOT EXISTS idx_tunnel_ingress_rules_tunnel ON tunnel_ingress_rules(tunnel_id);
     CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook ON webhook_deliveries(webhook_id);
@@ -314,7 +316,27 @@ function createTablesDirectly(): void {
     CREATE INDEX IF NOT EXISTS idx_managed_hostnames_provider ON managed_hostnames(provider_id);
   `);
 
+  // Run schema migrations for existing databases
+  runSchemaMigrations(sqliteDb);
+
   logger.info('Database tables created directly');
+}
+
+/**
+ * Run schema migrations for existing databases
+ * Adds new columns to existing tables if they don't exist
+ */
+function runSchemaMigrations(sqliteDb: Database.Database): void {
+  // Check if 'managed' column exists in dns_records
+  const tableInfo = sqliteDb.prepare('PRAGMA table_info(dns_records)').all() as Array<{ name: string }>;
+  const hasManaged = tableInfo.some((col) => col.name === 'managed');
+
+  if (!hasManaged) {
+    logger.info('Adding managed column to dns_records table');
+    sqliteDb.exec('ALTER TABLE dns_records ADD COLUMN managed INTEGER NOT NULL DEFAULT 1');
+    sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_dns_records_managed ON dns_records(managed)');
+    logger.info('Migration complete: added managed column');
+  }
 }
 
 /**

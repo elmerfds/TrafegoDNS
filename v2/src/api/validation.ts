@@ -101,9 +101,15 @@ export const dnsRecordFilterSchema = z.object({
   name: z.string().optional(),
   content: z.string().optional(),
   providerId: z.string().uuid().optional(),
-  source: z.enum(['traefik', 'direct', 'api', 'managed']).optional(),
+  source: z.enum(['traefik', 'direct', 'api', 'managed', 'discovered']).optional(),
+  managed: z.coerce.boolean().optional(), // Filter by managed status
   search: z.string().optional(), // General search across name and content
 }).merge(paginationSchema);
+
+// Schema for toggling managed status
+export const toggleManagedSchema = z.object({
+  managed: z.boolean(),
+});
 
 // Provider schemas
 export const providerTypeSchema = z.enum([
@@ -278,3 +284,4 @@ export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 
 export type CreateApiKeyInput = z.infer<typeof createApiKeySchema>;
+export type ToggleManagedInput = z.infer<typeof toggleManagedSchema>;

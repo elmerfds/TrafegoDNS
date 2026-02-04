@@ -12,6 +12,7 @@ import {
   createDnsRecordSchema,
   updateDnsRecordSchema,
   dnsRecordFilterSchema,
+  toggleManagedSchema,
 } from '../validation.js';
 import type { DNSManager } from '../../services/DNSManager.js';
 
@@ -38,6 +39,10 @@ export const listRecords = asyncHandler(async (req: Request, res: Response) => {
   }
   if (filter.source) {
     conditions.push(eq(dnsRecords.source, filter.source));
+  }
+  // Filter by managed status
+  if (filter.managed !== undefined) {
+    conditions.push(eq(dnsRecords.managed, filter.managed));
   }
   // General search - searches across name and content
   if (filter.search && filter.search.trim()) {
@@ -316,5 +321,51 @@ export const syncRecords = asyncHandler(async (req: Request, res: Response) => {
   res.json({
     success: true,
     message: 'Sync initiated',
+  });
+});
+
+/**
+ * Toggle managed status of a DNS record
+ * Allows claiming ownership of pre-existing records or releasing TrafegoDNS management
+ */
+export const toggleManaged = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const input = toggleManagedSchema.parse(req.body);
+  const db = getDatabase();
+
+  // Get existing record
+  const [existing] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+  if (!existing) {
+    throw ApiError.notFound('DNS record');
+  }
+
+  // Update managed status
+  await db
+    .update(dnsRecords)
+    .set({
+      managed: input.managed,
+      source: input.managed ? 'managed' : 'discovered',
+      updatedAt: new Date(),
+    })
+    .where(eq(dnsRecords.id, id));
+
+  // If claiming the record, we could optionally update the comment at the provider
+  // to add the ownership marker. For now, we just update our database.
+  // This can be enhanced later to update provider comments.
+
+  setAuditContext(req, {
+    action: 'update',
+    resourceType: 'dnsRecord',
+    resourceId: id,
+    details: { managed: input.managed, action: input.managed ? 'claim' : 'unclaim' },
+  });
+
+  const [record] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+  res.json({
+    success: true,
+    data: record,
+    message: input.managed ? 'Record claimed by TrafegoDNS' : 'Record released from TrafegoDNS management',
   });
 });

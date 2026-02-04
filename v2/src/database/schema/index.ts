@@ -48,7 +48,8 @@ export const dnsRecords = sqliteTable('dns_records', {
   flags: integer('flags'),
   tag: text('tag'),
   comment: text('comment'),
-  source: text('source', { enum: ['traefik', 'direct', 'api', 'managed'] }).notNull().default('traefik'),
+  source: text('source', { enum: ['traefik', 'direct', 'api', 'managed', 'discovered'] }).notNull().default('traefik'),
+  managed: integer('managed', { mode: 'boolean' }).notNull().default(true), // Whether TrafegoDNS owns this record
   orphanedAt: integer('orphaned_at', { mode: 'timestamp' }),
   lastSyncedAt: integer('last_synced_at', { mode: 'timestamp' }),
   ...timestamps,

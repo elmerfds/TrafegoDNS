@@ -36,6 +36,7 @@ import {
   updateRecord,
   deleteRecord,
   syncRecords,
+  toggleManaged,
 } from '../controllers/dnsController.js';
 
 import {
@@ -46,6 +47,7 @@ import {
   deleteProvider,
   testProvider,
   testProviderCredentials,
+  discoverRecords,
 } from '../controllers/providersController.js';
 
 import {
@@ -133,6 +135,7 @@ dnsRouter.post('/records', requirePermission('write'), createRecord);
 dnsRouter.put('/records/:id', requirePermission('write'), updateRecord);
 dnsRouter.delete('/records/:id', requirePermission('write'), deleteRecord);
 dnsRouter.post('/records/sync', requirePermission('write'), syncRecords);
+dnsRouter.patch('/records/:id/managed', requirePermission('write'), toggleManaged);
 router.use('/dns', dnsRouter);
 
 // Providers routes
@@ -147,6 +150,7 @@ providersRouter.post('/', requireRole('admin'), createProviderHandler);
 providersRouter.put('/:id', requireRole('admin'), updateProvider);
 providersRouter.delete('/:id', requireRole('admin'), deleteProvider);
 providersRouter.post('/:id/test', requirePermission('read'), testProvider);
+providersRouter.post('/:id/discover', requirePermission('write'), discoverRecords);
 router.use('/providers', providersRouter);
 
 // Tunnels routes

@@ -3,6 +3,7 @@
  */
 export {
   DNSProvider,
+  TRAFEGO_OWNERSHIP_MARKER,
   type ProviderCredentials,
   type RecordCache,
   type BatchResult,

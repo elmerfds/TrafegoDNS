@@ -6,6 +6,12 @@ import type { DNSRecord, DNSRecordCreateInput, DNSRecordUpdateInput, DNSRecordTy
 import { logger, createChildLogger } from '../../core/Logger.js';
 import type { Logger } from 'pino';
 
+/**
+ * Ownership marker used to identify records created by TrafegoDNS
+ * Providers that support comments will include this marker when creating records
+ */
+export const TRAFEGO_OWNERSHIP_MARKER = 'Managed by TrafegoDNS';
+
 export interface ProviderCredentials {
   [key: string]: string | undefined;
 }
@@ -338,5 +344,24 @@ export abstract class DNSProvider {
     this.recordCache = { records: [], lastUpdated: 0 };
     this.initialized = false;
     this.logger.debug('Provider disposed');
+  }
+
+  /**
+   * Check if this provider supports ownership markers (comments)
+   * Override in subclasses that support comments
+   */
+  supportsOwnershipMarker(): boolean {
+    return false;
+  }
+
+  /**
+   * Check if a record was created/owned by TrafegoDNS
+   * Uses the comment field to detect the ownership marker
+   */
+  isOwnedByTrafego(record: DNSRecord): boolean {
+    if (!this.supportsOwnershipMarker()) {
+      return false;
+    }
+    return record.comment?.includes(TRAFEGO_OWNERSHIP_MARKER) ?? false;
   }
 }

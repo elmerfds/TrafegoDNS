@@ -4,11 +4,11 @@
 import type { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabase } from '../../database/connection.js';
-import { providers } from '../../database/schema/index.js';
-import { eq } from 'drizzle-orm';
+import { providers, dnsRecords } from '../../database/schema/index.js';
+import { eq, and } from 'drizzle-orm';
 import { ApiError, asyncHandler, setAuditContext } from '../middleware/index.js';
 import { createProviderSchema, updateProviderSchema } from '../validation.js';
-import { createProvider } from '../../providers/index.js';
+import { createProvider, TRAFEGO_OWNERSHIP_MARKER } from '../../providers/index.js';
 import type { ProviderType } from '../../types/index.js';
 
 /**
@@ -317,5 +317,117 @@ export const testProviderCredentials = asyncHandler(async (req: Request, res: Re
         message: error instanceof Error ? error.message : 'Connection failed',
       },
     });
+  }
+});
+
+/**
+ * Discover and import all records from a provider
+ * Records that already exist in the database are skipped
+ * New records are imported with managed=false (unless they have TrafegoDNS ownership marker)
+ */
+export const discoverRecords = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const db = getDatabase();
+
+  const [providerRecord] = await db.select().from(providers).where(eq(providers.id, id)).limit(1);
+
+  if (!providerRecord) {
+    throw ApiError.notFound('Provider');
+  }
+
+  try {
+    const credentials = JSON.parse(providerRecord.credentials) as Record<string, string>;
+
+    const provider = createProvider({
+      id: providerRecord.id,
+      name: providerRecord.name,
+      type: providerRecord.type as ProviderType,
+      credentials,
+    });
+
+    await provider.init();
+
+    // Get all records from the provider
+    const providerRecords = await provider.listRecords();
+
+    const now = new Date();
+    let imported = 0;
+    let skipped = 0;
+    let managed = 0;
+    let unmanaged = 0;
+
+    for (const record of providerRecords) {
+      // Check if record already exists in database (by external ID or name+type)
+      const existingRecords = await db
+        .select({ id: dnsRecords.id })
+        .from(dnsRecords)
+        .where(
+          record.id
+            ? eq(dnsRecords.externalId, record.id)
+            : and(eq(dnsRecords.name, record.name), eq(dnsRecords.type, record.type), eq(dnsRecords.providerId, id))
+        )
+        .limit(1);
+
+      if (existingRecords.length > 0) {
+        skipped++;
+        continue;
+      }
+
+      // Check if record has ownership marker
+      const isOwned = provider.isOwnedByTrafego(record);
+
+      // Import the record
+      await db.insert(dnsRecords).values({
+        id: uuidv4(),
+        providerId: id,
+        externalId: record.id ?? null,
+        type: record.type,
+        name: record.name,
+        content: record.content,
+        ttl: record.ttl,
+        proxied: record.proxied ?? null,
+        priority: record.priority ?? null,
+        weight: record.weight ?? null,
+        port: record.port ?? null,
+        flags: record.flags ?? null,
+        tag: record.tag ?? null,
+        comment: record.comment ?? null,
+        source: isOwned ? 'traefik' : 'discovered',
+        managed: isOwned,
+        lastSyncedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      imported++;
+      if (isOwned) {
+        managed++;
+      } else {
+        unmanaged++;
+      }
+    }
+
+    await provider.dispose();
+
+    setAuditContext(req, {
+      action: 'sync',
+      resourceType: 'provider',
+      resourceId: id,
+      details: { action: 'discover', imported, skipped, managed, unmanaged },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        totalAtProvider: providerRecords.length,
+        imported,
+        skipped,
+        managed,
+        unmanaged,
+      },
+      message: `Discovered ${imported} new records (${managed} managed, ${unmanaged} unmanaged), ${skipped} already in database`,
+    });
+  } catch (error) {
+    throw ApiError.badRequest(error instanceof Error ? error.message : 'Discovery failed');
   }
 });
