@@ -7,6 +7,14 @@ on:
         description: 'PR number to test'
         required: true
         type: string
+      version:
+        description: 'Which version to build'
+        required: true
+        type: choice
+        options:
+          - v1
+          - v2
+        default: 'v1'
       platform:
         description: 'Platform architecture to build'
         required: true
@@ -78,11 +86,11 @@ jobs:
             ${{ secrets.DOCKER_USERNAME }}/trafegodns
             ghcr.io/${{ github.repository }}
           tags: |
-            # PR tag
-            type=raw,value=pr-${{ github.event.inputs.pr_number }}
-            
-            # PR tag with date
-            type=raw,value=pr-${{ github.event.inputs.pr_number }}-${{ steps.version.outputs.DATE_TAG }}
+            # PR tag with version
+            type=raw,value=pr-${{ github.event.inputs.pr_number }}-${{ github.event.inputs.version }}
+
+            # PR tag with version and date
+            type=raw,value=pr-${{ github.event.inputs.pr_number }}-${{ github.event.inputs.version }}-${{ steps.version.outputs.DATE_TAG }}
       
       # Determine platforms to build
       - name: Set platforms
@@ -93,13 +101,25 @@ jobs:
           else
             echo "PLATFORMS=${{ github.event.inputs.platform }}" >> $GITHUB_OUTPUT
           fi
-      
+
+      # Set build context based on version
+      - name: Set build context
+        id: build_context
+        run: |
+          if [ "${{ github.event.inputs.version }}" == "v2" ]; then
+            echo "CONTEXT=./v2" >> $GITHUB_OUTPUT
+            echo "DOCKERFILE=./v2/Dockerfile" >> $GITHUB_OUTPUT
+          else
+            echo "CONTEXT=." >> $GITHUB_OUTPUT
+            echo "DOCKERFILE=./docker-s6/Dockerfile" >> $GITHUB_OUTPUT
+          fi
+
       # Build Docker image for PR testing
       - name: Build and push PR test image
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./docker-s6/Dockerfile
+          context: ${{ steps.build_context.outputs.CONTEXT }}
+          file: ${{ steps.build_context.outputs.DOCKERFILE }}
           platforms: ${{ steps.platforms.outputs.PLATFORMS }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -112,9 +132,9 @@ jobs:
           echo "Images pushed:"
           echo "${{ steps.meta.outputs.tags }}"
           echo ""
-          echo "PR #${{ github.event.inputs.pr_number }} test image ready for testing"
+          echo "PR #${{ github.event.inputs.pr_number }} (${{ github.event.inputs.version }}) test image ready for testing"
           echo "Platform(s): ${{ steps.platforms.outputs.PLATFORMS }}"
           echo ""
           echo "You can pull this image with:"
-          echo "docker pull ${{ secrets.DOCKER_USERNAME }}/trafegodns:pr-${{ github.event.inputs.pr_number }}"
+          echo "docker pull ${{ secrets.DOCKER_USERNAME }}/trafegodns:pr-${{ github.event.inputs.pr_number }}-${{ github.event.inputs.version }}"
           echo ""
