@@ -3,7 +3,7 @@
  */
 import { apiClient } from './client';
 
-export type ProviderType = 'cloudflare' | 'digitalocean' | 'route53' | 'technetium';
+export type ProviderType = 'cloudflare' | 'digitalocean' | 'route53' | 'technitium';
 
 export interface Provider {
   id: string;

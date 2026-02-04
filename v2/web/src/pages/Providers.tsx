@@ -199,26 +199,28 @@ interface CreateProviderModalProps {
   onClose: () => void;
 }
 
-const providerFields: Record<ProviderType, Array<{ key: string; label: string; type?: string }>> = {
+const providerFields: Record<ProviderType, Array<{ key: string; label: string; type?: string; placeholder?: string }>> = {
   cloudflare: [
-    { key: 'apiToken', label: 'API Token' },
+    { key: 'apiToken', label: 'API Token *' },
+    { key: 'zoneName', label: 'Zone Name *', placeholder: 'example.com' },
     { key: 'zoneId', label: 'Zone ID (optional)' },
     { key: 'accountId', label: 'Account ID (for tunnels)' },
   ],
   digitalocean: [
-    { key: 'token', label: 'API Token' },
-    { key: 'domain', label: 'Domain' },
+    { key: 'apiToken', label: 'API Token *' },
+    { key: 'domain', label: 'Domain *', placeholder: 'example.com' },
   ],
   route53: [
-    { key: 'accessKey', label: 'Access Key ID' },
-    { key: 'secretKey', label: 'Secret Access Key' },
-    { key: 'hostedZoneId', label: 'Hosted Zone ID' },
-    { key: 'region', label: 'Region' },
+    { key: 'accessKeyId', label: 'Access Key ID *' },
+    { key: 'secretAccessKey', label: 'Secret Access Key *' },
+    { key: 'zoneName', label: 'Zone Name *', placeholder: 'example.com' },
+    { key: 'hostedZoneId', label: 'Hosted Zone ID (optional)' },
+    { key: 'region', label: 'Region', placeholder: 'us-east-1' },
   ],
-  technetium: [
-    { key: 'url', label: 'Server URL' },
-    { key: 'apiToken', label: 'API Token' },
-    { key: 'zone', label: 'Zone' },
+  technitium: [
+    { key: 'url', label: 'Server URL *', placeholder: 'http://technitium:5380' },
+    { key: 'zone', label: 'Zone *', placeholder: 'example.com' },
+    { key: 'apiToken', label: 'API Token *' },
   ],
 };
 
@@ -249,7 +251,17 @@ function CreateProviderModal({ isOpen, onClose }: CreateProviderModalProps) {
       setError('Please fill in all required fields');
       return;
     }
-    createMutation.mutate(formData as CreateProviderInput);
+
+    // Auto-set authMethod for Technitium based on credentials
+    let credentials = { ...formData.credentials };
+    if (formData.type === 'technitium' && credentials) {
+      credentials = {
+        ...credentials,
+        authMethod: 'token', // Default to token auth
+      };
+    }
+
+    createMutation.mutate({ ...formData, credentials } as CreateProviderInput);
   };
 
   const currentFields = providerFields[formData.type as ProviderType] ?? [];
@@ -280,7 +292,7 @@ function CreateProviderModal({ isOpen, onClose }: CreateProviderModalProps) {
               { value: 'cloudflare', label: 'Cloudflare', description: 'DNS and Tunnel support' },
               { value: 'digitalocean', label: 'DigitalOcean', description: 'DNS management' },
               { value: 'route53', label: 'AWS Route53', description: 'Amazon DNS service' },
-              { value: 'technetium', label: 'Technetium DNS', description: 'Self-hosted DNS' },
+              { value: 'technitium', label: 'Technetium DNS', description: 'Self-hosted DNS' },
             ]}
           />
         </div>
@@ -291,6 +303,7 @@ function CreateProviderModal({ isOpen, onClose }: CreateProviderModalProps) {
             <input
               type={field.type ?? 'text'}
               className="input mt-1"
+              placeholder={field.placeholder}
               value={(formData.credentials as Record<string, string>)?.[field.key] ?? ''}
               onChange={(e) => setFormData({
                 ...formData,
