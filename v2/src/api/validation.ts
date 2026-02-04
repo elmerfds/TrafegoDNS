@@ -114,6 +114,7 @@ export const dnsRecordFilterSchema = z.object({
   source: z.enum(['traefik', 'direct', 'api', 'managed', 'discovered']).optional(),
   managed: queryBooleanSchema, // Filter by managed status
   search: z.string().optional(), // General search across name and content
+  zone: z.string().optional(), // Filter by zone/domain (e.g., "example.com")
 }).merge(paginationSchema);
 
 // Schema for toggling managed status

@@ -47,6 +47,8 @@ export interface DNSRecordFilters {
   providerId?: string;
   managed?: boolean;
   search?: string;
+  zone?: string;
+  source?: string;
   page?: number;
   limit?: number;
 }
@@ -142,6 +144,10 @@ export const dnsApi = {
 
   async deleteRecord(id: string): Promise<void> {
     await apiClient.delete(`/dns/records/${id}`);
+  },
+
+  async bulkDeleteRecords(ids: string[]): Promise<{ deleted: number; failed: number; errors?: Array<{ id: string; error: string }> }> {
+    return apiClient.post<{ deleted: number; failed: number; errors?: Array<{ id: string; error: string }> }>('/dns/records/bulk-delete', { ids });
   },
 
   async syncRecords(): Promise<{ message: string }> {

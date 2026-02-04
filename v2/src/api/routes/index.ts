@@ -35,6 +35,7 @@ import {
   createRecord,
   updateRecord,
   deleteRecord,
+  bulkDeleteRecords,
   syncRecords,
   toggleManaged,
 } from '../controllers/dnsController.js';
@@ -135,6 +136,7 @@ dnsRouter.post('/records', requirePermission('write'), createRecord);
 dnsRouter.put('/records/:id', requirePermission('write'), updateRecord);
 dnsRouter.delete('/records/:id', requirePermission('write'), deleteRecord);
 dnsRouter.post('/records/sync', requirePermission('write'), syncRecords);
+dnsRouter.post('/records/bulk-delete', requirePermission('write'), bulkDeleteRecords);
 dnsRouter.patch('/records/:id/managed', requirePermission('write'), toggleManaged);
 router.use('/dns', dnsRouter);
 

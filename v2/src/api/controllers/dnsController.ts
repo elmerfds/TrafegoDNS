@@ -51,6 +51,14 @@ export const listRecords = asyncHandler(async (req: Request, res: Response) => {
       sql`(${dnsRecords.name} LIKE ${searchTerm} OR ${dnsRecords.content} LIKE ${searchTerm})`
     );
   }
+  // Filter by zone/domain - matches records ending with the zone
+  if (filter.zone && filter.zone.trim()) {
+    const zone = filter.zone.trim().toLowerCase();
+    // Match exact zone or subdomains (e.g., "example.com" matches "app.example.com" and "example.com")
+    conditions.push(
+      sql`(LOWER(${dnsRecords.name}) = ${zone} OR LOWER(${dnsRecords.name}) LIKE ${`%.${zone}`})`
+    );
+  }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -304,6 +312,77 @@ export const deleteRecord = asyncHandler(async (req: Request, res: Response) => 
   res.json({
     success: true,
     message: 'DNS record deleted',
+  });
+});
+
+/**
+ * Bulk delete DNS records
+ */
+export const bulkDeleteRecords = asyncHandler(async (req: Request, res: Response) => {
+  const { ids } = req.body as { ids: string[] };
+
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    throw ApiError.badRequest('No record IDs provided');
+  }
+
+  if (ids.length > 100) {
+    throw ApiError.badRequest('Cannot delete more than 100 records at once');
+  }
+
+  const db = getDatabase();
+  const dnsManager = container.resolveSync<DNSManager>(ServiceTokens.DNS_MANAGER);
+
+  let deleted = 0;
+  let failed = 0;
+  const errors: Array<{ id: string; error: string }> = [];
+
+  for (const id of ids) {
+    try {
+      // Get existing record
+      const [existing] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+      if (!existing) {
+        failed++;
+        errors.push({ id, error: 'Record not found' });
+        continue;
+      }
+
+      // Delete from provider if has external ID
+      if (existing.externalId) {
+        const provider = dnsManager.getProvider(existing.providerId);
+        if (provider) {
+          try {
+            await provider.deleteRecord(existing.externalId);
+          } catch (providerError) {
+            // Log but continue - the record might already be deleted at provider
+            console.warn(`Failed to delete record ${id} from provider:`, providerError);
+          }
+        }
+      }
+
+      // Delete from database
+      await db.delete(dnsRecords).where(eq(dnsRecords.id, id));
+      deleted++;
+    } catch (error) {
+      failed++;
+      errors.push({ id, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  }
+
+  setAuditContext(req, {
+    action: 'bulk_delete',
+    resourceType: 'dnsRecords',
+    details: { requested: ids.length, deleted, failed },
+  });
+
+  res.json({
+    success: true,
+    data: {
+      deleted,
+      failed,
+      errors: errors.length > 0 ? errors : undefined,
+    },
+    message: `Deleted ${deleted} records${failed > 0 ? `, ${failed} failed` : ''}`,
   });
 });
 

@@ -188,6 +188,7 @@ export type AuditAction =
   | 'create'
   | 'update'
   | 'delete'
+  | 'bulk_delete'
   | 'login'
   | 'logout'
   | 'sync'

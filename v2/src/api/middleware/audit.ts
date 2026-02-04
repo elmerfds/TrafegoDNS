@@ -10,7 +10,7 @@ import { createChildLogger } from '../../core/Logger.js';
 
 const logger = createChildLogger({ service: 'Audit' });
 
-type AuditAction = 'create' | 'update' | 'delete' | 'login' | 'logout' | 'sync' | 'deploy';
+type AuditAction = 'create' | 'update' | 'delete' | 'bulk_delete' | 'login' | 'logout' | 'sync' | 'deploy';
 
 interface AuditContext {
   action: AuditAction;

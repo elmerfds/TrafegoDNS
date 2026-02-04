@@ -1,9 +1,9 @@
 /**
  * DNS Records Page
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X } from 'lucide-react';
+import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X, Filter, CheckSquare, Square, MinusSquare } from 'lucide-react';
 import { dnsApi, providersApi, preservedHostnamesApi, type DNSRecord, type CreateDNSRecordInput, type UpdateDNSRecordInput, type PreservedHostname } from '../api';
 import { Button, Table, Pagination, Badge, Modal, ModalFooter, Alert, Select } from '../components/common';
 
@@ -54,19 +54,57 @@ function DNSRecordsTab() {
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [managedFilter, setManagedFilter] = useState<'all' | 'managed' | 'unmanaged'>('all');
+  const [providerFilter, setProviderFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [zoneFilter, setZoneFilter] = useState<string>('all');
+  const [sourceFilter, setSourceFilter] = useState<string>('all');
+  const [showFilters, setShowFilters] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editRecord, setEditRecord] = useState<DNSRecord | null>(null);
   const [deleteRecord, setDeleteRecord] = useState<DNSRecord | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+
+  const { data: providers } = useQuery({
+    queryKey: ['providers'],
+    queryFn: () => providersApi.listProviders(),
+  });
+
+  // Build filters object
+  const filters = useMemo(() => ({
+    page,
+    limit: 20,
+    search: search || undefined,
+    managed: managedFilter === 'all' ? undefined : managedFilter === 'managed',
+    providerId: providerFilter === 'all' ? undefined : providerFilter,
+    type: typeFilter === 'all' ? undefined : typeFilter,
+    zone: zoneFilter === 'all' ? undefined : zoneFilter,
+    source: sourceFilter === 'all' ? undefined : sourceFilter,
+  }), [page, search, managedFilter, providerFilter, typeFilter, zoneFilter, sourceFilter]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['dns-records', { page, limit: 20, search, managed: managedFilter }],
-    queryFn: () => dnsApi.listRecords({
-      page,
-      limit: 20,
-      search: search || undefined,
-      managed: managedFilter === 'all' ? undefined : managedFilter === 'managed',
-    }),
+    queryKey: ['dns-records', filters],
+    queryFn: () => dnsApi.listRecords(filters as Parameters<typeof dnsApi.listRecords>[0]),
   });
+
+  // Extract unique zones from providers for zone filter dropdown
+  const availableZones = useMemo(() => {
+    if (!providers) return [];
+    const zones = new Set<string>();
+    providers.forEach((provider) => {
+      // Try to get zone from provider settings
+      const zone = provider.settings?.zone as string | undefined;
+      if (zone) {
+        zones.add(zone);
+      }
+      // Also check for domain setting (some providers use 'domain' instead of 'zone')
+      const domain = provider.settings?.domain as string | undefined;
+      if (domain) {
+        zones.add(domain);
+      }
+    });
+    return Array.from(zones).sort();
+  }, [providers]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,10 +118,17 @@ function DNSRecordsTab() {
     setPage(1);
   };
 
-  const { data: providers } = useQuery({
-    queryKey: ['providers'],
-    queryFn: () => providersApi.listProviders(),
-  });
+  const clearAllFilters = () => {
+    clearSearch();
+    setManagedFilter('all');
+    setProviderFilter('all');
+    setTypeFilter('all');
+    setZoneFilter('all');
+    setSourceFilter('all');
+  };
+
+  const hasActiveFilters = search || managedFilter !== 'all' || providerFilter !== 'all' ||
+    typeFilter !== 'all' || zoneFilter !== 'all' || sourceFilter !== 'all';
 
   const syncMutation = useMutation({
     mutationFn: () => dnsApi.syncRecords(),
@@ -100,7 +145,86 @@ function DNSRecordsTab() {
     },
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => dnsApi.bulkDeleteRecords(ids),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['dns-records'] });
+      setSelectedIds(new Set());
+      setIsBulkDeleteModalOpen(false);
+      if (result.failed > 0) {
+        console.warn('Some records failed to delete:', result.errors);
+      }
+    },
+  });
+
+  // Selection handlers
+  const toggleSelect = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const toggleSelectAll = () => {
+    if (!data?.records) return;
+    const allIds = data.records.map((r) => r.id);
+    const allSelected = allIds.every((id) => selectedIds.has(id));
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allIds));
+    }
+  };
+
+  const getSelectAllState = (): 'none' | 'some' | 'all' => {
+    if (!data?.records || data.records.length === 0) return 'none';
+    const allIds = data.records.map((r) => r.id);
+    const selectedCount = allIds.filter((id) => selectedIds.has(id)).length;
+    if (selectedCount === 0) return 'none';
+    if (selectedCount === allIds.length) return 'all';
+    return 'some';
+  };
+
+  // Clear selection when page/filters change
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [page, search, managedFilter, providerFilter, typeFilter, zoneFilter, sourceFilter]);
+
+  const selectAllState = getSelectAllState();
+
   const columns = [
+    {
+      key: 'select',
+      header: (
+        <button
+          onClick={toggleSelectAll}
+          className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+          title={selectAllState === 'all' ? 'Deselect all' : 'Select all'}
+        >
+          {selectAllState === 'none' && <Square className="w-4 h-4 text-gray-400" />}
+          {selectAllState === 'some' && <MinusSquare className="w-4 h-4 text-primary-500" />}
+          {selectAllState === 'all' && <CheckSquare className="w-4 h-4 text-primary-500" />}
+        </button>
+      ),
+      render: (row: DNSRecord) => (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleSelect(row.id);
+          }}
+          className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+        >
+          {selectedIds.has(row.id) ? (
+            <CheckSquare className="w-4 h-4 text-primary-500" />
+          ) : (
+            <Square className="w-4 h-4 text-gray-400" />
+          )}
+        </button>
+      ),
+    },
     {
       key: 'hostname',
       header: 'Hostname',
@@ -149,6 +273,18 @@ function DNSRecordsTab() {
       ),
     },
     {
+      key: 'provider',
+      header: 'Provider',
+      render: (row: DNSRecord) => {
+        const provider = providers?.find((p) => p.id === row.providerId);
+        return (
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            {provider?.name ?? row.providerId.slice(0, 8)}
+          </span>
+        );
+      },
+    },
+    {
       key: 'managed',
       header: 'Ownership',
       render: (row: DNSRecord) => (
@@ -185,7 +321,12 @@ function DNSRecordsTab() {
     <>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">DNS Records</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">DNS Records</h2>
+          {selectedIds.size > 0 && (
+            <Badge variant="info">{selectedIds.size} selected</Badge>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           {/* Search Box */}
           <form onSubmit={handleSearch} className="relative">
@@ -207,20 +348,30 @@ function DNSRecordsTab() {
               </button>
             )}
           </form>
-          {/* Managed Filter */}
-          <Select
-            value={managedFilter}
-            onChange={(value) => {
-              setManagedFilter(value as 'all' | 'managed' | 'unmanaged');
-              setPage(1);
-            }}
-            options={[
-              { value: 'all', label: 'All Records' },
-              { value: 'managed', label: 'Managed Only' },
-              { value: 'unmanaged', label: 'Unmanaged Only' },
-            ]}
-            className="w-40"
-          />
+          {/* Filters Toggle */}
+          <Button
+            variant={showFilters || hasActiveFilters ? 'primary' : 'secondary'}
+            leftIcon={<Filter className="w-4 h-4" />}
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            Filters{hasActiveFilters && ` (${[
+              managedFilter !== 'all' ? 1 : 0,
+              providerFilter !== 'all' ? 1 : 0,
+              typeFilter !== 'all' ? 1 : 0,
+              zoneFilter !== 'all' ? 1 : 0,
+              sourceFilter !== 'all' ? 1 : 0,
+            ].reduce((a, b) => a + b, 0)})`}
+          </Button>
+          {/* Bulk Delete */}
+          {selectedIds.size > 0 && (
+            <Button
+              variant="danger"
+              leftIcon={<Trash2 className="w-4 h-4" />}
+              onClick={() => setIsBulkDeleteModalOpen(true)}
+            >
+              Delete ({selectedIds.size})
+            </Button>
+          )}
           <Button
             variant="secondary"
             leftIcon={<RefreshCw className="w-4 h-4" />}
@@ -238,27 +389,143 @@ function DNSRecordsTab() {
         </div>
       </div>
 
+      {/* Filters Panel */}
+      {showFilters && (
+        <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            {/* Provider Filter */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Provider</label>
+              <Select
+                value={providerFilter}
+                onChange={(value) => {
+                  setProviderFilter(value);
+                  setPage(1);
+                }}
+                options={[
+                  { value: 'all', label: 'All Providers' },
+                  ...(providers?.map((p) => ({ value: p.id, label: p.name })) ?? []),
+                ]}
+                className="w-full"
+              />
+            </div>
+            {/* Type Filter */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Type</label>
+              <Select
+                value={typeFilter}
+                onChange={(value) => {
+                  setTypeFilter(value);
+                  setPage(1);
+                }}
+                options={[
+                  { value: 'all', label: 'All Types' },
+                  { value: 'A', label: 'A' },
+                  { value: 'AAAA', label: 'AAAA' },
+                  { value: 'CNAME', label: 'CNAME' },
+                  { value: 'MX', label: 'MX' },
+                  { value: 'TXT', label: 'TXT' },
+                  { value: 'SRV', label: 'SRV' },
+                  { value: 'CAA', label: 'CAA' },
+                  { value: 'NS', label: 'NS' },
+                ]}
+                className="w-full"
+              />
+            </div>
+            {/* Zone Filter */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Zone/Domain</label>
+              <Select
+                value={zoneFilter}
+                onChange={(value) => {
+                  setZoneFilter(value);
+                  setPage(1);
+                }}
+                options={[
+                  { value: 'all', label: 'All Zones' },
+                  ...availableZones.map((z) => ({ value: z, label: z })),
+                ]}
+                className="w-full"
+              />
+            </div>
+            {/* Source Filter */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Source</label>
+              <Select
+                value={sourceFilter}
+                onChange={(value) => {
+                  setSourceFilter(value);
+                  setPage(1);
+                }}
+                options={[
+                  { value: 'all', label: 'All Sources' },
+                  { value: 'traefik', label: 'Traefik' },
+                  { value: 'direct', label: 'Direct' },
+                  { value: 'api', label: 'API' },
+                  { value: 'managed', label: 'Managed' },
+                  { value: 'discovered', label: 'Discovered' },
+                ]}
+                className="w-full"
+              />
+            </div>
+            {/* Managed Filter */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Ownership</label>
+              <Select
+                value={managedFilter}
+                onChange={(value) => {
+                  setManagedFilter(value as 'all' | 'managed' | 'unmanaged');
+                  setPage(1);
+                }}
+                options={[
+                  { value: 'all', label: 'All Records' },
+                  { value: 'managed', label: 'Managed Only' },
+                  { value: 'unmanaged', label: 'Unmanaged Only' },
+                ]}
+                className="w-full"
+              />
+            </div>
+          </div>
+          {hasActiveFilters && (
+            <div className="mt-3 flex justify-end">
+              <button
+                onClick={clearAllFilters}
+                className="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400"
+              >
+                Clear all filters
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Filter indicators */}
-      {(search || managedFilter !== 'all') && (
-        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-          <span>
-            Showing
-            {managedFilter !== 'all' && (
-              <> <span className="font-medium text-gray-700 dark:text-gray-300">{managedFilter}</span></>
-            )}
-            {search && (
-              <> results for "<span className="font-medium text-gray-700 dark:text-gray-300">{search}</span>"</>
-            )}
-            {managedFilter !== 'all' && !search && <> records</>}
-          </span>
+      {hasActiveFilters && !showFilters && (
+        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 flex-wrap">
+          <span>Filters:</span>
+          {managedFilter !== 'all' && (
+            <Badge variant="default">{managedFilter}</Badge>
+          )}
+          {providerFilter !== 'all' && (
+            <Badge variant="default">{providers?.find((p) => p.id === providerFilter)?.name ?? 'Provider'}</Badge>
+          )}
+          {typeFilter !== 'all' && (
+            <Badge variant="default">{typeFilter}</Badge>
+          )}
+          {zoneFilter !== 'all' && (
+            <Badge variant="default">{zoneFilter}</Badge>
+          )}
+          {sourceFilter !== 'all' && (
+            <Badge variant="default">{sourceFilter}</Badge>
+          )}
+          {search && (
+            <Badge variant="default">"{search}"</Badge>
+          )}
           <button
-            onClick={() => {
-              clearSearch();
-              setManagedFilter('all');
-            }}
+            onClick={clearAllFilters}
             className="text-primary-600 hover:text-primary-700 dark:text-primary-400"
           >
-            Clear filters
+            Clear all
           </button>
         </div>
       )}
@@ -318,6 +585,44 @@ function DNSRecordsTab() {
             isLoading={deleteMutation.isPending}
           >
             Delete
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Bulk Delete Confirmation Modal */}
+      <Modal
+        isOpen={isBulkDeleteModalOpen}
+        onClose={() => setIsBulkDeleteModalOpen(false)}
+        title="Delete Multiple DNS Records"
+        size="sm"
+      >
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Are you sure you want to delete <strong>{selectedIds.size}</strong> DNS records?
+          This action cannot be undone and will remove them from both the database and the DNS provider.
+        </p>
+        <div className="mt-3 max-h-40 overflow-y-auto">
+          <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+            {data?.records
+              .filter((r) => selectedIds.has(r.id))
+              .slice(0, 10)
+              .map((r) => (
+                <li key={r.id} className="font-mono">• {r.hostname} ({r.type})</li>
+              ))}
+            {selectedIds.size > 10 && (
+              <li className="text-gray-400">...and {selectedIds.size - 10} more</li>
+            )}
+          </ul>
+        </div>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setIsBulkDeleteModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => bulkDeleteMutation.mutate(Array.from(selectedIds))}
+            isLoading={bulkDeleteMutation.isPending}
+          >
+            Delete {selectedIds.size} Records
           </Button>
         </ModalFooter>
       </Modal>
