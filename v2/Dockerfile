@@ -63,9 +63,9 @@ RUN apk add --no-cache curl xz \
     && curl -sSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz | tar -Jxpf - -C / \
     && curl -sSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz | tar -Jxpf - -C /
 
-# Create non-root user
-RUN addgroup -g 1000 abc \
-    && adduser -D -u 1000 -G abc abc
+# Create abc user for PUID/PGID support (use different IDs to avoid conflict with node user)
+RUN addgroup -g 1001 abc \
+    && adduser -D -u 1001 -G abc abc
 
 WORKDIR /app
 
