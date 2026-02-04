@@ -628,17 +628,28 @@ function EditProviderModal({ isOpen, onClose, provider }: EditProviderModalProps
   const [formData, setFormData] = useState<Partial<UpdateProviderInput>>({});
   const [error, setError] = useState<string | null>(null);
 
-  // Reset form when provider changes
+  // Fetch full provider details (including settings) when modal opens
+  const { data: fullProvider, isLoading: isLoadingProvider } = useQuery({
+    queryKey: ['provider', provider?.id],
+    queryFn: () => provider ? providersApi.getProvider(provider.id) : Promise.resolve(null),
+    enabled: isOpen && !!provider,
+  });
+
+  // Reset form when full provider data loads
   useEffect(() => {
-    if (provider) {
+    if (fullProvider) {
       setFormData({
-        name: provider.name,
-        enabled: provider.enabled,
-        isDefault: provider.isDefault,
+        name: fullProvider.name,
+        enabled: fullProvider.enabled,
+        isDefault: fullProvider.isDefault,
+        settings: fullProvider.settings,
       });
       setError(null);
+    } else if (provider && !isOpen) {
+      // Reset form data when modal closes
+      setFormData({});
     }
-  }, [provider]);
+  }, [fullProvider, provider, isOpen]);
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateProviderInput }) =>
@@ -661,9 +672,15 @@ function EditProviderModal({ isOpen, onClose, provider }: EditProviderModalProps
   if (!provider) return null;
 
   const currentFields = providerFields[provider.type as ProviderType] ?? [];
+  const displayProvider = fullProvider ?? provider;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Edit Provider" size="md">
+      {isLoadingProvider ? (
+        <div className="flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        </div>
+      ) : (
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
 
@@ -672,7 +689,7 @@ function EditProviderModal({ isOpen, onClose, provider }: EditProviderModalProps
           <input
             type="text"
             className="input mt-1"
-            value={formData.name ?? provider.name}
+            value={formData.name ?? displayProvider.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           />
         </div>
@@ -682,7 +699,7 @@ function EditProviderModal({ isOpen, onClose, provider }: EditProviderModalProps
           <input
             type="text"
             className="input mt-1 bg-gray-50 dark:bg-gray-800"
-            value={provider.type}
+            value={displayProvider.type}
             disabled
           />
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Provider type cannot be changed</p>
@@ -710,7 +727,7 @@ function EditProviderModal({ isOpen, onClose, provider }: EditProviderModalProps
 
         {/* Default Record Settings */}
         <ProviderDefaultsSection
-          provider={provider}
+          provider={displayProvider}
           formData={formData}
           setFormData={setFormData}
         />
@@ -721,7 +738,7 @@ function EditProviderModal({ isOpen, onClose, provider }: EditProviderModalProps
               type="checkbox"
               id="editEnabled"
               className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-              checked={formData.enabled ?? provider.enabled}
+              checked={formData.enabled ?? displayProvider.enabled}
               onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
             />
             <label htmlFor="editEnabled" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
@@ -734,7 +751,7 @@ function EditProviderModal({ isOpen, onClose, provider }: EditProviderModalProps
               type="checkbox"
               id="editIsDefault"
               className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 dark:border-gray-600 rounded"
-              checked={formData.isDefault ?? provider.isDefault}
+              checked={formData.isDefault ?? displayProvider.isDefault}
               onChange={(e) => setFormData({ ...formData, isDefault: e.target.checked })}
             />
             <label htmlFor="editIsDefault" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
@@ -752,6 +769,7 @@ function EditProviderModal({ isOpen, onClose, provider }: EditProviderModalProps
           </Button>
         </ModalFooter>
       </form>
+      )}
     </Modal>
   );
 }

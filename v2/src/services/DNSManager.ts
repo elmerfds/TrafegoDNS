@@ -766,6 +766,40 @@ export class DNSManager {
 
     // Track created records
     for (const record of result.created) {
+      // Check if record already exists in database (prevent duplicates)
+      const existingByNameType = await db
+        .select({ id: dnsRecords.id })
+        .from(dnsRecords)
+        .where(
+          and(
+            eq(dnsRecords.providerId, providerId),
+            eq(dnsRecords.name, record.name),
+            eq(dnsRecords.type, record.type)
+          )
+        )
+        .limit(1);
+
+      if (existingByNameType.length > 0) {
+        // Update existing record instead of creating duplicate
+        await db
+          .update(dnsRecords)
+          .set({
+            externalId: record.id,
+            content: record.content,
+            ttl: record.ttl,
+            proxied: record.proxied,
+            priority: record.priority,
+            lastSyncedAt: now,
+            orphanedAt: null,
+          })
+          .where(eq(dnsRecords.id, existingByNameType[0]!.id));
+        this.logger.debug(
+          { name: record.name, type: record.type },
+          'Updated existing database entry (duplicate prevention)'
+        );
+        continue;
+      }
+
       const recordId = uuidv4();
       await db.insert(dnsRecords).values({
         id: recordId,
