@@ -274,15 +274,20 @@ export abstract class DNSProvider {
       }
     }
 
-    this.logger.info(
-      {
-        created: result.created.length,
-        updated: result.updated.length,
-        unchanged: result.unchanged.length,
-        errors: result.errors.length,
-      },
-      'Batch processing complete'
-    );
+    // Only log at info level if there were actual changes
+    const hasChanges = result.created.length > 0 || result.updated.length > 0 || result.errors.length > 0;
+    if (hasChanges) {
+      this.logger.info(
+        {
+          created: result.created.length,
+          updated: result.updated.length,
+          errors: result.errors.length,
+        },
+        'DNS sync completed'
+      );
+    } else {
+      this.logger.debug({ unchanged: result.unchanged.length }, 'DNS in sync');
+    }
 
     return result;
   }

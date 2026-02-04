@@ -142,12 +142,15 @@ export class TraefikMonitor {
       const currentHostnamesSet = new Set(hostnames);
       const hasChanges = this.hostnamesChanged(currentHostnamesSet);
 
-      if (hasChanges || hostnames.length > 0) {
+      if (hasChanges) {
         this.lastHostnames = currentHostnamesSet;
+        this.logger.info({ hostnames: hostnames.length }, 'Hostnames changed');
+      } else {
+        this.logger.debug({ hostnames: hostnames.length }, 'No hostname changes');
+      }
 
-        this.logger.info({ hostnames: hostnames.length, changed: hasChanges }, 'Hostnames discovered');
-
-        // Publish event
+      // Always publish event to let DNSManager sync (it will skip if no changes needed)
+      if (hostnames.length > 0) {
         eventBus.publish(EventTypes.TRAEFIK_ROUTERS_UPDATED, {
           hostnames,
           containerLabels,

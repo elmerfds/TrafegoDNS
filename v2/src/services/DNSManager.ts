@@ -323,6 +323,12 @@ export class DNSManager {
           // Extract DNS config from labels (provider-specific content if needed)
           const recordConfig = this.extractDnsConfig(fqdn, labels, labelPrefix, provider);
 
+          // Skip records marked for skipping (e.g., self-referencing CNAMEs)
+          if (recordConfig.content === '__SKIP__') {
+            this.stats.skipped++;
+            continue;
+          }
+
           // Add to provider group
           if (!providerGroups.has(providerId)) {
             providerGroups.set(providerId, {
@@ -444,8 +450,17 @@ export class DNSManager {
     }
 
     // For CNAME records, use the zone as default
+    // But skip if this would create a self-referencing CNAME (hostname equals zone)
     if (type === 'CNAME' && !content) {
-      content = provider?.getZoneName() ?? this.getDefaultProvider()?.getZoneName() ?? '';
+      const zoneName = provider?.getZoneName() ?? this.getDefaultProvider()?.getZoneName() ?? '';
+      // Check if this would be a self-reference (apex domain CNAME pointing to itself)
+      if (fqdn.toLowerCase() === zoneName.toLowerCase()) {
+        // For apex domains, use A record with public IP instead of self-referencing CNAME
+        this.logger.debug({ hostname: fqdn }, 'Apex domain detected, skipping self-referencing CNAME');
+        content = '__SKIP__'; // Special marker to skip this record
+      } else {
+        content = zoneName;
+      }
     }
 
     // Build record config

@@ -32,6 +32,7 @@ export function createApp(options: AppOptions = {}): Express {
   }
 
   // Security middleware with proper CSP for SPA
+  // Note: upgradeInsecureRequests is disabled since we serve HTTP behind a reverse proxy
   app.use(helmet({
     contentSecurityPolicy: {
       directives: {
@@ -44,10 +45,12 @@ export function createApp(options: AppOptions = {}): Express {
         objectSrc: ["'none'"],
         mediaSrc: ["'self'"],
         frameSrc: ["'none'"],
-        upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
+        // Don't upgrade to HTTPS - we're behind a reverse proxy that handles TLS
+        upgradeInsecureRequests: null,
       },
     },
     crossOriginEmbedderPolicy: false, // Required for some external resources
+    crossOriginOpenerPolicy: false, // Disable for HTTP access
   }));
 
   // CORS - secure configuration
