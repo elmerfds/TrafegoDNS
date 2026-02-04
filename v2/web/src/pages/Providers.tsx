@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Edit, Play, Server } from 'lucide-react';
 import { providersApi, type Provider, type CreateProviderInput, type UpdateProviderInput, type ProviderType } from '../api';
-import { Button, Table, Badge, Modal, ModalFooter, Alert } from '../components/common';
+import { Button, Table, Badge, Modal, ModalFooter, Alert, Select } from '../components/common';
 
 export function ProvidersPage() {
   const queryClient = useQueryClient();
@@ -272,16 +272,17 @@ function CreateProviderModal({ isOpen, onClose }: CreateProviderModalProps) {
 
         <div>
           <label className="label">Type *</label>
-          <select
-            className="input mt-1"
-            value={formData.type}
-            onChange={(e) => setFormData({ ...formData, type: e.target.value as ProviderType, credentials: {} })}
-          >
-            <option value="cloudflare">Cloudflare</option>
-            <option value="digitalocean">DigitalOcean</option>
-            <option value="route53">AWS Route53</option>
-            <option value="technetium">Technetium DNS</option>
-          </select>
+          <Select
+            className="mt-1"
+            value={formData.type ?? 'cloudflare'}
+            onChange={(value) => setFormData({ ...formData, type: value as ProviderType, credentials: {} })}
+            options={[
+              { value: 'cloudflare', label: 'Cloudflare', description: 'DNS and Tunnel support' },
+              { value: 'digitalocean', label: 'DigitalOcean', description: 'DNS management' },
+              { value: 'route53', label: 'AWS Route53', description: 'Amazon DNS service' },
+              { value: 'technetium', label: 'Technetium DNS', description: 'Self-hosted DNS' },
+            ]}
+          />
         </div>
 
         {currentFields.map((field) => (

@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, RefreshCw, Trash2, Edit } from 'lucide-react';
 import { dnsApi, providersApi, type DNSRecord, type CreateDNSRecordInput, type UpdateDNSRecordInput } from '../api';
-import { Button, Table, Pagination, Badge, Modal, ModalFooter, Alert } from '../components/common';
+import { Button, Table, Pagination, Badge, Modal, ModalFooter, Alert, Select } from '../components/common';
 
 export function DNSRecordsPage() {
   const queryClient = useQueryClient();
@@ -250,20 +250,21 @@ function CreateRecordModal({ isOpen, onClose, providers }: CreateRecordModalProp
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="label">Type *</label>
-            <select
-              className="input mt-1"
+            <Select
+              className="mt-1"
               value={formData.type}
-              onChange={(e) => setFormData({ ...formData, type: e.target.value as CreateDNSRecordInput['type'] })}
-            >
-              <option value="A">A</option>
-              <option value="AAAA">AAAA</option>
-              <option value="CNAME">CNAME</option>
-              <option value="MX">MX</option>
-              <option value="TXT">TXT</option>
-              <option value="SRV">SRV</option>
-              <option value="CAA">CAA</option>
-              <option value="NS">NS</option>
-            </select>
+              onChange={(value) => setFormData({ ...formData, type: value as CreateDNSRecordInput['type'] })}
+              options={[
+                { value: 'A', label: 'A', description: 'IPv4 address' },
+                { value: 'AAAA', label: 'AAAA', description: 'IPv6 address' },
+                { value: 'CNAME', label: 'CNAME', description: 'Canonical name' },
+                { value: 'MX', label: 'MX', description: 'Mail exchange' },
+                { value: 'TXT', label: 'TXT', description: 'Text record' },
+                { value: 'SRV', label: 'SRV', description: 'Service record' },
+                { value: 'CAA', label: 'CAA', description: 'Certificate authority' },
+                { value: 'NS', label: 'NS', description: 'Name server' },
+              ]}
+            />
           </div>
           <div>
             <label className="label">TTL</label>
@@ -289,18 +290,16 @@ function CreateRecordModal({ isOpen, onClose, providers }: CreateRecordModalProp
 
         <div>
           <label className="label">Provider *</label>
-          <select
-            className="input mt-1"
+          <Select
+            className="mt-1"
             value={formData.providerId ?? ''}
-            onChange={(e) => setFormData({ ...formData, providerId: e.target.value })}
-          >
-            <option value="">Select a provider</option>
-            {providers.map((provider) => (
-              <option key={provider.id} value={provider.id}>
-                {provider.name}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => setFormData({ ...formData, providerId: value })}
+            placeholder="Select a provider"
+            options={providers.map((provider) => ({
+              value: provider.id,
+              label: provider.name,
+            }))}
+          />
         </div>
 
         <ModalFooter>

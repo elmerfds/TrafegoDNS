@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, RotateCcw, AlertTriangle } from 'lucide-react';
 import { settingsApi } from '../api';
-import { Button, Alert, Badge } from '../components/common';
+import { Button, Alert, Badge, Select } from '../components/common';
 
 interface SettingDefinition {
   key: string;
@@ -237,26 +237,23 @@ function SettingInput({ setting, value, onChange, onReset, isModified }: Setting
       <div className="md:col-span-2 flex gap-2">
         <div className="flex-1">
           {setting.type === 'boolean' ? (
-            <select
-              className="input"
+            <Select
               value={value}
-              onChange={(e) => onChange(e.target.value)}
-            >
-              <option value="true">Enabled</option>
-              <option value="false">Disabled</option>
-            </select>
+              onChange={onChange}
+              options={[
+                { value: 'true', label: 'Enabled' },
+                { value: 'false', label: 'Disabled' },
+              ]}
+            />
           ) : setting.type === 'select' && setting.options ? (
-            <select
-              className="input"
+            <Select
               value={value}
-              onChange={(e) => onChange(e.target.value)}
-            >
-              {setting.options.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
+              onChange={onChange}
+              options={setting.options.map((opt) => ({
+                value: opt,
+                label: opt,
+              }))}
+            />
           ) : (
             <input
               type={setting.type === 'number' ? 'number' : 'text'}

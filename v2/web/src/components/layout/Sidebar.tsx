@@ -38,8 +38,9 @@ export function Sidebar() {
     <div className="flex flex-col h-full bg-gray-900 w-64">
       {/* Logo */}
       <div className="flex items-center h-16 px-4 bg-gray-800">
+        <img src="/logo.svg" alt="TrafegoDNS" className="w-8 h-8 mr-2" />
         <span className="text-xl font-bold text-white">TrafegoDNS</span>
-        <span className="ml-2 text-xs text-gray-400">v2</span>
+        <span className="ml-2 px-1.5 py-0.5 text-[10px] font-semibold bg-primary-600 text-white rounded">v2</span>
       </div>
 
       {/* Navigation */}
