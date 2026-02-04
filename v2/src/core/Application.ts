@@ -11,6 +11,7 @@ import { DNSManager, WebhookService, TunnelManager, getSettingsService } from '.
 import { DockerMonitor, TraefikMonitor, DirectMonitor } from '../monitors/index.js';
 import { createApp, startServer } from '../app.js';
 import { V1Migrator } from '../migration/V1Migrator.js';
+import { ensureAdminUser } from '../api/controllers/authController.js';
 
 export interface ApplicationOptions {
   skipDatabase?: boolean;
@@ -55,6 +56,9 @@ export class Application {
 
         // Run v1 migration if needed
         await this.runMigration();
+
+        // Ensure admin user exists
+        await this.ensureAdminUser();
       }
 
       // Initialize services
@@ -126,6 +130,15 @@ export class Application {
         logger.error({ message: result.message }, 'Migration failed');
       }
     }
+  }
+
+  /**
+   * Ensure admin user exists (creates from env vars if not)
+   */
+  private async ensureAdminUser(): Promise<void> {
+    const { defaultAdminUsername, defaultAdminPassword, defaultAdminEmail } = this.config.auth;
+    await ensureAdminUser(defaultAdminUsername, defaultAdminPassword, defaultAdminEmail);
+    logger.debug('Admin user check completed');
   }
 
   /**

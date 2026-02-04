@@ -87,11 +87,18 @@ function generateSecret(length: number = 32): string {
   return randomBytes(Math.ceil(length * 0.75)).toString('base64url').slice(0, length);
 }
 
+interface AuthConfig {
+  defaultAdminUsername: string;
+  defaultAdminPassword: string;
+  defaultAdminEmail: string;
+}
+
 export class ConfigManager {
   private _app: AppConfig;
   private _traefik: TraefikConfig;
   private _docker: DockerConfig;
   private _dnsDefaults: DNSDefaults;
+  private _auth: AuthConfig;
   private _recordTypeDefaults: Map<DNSRecordType, RecordTypeDefaults>;
   private _ipCache: IPCache;
   private _ipRefreshInterval: number;
@@ -146,6 +153,13 @@ export class ConfigManager {
       proxied: getEnvBool('DNS_DEFAULT_PROXIED', true),
       manage: getEnvBool('DNS_DEFAULT_MANAGE', true),
     });
+
+    // Load auth config
+    this._auth = {
+      defaultAdminUsername: getEnv('DEFAULT_ADMIN_USERNAME', 'admin') ?? 'admin',
+      defaultAdminPassword: getEnv('DEFAULT_ADMIN_PASSWORD', 'admin') ?? 'admin',
+      defaultAdminEmail: getEnv('DEFAULT_ADMIN_EMAIL', 'admin@localhost') ?? 'admin@localhost',
+    };
 
     // Initialize IP cache
     this._ipCache = {
@@ -235,6 +249,10 @@ export class ConfigManager {
 
   get dnsDefaults(): Readonly<DNSDefaults> {
     return this._dnsDefaults;
+  }
+
+  get auth(): Readonly<AuthConfig> {
+    return this._auth;
   }
 
   /**
