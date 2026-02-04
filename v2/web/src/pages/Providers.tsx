@@ -3,8 +3,8 @@
  */
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Edit, Play } from 'lucide-react';
-import { providersApi, type Provider, type CreateProviderInput, type UpdateProviderInput, type ProviderType } from '../api';
+import { Plus, Trash2, Edit, Play, Search } from 'lucide-react';
+import { providersApi, type Provider, type CreateProviderInput, type UpdateProviderInput, type ProviderType, type DiscoverRecordsResult } from '../api';
 import { Button, Table, Badge, Modal, ModalFooter, Alert, Select, ProviderIcon } from '../components/common';
 
 export function ProvidersPage() {
@@ -13,6 +13,7 @@ export function ProvidersPage() {
   const [editProvider, setEditProvider] = useState<Provider | null>(null);
   const [deleteProvider, setDeleteProvider] = useState<Provider | null>(null);
   const [testResult, setTestResult] = useState<{ provider: Provider; result: { connected: boolean; message: string } } | null>(null);
+  const [discoverResult, setDiscoverResult] = useState<{ provider: Provider; result: DiscoverRecordsResult } | null>(null);
 
   const { data: providers, isLoading } = useQuery({
     queryKey: ['providers'],
@@ -34,6 +35,17 @@ export function ProvidersPage() {
       if (provider) {
         setTestResult({ provider, result });
       }
+    },
+  });
+
+  const discoverMutation = useMutation({
+    mutationFn: (id: string) => providersApi.discoverRecords(id),
+    onSuccess: (result, id) => {
+      const provider = providers?.find((p) => p.id === id);
+      if (provider) {
+        setDiscoverResult({ provider, result });
+      }
+      queryClient.invalidateQueries({ queryKey: ['dnsRecords'] });
     },
   });
 
@@ -89,6 +101,14 @@ export function ProvidersPage() {
             title="Test connection"
           >
             <Play className="w-4 h-4" />
+          </button>
+          <button
+            className="p-1 text-gray-400 hover:text-blue-600"
+            onClick={() => discoverMutation.mutate(row.id)}
+            title="Discover records from provider"
+            disabled={discoverMutation.isPending}
+          >
+            <Search className="w-4 h-4" />
           </button>
           <button
             className="p-1 text-gray-400 hover:text-gray-600"
@@ -188,6 +208,55 @@ export function ProvidersPage() {
         )}
         <ModalFooter>
           <Button onClick={() => setTestResult(null)}>Close</Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Discover Records Result Modal */}
+      <Modal
+        isOpen={!!discoverResult}
+        onClose={() => setDiscoverResult(null)}
+        title="Discover Records Result"
+        size="sm"
+      >
+        {discoverResult && (
+          <div className="space-y-4">
+            <Alert
+              variant={discoverResult.result.imported > 0 ? 'success' : 'info'}
+              title={discoverResult.provider.name}
+            >
+              Discovered {discoverResult.result.imported} new records from provider
+            </Alert>
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600 dark:text-gray-400">Total at provider:</span>
+                <span className="font-medium text-gray-900 dark:text-white">{discoverResult.result.totalAtProvider}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600 dark:text-gray-400">Imported:</span>
+                <span className="font-medium text-green-600">{discoverResult.result.imported}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600 dark:text-gray-400">Already in database:</span>
+                <span className="font-medium text-gray-900 dark:text-white">{discoverResult.result.skipped}</span>
+              </div>
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-2 mt-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600 dark:text-gray-400">Managed (TrafegoDNS-owned):</span>
+                  <span className="font-medium text-blue-600">{discoverResult.result.managed}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600 dark:text-gray-400">Unmanaged (pre-existing):</span>
+                  <span className="font-medium text-amber-600">{discoverResult.result.unmanaged}</span>
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Unmanaged records are protected from automatic deletion during orphan cleanup.
+            </p>
+          </div>
+        )}
+        <ModalFooter>
+          <Button onClick={() => setDiscoverResult(null)}>Close</Button>
         </ModalFooter>
       </Modal>
     </div>

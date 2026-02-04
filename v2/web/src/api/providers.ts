@@ -38,6 +38,14 @@ export interface TestProviderResult {
   message: string;
 }
 
+export interface DiscoverRecordsResult {
+  totalAtProvider: number;
+  imported: number;
+  skipped: number;
+  managed: number;
+  unmanaged: number;
+}
+
 export const providersApi = {
   async listProviders(): Promise<Provider[]> {
     return apiClient.get<Provider[]>('/providers');
@@ -65,5 +73,9 @@ export const providersApi = {
 
   async testProviderCredentials(data: CreateProviderInput): Promise<TestProviderResult> {
     return apiClient.post<TestProviderResult>('/providers/test', data);
+  },
+
+  async discoverRecords(id: string): Promise<DiscoverRecordsResult> {
+    return apiClient.post<DiscoverRecordsResult>(`/providers/${id}/discover`);
   },
 };
