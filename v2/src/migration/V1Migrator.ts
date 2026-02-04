@@ -13,17 +13,23 @@ import type { ProviderType } from '../types/index.js';
 import type { Logger } from 'pino';
 
 interface V1DNSRecord {
-  hostname: string;
+  // V1 uses 'name' for the DNS record name (e.g., "app.example.com")
+  name: string;
+  // Some v1 versions may use 'hostname' instead
+  hostname?: string;
   type: string;
-  content: string;
+  content?: string;
   ttl?: number;
   priority?: number;
   proxied?: boolean;
-  providerId?: string;
+  provider?: string;
+  domain?: string;
+  id?: string;
   recordId?: string;
   source?: string;
   createdAt?: string;
   updatedAt?: string;
+  managedBy?: string;
 }
 
 interface V1RecordFile {
@@ -182,15 +188,31 @@ export class V1Migrator {
 
     for (const record of records) {
       try {
+        // V1 uses 'name' field, but some versions might use 'hostname'
+        const recordName = record.name || record.hostname;
+
+        // Skip records without a name
+        if (!recordName) {
+          this.logger.warn({ record }, 'Record missing name field, skipping');
+          continue;
+        }
+
+        // V1 records may not have content (just tracking what was created)
+        // Skip records without content as they can't be recreated
+        if (!record.content) {
+          this.logger.debug({ name: recordName }, 'Record missing content, skipping (tracking only)');
+          continue;
+        }
+
         const id = uuidv4();
         const now = new Date();
 
         await db.insert(dnsRecords).values({
           id,
           providerId: defaultProviderId,
-          externalId: record.recordId,
-          type: record.type.toUpperCase() as 'A' | 'AAAA' | 'CNAME' | 'MX' | 'TXT' | 'SRV' | 'CAA' | 'NS',
-          name: record.hostname,
+          externalId: record.id || record.recordId,
+          type: (record.type?.toUpperCase() || 'A') as 'A' | 'AAAA' | 'CNAME' | 'MX' | 'TXT' | 'SRV' | 'CAA' | 'NS',
+          name: recordName,
           content: record.content,
           ttl: record.ttl ?? 300,
           priority: record.priority,
@@ -201,9 +223,10 @@ export class V1Migrator {
         });
 
         imported++;
+        this.logger.debug({ name: recordName, type: record.type }, 'Imported DNS record');
       } catch (error) {
         this.logger.warn(
-          { hostname: record.hostname, error },
+          { name: record.name || record.hostname, error },
           'Failed to import record, skipping'
         );
       }
