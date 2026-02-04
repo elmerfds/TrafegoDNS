@@ -101,7 +101,7 @@ export class ConfigManager {
     // Load and validate app config
     this._app = appConfigSchema.parse({
       operationMode: getEnv('OPERATION_MODE', 'traefik'),
-      logLevel: getEnv('LOG_LEVEL', 'info'),
+      logLevel: getEnv('LOG_LEVEL', 'info')?.toLowerCase(),
       dataDir: getEnv('DATA_DIR', '/config/data'),
       databasePath: getEnv('DATABASE_PATH'),
       apiPort: getEnvInt('API_PORT', 3000),
