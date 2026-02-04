@@ -9,6 +9,13 @@ export const logLevelSchema = z.enum(['fatal', 'error', 'warn', 'info', 'debug',
 // Operation mode schema
 export const operationModeSchema = z.enum(['traefik', 'direct']);
 
+// DNS routing mode schema - controls how hostnames are routed to providers
+export const dnsRoutingModeSchema = z.enum([
+  'auto',              // Auto-route based on zone matching, skip if no match
+  'auto-with-fallback', // Auto-route based on zone, fallback to default if no match
+  'default-only',       // Always use default provider (v1 behavior)
+]);
+
 // DNS record type schema
 export const dnsRecordTypeSchema = z.enum(['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA', 'NS']);
 
@@ -31,6 +38,13 @@ export const appConfigSchema = z.object({
   cleanupGracePeriod: z.coerce.number().int().min(0).default(15),
   webhookRetryAttempts: z.coerce.number().int().min(0).max(10).default(3),
   webhookRetryDelay: z.coerce.number().int().min(1000).default(5000),
+  // DNS routing mode: how hostnames are routed to providers
+  // - auto: Route based on zone matching, skip if no zone matches
+  // - auto-with-fallback: Route based on zone, use default provider if no match
+  // - default-only: Always use default provider (v1 behavior)
+  dnsRoutingMode: dnsRoutingModeSchema.default('auto-with-fallback'),
+  // When multiple providers have the same zone, create records in ALL of them
+  dnsMultiProviderSameZone: z.coerce.boolean().default(true),
 });
 
 // Traefik config schema
@@ -192,6 +206,7 @@ export type AppConfig = z.infer<typeof appConfigSchema>;
 export type TraefikConfig = z.infer<typeof traefikConfigSchema>;
 export type DockerConfig = z.infer<typeof dockerConfigSchema>;
 export type DNSDefaults = z.infer<typeof dnsDefaultsSchema>;
+export type DNSRoutingMode = z.infer<typeof dnsRoutingModeSchema>;
 export type CloudflareCredentials = z.infer<typeof cloudflareCredentialsSchema>;
 export type DigitalOceanCredentials = z.infer<typeof digitalOceanCredentialsSchema>;
 export type Route53Credentials = z.infer<typeof route53CredentialsSchema>;

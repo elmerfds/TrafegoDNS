@@ -121,6 +121,8 @@ export class ConfigManager {
       cleanupGracePeriod: getEnvInt('CLEANUP_GRACE_PERIOD', 15),
       webhookRetryAttempts: getEnvInt('WEBHOOK_RETRY_ATTEMPTS', 3),
       webhookRetryDelay: getEnvInt('WEBHOOK_RETRY_DELAY', 5000),
+      dnsRoutingMode: getEnv('DNS_ROUTING_MODE', 'auto-with-fallback'),
+      dnsMultiProviderSameZone: getEnvBool('DNS_MULTI_PROVIDER_SAME_ZONE', true),
     });
 
     // Set database path default based on data dir

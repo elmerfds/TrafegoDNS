@@ -151,12 +151,20 @@ export class DNSManager {
 
   /**
    * Find provider that manages a given hostname based on zone
+   * Returns the single best match (most specific zone)
    */
   getProviderForZone(hostname: string): { id: string; provider: DNSProvider } | undefined {
-    const lowerHostname = hostname.toLowerCase();
+    const matches = this.getProvidersForZone(hostname);
+    return matches.length > 0 ? matches[0] : undefined;
+  }
 
-    // Find the provider with the longest matching zone (most specific match)
-    let bestMatch: { id: string; provider: DNSProvider; zoneLength: number } | undefined;
+  /**
+   * Find ALL providers that can manage a given hostname based on zone
+   * Returns providers sorted by zone specificity (most specific first)
+   */
+  getProvidersForZone(hostname: string): Array<{ id: string; provider: DNSProvider }> {
+    const lowerHostname = hostname.toLowerCase();
+    const matches: Array<{ id: string; provider: DNSProvider; zoneLength: number }> = [];
 
     for (const [id, provider] of this.providerInstances) {
       const zone = provider.getZoneName()?.toLowerCase();
@@ -164,13 +172,14 @@ export class DNSManager {
 
       // Check if hostname ends with the zone or equals the zone
       if (lowerHostname === zone || lowerHostname.endsWith(`.${zone}`)) {
-        if (!bestMatch || zone.length > bestMatch.zoneLength) {
-          bestMatch = { id, provider, zoneLength: zone.length };
-        }
+        matches.push({ id, provider, zoneLength: zone.length });
       }
     }
 
-    return bestMatch ? { id: bestMatch.id, provider: bestMatch.provider } : undefined;
+    // Sort by zone length descending (most specific first)
+    matches.sort((a, b) => b.zoneLength - a.zoneLength);
+
+    return matches.map(m => ({ id: m.id, provider: m.provider }));
   }
 
   /**
@@ -245,19 +254,64 @@ export class DNSManager {
       }
     }
 
-    // Auto-detect by zone
-    const zoneMatch = this.getProviderForZone(hostname);
-    if (zoneMatch) {
-      this.logger.info({ hostname, providerId: zoneMatch.id, providerName: zoneMatch.provider.getProviderName(), zone: zoneMatch.provider.getZoneName() }, 'Auto-routed to provider by zone');
-      return [zoneMatch];
+    // Get routing mode from config
+    const routingMode = this.config.app.dnsRoutingMode;
+
+    // If default-only mode, skip zone matching entirely
+    if (routingMode === 'default-only') {
+      if (this.defaultProviderId) {
+        const defaultProvider = this.providerInstances.get(this.defaultProviderId);
+        if (defaultProvider) {
+          this.logger.debug({ hostname, providerId: this.defaultProviderId, mode: 'default-only' }, 'Using default provider (default-only mode)');
+          return [{ id: this.defaultProviderId, provider: defaultProvider }];
+        }
+      }
+      this.logger.warn({ hostname }, 'No default provider configured (default-only mode)');
+      return [];
     }
 
-    // No matching zone - skip this hostname (log at info level to make it visible)
+    // Auto-detect by zone (for 'auto' and 'auto-with-fallback' modes)
+    const multiProviderSameZone = this.config.app.dnsMultiProviderSameZone;
+    const zoneMatches = this.getProvidersForZone(hostname);
+
+    if (zoneMatches.length > 0) {
+      if (multiProviderSameZone) {
+        // Return ALL matching providers
+        const providerNames = zoneMatches.map(m => m.provider.getProviderName()).join(', ');
+        this.logger.info(
+          { hostname, providers: providerNames, count: zoneMatches.length },
+          'Auto-routed to multiple providers by zone (multi-provider mode)'
+        );
+        return zoneMatches;
+      } else {
+        // Return only the best match (most specific zone)
+        const bestMatch = zoneMatches[0]!; // Safe: we checked length > 0
+        this.logger.info(
+          { hostname, providerId: bestMatch.id, providerName: bestMatch.provider.getProviderName(), zone: bestMatch.provider.getZoneName() },
+          'Auto-routed to provider by zone'
+        );
+        return [bestMatch];
+      }
+    }
+
+    // No matching zone - check if we should fallback to default
+    if (routingMode === 'auto-with-fallback' && this.defaultProviderId) {
+      const defaultProvider = this.providerInstances.get(this.defaultProviderId);
+      if (defaultProvider) {
+        this.logger.info(
+          { hostname, providerId: this.defaultProviderId, providerName: defaultProvider.getProviderName(), mode: 'fallback' },
+          'No zone match - using default provider (auto-with-fallback mode)'
+        );
+        return [{ id: this.defaultProviderId, provider: defaultProvider }];
+      }
+    }
+
+    // No matching zone and no fallback - skip this hostname
     const configuredZones = Array.from(this.providerInstances.values())
       .map(p => ({ name: p.getProviderName(), zone: p.getZoneName() }))
       .filter(z => z.zone);
     this.logger.info(
-      { hostname, configuredZones },
+      { hostname, configuredZones, routingMode },
       'Skipping hostname - no matching zone configured'
     );
     return [];

@@ -110,6 +110,27 @@ export const SETTINGS_SCHEMA: SettingDefinition[] = [
     restartRequired: false,
     envVar: 'DNS_DEFAULT_CONTENT',
   },
+  {
+    key: 'dns_routing_mode',
+    label: 'DNS Routing Mode',
+    description: 'How hostnames are routed to providers: auto (zone-based, skip if no match), auto-with-fallback (zone-based with default fallback), default-only (always use default provider)',
+    type: 'select',
+    options: ['auto', 'auto-with-fallback', 'default-only'],
+    default: 'auto-with-fallback',
+    category: 'dns',
+    restartRequired: false,
+    envVar: 'DNS_ROUTING_MODE',
+  },
+  {
+    key: 'dns_multi_provider_same_zone',
+    label: 'Multi-Provider Same Zone',
+    description: 'When multiple providers have the same zone, create records in ALL of them',
+    type: 'boolean',
+    default: true,
+    category: 'dns',
+    restartRequired: false,
+    envVar: 'DNS_MULTI_PROVIDER_SAME_ZONE',
+  },
 
   // Cleanup settings
   {
