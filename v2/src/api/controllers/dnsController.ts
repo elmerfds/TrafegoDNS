@@ -106,12 +106,21 @@ export const createRecord = asyncHandler(async (req: Request, res: Response) => 
   const input = createDnsRecordSchema.parse(req.body);
   const db = getDatabase();
 
-  // Get DNS manager and default provider
+  // Get DNS manager
   const dnsManager = container.resolveSync<DNSManager>(ServiceTokens.DNS_MANAGER);
-  const provider = dnsManager.getDefaultProvider();
 
-  if (!provider) {
-    throw ApiError.badRequest('No default DNS provider configured');
+  // Use specified provider or fall back to default
+  let provider;
+  if (input.providerId) {
+    provider = dnsManager.getProvider(input.providerId);
+    if (!provider) {
+      throw ApiError.badRequest(`Provider not found: ${input.providerId}`);
+    }
+  } else {
+    provider = dnsManager.getDefaultProvider();
+    if (!provider) {
+      throw ApiError.badRequest('No default DNS provider configured');
+    }
   }
 
   // Create record in provider
