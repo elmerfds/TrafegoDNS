@@ -279,3 +279,43 @@ export const testProvider = asyncHandler(async (req: Request, res: Response) => 
     });
   }
 });
+
+/**
+ * Test provider credentials without creating
+ * Allows testing connection before saving the provider
+ */
+export const testProviderCredentials = asyncHandler(async (req: Request, res: Response) => {
+  const input = createProviderSchema.parse(req.body);
+
+  try {
+    const provider = createProvider({
+      id: 'test-provider',
+      name: input.name,
+      type: input.type as ProviderType,
+      credentials: input.credentials,
+    });
+
+    await provider.init();
+
+    // Try to list records to verify connection
+    await provider.listRecords();
+
+    await provider.dispose();
+
+    res.json({
+      success: true,
+      data: {
+        connected: true,
+        message: 'Connection successful',
+      },
+    });
+  } catch (error) {
+    res.json({
+      success: true,
+      data: {
+        connected: false,
+        message: error instanceof Error ? error.message : 'Connection failed',
+      },
+    });
+  }
+});

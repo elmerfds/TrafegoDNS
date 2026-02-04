@@ -45,6 +45,7 @@ import {
   updateProvider,
   deleteProvider,
   testProvider,
+  testProviderCredentials,
 } from '../controllers/providersController.js';
 
 import {
@@ -139,6 +140,8 @@ const providersRouter = Router();
 providersRouter.use(authenticate);
 providersRouter.use(auditMiddleware);
 providersRouter.get('/', requirePermission('read'), listProviders);
+// Test credentials before creating (must be before /:id routes)
+providersRouter.post('/test', requireRole('admin'), testProviderCredentials);
 providersRouter.get('/:id', requirePermission('read'), getProvider);
 providersRouter.post('/', requireRole('admin'), createProviderHandler);
 providersRouter.put('/:id', requireRole('admin'), updateProvider);

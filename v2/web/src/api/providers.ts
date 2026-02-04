@@ -62,4 +62,8 @@ export const providersApi = {
   async testProvider(id: string): Promise<TestProviderResult> {
     return apiClient.post<TestProviderResult>(`/providers/${id}/test`);
   },
+
+  async testProviderCredentials(data: CreateProviderInput): Promise<TestProviderResult> {
+    return apiClient.post<TestProviderResult>('/providers/test', data);
+  },
 };

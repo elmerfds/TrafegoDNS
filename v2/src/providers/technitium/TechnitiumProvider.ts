@@ -63,14 +63,22 @@ export class TechnitiumProvider extends DNSProvider {
   ) {
     super(providerId, providerName, credentials, options);
 
-    this.baseUrl = credentials.url.replace(/\/$/, '');
-    this.authMethod = credentials.authMethod;
+    // Normalize URL - add http:// if no protocol specified
+    let url = credentials.url.trim();
+    if (!url.match(/^https?:\/\//i)) {
+      url = `http://${url}`;
+    }
+    this.baseUrl = url.replace(/\/$/, '');
+
+    // Auto-detect auth method if not specified
+    // If apiToken is provided, use token auth; otherwise use session
+    this.authMethod = credentials.authMethod ?? (credentials.apiToken ? 'token' : 'session');
     this.apiToken = credentials.apiToken;
     this.username = credentials.username;
     this.password = credentials.password;
     this.zoneName = credentials.zone;
 
-    // Validate credentials
+    // Validate credentials based on auth method
     if (this.authMethod === 'token' && !this.apiToken) {
       throw new Error('API token required for token authentication');
     }

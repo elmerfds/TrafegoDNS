@@ -79,17 +79,11 @@ function Route53Icon({ className }: { className: string }) {
 
 function TechnitiumIcon({ className }: { className: string }) {
   return (
-    <svg className={className} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-      {/* Technitium DNS - Server/Shield style icon */}
-      <rect x="4" y="6" width="24" height="20" rx="2" fill="#2563EB" />
-      <rect x="6" y="8" width="20" height="4" rx="1" fill="#1D4ED8" />
-      <circle cx="9" cy="10" r="1.5" fill="#22C55E" />
-      <circle cx="14" cy="10" r="1.5" fill="#22C55E" />
-      <rect x="18" y="9" width="6" height="2" rx="0.5" fill="#60A5FA" />
-      <rect x="8" y="14" width="16" height="2" rx="0.5" fill="#60A5FA" />
-      <rect x="8" y="18" width="12" height="2" rx="0.5" fill="#60A5FA" />
-      <rect x="8" y="22" width="8" height="2" rx="0.5" fill="#60A5FA" />
-    </svg>
+    <img
+      src="https://cdn.jsdelivr.net/gh/selfhst/icons@main/png/technitium.png"
+      alt="Technitium DNS"
+      className={className}
+    />
   );
 }
 

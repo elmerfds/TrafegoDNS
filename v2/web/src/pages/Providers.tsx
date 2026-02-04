@@ -232,6 +232,7 @@ function CreateProviderModal({ isOpen, onClose }: CreateProviderModalProps) {
     enabled: true,
   });
   const [error, setError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{ connected: boolean; message: string } | null>(null);
 
   const createMutation = useMutation({
     mutationFn: (data: CreateProviderInput) => providersApi.createProvider(data),
@@ -239,11 +240,44 @@ function CreateProviderModal({ isOpen, onClose }: CreateProviderModalProps) {
       queryClient.invalidateQueries({ queryKey: ['providers'] });
       onClose();
       setFormData({ type: 'cloudflare', credentials: {}, enabled: true });
+      setTestResult(null);
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : 'Failed to create provider');
     },
   });
+
+  const testMutation = useMutation({
+    mutationFn: (data: CreateProviderInput) => providersApi.testProviderCredentials(data),
+    onSuccess: (result) => {
+      setTestResult(result);
+      setError(null);
+    },
+    onError: (err) => {
+      setTestResult({ connected: false, message: err instanceof Error ? err.message : 'Test failed' });
+    },
+  });
+
+  // Build credentials with authMethod for Technitium
+  const buildCredentials = () => {
+    let credentials = { ...formData.credentials };
+    if (formData.type === 'technitium' && credentials) {
+      credentials = {
+        ...credentials,
+        authMethod: 'token', // Default to token auth
+      };
+    }
+    return credentials;
+  };
+
+  const handleTest = () => {
+    if (!formData.name || !formData.type) {
+      setError('Please fill in name and type first');
+      return;
+    }
+    setTestResult(null);
+    testMutation.mutate({ ...formData, credentials: buildCredentials() } as CreateProviderInput);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -252,16 +286,7 @@ function CreateProviderModal({ isOpen, onClose }: CreateProviderModalProps) {
       return;
     }
 
-    // Auto-set authMethod for Technitium based on credentials
-    let credentials = { ...formData.credentials };
-    if (formData.type === 'technitium' && credentials) {
-      credentials = {
-        ...credentials,
-        authMethod: 'token', // Default to token auth
-      };
-    }
-
-    createMutation.mutate({ ...formData, credentials } as CreateProviderInput);
+    createMutation.mutate({ ...formData, credentials: buildCredentials() } as CreateProviderInput);
   };
 
   const currentFields = providerFields[formData.type as ProviderType] ?? [];
@@ -270,6 +295,14 @@ function CreateProviderModal({ isOpen, onClose }: CreateProviderModalProps) {
     <Modal isOpen={isOpen} onClose={onClose} title="Add DNS Provider" size="md">
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
+        {testResult && (
+          <Alert
+            variant={testResult.connected ? 'success' : 'error'}
+            onClose={() => setTestResult(null)}
+          >
+            {testResult.message}
+          </Alert>
+        )}
 
         <div>
           <label className="label">Name *</label>
@@ -287,12 +320,15 @@ function CreateProviderModal({ isOpen, onClose }: CreateProviderModalProps) {
           <Select
             className="mt-1"
             value={formData.type ?? 'cloudflare'}
-            onChange={(value) => setFormData({ ...formData, type: value as ProviderType, credentials: {} })}
+            onChange={(value) => {
+              setFormData({ ...formData, type: value as ProviderType, credentials: {} });
+              setTestResult(null);
+            }}
             options={[
               { value: 'cloudflare', label: 'Cloudflare', description: 'DNS and Tunnel support' },
               { value: 'digitalocean', label: 'DigitalOcean', description: 'DNS management' },
               { value: 'route53', label: 'AWS Route53', description: 'Amazon DNS service' },
-              { value: 'technitium', label: 'Technetium DNS', description: 'Self-hosted DNS' },
+              { value: 'technitium', label: 'Technitium DNS', description: 'Self-hosted DNS' },
             ]}
           />
         </div>
@@ -332,6 +368,14 @@ function CreateProviderModal({ isOpen, onClose }: CreateProviderModalProps) {
         <ModalFooter>
           <Button variant="secondary" onClick={onClose} type="button">
             Cancel
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={handleTest}
+            type="button"
+            isLoading={testMutation.isPending}
+          >
+            Test Connection
           </Button>
           <Button type="submit" isLoading={createMutation.isPending}>
             Create Provider
