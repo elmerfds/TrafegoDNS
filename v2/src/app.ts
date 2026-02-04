@@ -99,7 +99,8 @@ export function createApp(options: AppOptions = {}): Express {
     app.use(express.static(webDistPath));
 
     // SPA fallback - serve index.html for non-API routes
-    app.get('*', (req: Request, res: Response, next: NextFunction) => {
+    // Express 5 requires named wildcard parameter: {*path} or *path
+    app.get('/{*path}', (req: Request, res: Response, next: NextFunction) => {
       // Skip API routes
       if (req.path.startsWith('/api/') || req.path === '/health') {
         return next();
