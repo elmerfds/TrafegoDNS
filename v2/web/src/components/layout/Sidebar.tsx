@@ -11,6 +11,7 @@ import {
   Settings,
   FileText,
   LogOut,
+  Zap,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores';
 
@@ -18,6 +19,7 @@ interface NavItem {
   name: string;
   href: string;
   icon: React.ElementType;
+  badge?: string;
 }
 
 const navigation: NavItem[] = [
@@ -35,16 +37,34 @@ export function Sidebar() {
   const { user, logout } = useAuthStore();
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 w-64">
-      {/* Logo */}
-      <div className="flex items-center h-16 px-4 bg-gray-800">
-        <img src="/logo.svg" alt="TrafegoDNS" className="w-8 h-8 mr-2" />
-        <span className="text-xl font-bold text-white">TrafegoDNS</span>
-        <span className="ml-2 px-1.5 py-0.5 text-[10px] font-semibold bg-primary-600 text-white rounded">v2</span>
+    <div className="flex flex-col h-full w-64 gradient-sidebar">
+      {/* Logo Section */}
+      <div className="flex items-center h-16 px-4 border-b border-white/10">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center shadow-lg shadow-primary-500/30">
+              <Zap className="w-5 h-5 text-white" />
+            </div>
+          </div>
+          <div>
+            <span className="text-lg font-bold text-white">TrafegoDNS</span>
+            <div className="flex items-center gap-1.5">
+              <span className="px-1.5 py-0.5 text-[10px] font-bold bg-gradient-to-r from-primary-500 to-purple-500 text-white rounded-md">
+                v2
+              </span>
+              <span className="text-[10px] text-gray-500">BETA</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <div className="mb-2 px-3">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+            Menu
+          </span>
+        </div>
         {navigation.map((item) => {
           const isActive = location.pathname === item.href ||
             (item.href !== '/' && location.pathname.startsWith(item.href));
@@ -55,39 +75,44 @@ export function Sidebar() {
               key={item.name}
               to={item.href}
               className={`
-                flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors
+                group flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200
                 ${isActive
-                  ? 'bg-gray-800 text-white'
-                  : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                  ? 'bg-gradient-to-r from-primary-600/20 to-purple-600/20 text-white border-l-2 border-primary-500'
+                  : 'text-gray-400 hover:bg-white/5 hover:text-white border-l-2 border-transparent'
                 }
               `}
             >
-              <Icon className="w-5 h-5 mr-3" />
+              <Icon className={`w-5 h-5 mr-3 transition-colors ${isActive ? 'text-primary-400' : 'text-gray-500 group-hover:text-gray-400'}`} />
               {item.name}
+              {item.badge && (
+                <span className="ml-auto px-2 py-0.5 text-[10px] font-semibold bg-primary-500 text-white rounded-full">
+                  {item.badge}
+                </span>
+              )}
             </Link>
           );
         })}
       </nav>
 
       {/* User section */}
-      <div className="flex-shrink-0 p-4 border-t border-gray-700">
+      <div className="flex-shrink-0 p-4 border-t border-white/10">
         <div className="flex items-center">
           <div className="flex-shrink-0">
-            <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center text-white text-sm font-medium">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-emerald-500/20">
               {user?.username?.charAt(0).toUpperCase() || 'U'}
             </div>
           </div>
           <div className="ml-3 flex-1 min-w-0">
-            <p className="text-sm font-medium text-white truncate">
+            <p className="text-sm font-semibold text-white truncate">
               {user?.username || 'User'}
             </p>
-            <p className="text-xs text-gray-400 truncate">
+            <p className="text-xs text-gray-500 truncate capitalize">
               {user?.role || 'user'}
             </p>
           </div>
           <button
             onClick={() => logout()}
-            className="ml-2 p-1 text-gray-400 hover:text-white rounded-md hover:bg-gray-700"
+            className="ml-2 p-2 text-gray-500 hover:text-white rounded-lg hover:bg-white/10 transition-all duration-200"
             title="Logout"
           >
             <LogOut className="w-5 h-5" />
