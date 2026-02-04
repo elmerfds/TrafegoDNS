@@ -53,7 +53,7 @@ FROM node:20-alpine AS production
 ARG S6_OVERLAY_VERSION=3.1.6.2
 ARG TARGETARCH
 
-RUN apk add --no-cache curl xz \
+RUN apk add --no-cache curl xz bash \
     && case "${TARGETARCH}" in \
         "amd64")  S6_ARCH="x86_64"  ;; \
         "arm64")  S6_ARCH="aarch64" ;; \
