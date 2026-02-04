@@ -95,7 +95,7 @@ export class AuditService {
    * Log an event to the audit log
    */
   private async logEvent(
-    action: string,
+    action: 'create' | 'update' | 'delete' | 'login' | 'logout' | 'sync' | 'deploy' | 'orphan',
     resourceType: string,
     resourceId?: string,
     details?: Record<string, unknown>

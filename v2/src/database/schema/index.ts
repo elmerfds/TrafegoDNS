@@ -147,7 +147,7 @@ export const apiKeys = sqliteTable('api_keys', {
 export const auditLogs = sqliteTable('audit_logs', {
   id: text('id').primaryKey(),
   userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
-  action: text('action', { enum: ['create', 'update', 'delete', 'login', 'logout', 'sync', 'deploy'] }).notNull(),
+  action: text('action', { enum: ['create', 'update', 'delete', 'login', 'logout', 'sync', 'deploy', 'orphan'] }).notNull(),
   resourceType: text('resource_type').notNull(),
   resourceId: text('resource_id'),
   details: text('details').notNull().default('{}'), // JSON
