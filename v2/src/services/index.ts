@@ -4,6 +4,7 @@
 export { DNSManager } from './DNSManager.js';
 export { WebhookService } from './WebhookService.js';
 export { TunnelManager } from './TunnelManager.js';
+export { AuditService, auditService } from './AuditService.js';
 export {
   SettingsService,
   getSettingsService,

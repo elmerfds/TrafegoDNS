@@ -15,6 +15,7 @@ const ACTION_ICONS: Record<string, React.ReactNode> = {
   create: <Plus className="w-4 h-4 text-green-500" />,
   update: <Edit className="w-4 h-4 text-blue-500" />,
   delete: <Trash2 className="w-4 h-4 text-red-500" />,
+  orphan: <AlertCircle className="w-4 h-4 text-yellow-500" />,
   login: <LogIn className="w-4 h-4 text-purple-500" />,
   logout: <LogOut className="w-4 h-4 text-gray-500" />,
   sync: <RefreshCw className="w-4 h-4 text-cyan-500" />,
@@ -25,6 +26,7 @@ const ACTION_LABELS: Record<string, string> = {
   create: 'Created',
   update: 'Updated',
   delete: 'Deleted',
+  orphan: 'Orphaned',
   login: 'Logged in',
   logout: 'Logged out',
   sync: 'Synced',
@@ -32,11 +34,13 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const RESOURCE_LABELS: Record<string, string> = {
+  dnsRecord: 'DNS Record',
   dns_record: 'DNS Record',
   provider: 'Provider',
   webhook: 'Webhook',
   tunnel: 'Tunnel',
   user: 'User',
+  setting: 'Setting',
   settings: 'Settings',
   api_key: 'API Key',
 };
@@ -62,21 +66,25 @@ function NotificationItem({ log }: { log: AuditLog }) {
   const details = log.details as Record<string, string | undefined> | undefined;
   const resourceName = details?.name || details?.hostname || details?.username || log.resourceId?.slice(0, 8);
 
+  // Check if this is an auto-discovery event
+  const isAutoDiscovery = details?.source === 'auto-discovery';
+
   return (
-    <div className="flex items-start gap-3 p-3 hover:bg-gray-50 border-b border-gray-100 last:border-0">
+    <div className="flex items-start gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-0">
       <div className="flex-shrink-0 mt-0.5">
         {icon}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-gray-900">
+        <p className="text-sm text-gray-900 dark:text-white">
           <span className="font-medium">{actionLabel}</span>{' '}
-          <span className="text-gray-600">{resourceLabel}</span>
+          <span className="text-gray-600 dark:text-gray-400">{resourceLabel}</span>
           {resourceName && (
-            <span className="text-gray-500 truncate"> - {resourceName}</span>
+            <span className="text-gray-500 dark:text-gray-500 truncate"> - {resourceName}</span>
           )}
         </p>
-        <p className="text-xs text-gray-400 mt-0.5">
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
           {formatTimeAgo(log.createdAt)}
+          {isAutoDiscovery && <span className="ml-2 text-primary-500">(auto)</span>}
         </p>
       </div>
     </div>
@@ -131,21 +139,21 @@ export function NotificationPanel({ className }: NotificationPanelProps) {
 
       {/* Dropdown Panel */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+        <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-            <h3 className="text-sm font-semibold text-gray-900">Recent Activity</h3>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Recent Activity</h3>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => refetch()}
-                className="p-1 text-gray-400 hover:text-gray-600"
+                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                 title="Refresh"
               >
                 <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
               </button>
               <button
                 onClick={() => setIsOpen(false)}
-                className="p-1 text-gray-400 hover:text-gray-600"
+                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -157,17 +165,17 @@ export function NotificationPanel({ className }: NotificationPanelProps) {
             {error ? (
               <div className="p-4 text-center">
                 <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">Failed to load notifications</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Failed to load notifications</p>
               </div>
             ) : isLoading && !data ? (
               <div className="p-4 text-center">
                 <RefreshCw className="w-6 h-6 text-gray-400 mx-auto mb-2 animate-spin" />
-                <p className="text-sm text-gray-500">Loading...</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Loading...</p>
               </div>
             ) : data?.logs?.length === 0 ? (
               <div className="p-8 text-center">
-                <Check className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">No recent activity</p>
+                <Check className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+                <p className="text-sm text-gray-500 dark:text-gray-400">No recent activity</p>
               </div>
             ) : (
               data?.logs?.map((log) => (
@@ -178,8 +186,8 @@ export function NotificationPanel({ className }: NotificationPanelProps) {
 
           {/* Footer */}
           {hasNotifications && (
-            <div className="px-4 py-2 border-t border-gray-200 bg-gray-50">
-              <p className="text-xs text-gray-500 text-center">
+            <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 rounded-b-lg">
+              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
                 Showing last {data?.logs?.length ?? 0} activities
               </p>
             </div>

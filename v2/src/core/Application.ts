@@ -7,7 +7,7 @@ import { eventBus, EventTypes } from './EventBus.js';
 import { container, ServiceTokens } from './ServiceContainer.js';
 import { ConfigManager, getConfig } from '../config/ConfigManager.js';
 import { initDatabase, closeDatabase } from '../database/connection.js';
-import { DNSManager, WebhookService, TunnelManager, getSettingsService } from '../services/index.js';
+import { DNSManager, WebhookService, TunnelManager, getSettingsService, auditService } from '../services/index.js';
 import { DockerMonitor, TraefikMonitor, DirectMonitor } from '../monitors/index.js';
 import { createApp, startServer } from '../app.js';
 import { V1Migrator } from '../migration/V1Migrator.js';
@@ -149,6 +149,9 @@ export class Application {
     const settingsService = getSettingsService();
     await settingsService.init();
     container.registerInstance(ServiceTokens.SETTINGS_SERVICE, settingsService);
+
+    // Initialize Audit Service (listens for events and logs them)
+    await auditService.init();
 
     // Start IP refresh
     this.config.startIPRefresh();

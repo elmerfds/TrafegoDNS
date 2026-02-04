@@ -507,8 +507,9 @@ export class DNSManager {
 
     // Track created records
     for (const record of result.created) {
+      const recordId = uuidv4();
       await db.insert(dnsRecords).values({
-        id: uuidv4(),
+        id: recordId,
         providerId,
         externalId: record.id,
         type: record.type,
@@ -523,6 +524,17 @@ export class DNSManager {
         tag: record.tag,
         source: 'traefik',
         lastSyncedAt: now,
+      });
+
+      // Publish event for notifications and audit
+      eventBus.publish(EventTypes.DNS_RECORD_CREATED, {
+        record: {
+          id: recordId,
+          type: record.type,
+          name: record.name,
+          content: record.content,
+        },
+        providerId,
       });
     }
 
