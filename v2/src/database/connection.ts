@@ -58,7 +58,12 @@ export function initDatabase(options: DatabaseOptions): BetterSQLite3Database<ty
       runDatabaseMigrations();
     } catch (error) {
       logger.warn({ error }, 'Migration folder not found, creating tables directly');
-      createTablesDirectly();
+      try {
+        createTablesDirectly();
+      } catch (tableError) {
+        logger.error({ error: tableError }, 'Failed to create database tables');
+        throw tableError;
+      }
     }
   }
 

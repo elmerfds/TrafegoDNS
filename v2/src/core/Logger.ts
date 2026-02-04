@@ -37,6 +37,14 @@ function createLogger(options: LoggerOptions = defaultOptions): pino.Logger {
     formatters: {
       level: (label: string) => ({ level: label }),
     },
+    serializers: {
+      error: (err: Error) => ({
+        type: err.constructor.name,
+        message: err.message,
+        stack: err.stack,
+        ...(err as unknown as Record<string, unknown>),
+      }),
+    },
   });
 }
 
