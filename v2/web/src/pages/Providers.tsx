@@ -3,7 +3,7 @@
  */
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Edit, Play, Search } from 'lucide-react';
+import { Plus, Trash2, Edit, Play, Search, ChevronDown, ChevronRight, Settings } from 'lucide-react';
 import { providersApi, type Provider, type CreateProviderInput, type UpdateProviderInput, type ProviderType, type DiscoverRecordsResult } from '../api';
 import { Button, Table, Badge, Modal, ModalFooter, Alert, Select, ProviderIcon } from '../components/common';
 
@@ -461,6 +461,168 @@ interface EditProviderModalProps {
   provider: Provider | null;
 }
 
+// Types for provider defaults
+interface ProviderDefaults {
+  recordType?: string;
+  content?: string;
+  ttl?: number;
+  proxied?: boolean;
+  publicIp?: string;
+  publicIpv6?: string;
+}
+
+interface ProviderDefaultsSectionProps {
+  provider: Provider;
+  formData: Partial<UpdateProviderInput>;
+  setFormData: React.Dispatch<React.SetStateAction<Partial<UpdateProviderInput>>>;
+}
+
+function ProviderDefaultsSection({ provider, formData, setFormData }: ProviderDefaultsSectionProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Get current defaults from provider settings or formData
+  const currentSettings = formData.settings ?? provider.settings ?? {};
+  const defaults: ProviderDefaults = (currentSettings.defaults as ProviderDefaults) ?? {};
+
+  const updateDefaults = (key: keyof ProviderDefaults, value: string | number | boolean | undefined) => {
+    const newDefaults = { ...defaults };
+    if (value === '' || value === undefined) {
+      delete newDefaults[key];
+    } else {
+      (newDefaults as Record<string, unknown>)[key] = value;
+    }
+
+    // Clean up empty defaults object
+    const hasDefaults = Object.keys(newDefaults).length > 0;
+
+    setFormData({
+      ...formData,
+      settings: {
+        ...currentSettings,
+        defaults: hasDefaults ? newDefaults : undefined,
+      },
+    });
+  };
+
+  const recordTypes = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA', 'NS'];
+
+  return (
+    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <button
+        type="button"
+        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="flex items-center space-x-2">
+          <Settings className="w-4 h-4 text-gray-500" />
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Default Record Settings
+          </span>
+        </div>
+        {isExpanded ? (
+          <ChevronDown className="w-4 h-4 text-gray-500" />
+        ) : (
+          <ChevronRight className="w-4 h-4 text-gray-500" />
+        )}
+      </button>
+
+      {isExpanded && (
+        <div className="p-4 space-y-4 bg-white dark:bg-gray-900">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Override global defaults for this provider. Leave empty to use global settings.
+          </p>
+
+          <div className="grid grid-cols-2 gap-4">
+            {/* Default Record Type */}
+            <div>
+              <label className="label text-xs">Default Record Type</label>
+              <select
+                className="input mt-1 text-sm"
+                value={defaults.recordType ?? ''}
+                onChange={(e) => updateDefaults('recordType', e.target.value || undefined)}
+              >
+                <option value="">Use global default</option>
+                {recordTypes.map((type) => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Default TTL */}
+            <div>
+              <label className="label text-xs">Default TTL (seconds)</label>
+              <input
+                type="number"
+                className="input mt-1 text-sm"
+                placeholder="Use global default"
+                min={1}
+                value={defaults.ttl ?? ''}
+                onChange={(e) => updateDefaults('ttl', e.target.value ? parseInt(e.target.value, 10) : undefined)}
+              />
+            </div>
+          </div>
+
+          {/* Default Content */}
+          <div>
+            <label className="label text-xs">Default Content</label>
+            <input
+              type="text"
+              className="input mt-1 text-sm"
+              placeholder="Use global default (e.g., auto-detected IP)"
+              value={defaults.content ?? ''}
+              onChange={(e) => updateDefaults('content', e.target.value || undefined)}
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Use <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{'{{public_ip}}'}</code> or <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{'{{public_ipv6}}'}</code> for auto-detection
+            </p>
+          </div>
+
+          {/* IP Overrides */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label text-xs">Public IP Override (IPv4)</label>
+              <input
+                type="text"
+                className="input mt-1 text-sm"
+                placeholder="Auto-detect"
+                value={defaults.publicIp ?? ''}
+                onChange={(e) => updateDefaults('publicIp', e.target.value || undefined)}
+              />
+            </div>
+
+            <div>
+              <label className="label text-xs">Public IPv6 Override</label>
+              <input
+                type="text"
+                className="input mt-1 text-sm"
+                placeholder="Auto-detect"
+                value={defaults.publicIpv6 ?? ''}
+                onChange={(e) => updateDefaults('publicIpv6', e.target.value || undefined)}
+              />
+            </div>
+          </div>
+
+          {/* Proxied (Cloudflare only) */}
+          {provider.type === 'cloudflare' && (
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="defaultProxied"
+                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                checked={defaults.proxied ?? false}
+                onChange={(e) => updateDefaults('proxied', e.target.checked || undefined)}
+              />
+              <label htmlFor="defaultProxied" className="text-sm text-gray-700 dark:text-gray-300">
+                Enable Cloudflare proxy by default
+              </label>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EditProviderModal({ isOpen, onClose, provider }: EditProviderModalProps) {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState<Partial<UpdateProviderInput>>({});
@@ -545,6 +707,13 @@ function EditProviderModal({ isOpen, onClose, provider }: EditProviderModalProps
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Leave blank to keep current value</p>
           </div>
         ))}
+
+        {/* Default Record Settings */}
+        <ProviderDefaultsSection
+          provider={provider}
+          formData={formData}
+          setFormData={setFormData}
+        />
 
         <div className="space-y-2">
           <div className="flex items-center">
