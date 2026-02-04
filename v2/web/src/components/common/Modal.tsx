@@ -34,7 +34,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
       <div className="flex min-h-full items-center justify-center p-4">
         <div
           className={`
-            relative transform overflow-hidden rounded-lg bg-white dark:bg-gray-900 shadow-xl
+            relative transform overflow-visible rounded-lg bg-white dark:bg-gray-900 shadow-xl
             transition-all w-full ${sizeStyles[size]} border border-gray-200 dark:border-gray-700
           `}
         >

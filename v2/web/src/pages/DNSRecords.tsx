@@ -533,7 +533,7 @@ function CreateRecordModal({ isOpen, onClose, providers }: CreateRecordModalProp
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Add DNS Record" size="md">
+    <Modal isOpen={isOpen} onClose={onClose} title="Add DNS Record" size="lg">
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
 
