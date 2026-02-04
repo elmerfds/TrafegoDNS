@@ -3,9 +3,9 @@
  */
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Edit, Play, Server } from 'lucide-react';
+import { Plus, Trash2, Edit, Play } from 'lucide-react';
 import { providersApi, type Provider, type CreateProviderInput, type UpdateProviderInput, type ProviderType } from '../api';
-import { Button, Table, Badge, Modal, ModalFooter, Alert, Select } from '../components/common';
+import { Button, Table, Badge, Modal, ModalFooter, Alert, Select, ProviderIcon } from '../components/common';
 
 export function ProvidersPage() {
   const queryClient = useQueryClient();
@@ -43,7 +43,7 @@ export function ProvidersPage() {
       header: 'Name',
       render: (row: Provider) => (
         <div className="flex items-center">
-          <Server className="w-5 h-5 text-gray-400 mr-3" />
+          <ProviderIcon type={row.type} className="w-6 h-6 mr-3" />
           <span className="font-medium text-gray-900 dark:text-white">{row.name}</span>
           {row.isDefault && (
             <Badge variant="info" size="sm" className="ml-2">
