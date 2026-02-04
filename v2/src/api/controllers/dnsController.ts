@@ -123,6 +123,16 @@ export const createRecord = asyncHandler(async (req: Request, res: Response) => 
     }
   }
 
+  // Refresh provider cache and check if record already exists
+  await provider.getRecordsFromCache(true); // Force refresh
+  const existingRecord = provider.findRecordInCache(input.type, input.name);
+  if (existingRecord) {
+    throw ApiError.badRequest(
+      `A ${input.type} record for '${input.name}' already exists with content '${existingRecord.content}'. ` +
+      `Use the edit function to modify existing records.`
+    );
+  }
+
   // Create record in provider
   const providerRecord = await provider.createRecord({
     type: input.type,
