@@ -40,12 +40,10 @@ export const listRecords = asyncHandler(async (req: Request, res: Response) => {
     conditions.push(eq(dnsRecords.source, filter.source));
   }
   // General search - searches across name and content
-  if (filter.search) {
+  if (filter.search && filter.search.trim()) {
+    const searchTerm = `%${filter.search.trim()}%`;
     conditions.push(
-      or(
-        like(dnsRecords.name, `%${filter.search}%`),
-        like(dnsRecords.content, `%${filter.search}%`)
-      )
+      sql`(${dnsRecords.name} LIKE ${searchTerm} OR ${dnsRecords.content} LIKE ${searchTerm})`
     );
   }
 
