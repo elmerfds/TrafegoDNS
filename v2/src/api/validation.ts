@@ -96,13 +96,23 @@ export const updateDnsRecordSchema = createDnsRecordSchema.partial().refine(
   { message: 'At least one field must be provided' }
 );
 
+// Custom boolean schema that properly handles string "true"/"false" from query params
+const queryBooleanSchema = z.preprocess(
+  (val) => {
+    if (val === 'true' || val === true) return true;
+    if (val === 'false' || val === false) return false;
+    return undefined;
+  },
+  z.boolean().optional()
+);
+
 export const dnsRecordFilterSchema = z.object({
   type: dnsRecordTypeSchema.optional(),
   name: z.string().optional(),
   content: z.string().optional(),
   providerId: z.string().uuid().optional(),
   source: z.enum(['traefik', 'direct', 'api', 'managed', 'discovered']).optional(),
-  managed: z.coerce.boolean().optional(), // Filter by managed status
+  managed: queryBooleanSchema, // Filter by managed status
   search: z.string().optional(), // General search across name and content
 }).merge(paginationSchema);
 
