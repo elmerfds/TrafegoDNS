@@ -3,12 +3,11 @@
 
 cd /app || exit 1
 
-# Set ownership if PUID/PGID provided
-if [[ -n "${PUID:-}" ]] && [[ -n "${PGID:-}" ]]; then
-    groupmod -o -g "$PGID" abc 2>/dev/null
-    usermod -o -u "$PUID" abc 2>/dev/null
-    chown -R abc:abc /config
-fi
+echo
+echo "-------------------------------------"
+echo "Starting TrafegoDNS v2..."
+echo "-------------------------------------"
+echo
 
-# Run as abc user
+# Run as abc user (PUID/PGID and Docker socket permissions handled by init-adduser)
 exec s6-setuidgid abc node dist/index.js

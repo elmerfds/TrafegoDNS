@@ -53,7 +53,8 @@ FROM node:20-alpine AS production
 ARG S6_OVERLAY_VERSION=3.1.6.2
 ARG TARGETARCH
 
-RUN apk add --no-cache curl xz bash \
+# Install runtime dependencies including shadow for usermod/groupmod
+RUN apk add --no-cache curl xz bash shadow \
     && case "${TARGETARCH}" in \
         "amd64")  S6_ARCH="x86_64"  ;; \
         "arm64")  S6_ARCH="aarch64" ;; \
@@ -81,6 +82,10 @@ COPY package.json ./
 
 # Copy s6 service files
 COPY docker-s6/root /
+
+# Make s6 scripts executable
+RUN chmod +x /etc/s6-overlay/scripts/* \
+    && chmod +x /etc/s6-overlay/s6-rc.d/svc-trafegodns/run
 
 # Create config directory
 RUN mkdir -p /config/data \
