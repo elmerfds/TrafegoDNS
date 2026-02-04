@@ -733,24 +733,29 @@ export class DNSManager {
   private logStats(): void {
     if (this.stats.total === 0) return;
 
-    if (this.stats.created > 0) {
-      this.logger.info({ count: this.stats.created }, 'DNS records created');
-    }
+    const hasChanges = this.stats.created > 0 || this.stats.updated > 0 || this.stats.errors > 0;
 
-    if (this.stats.updated > 0) {
-      this.logger.info({ count: this.stats.updated }, 'DNS records updated');
-    }
-
-    if (this.stats.upToDate > 0) {
-      this.logger.debug({ count: this.stats.upToDate }, 'DNS records up to date');
-    }
-
-    if (this.stats.skipped > 0) {
-      this.logger.debug({ count: this.stats.skipped }, 'Hostnames skipped (no matching zone)');
-    }
-
-    if (this.stats.errors > 0) {
-      this.logger.warn({ count: this.stats.errors }, 'DNS record errors');
+    if (hasChanges) {
+      // Log individual change types at info level when there are changes
+      if (this.stats.created > 0) {
+        this.logger.info({ count: this.stats.created }, 'DNS records created');
+      }
+      if (this.stats.updated > 0) {
+        this.logger.info({ count: this.stats.updated }, 'DNS records updated');
+      }
+      if (this.stats.errors > 0) {
+        this.logger.warn({ count: this.stats.errors }, 'DNS record errors');
+      }
+    } else {
+      // Log summary at info level when everything is in sync (but only on first sync or periodically)
+      this.logger.debug(
+        {
+          total: this.stats.total,
+          upToDate: this.stats.upToDate,
+          skipped: this.stats.skipped,
+        },
+        'DNS sync complete - all records in sync'
+      );
     }
   }
 
