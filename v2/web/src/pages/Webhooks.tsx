@@ -53,7 +53,7 @@ export function WebhooksPage() {
       key: 'name',
       header: 'Name',
       render: (row: Webhook) => (
-        <span className="font-medium text-gray-900">{row.name}</span>
+        <span className="font-medium text-gray-900 dark:text-white">{row.name}</span>
       ),
     },
     {
@@ -115,8 +115,8 @@ export function WebhooksPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-medium text-gray-900">Webhooks</h2>
-          <p className="text-sm text-gray-500">
+          <h2 className="text-lg font-medium text-gray-900 dark:text-white">Webhooks</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             Receive notifications when DNS events occur
           </p>
         </div>
@@ -159,7 +159,7 @@ export function WebhooksPage() {
         title="Delete Webhook"
         size="sm"
       >
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
           Are you sure you want to delete webhook <strong>{deleteWebhook?.name}</strong>?
         </p>
         <ModalFooter>
@@ -278,7 +278,7 @@ function CreateWebhookModal({ isOpen, onClose }: CreateWebhookModalProps) {
             onChange={(e) => setFormData({ ...formData, secret: e.target.value })}
             placeholder="HMAC signing secret"
           />
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
             Used to sign webhook payloads for verification
           </p>
         </div>
@@ -294,7 +294,7 @@ function CreateWebhookModal({ isOpen, onClose }: CreateWebhookModalProps) {
                   checked={formData.events?.includes(event.value) ?? false}
                   onChange={() => toggleEvent(event.value)}
                 />
-                <span className="ml-2 text-sm text-gray-700">{event.label}</span>
+                <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{event.label}</span>
               </label>
             ))}
           </div>
@@ -404,7 +404,7 @@ function EditWebhookModal({ isOpen, onClose, webhook }: EditWebhookModalProps) {
             onChange={(e) => setFormData({ ...formData, secret: e.target.value })}
             placeholder="Leave blank to keep current value"
           />
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
             Leave blank to keep current secret
           </p>
         </div>
@@ -420,7 +420,7 @@ function EditWebhookModal({ isOpen, onClose, webhook }: EditWebhookModalProps) {
                   checked={formData.events?.includes(event.value) ?? false}
                   onChange={() => toggleEvent(event.value)}
                 />
-                <span className="ml-2 text-sm text-gray-700">{event.label}</span>
+                <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{event.label}</span>
               </label>
             ))}
           </div>
@@ -434,7 +434,7 @@ function EditWebhookModal({ isOpen, onClose, webhook }: EditWebhookModalProps) {
             checked={formData.enabled ?? webhook.enabled}
             onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
           />
-          <label htmlFor="editWebhookEnabled" className="ml-2 block text-sm text-gray-700">
+          <label htmlFor="editWebhookEnabled" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
             Enabled
           </label>
         </div>

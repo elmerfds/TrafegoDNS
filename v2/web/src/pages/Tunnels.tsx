@@ -79,7 +79,7 @@ export function TunnelsPage() {
       key: 'createdAt',
       header: 'Created',
       render: (row: Tunnel) => (
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-gray-500 dark:text-gray-400">
           {new Date(row.createdAt).toLocaleDateString()}
         </span>
       ),
@@ -112,8 +112,8 @@ export function TunnelsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-medium text-gray-900">Cloudflare Tunnels</h2>
-          <p className="text-sm text-gray-500">
+          <h2 className="text-lg font-medium text-gray-900 dark:text-white">Cloudflare Tunnels</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             Manage Cloudflare Tunnels for secure access to internal services
           </p>
         </div>
@@ -155,7 +155,7 @@ export function TunnelsPage() {
         title="Delete Tunnel"
         size="sm"
       >
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
           Are you sure you want to delete tunnel <strong>{deleteTunnel?.name}</strong>?
           This will remove the tunnel from Cloudflare.
         </p>
@@ -232,7 +232,7 @@ function CreateTunnelModal({ isOpen, onClose }: CreateTunnelModalProps) {
             onChange={(e) => setFormData({ ...formData, secret: e.target.value })}
             placeholder="Leave empty to auto-generate"
           />
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
             Used for running cloudflared connector. Auto-generated if not provided.
           </p>
         </div>
@@ -264,7 +264,7 @@ function TunnelDetailModal({ tunnel, onClose }: TunnelDetailModalProps) {
         {/* Tunnel Info */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-sm text-gray-500">Status</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Status</p>
             <Badge
               variant={
                 tunnel.status === 'active' ? 'success' :
@@ -275,23 +275,23 @@ function TunnelDetailModal({ tunnel, onClose }: TunnelDetailModalProps) {
             </Badge>
           </div>
           <div>
-            <p className="text-sm text-gray-500">Tunnel ID</p>
-            <p className="font-mono text-sm">{tunnel.externalTunnelId}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Tunnel ID</p>
+            <p className="font-mono text-sm text-gray-900 dark:text-white">{tunnel.externalTunnelId}</p>
           </div>
         </div>
 
         {/* Ingress Rules */}
         <div>
-          <h4 className="text-sm font-medium text-gray-900 mb-3">Ingress Rules</h4>
+          <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-3">Ingress Rules</h4>
           {tunnel.ingressRules && tunnel.ingressRules.length > 0 ? (
-            <div className="border rounded-lg divide-y">
+            <div className="border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-200 dark:divide-gray-700">
               {tunnel.ingressRules.map((rule) => (
                 <div key={rule.id} className="p-3 flex items-center justify-between">
                   <div>
-                    <p className="font-medium text-sm text-gray-900">{rule.hostname}</p>
-                    <p className="text-xs text-gray-500">{rule.path ?? '/*'}</p>
+                    <p className="font-medium text-sm text-gray-900 dark:text-white">{rule.hostname}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{rule.path ?? '/*'}</p>
                   </div>
-                  <div className="flex items-center text-sm text-gray-500">
+                  <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
                     <span className="font-mono">{rule.service}</span>
                     <ExternalLink className="w-3 h-3 ml-2" />
                   </div>
@@ -299,7 +299,7 @@ function TunnelDetailModal({ tunnel, onClose }: TunnelDetailModalProps) {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-500 text-center py-4">
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
               No ingress rules configured
             </p>
           )}

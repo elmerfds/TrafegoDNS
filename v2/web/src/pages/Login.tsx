@@ -6,6 +6,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { useAuthStore } from '../stores';
 import { Button } from '../components/common';
 import { Alert } from '../components/common';
+import { Zap, Lock } from 'lucide-react';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -24,64 +25,117 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h1 className="text-center text-3xl font-bold text-gray-900">TrafegoDNS</h1>
-          <h2 className="mt-2 text-center text-lg text-gray-600">
-            Sign in to your account
-          </h2>
-        </div>
-
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {error && (
-            <Alert variant="error" onClose={clearError}>
-              {error}
-            </Alert>
-          )}
-
-          <div className="rounded-md shadow-sm space-y-4">
-            <div>
-              <label htmlFor="username" className="label">
-                Username
-              </label>
-              <input
-                id="username"
-                name="username"
-                type="text"
-                required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="input mt-1"
-                placeholder="Enter your username"
-              />
+    <div className="min-h-screen flex gradient-bg dark:bg-gray-950">
+      {/* Left side - Branding */}
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 items-center justify-center p-12">
+        <div className="max-w-md text-center">
+          <div className="flex justify-center mb-8">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center shadow-2xl shadow-primary-500/30">
+              <Zap className="w-10 h-10 text-white" />
             </div>
+          </div>
+          <h1 className="text-4xl font-bold text-white mb-4">TrafegoDNS</h1>
+          <p className="text-lg text-gray-400 mb-6">
+            Automatic DNS management for your Docker containers and Traefik routes.
+          </p>
+          <div className="flex justify-center gap-2">
+            <span className="px-3 py-1 text-sm font-bold bg-gradient-to-r from-primary-500 to-purple-500 text-white rounded-lg">
+              v2
+            </span>
+            <span className="px-3 py-1 text-sm font-medium bg-gray-800 text-gray-400 rounded-lg">
+              BETA
+            </span>
+          </div>
+        </div>
+      </div>
 
-            <div>
-              <label htmlFor="password" className="label">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input mt-1"
-                placeholder="Enter your password"
-              />
+      {/* Right side - Login Form */}
+      <div className="flex-1 flex items-center justify-center p-8">
+        <div className="max-w-md w-full">
+          {/* Mobile Logo */}
+          <div className="lg:hidden text-center mb-8">
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center shadow-xl shadow-primary-500/30">
+                <Zap className="w-8 h-8 text-white" />
+              </div>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">TrafegoDNS</h1>
+            <div className="flex justify-center gap-2 mt-2">
+              <span className="px-2 py-0.5 text-xs font-bold bg-gradient-to-r from-primary-500 to-purple-500 text-white rounded-md">
+                v2
+              </span>
             </div>
           </div>
 
-          <Button
-            type="submit"
-            className="w-full"
-            isLoading={isLoading}
-          >
-            Sign in
-          </Button>
-        </form>
+          {/* Login Card */}
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl dark:shadow-none border border-gray-200 dark:border-gray-800 p-8">
+            <div className="text-center mb-8">
+              <div className="w-12 h-12 rounded-xl bg-primary-100 dark:bg-primary-500/20 flex items-center justify-center mx-auto mb-4">
+                <Lock className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+              </div>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                Welcome back
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Sign in to access your dashboard
+              </p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {error && (
+                <Alert variant="error" onClose={clearError}>
+                  {error}
+                </Alert>
+              )}
+
+              <div>
+                <label htmlFor="username" className="label">
+                  Username
+                </label>
+                <input
+                  id="username"
+                  name="username"
+                  type="text"
+                  required
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="input mt-1.5"
+                  placeholder="Enter your username"
+                  autoComplete="username"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="password" className="label">
+                  Password
+                </label>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="input mt-1.5"
+                  placeholder="Enter your password"
+                  autoComplete="current-password"
+                />
+              </div>
+
+              <Button
+                type="submit"
+                className="w-full"
+                isLoading={isLoading}
+              >
+                Sign in
+              </Button>
+            </form>
+          </div>
+
+          <p className="text-center text-xs text-gray-400 dark:text-gray-600 mt-6">
+            TrafegoDNS v2 - Automatic DNS Management
+          </p>
+        </div>
       </div>
     </div>
   );

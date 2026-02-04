@@ -628,11 +628,11 @@ function EditRecordModal({ isOpen, onClose, record }: EditRecordModalProps) {
           <label className="label">Hostname</label>
           <input
             type="text"
-            className="input mt-1 bg-gray-50"
+            className="input mt-1 bg-gray-50 dark:bg-gray-800"
             value={record.hostname}
             disabled
           />
-          <p className="text-xs text-gray-500 mt-1">Hostname cannot be changed</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Hostname cannot be changed</p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -640,7 +640,7 @@ function EditRecordModal({ isOpen, onClose, record }: EditRecordModalProps) {
             <label className="label">Type</label>
             <input
               type="text"
-              className="input mt-1 bg-gray-50"
+              className="input mt-1 bg-gray-50 dark:bg-gray-800"
               value={record.type}
               disabled
             />
@@ -675,7 +675,7 @@ function EditRecordModal({ isOpen, onClose, record }: EditRecordModalProps) {
               checked={formData.proxied ?? record.proxied ?? false}
               onChange={(e) => setFormData({ ...formData, proxied: e.target.checked })}
             />
-            <label htmlFor="proxied" className="ml-2 text-sm text-gray-700">
+            <label htmlFor="proxied" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
               Proxied (Cloudflare only)
             </label>
           </div>

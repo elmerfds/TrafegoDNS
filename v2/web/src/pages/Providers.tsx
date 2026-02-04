@@ -44,7 +44,7 @@ export function ProvidersPage() {
       render: (row: Provider) => (
         <div className="flex items-center">
           <Server className="w-5 h-5 text-gray-400 mr-3" />
-          <span className="font-medium text-gray-900">{row.name}</span>
+          <span className="font-medium text-gray-900 dark:text-white">{row.name}</span>
           {row.isDefault && (
             <Badge variant="info" size="sm" className="ml-2">
               Default
@@ -73,7 +73,7 @@ export function ProvidersPage() {
       key: 'createdAt',
       header: 'Created',
       render: (row: Provider) => (
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-gray-500 dark:text-gray-400">
           {new Date(row.createdAt).toLocaleDateString()}
         </span>
       ),
@@ -113,7 +113,7 @@ export function ProvidersPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-medium text-gray-900">DNS Providers</h2>
+        <h2 className="text-lg font-medium text-gray-900 dark:text-white">DNS Providers</h2>
         <Button
           leftIcon={<Plus className="w-4 h-4" />}
           onClick={() => setIsCreateModalOpen(true)}
@@ -153,8 +153,8 @@ export function ProvidersPage() {
         title="Delete Provider"
         size="sm"
       >
-        <p className="text-sm text-gray-500">
-          Are you sure you want to delete <strong>{deleteProvider?.name}</strong>?
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Are you sure you want to delete <strong className="text-gray-900 dark:text-white">{deleteProvider?.name}</strong>?
           This will not delete any DNS records managed by this provider.
         </p>
         <ModalFooter>
@@ -311,7 +311,7 @@ function CreateProviderModal({ isOpen, onClose }: CreateProviderModalProps) {
             checked={formData.isDefault ?? false}
             onChange={(e) => setFormData({ ...formData, isDefault: e.target.checked })}
           />
-          <label htmlFor="isDefault" className="ml-2 block text-sm text-gray-700">
+          <label htmlFor="isDefault" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
             Set as default provider
           </label>
         </div>
@@ -393,11 +393,11 @@ function EditProviderModal({ isOpen, onClose, provider }: EditProviderModalProps
           <label className="label">Type</label>
           <input
             type="text"
-            className="input mt-1 bg-gray-50"
+            className="input mt-1 bg-gray-50 dark:bg-gray-800"
             value={provider.type}
             disabled
           />
-          <p className="text-xs text-gray-500 mt-1">Provider type cannot be changed</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Provider type cannot be changed</p>
         </div>
 
         {currentFields.map((field) => (
@@ -416,7 +416,7 @@ function EditProviderModal({ isOpen, onClose, provider }: EditProviderModalProps
                 },
               })}
             />
-            <p className="text-xs text-gray-500 mt-1">Leave blank to keep current value</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Leave blank to keep current value</p>
           </div>
         ))}
 
@@ -429,7 +429,7 @@ function EditProviderModal({ isOpen, onClose, provider }: EditProviderModalProps
               checked={formData.enabled ?? provider.enabled}
               onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
             />
-            <label htmlFor="editEnabled" className="ml-2 block text-sm text-gray-700">
+            <label htmlFor="editEnabled" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
               Enabled
             </label>
           </div>
@@ -438,11 +438,11 @@ function EditProviderModal({ isOpen, onClose, provider }: EditProviderModalProps
             <input
               type="checkbox"
               id="editIsDefault"
-              className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+              className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 dark:border-gray-600 rounded"
               checked={formData.isDefault ?? provider.isDefault}
               onChange={(e) => setFormData({ ...formData, isDefault: e.target.checked })}
             />
-            <label htmlFor="editIsDefault" className="ml-2 block text-sm text-gray-700">
+            <label htmlFor="editIsDefault" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
               Set as default provider
             </label>
           </div>

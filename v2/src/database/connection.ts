@@ -90,30 +90,14 @@ function runDatabaseMigrations(): void {
 
 /**
  * Create tables directly (for initial setup without migrations)
+ * Uses CREATE TABLE IF NOT EXISTS to preserve existing data
  */
 function createTablesDirectly(): void {
   if (!sqliteDb) {
     throw new Error('SQLite database not initialized');
   }
 
-  // Drop existing tables to handle schema changes (safe because this is only
-  // called when migrations folder doesn't exist, i.e., fresh setup)
-  logger.info('Dropping existing tables if any (fresh schema setup)');
-  sqliteDb.exec(`
-    DROP TABLE IF EXISTS webhook_deliveries;
-    DROP TABLE IF EXISTS webhooks;
-    DROP TABLE IF EXISTS tunnel_ingress_rules;
-    DROP TABLE IF EXISTS tunnels;
-    DROP TABLE IF EXISTS dns_records;
-    DROP TABLE IF EXISTS managed_hostnames;
-    DROP TABLE IF EXISTS preserved_hostnames;
-    DROP TABLE IF EXISTS container_labels;
-    DROP TABLE IF EXISTS api_keys;
-    DROP TABLE IF EXISTS audit_logs;
-    DROP TABLE IF EXISTS settings;
-    DROP TABLE IF EXISTS users;
-    DROP TABLE IF EXISTS providers;
-  `);
+  logger.info('Creating database tables (preserving existing data)');
 
   // Create providers table
   sqliteDb.exec(`
