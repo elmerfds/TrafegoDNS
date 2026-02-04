@@ -2,7 +2,7 @@
  * Dashboard Page
  */
 import { useQuery } from '@tanstack/react-query';
-import { Globe, Server, Cable, Webhook, AlertTriangle, CheckCircle, XCircle, Activity, Clock, Database } from 'lucide-react';
+import { Globe, Server, Cable, Webhook, CheckCircle, XCircle, Activity, Clock, Database } from 'lucide-react';
 import { healthApi, dnsApi, providersApi, tunnelsApi, webhooksApi } from '../api';
 import { Badge } from '../components/common';
 
