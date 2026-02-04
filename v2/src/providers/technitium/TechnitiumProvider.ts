@@ -194,6 +194,39 @@ export class TechnitiumProvider extends DNSProvider {
     });
   }
 
+  /**
+   * Override findRecordInCache to handle Technitium's name format
+   * Technitium stores records with FQDN, so we need to check both formats
+   */
+  override findRecordInCache(type: DNSRecordType, name: string): DNSRecord | undefined {
+    const normalizedName = name.toLowerCase();
+    const fqdn = this.ensureFqdn(name).toLowerCase();
+    const zone = this.zoneName.toLowerCase();
+
+    return this.recordCache.records.find((record) => {
+      if (record.type !== type) {
+        return false;
+      }
+
+      const recordName = record.name.toLowerCase();
+
+      // Exact match
+      if (recordName === normalizedName || recordName === fqdn) {
+        return true;
+      }
+
+      // Check if the record name without zone suffix matches
+      const recordNameWithoutZone = recordName.endsWith(`.${zone}`)
+        ? recordName.slice(0, -(zone.length + 1))
+        : recordName;
+      const searchNameWithoutZone = normalizedName.endsWith(`.${zone}`)
+        ? normalizedName.slice(0, -(zone.length + 1))
+        : normalizedName;
+
+      return recordNameWithoutZone === searchNameWithoutZone;
+    });
+  }
+
   async createRecord(input: DNSRecordCreateInput): Promise<DNSRecord> {
     this.validateRecord(input);
 
@@ -214,9 +247,37 @@ export class TechnitiumProvider extends DNSProvider {
 
       // Refresh cache and find the new record
       await this.refreshRecordCache();
-      const created = this.findRecordInCache(input.type, this.ensureFqdn(input.name));
+
+      // Try to find the record with various name formats
+      const fqdn = this.ensureFqdn(input.name);
+      let created = this.findRecordInCache(input.type, fqdn);
+
+      // If not found with FQDN, try the original name
+      if (!created) {
+        created = this.findRecordInCache(input.type, input.name);
+      }
+
+      // If still not found, search for any record matching content + type
+      if (!created) {
+        created = this.recordCache.records.find(
+          (r) => r.type === input.type &&
+                 r.content === input.content &&
+                 (r.name.toLowerCase().includes(input.name.toLowerCase()) ||
+                  input.name.toLowerCase().includes(r.name.toLowerCase().replace(`.${this.zoneName.toLowerCase()}`, '')))
+        );
+      }
 
       if (!created) {
+        // Log what we have in cache for debugging
+        this.logger.warn(
+          {
+            searchedName: fqdn,
+            searchedType: input.type,
+            cacheSize: this.recordCache.records.length,
+            cachedNames: this.recordCache.records.filter(r => r.type === input.type).map(r => r.name).slice(0, 10)
+          },
+          'Record created but not found in cache'
+        );
         throw new Error('Record created but not found in cache');
       }
 
@@ -440,6 +501,7 @@ export class TechnitiumProvider extends DNSProvider {
       domain: this.ensureFqdn(record.name),
       type: record.type,
       ttl: String(record.ttl ?? 3600),
+      overwrite: 'true', // Allow overwriting existing records
     });
 
     switch (record.type) {
