@@ -12,32 +12,63 @@ import {
 import type { TunnelManager } from '../../services/TunnelManager.js';
 
 /**
- * Get TunnelManager or throw error
+ * Check if tunnel support is available without throwing
  */
-function getTunnelManager(): TunnelManager {
+function isTunnelSupportAvailable(): { available: boolean; reason?: string; manager?: TunnelManager } {
   if (!container.isInstantiated(ServiceTokens.TUNNEL_MANAGER)) {
-    throw ApiError.badRequest('Tunnel management not available');
+    return { available: false, reason: 'Tunnel management not available' };
   }
 
   const tunnelManager = container.resolveSync<TunnelManager>(ServiceTokens.TUNNEL_MANAGER);
 
   if (!tunnelManager.isTunnelSupportAvailable()) {
-    throw ApiError.badRequest('Tunnel support not configured. Ensure Cloudflare provider has accountId.');
+    return { available: false, reason: 'Tunnel support not configured. Ensure Cloudflare provider has accountId.' };
   }
 
-  return tunnelManager;
+  return { available: true, manager: tunnelManager };
+}
+
+/**
+ * Get TunnelManager or throw error
+ */
+function getTunnelManager(): TunnelManager {
+  const result = isTunnelSupportAvailable();
+
+  if (!result.available || !result.manager) {
+    throw ApiError.badRequest(result.reason ?? 'Tunnel management not available');
+  }
+
+  return result.manager;
 }
 
 /**
  * List all tunnels
+ * Returns empty list with metadata if tunnel support isn't configured (no error)
  */
 export const listTunnels = asyncHandler(async (req: Request, res: Response) => {
-  const tunnelManager = getTunnelManager();
-  const tunnels = await tunnelManager.listTunnels();
+  const result = isTunnelSupportAvailable();
+
+  if (!result.available || !result.manager) {
+    // Return empty list gracefully instead of throwing error
+    res.json({
+      success: true,
+      data: [],
+      meta: {
+        tunnelSupportAvailable: false,
+        reason: result.reason,
+      },
+    });
+    return;
+  }
+
+  const tunnels = await result.manager.listTunnels();
 
   res.json({
     success: true,
     data: tunnels,
+    meta: {
+      tunnelSupportAvailable: true,
+    },
   });
 });
 
