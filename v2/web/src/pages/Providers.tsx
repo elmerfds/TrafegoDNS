@@ -1,15 +1,16 @@
 /**
  * Providers Page
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Edit, Play, Server } from 'lucide-react';
-import { providersApi, type Provider, type CreateProviderInput, type ProviderType } from '../api';
+import { providersApi, type Provider, type CreateProviderInput, type UpdateProviderInput, type ProviderType } from '../api';
 import { Button, Table, Badge, Modal, ModalFooter, Alert } from '../components/common';
 
 export function ProvidersPage() {
   const queryClient = useQueryClient();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editProvider, setEditProvider] = useState<Provider | null>(null);
   const [deleteProvider, setDeleteProvider] = useState<Provider | null>(null);
   const [testResult, setTestResult] = useState<{ provider: Provider; result: { connected: boolean; message: string } } | null>(null);
 
@@ -89,12 +90,17 @@ export function ProvidersPage() {
           >
             <Play className="w-4 h-4" />
           </button>
-          <button className="p-1 text-gray-400 hover:text-gray-600">
+          <button
+            className="p-1 text-gray-400 hover:text-gray-600"
+            onClick={() => setEditProvider(row)}
+            title="Edit provider"
+          >
             <Edit className="w-4 h-4" />
           </button>
           <button
             className="p-1 text-gray-400 hover:text-red-600"
             onClick={() => setDeleteProvider(row)}
+            title="Delete provider"
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -131,6 +137,13 @@ export function ProvidersPage() {
       <CreateProviderModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
+      />
+
+      {/* Edit Modal */}
+      <EditProviderModal
+        isOpen={!!editProvider}
+        onClose={() => setEditProvider(null)}
+        provider={editProvider}
       />
 
       {/* Delete Confirmation Modal */}
@@ -308,6 +321,138 @@ function CreateProviderModal({ isOpen, onClose }: CreateProviderModalProps) {
           </Button>
           <Button type="submit" isLoading={createMutation.isPending}>
             Create Provider
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
+  );
+}
+
+interface EditProviderModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  provider: Provider | null;
+}
+
+function EditProviderModal({ isOpen, onClose, provider }: EditProviderModalProps) {
+  const queryClient = useQueryClient();
+  const [formData, setFormData] = useState<Partial<UpdateProviderInput>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset form when provider changes
+  useEffect(() => {
+    if (provider) {
+      setFormData({
+        name: provider.name,
+        enabled: provider.enabled,
+        isDefault: provider.isDefault,
+      });
+      setError(null);
+    }
+  }, [provider]);
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateProviderInput }) =>
+      providersApi.updateProvider(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['providers'] });
+      onClose();
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Failed to update provider');
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!provider) return;
+    updateMutation.mutate({ id: provider.id, data: formData as UpdateProviderInput });
+  };
+
+  if (!provider) return null;
+
+  const currentFields = providerFields[provider.type as ProviderType] ?? [];
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Edit Provider" size="md">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
+
+        <div>
+          <label className="label">Name</label>
+          <input
+            type="text"
+            className="input mt-1"
+            value={formData.name ?? provider.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+          />
+        </div>
+
+        <div>
+          <label className="label">Type</label>
+          <input
+            type="text"
+            className="input mt-1 bg-gray-50"
+            value={provider.type}
+            disabled
+          />
+          <p className="text-xs text-gray-500 mt-1">Provider type cannot be changed</p>
+        </div>
+
+        {currentFields.map((field) => (
+          <div key={field.key}>
+            <label className="label">{field.label}</label>
+            <input
+              type={field.type ?? 'text'}
+              className="input mt-1"
+              placeholder="Leave blank to keep current value"
+              value={(formData.credentials as Record<string, string>)?.[field.key] ?? ''}
+              onChange={(e) => setFormData({
+                ...formData,
+                credentials: {
+                  ...formData.credentials,
+                  [field.key]: e.target.value,
+                },
+              })}
+            />
+            <p className="text-xs text-gray-500 mt-1">Leave blank to keep current value</p>
+          </div>
+        ))}
+
+        <div className="space-y-2">
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="editEnabled"
+              className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+              checked={formData.enabled ?? provider.enabled}
+              onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
+            />
+            <label htmlFor="editEnabled" className="ml-2 block text-sm text-gray-700">
+              Enabled
+            </label>
+          </div>
+
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="editIsDefault"
+              className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+              checked={formData.isDefault ?? provider.isDefault}
+              onChange={(e) => setFormData({ ...formData, isDefault: e.target.checked })}
+            />
+            <label htmlFor="editIsDefault" className="ml-2 block text-sm text-gray-700">
+              Set as default provider
+            </label>
+          </div>
+        </div>
+
+        <ModalFooter>
+          <Button variant="secondary" onClick={onClose} type="button">
+            Cancel
+          </Button>
+          <Button type="submit" isLoading={updateMutation.isPending}>
+            Save Changes
           </Button>
         </ModalFooter>
       </form>

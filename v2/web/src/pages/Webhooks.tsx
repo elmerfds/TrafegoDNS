@@ -1,10 +1,10 @@
 /**
  * Webhooks Page
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Edit, Play } from 'lucide-react';
-import { webhooksApi, type Webhook, type CreateWebhookInput, type WebhookEventType } from '../api';
+import { webhooksApi, type Webhook, type CreateWebhookInput, type UpdateWebhookInput, type WebhookEventType } from '../api';
 import { Button, Table, Badge, Modal, ModalFooter, Alert } from '../components/common';
 
 const WEBHOOK_EVENTS: { value: WebhookEventType; label: string }[] = [
@@ -21,6 +21,7 @@ const WEBHOOK_EVENTS: { value: WebhookEventType; label: string }[] = [
 export function WebhooksPage() {
   const queryClient = useQueryClient();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editWebhook, setEditWebhook] = useState<Webhook | null>(null);
   const [deleteWebhook, setDeleteWebhook] = useState<Webhook | null>(null);
   const [testResult, setTestResult] = useState<{ webhook: Webhook; result: { delivered: boolean; message: string } } | null>(null);
 
@@ -90,12 +91,17 @@ export function WebhooksPage() {
           >
             <Play className="w-4 h-4" />
           </button>
-          <button className="p-1 text-gray-400 hover:text-gray-600">
+          <button
+            className="p-1 text-gray-400 hover:text-gray-600"
+            onClick={() => setEditWebhook(row)}
+            title="Edit webhook"
+          >
             <Edit className="w-4 h-4" />
           </button>
           <button
             className="p-1 text-gray-400 hover:text-red-600"
             onClick={() => setDeleteWebhook(row)}
+            title="Delete webhook"
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -137,6 +143,13 @@ export function WebhooksPage() {
       <CreateWebhookModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
+      />
+
+      {/* Edit Modal */}
+      <EditWebhookModal
+        isOpen={!!editWebhook}
+        onClose={() => setEditWebhook(null)}
+        webhook={editWebhook}
       />
 
       {/* Delete Confirmation Modal */}
@@ -293,6 +306,145 @@ function CreateWebhookModal({ isOpen, onClose }: CreateWebhookModalProps) {
           </Button>
           <Button type="submit" isLoading={createMutation.isPending}>
             Create Webhook
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
+  );
+}
+
+interface EditWebhookModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  webhook: Webhook | null;
+}
+
+function EditWebhookModal({ isOpen, onClose, webhook }: EditWebhookModalProps) {
+  const queryClient = useQueryClient();
+  const [formData, setFormData] = useState<Partial<UpdateWebhookInput>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset form when webhook changes
+  useEffect(() => {
+    if (webhook) {
+      setFormData({
+        name: webhook.name,
+        url: webhook.url,
+        events: webhook.events,
+        enabled: webhook.enabled,
+      });
+      setError(null);
+    }
+  }, [webhook]);
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateWebhookInput }) =>
+      webhooksApi.updateWebhook(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['webhooks'] });
+      onClose();
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Failed to update webhook');
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!webhook) return;
+    if (!formData.url || !formData.events?.length) {
+      setError('URL and at least one event are required');
+      return;
+    }
+    updateMutation.mutate({ id: webhook.id, data: formData as UpdateWebhookInput });
+  };
+
+  const toggleEvent = (event: WebhookEventType) => {
+    const events = formData.events ?? [];
+    if (events.includes(event)) {
+      setFormData({ ...formData, events: events.filter((e: WebhookEventType) => e !== event) });
+    } else {
+      setFormData({ ...formData, events: [...events, event] });
+    }
+  };
+
+  if (!webhook) return null;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Edit Webhook" size="md">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
+
+        <div>
+          <label className="label">Name</label>
+          <input
+            type="text"
+            className="input mt-1"
+            value={formData.name ?? webhook.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+          />
+        </div>
+
+        <div>
+          <label className="label">URL *</label>
+          <input
+            type="url"
+            className="input mt-1"
+            value={formData.url ?? webhook.url}
+            onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+          />
+        </div>
+
+        <div>
+          <label className="label">Secret</label>
+          <input
+            type="text"
+            className="input mt-1"
+            value={formData.secret ?? ''}
+            onChange={(e) => setFormData({ ...formData, secret: e.target.value })}
+            placeholder="Leave blank to keep current value"
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Leave blank to keep current secret
+          </p>
+        </div>
+
+        <div>
+          <label className="label">Events *</label>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {WEBHOOK_EVENTS.map((event) => (
+              <label key={event.value} className="flex items-center">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  checked={formData.events?.includes(event.value) ?? false}
+                  onChange={() => toggleEvent(event.value)}
+                />
+                <span className="ml-2 text-sm text-gray-700">{event.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center">
+          <input
+            type="checkbox"
+            id="editWebhookEnabled"
+            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+            checked={formData.enabled ?? webhook.enabled}
+            onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
+          />
+          <label htmlFor="editWebhookEnabled" className="ml-2 block text-sm text-gray-700">
+            Enabled
+          </label>
+        </div>
+
+        <ModalFooter>
+          <Button variant="secondary" onClick={onClose} type="button">
+            Cancel
+          </Button>
+          <Button type="submit" isLoading={updateMutation.isPending}>
+            Save Changes
           </Button>
         </ModalFooter>
       </form>

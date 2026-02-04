@@ -1,16 +1,17 @@
 /**
  * DNS Records Page
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, RefreshCw, Trash2, Edit } from 'lucide-react';
-import { dnsApi, providersApi, type DNSRecord, type CreateDNSRecordInput } from '../api';
+import { dnsApi, providersApi, type DNSRecord, type CreateDNSRecordInput, type UpdateDNSRecordInput } from '../api';
 import { Button, Table, Pagination, Badge, Modal, ModalFooter, Alert } from '../components/common';
 
 export function DNSRecordsPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editRecord, setEditRecord] = useState<DNSRecord | null>(null);
   const [deleteRecord, setDeleteRecord] = useState<DNSRecord | null>(null);
 
   const { data, isLoading } = useQuery({
@@ -91,12 +92,17 @@ export function DNSRecordsPage() {
       header: '',
       render: (row: DNSRecord) => (
         <div className="flex items-center space-x-2">
-          <button className="p-1 text-gray-400 hover:text-gray-600">
+          <button
+            className="p-1 text-gray-400 hover:text-gray-600"
+            onClick={() => setEditRecord(row)}
+            title="Edit record"
+          >
             <Edit className="w-4 h-4" />
           </button>
           <button
             className="p-1 text-gray-400 hover:text-red-600"
             onClick={() => setDeleteRecord(row)}
+            title="Delete record"
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -153,6 +159,13 @@ export function DNSRecordsPage() {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         providers={providers ?? []}
+      />
+
+      {/* Edit Modal */}
+      <EditRecordModal
+        isOpen={!!editRecord}
+        onClose={() => setEditRecord(null)}
+        record={editRecord}
       />
 
       {/* Delete Confirmation Modal */}
@@ -296,6 +309,128 @@ function CreateRecordModal({ isOpen, onClose, providers }: CreateRecordModalProp
           </Button>
           <Button type="submit" isLoading={createMutation.isPending}>
             Create Record
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
+  );
+}
+
+interface EditRecordModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  record: DNSRecord | null;
+}
+
+function EditRecordModal({ isOpen, onClose, record }: EditRecordModalProps) {
+  const queryClient = useQueryClient();
+  const [formData, setFormData] = useState<Partial<UpdateDNSRecordInput>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset form when record changes
+  useEffect(() => {
+    if (record) {
+      setFormData({
+        content: record.content,
+        ttl: record.ttl,
+        proxied: record.proxied,
+      });
+      setError(null);
+    }
+  }, [record]);
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateDNSRecordInput }) =>
+      dnsApi.updateRecord(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dns-records'] });
+      onClose();
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Failed to update record');
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!record) return;
+    if (!formData.content) {
+      setError('Content is required');
+      return;
+    }
+    updateMutation.mutate({ id: record.id, data: formData as UpdateDNSRecordInput });
+  };
+
+  if (!record) return null;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Edit DNS Record" size="md">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
+
+        <div>
+          <label className="label">Hostname</label>
+          <input
+            type="text"
+            className="input mt-1 bg-gray-50"
+            value={record.hostname}
+            disabled
+          />
+          <p className="text-xs text-gray-500 mt-1">Hostname cannot be changed</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">Type</label>
+            <input
+              type="text"
+              className="input mt-1 bg-gray-50"
+              value={record.type}
+              disabled
+            />
+          </div>
+          <div>
+            <label className="label">TTL</label>
+            <input
+              type="number"
+              className="input mt-1"
+              value={formData.ttl ?? record.ttl}
+              onChange={(e) => setFormData({ ...formData, ttl: parseInt(e.target.value) })}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="label">Content *</label>
+          <input
+            type="text"
+            className="input mt-1"
+            value={formData.content ?? ''}
+            onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+          />
+        </div>
+
+        {['A', 'AAAA', 'CNAME'].includes(record.type) && (
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="proxied"
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              checked={formData.proxied ?? record.proxied ?? false}
+              onChange={(e) => setFormData({ ...formData, proxied: e.target.checked })}
+            />
+            <label htmlFor="proxied" className="ml-2 text-sm text-gray-700">
+              Proxied (Cloudflare only)
+            </label>
+          </div>
+        )}
+
+        <ModalFooter>
+          <Button variant="secondary" onClick={onClose} type="button">
+            Cancel
+          </Button>
+          <Button type="submit" isLoading={updateMutation.isPending}>
+            Save Changes
           </Button>
         </ModalFooter>
       </form>
