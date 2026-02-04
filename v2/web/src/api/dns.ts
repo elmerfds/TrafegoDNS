@@ -17,6 +17,7 @@ export interface DNSRecord {
   providerRecordId?: string;
   source: string;
   status: 'active' | 'pending' | 'orphaned' | 'error';
+  managed: boolean;
   lastSyncedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -44,6 +45,7 @@ export interface DNSRecordFilters {
   type?: DNSRecordType;
   status?: string;
   providerId?: string;
+  managed?: boolean;
   search?: string;
   page?: number;
   limit?: number;
@@ -71,6 +73,7 @@ interface ApiDNSRecord {
   providerId: string;
   externalId?: string;
   source: string;
+  managed: boolean;
   orphanedAt?: string | null;
   lastSyncedAt?: string;
   createdAt: string;
@@ -101,6 +104,7 @@ function transformRecord(record: ApiDNSRecord): DNSRecord {
     providerRecordId: record.externalId,
     source: record.source,
     status: record.orphanedAt ? 'orphaned' : 'active', // Compute status from orphanedAt
+    managed: record.managed,
     lastSyncedAt: record.lastSyncedAt,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,

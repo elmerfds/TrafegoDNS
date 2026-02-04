@@ -53,13 +53,19 @@ function DNSRecordsTab() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
+  const [managedFilter, setManagedFilter] = useState<'all' | 'managed' | 'unmanaged'>('all');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editRecord, setEditRecord] = useState<DNSRecord | null>(null);
   const [deleteRecord, setDeleteRecord] = useState<DNSRecord | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['dns-records', { page, limit: 20, search }],
-    queryFn: () => dnsApi.listRecords({ page, limit: 20, search: search || undefined }),
+    queryKey: ['dns-records', { page, limit: 20, search, managed: managedFilter }],
+    queryFn: () => dnsApi.listRecords({
+      page,
+      limit: 20,
+      search: search || undefined,
+      managed: managedFilter === 'all' ? undefined : managedFilter === 'managed',
+    }),
   });
 
   const handleSearch = (e: React.FormEvent) => {
@@ -143,6 +149,15 @@ function DNSRecordsTab() {
       ),
     },
     {
+      key: 'managed',
+      header: 'Ownership',
+      render: (row: DNSRecord) => (
+        <Badge variant={row.managed ? 'success' : 'warning'}>
+          {row.managed ? 'Managed' : 'Unmanaged'}
+        </Badge>
+      ),
+    },
+    {
       key: 'actions',
       header: '',
       render: (row: DNSRecord) => (
@@ -192,6 +207,20 @@ function DNSRecordsTab() {
               </button>
             )}
           </form>
+          {/* Managed Filter */}
+          <Select
+            value={managedFilter}
+            onChange={(value) => {
+              setManagedFilter(value as 'all' | 'managed' | 'unmanaged');
+              setPage(1);
+            }}
+            options={[
+              { value: 'all', label: 'All Records' },
+              { value: 'managed', label: 'Managed Only' },
+              { value: 'unmanaged', label: 'Unmanaged Only' },
+            ]}
+            className="w-40"
+          />
           <Button
             variant="secondary"
             leftIcon={<RefreshCw className="w-4 h-4" />}
@@ -209,12 +238,27 @@ function DNSRecordsTab() {
         </div>
       </div>
 
-      {/* Search indicator */}
-      {search && (
+      {/* Filter indicators */}
+      {(search || managedFilter !== 'all') && (
         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-          <span>Showing results for "<span className="font-medium text-gray-700 dark:text-gray-300">{search}</span>"</span>
-          <button onClick={clearSearch} className="text-primary-600 hover:text-primary-700 dark:text-primary-400">
-            Clear
+          <span>
+            Showing
+            {managedFilter !== 'all' && (
+              <> <span className="font-medium text-gray-700 dark:text-gray-300">{managedFilter}</span></>
+            )}
+            {search && (
+              <> results for "<span className="font-medium text-gray-700 dark:text-gray-300">{search}</span>"</>
+            )}
+            {managedFilter !== 'all' && !search && <> records</>}
+          </span>
+          <button
+            onClick={() => {
+              clearSearch();
+              setManagedFilter('all');
+            }}
+            className="text-primary-600 hover:text-primary-700 dark:text-primary-400"
+          >
+            Clear filters
           </button>
         </div>
       )}
