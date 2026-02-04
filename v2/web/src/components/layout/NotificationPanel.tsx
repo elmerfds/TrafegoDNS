@@ -59,7 +59,8 @@ function NotificationItem({ log }: { log: AuditLog }) {
   const resourceLabel = RESOURCE_LABELS[log.resourceType] || log.resourceType;
 
   // Get a meaningful name from details if available
-  const resourceName = log.details?.name || log.details?.hostname || log.details?.username || log.resourceId?.slice(0, 8);
+  const details = log.details as Record<string, string | undefined> | undefined;
+  const resourceName = details?.name || details?.hostname || details?.username || log.resourceId?.slice(0, 8);
 
   return (
     <div className="flex items-start gap-3 p-3 hover:bg-gray-50 border-b border-gray-100 last:border-0">
