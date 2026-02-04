@@ -705,25 +705,40 @@ function EditProviderModal({ isOpen, onClose, provider }: EditProviderModalProps
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Provider type cannot be changed</p>
         </div>
 
-        {currentFields.map((field) => (
-          <div key={field.key}>
-            <label className="label">{field.label}</label>
-            <input
-              type={field.type ?? 'text'}
-              className="input mt-1"
-              placeholder="Leave blank to keep current value"
-              value={(formData.credentials as Record<string, string>)?.[field.key] ?? ''}
-              onChange={(e) => setFormData({
-                ...formData,
-                credentials: {
-                  ...formData.credentials,
-                  [field.key]: e.target.value,
-                },
-              })}
-            />
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Leave blank to keep current value</p>
-          </div>
-        ))}
+        {currentFields.map((field) => {
+          const currentValue = displayProvider.credentials?.[field.key];
+          const isSensitive = currentValue?.startsWith('••••');
+          const newValue = (formData.credentials as Record<string, string>)?.[field.key];
+
+          return (
+            <div key={field.key}>
+              <label className="label">{field.label}</label>
+              {currentValue && !newValue && (
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  Current: <span className="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">{currentValue}</span>
+                </div>
+              )}
+              <input
+                type={field.type ?? 'text'}
+                className="input mt-1"
+                placeholder={currentValue ? 'Leave blank to keep current value' : field.placeholder}
+                value={newValue ?? ''}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  credentials: {
+                    ...formData.credentials,
+                    [field.key]: e.target.value,
+                  },
+                })}
+              />
+              {currentValue && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  {isSensitive ? 'Leave blank to keep current value' : 'Enter a new value to update'}
+                </p>
+              )}
+            </div>
+          );
+        })}
 
         {/* Default Record Settings */}
         <ProviderDefaultsSection

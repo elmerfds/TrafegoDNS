@@ -290,8 +290,8 @@ export abstract class DNSProvider {
         const errorMessage = error instanceof Error ? error.message : String(error);
         result.errors.push({ record: recordConfig, error: errorMessage });
         this.logger.error(
-          { type: recordConfig.type, name: recordConfig.name, error: errorMessage },
-          'Failed to process DNS record'
+          { type: recordConfig.type, name: recordConfig.name },
+          `Failed to process DNS record: ${errorMessage}`
         );
       }
     }

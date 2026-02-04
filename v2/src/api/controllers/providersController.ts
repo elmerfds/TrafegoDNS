@@ -48,6 +48,7 @@ export const getProvider = asyncHandler(async (req: Request, res: Response) => {
       isDefault: providers.isDefault,
       enabled: providers.enabled,
       settings: providers.settings,
+      credentials: providers.credentials,
       createdAt: providers.createdAt,
       updatedAt: providers.updatedAt,
     })
@@ -59,11 +60,29 @@ export const getProvider = asyncHandler(async (req: Request, res: Response) => {
     throw ApiError.notFound('Provider');
   }
 
+  // Parse credentials and mask sensitive values
+  const credentials = JSON.parse(provider.credentials) as Record<string, string>;
+  const maskedCredentials: Record<string, string> = {};
+
+  // Fields that should show their actual value (not sensitive)
+  const nonSensitiveFields = ['domain', 'zoneName', 'zoneId', 'zone', 'region', 'accountId', 'url', 'hostedZoneId'];
+
+  for (const [key, value] of Object.entries(credentials)) {
+    if (nonSensitiveFields.includes(key)) {
+      // Show actual value for non-sensitive fields
+      maskedCredentials[key] = value;
+    } else if (value) {
+      // Mask sensitive fields (tokens, keys, secrets)
+      maskedCredentials[key] = '••••••••' + (value.length > 8 ? value.slice(-4) : '');
+    }
+  }
+
   res.json({
     success: true,
     data: {
       ...provider,
       settings: JSON.parse(provider.settings),
+      credentials: maskedCredentials,
     },
   });
 });

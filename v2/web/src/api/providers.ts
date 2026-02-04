@@ -12,6 +12,7 @@ export interface Provider {
   isDefault: boolean;
   enabled: boolean;
   settings?: Record<string, unknown>;
+  credentials?: Record<string, string>; // Masked credentials returned on getProvider
   createdAt: string;
   updatedAt: string;
 }

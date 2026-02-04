@@ -189,7 +189,8 @@ export class DigitalOceanProvider extends DNSProvider {
       this.logger.info({ type: created.type, name: created.name }, 'DNS record created');
       return created;
     } catch (error) {
-      this.logger.error({ error, input }, 'Failed to create DNS record');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error({ input }, `Failed to create DNS record: ${errorMessage}`);
       throw error;
     }
   }
@@ -216,7 +217,11 @@ export class DigitalOceanProvider extends DNSProvider {
     const normalizedInput = this.normalizeTTL(mergedInput);
     const doRecord = this.convertToDigitalOcean(normalizedInput);
 
-    this.logger.debug({ id, record: doRecord }, 'Updating DNS record');
+    this.logger.debug({
+      id,
+      existing: { type: existing.type, name: existing.name, content: existing.content },
+      sending: doRecord
+    }, 'Updating DNS record');
 
     try {
       const response = await this.makeRequest(`/domains/${this.domain}/records/${id}`, {
@@ -238,7 +243,8 @@ export class DigitalOceanProvider extends DNSProvider {
       this.logger.info({ type: updated.type, name: updated.name }, 'DNS record updated');
       return updated;
     } catch (error) {
-      this.logger.error({ error, id, input }, 'Failed to update DNS record');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error({ id, input }, `Failed to update DNS record: ${errorMessage}`);
       throw error;
     }
   }
@@ -368,8 +374,35 @@ export class DigitalOceanProvider extends DNSProvider {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: response.statusText }));
-      throw new Error((error as { message?: string }).message ?? `API error: ${response.status}`);
+      const errorBody = await response.json().catch(() => ({ message: response.statusText }));
+      const errorResponse = errorBody as { id?: string; message?: string; errors?: Record<string, string[]> };
+
+      // Build detailed error message
+      let errorMessage = errorResponse.message ?? `API error: ${response.status}`;
+
+      // Include error ID if present (e.g., "bad_request", "unauthorized")
+      if (errorResponse.id) {
+        errorMessage = `[${errorResponse.id}] ${errorMessage}`;
+      }
+
+      // Include field-specific errors if present
+      if (errorResponse.errors) {
+        const fieldErrors = Object.entries(errorResponse.errors)
+          .map(([field, msgs]) => `${field}: ${msgs.join(', ')}`)
+          .join('; ');
+        if (fieldErrors) {
+          errorMessage += ` (${fieldErrors})`;
+        }
+      }
+
+      // Log the full error details
+      this.logger.debug({
+        status: response.status,
+        endpoint,
+        errorBody
+      }, 'DigitalOcean API error response');
+
+      throw new Error(errorMessage);
     }
 
     // DELETE returns 204 No Content
