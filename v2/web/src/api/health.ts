@@ -27,6 +27,10 @@ export interface AuditLog {
   ipAddress: string;
   userAgent?: string;
   createdAt: string;
+  user?: {
+    id: string;
+    username: string;
+  };
 }
 
 export interface AuditLogsResponse {

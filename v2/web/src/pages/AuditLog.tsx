@@ -17,6 +17,7 @@ const ACTION_CONFIG: Record<string, { icon: React.ElementType; color: string; la
   create: { icon: Plus, color: 'text-green-500 bg-green-100 dark:bg-green-900', label: 'Created' },
   update: { icon: Edit, color: 'text-blue-500 bg-blue-100 dark:bg-blue-900', label: 'Updated' },
   delete: { icon: Trash2, color: 'text-red-500 bg-red-100 dark:bg-red-900', label: 'Deleted' },
+  orphan: { icon: AlertCircle, color: 'text-yellow-500 bg-yellow-100 dark:bg-yellow-900', label: 'Orphaned' },
   login: { icon: LogIn, color: 'text-purple-500 bg-purple-100 dark:bg-purple-900', label: 'Login' },
   logout: { icon: LogOut, color: 'text-gray-500 bg-gray-100 dark:bg-gray-900', label: 'Logout' },
   sync: { icon: RefreshCw, color: 'text-cyan-500 bg-cyan-100 dark:bg-cyan-900', label: 'Synced' },
@@ -59,6 +60,9 @@ function AuditLogEntry({ log, onClick }: AuditLogEntryProps) {
   const ResourceIcon = getResourceIcon(log.resourceType);
   const resourceName = getResourceName(log);
 
+  // Determine if this was an auto operation (no userId means system/auto)
+  const isAuto = !log.userId;
+
   return (
     <div
       onClick={onClick}
@@ -72,12 +76,18 @@ function AuditLogEntry({ log, onClick }: AuditLogEntryProps) {
 
         {/* Details */}
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-gray-900 dark:text-white">{actionConfig.label}</span>
             <ResourceIcon className="w-4 h-4 text-gray-400" />
             <span className="text-gray-600 dark:text-gray-300">{log.resourceType.replace('_', ' ')}</span>
             {resourceName && (
               <span className="text-gray-500 dark:text-gray-400">"{resourceName}"</span>
+            )}
+            {/* AUTO/MANUAL Badge */}
+            {isAuto ? (
+              <span className="px-1.5 py-0.5 bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400 rounded text-[10px] font-medium">AUTO</span>
+            ) : (
+              <span className="px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded text-[10px] font-medium">MANUAL</span>
             )}
           </div>
           <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -87,7 +97,7 @@ function AuditLogEntry({ log, onClick }: AuditLogEntryProps) {
             </span>
             <span className="flex items-center gap-1">
               <User className="w-3 h-3" />
-              {log.userId ? 'User' : log.apiKeyId ? 'API Key' : 'System'}
+              {log.userId ? log.user?.username || 'User' : log.apiKeyId ? 'API Key' : 'System'}
             </span>
             <span className="font-mono">{log.ipAddress}</span>
           </div>
@@ -110,6 +120,7 @@ function AuditDetailModal({ log, onClose }: AuditDetailModalProps) {
   const actionConfig = getActionConfig(log.action);
   const ActionIcon = actionConfig.icon;
   const resourceName = getResourceName(log);
+  const isAuto = !log.userId;
 
   return (
     <Modal isOpen={!!log} onClose={onClose} title="Audit Log Details" size="md">
@@ -120,9 +131,16 @@ function AuditDetailModal({ log, onClose }: AuditDetailModalProps) {
             <ActionIcon className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              {actionConfig.label} {log.resourceType.replace('_', ' ')}
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {actionConfig.label} {log.resourceType.replace('_', ' ')}
+              </h3>
+              {isAuto ? (
+                <span className="px-2 py-0.5 bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400 rounded text-xs font-medium">AUTO</span>
+              ) : (
+                <span className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded text-xs font-medium">MANUAL</span>
+              )}
+            </div>
             {resourceName && (
               <p className="text-gray-500 dark:text-gray-400">"{resourceName}"</p>
             )}
@@ -161,11 +179,23 @@ function AuditDetailModal({ log, onClose }: AuditDetailModalProps) {
             <p className="mt-1 text-sm font-mono text-gray-900 dark:text-white">{log.ipAddress}</p>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">User Agent</label>
-            <p className="mt-1 text-xs text-gray-600 dark:text-gray-300 truncate" title={log.userAgent}>
-              {log.userAgent || '-'}
+            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Origin</label>
+            <p className="mt-1">
+              {isAuto ? (
+                <Badge variant="info">Auto Discovery</Badge>
+              ) : (
+                <Badge variant="default">{log.user?.username || 'Manual'}</Badge>
+              )}
             </p>
           </div>
+        </div>
+
+        {/* User Agent */}
+        <div>
+          <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">User Agent</label>
+          <p className="mt-1 text-xs text-gray-600 dark:text-gray-300 break-all">
+            {log.userAgent || '-'}
+          </p>
         </div>
 
         {/* Details */}
@@ -223,8 +253,10 @@ export function AuditLogPage() {
               <option value="create">Create</option>
               <option value="update">Update</option>
               <option value="delete">Delete</option>
+              <option value="orphan">Orphan</option>
               <option value="login">Login</option>
               <option value="sync">Sync</option>
+              <option value="deploy">Deploy</option>
             </select>
           </div>
           {actionFilter && (

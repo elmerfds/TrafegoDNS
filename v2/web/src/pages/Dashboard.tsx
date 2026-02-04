@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Globe, Server, Cable, Webhook, CheckCircle, XCircle, Activity, Clock, Database, ArrowUpRight } from 'lucide-react';
 import { healthApi, dnsApi, providersApi, tunnelsApi, webhooksApi } from '../api';
 import { Badge } from '../components/common';
+import { ProviderIcon } from '../components/common/ProviderIcon';
 
 interface StatCardProps {
   title: string;
@@ -154,9 +155,7 @@ export function DashboardPage() {
                 className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer group"
               >
                 <div className="flex items-center">
-                  <div className={`p-2.5 rounded-xl ${provider.enabled ? 'bg-gradient-to-br from-emerald-500 to-teal-600' : 'bg-gray-300 dark:bg-gray-700'} shadow-lg ${provider.enabled ? 'shadow-emerald-500/20' : ''}`}>
-                    <Server className="w-5 h-5 text-white" />
-                  </div>
+                  <ProviderIcon type={provider.type} className="w-10 h-10" />
                   <div className="ml-4">
                     <span className="text-sm font-semibold text-gray-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">{provider.name}</span>
                     <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">{provider.type}</p>
