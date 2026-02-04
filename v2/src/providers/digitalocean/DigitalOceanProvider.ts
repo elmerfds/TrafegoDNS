@@ -1,7 +1,7 @@
 /**
  * DigitalOcean DNS Provider Implementation
  */
-import { DNSProvider, type ProviderCredentials, type ProviderInfo } from '../base/DNSProvider.js';
+import { DNSProvider, type ProviderCredentials, type ProviderInfo, type BatchResult } from '../base/DNSProvider.js';
 import type { DNSRecord, DNSRecordCreateInput, DNSRecordUpdateInput, DNSRecordType } from '../../types/index.js';
 
 export interface DigitalOceanProviderCredentials extends ProviderCredentials {
@@ -315,12 +315,18 @@ export class DigitalOceanProvider extends DNSProvider {
         break;
     }
 
-    // TTL validation (DigitalOcean minimum is 30)
-    if (record.ttl !== undefined) {
-      if (record.ttl < 30 || record.ttl > 86400) {
-        throw new Error('TTL must be between 30 and 86400');
-      }
-    }
+    // Note: TTL validation is skipped here because normalization happens
+    // in batchEnsureRecords override before validation
+  }
+
+  /**
+   * Override batchEnsureRecords to normalize TTL values before validation
+   * DigitalOcean requires TTL between 30-86400, but Cloudflare uses TTL=1 for "auto"
+   */
+  override async batchEnsureRecords(recordConfigs: DNSRecordCreateInput[]): Promise<BatchResult> {
+    // Normalize TTL for all records before processing
+    const normalizedConfigs = recordConfigs.map(config => this.normalizeTTL(config));
+    return super.batchEnsureRecords(normalizedConfigs);
   }
 
   /**
