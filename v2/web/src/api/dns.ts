@@ -58,21 +58,81 @@ export interface DNSRecordsResponse {
   };
 }
 
+// API response types (what the backend actually returns)
+interface ApiDNSRecord {
+  id: string;
+  name: string;
+  type: DNSRecordType;
+  content: string;
+  ttl: number;
+  priority?: number;
+  proxied?: boolean;
+  providerId: string;
+  externalId?: string;
+  source: string;
+  orphanedAt?: string | null;
+  lastSyncedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ApiDNSRecordsResponse {
+  records: ApiDNSRecord[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+// Transform API record to frontend record
+function transformRecord(record: ApiDNSRecord): DNSRecord {
+  return {
+    id: record.id,
+    hostname: record.name, // Map 'name' to 'hostname'
+    type: record.type,
+    content: record.content,
+    ttl: record.ttl,
+    priority: record.priority,
+    proxied: record.proxied,
+    providerId: record.providerId,
+    providerRecordId: record.externalId,
+    source: record.source,
+    status: record.orphanedAt ? 'orphaned' : 'active', // Compute status from orphanedAt
+    lastSyncedAt: record.lastSyncedAt,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
 export const dnsApi = {
   async listRecords(filters?: DNSRecordFilters): Promise<DNSRecordsResponse> {
-    return apiClient.get<DNSRecordsResponse>('/dns/records', filters as Record<string, unknown>);
+    const response = await apiClient.get<ApiDNSRecordsResponse>('/dns/records', filters as Record<string, unknown>);
+    return {
+      records: response.records.map(transformRecord),
+      pagination: response.pagination,
+    };
   },
 
   async getRecord(id: string): Promise<DNSRecord> {
-    return apiClient.get<DNSRecord>(`/dns/records/${id}`);
+    const record = await apiClient.get<ApiDNSRecord>(`/dns/records/${id}`);
+    return transformRecord(record);
   },
 
   async createRecord(data: CreateDNSRecordInput): Promise<DNSRecord> {
-    return apiClient.post<DNSRecord>('/dns/records', data);
+    // Transform hostname to name for the API
+    const apiData = {
+      ...data,
+      name: data.hostname,
+    };
+    const record = await apiClient.post<ApiDNSRecord>('/dns/records', apiData);
+    return transformRecord(record);
   },
 
   async updateRecord(id: string, data: UpdateDNSRecordInput): Promise<DNSRecord> {
-    return apiClient.put<DNSRecord>(`/dns/records/${id}`, data);
+    const record = await apiClient.put<ApiDNSRecord>(`/dns/records/${id}`, data);
+    return transformRecord(record);
   },
 
   async deleteRecord(id: string): Promise<void> {
