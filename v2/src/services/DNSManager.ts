@@ -220,6 +220,7 @@ export class DNSManager {
     labelPrefix: string
   ): Array<{ id: string; provider: DNSProvider }> {
     const results: Array<{ id: string; provider: DNSProvider }> = [];
+    const lowerHostname = hostname.toLowerCase();
 
     // Check for broadcast mode: dns.providers=all or dns.providers=name1,name2
     const broadcastKey = `${labelPrefix}providers`;
@@ -318,14 +319,25 @@ export class DNSManager {
     }
 
     // No matching zone - check if we should fallback to default
+    // IMPORTANT: Fallback should only apply if hostname can be a valid record in the default provider's zone
     if (routingMode === 'auto-with-fallback' && this.defaultProviderId) {
       const defaultProvider = this.providerInstances.get(this.defaultProviderId);
       if (defaultProvider) {
-        this.logger.info(
-          { hostname, providerId: this.defaultProviderId, providerName: defaultProvider.getProviderName(), mode: 'fallback' },
-          'No zone match - using default provider (auto-with-fallback mode)'
-        );
-        return [{ id: this.defaultProviderId, provider: defaultProvider }];
+        const defaultZone = defaultProvider.getZoneName()?.toLowerCase();
+        // Only fallback if hostname ends with the default provider's zone
+        // This prevents creating invalid cross-zone records
+        if (defaultZone && (lowerHostname === defaultZone || lowerHostname.endsWith(`.${defaultZone}`))) {
+          this.logger.info(
+            { hostname, providerId: this.defaultProviderId, providerName: defaultProvider.getProviderName(), mode: 'fallback' },
+            'Using default provider (auto-with-fallback mode)'
+          );
+          return [{ id: this.defaultProviderId, provider: defaultProvider }];
+        } else {
+          this.logger.warn(
+            { hostname, defaultZone, mode: 'fallback-rejected' },
+            'Hostname does not belong to default provider zone - skipping to prevent cross-zone pollution'
+          );
+        }
       }
     }
 
