@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X, Filter, Settings2, Download, Upload, Clock, Timer } from 'lucide-react';
 import { dnsApi, providersApi, preservedHostnamesApi, settingsApi, overridesApi, type DNSRecord, type CreateDNSRecordInput, type UpdateDNSRecordInput, type PreservedHostname, type HostnameOverride, type CreateOverrideInput, type UpdateOverrideInput, type ImportRecordsInput, type ImportRecordsResponse } from '../api';
 import { preferencesApi, DEFAULT_DNS_TABLE_PREFERENCES, type TableViewPreference } from '../api/preferences';
-import { Button, Table, Pagination, Badge, Modal, ModalFooter, Alert, Select, DataTable, ColumnCustomizer, ProviderCell, type DataTableColumn } from '../components/common';
+import { Button, Pagination, Badge, Modal, ModalFooter, Alert, Select, DataTable, ColumnCustomizer, ProviderCell, type DataTableColumn } from '../components/common';
 
 type TabType = 'records' | 'overrides' | 'preserved';
 
@@ -1351,6 +1351,8 @@ function OverridesTab() {
   const [deleteOverride, setDeleteOverride] = useState<HostnameOverride | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
 
   // Debounce search input
   useEffect(() => {
@@ -1378,6 +1380,18 @@ function OverridesTab() {
     },
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => overridesApi.bulkDeleteOverrides(ids),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['overrides'] });
+      setSelectedIds(new Set());
+      setIsBulkDeleteModalOpen(false);
+      if (result.failed > 0) {
+        console.warn('Some overrides failed to delete:', result.errors);
+      }
+    },
+  });
+
   const getProviderName = (providerId: string | null) => {
     if (!providerId) return '-';
     return providers?.find((p) => p.id === providerId)?.name ?? providerId.slice(0, 8);
@@ -1394,9 +1408,9 @@ function OverridesTab() {
     );
   }, [overrides, debouncedSearch]);
 
-  const columns = [
+  const columns: DataTableColumn<HostnameOverride>[] = [
     {
-      key: 'hostname',
+      id: 'hostname',
       header: 'Hostname',
       render: (row: HostnameOverride) => (
         <div className="flex items-center gap-2">
@@ -1409,7 +1423,7 @@ function OverridesTab() {
       ),
     },
     {
-      key: 'proxied',
+      id: 'proxied',
       header: 'Proxied',
       render: (row: HostnameOverride) => (
         <span className="text-sm">
@@ -1424,7 +1438,7 @@ function OverridesTab() {
       ),
     },
     {
-      key: 'ttl',
+      id: 'ttl',
       header: 'TTL',
       render: (row: HostnameOverride) => (
         <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -1433,7 +1447,7 @@ function OverridesTab() {
       ),
     },
     {
-      key: 'recordType',
+      id: 'recordType',
       header: 'Type',
       render: (row: HostnameOverride) => (
         row.recordType ? (
@@ -1444,7 +1458,7 @@ function OverridesTab() {
       ),
     },
     {
-      key: 'content',
+      id: 'content',
       header: 'Content',
       render: (row: HostnameOverride) => (
         <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
@@ -1453,7 +1467,7 @@ function OverridesTab() {
       ),
     },
     {
-      key: 'provider',
+      id: 'provider',
       header: 'Provider',
       render: (row: HostnameOverride) => (
         <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -1462,7 +1476,7 @@ function OverridesTab() {
       ),
     },
     {
-      key: 'reason',
+      id: 'reason',
       header: 'Reason',
       render: (row: HostnameOverride) => (
         <span className="text-sm text-gray-500 dark:text-gray-400 truncate max-w-[150px]" title={row.reason ?? undefined}>
@@ -1471,7 +1485,7 @@ function OverridesTab() {
       ),
     },
     {
-      key: 'actions',
+      id: 'actions',
       header: '',
       render: (row: HostnameOverride) => (
         <div className="flex items-center space-x-2">
@@ -1498,11 +1512,16 @@ function OverridesTab() {
     <>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">Hostname Overrides</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Per-hostname settings that persist across sync cycles and override global defaults.
-          </p>
+        <div className="flex items-center gap-3">
+          <div>
+            <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">Hostname Overrides</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Per-hostname settings that persist across sync cycles and override global defaults.
+            </p>
+          </div>
+          {selectedIds.size > 0 && (
+            <Badge variant="info">{selectedIds.size} selected</Badge>
+          )}
         </div>
         <div className="flex items-center gap-3">
           {/* Search Box */}
@@ -1525,6 +1544,15 @@ function OverridesTab() {
               </button>
             )}
           </div>
+          {selectedIds.size > 0 && (
+            <Button
+              variant="danger"
+              leftIcon={<Trash2 className="w-4 h-4" />}
+              onClick={() => setIsBulkDeleteModalOpen(true)}
+            >
+              Delete ({selectedIds.size})
+            </Button>
+          )}
           <Button
             leftIcon={<Plus className="w-4 h-4" />}
             onClick={() => setIsCreateModalOpen(true)}
@@ -1560,12 +1588,15 @@ function OverridesTab() {
 
       {/* Table */}
       <div className="card p-0">
-        <Table
+        <DataTable
           columns={columns}
           data={filteredOverrides}
           keyField="id"
           isLoading={isLoading}
           emptyMessage={debouncedSearch ? `No overrides matching "${debouncedSearch}"` : "No hostname overrides. Add one to customize settings for specific hostnames."}
+          selectable
+          selectedIds={selectedIds}
+          onSelectionChange={setSelectedIds}
         />
       </div>
 
@@ -1605,6 +1636,44 @@ function OverridesTab() {
             isLoading={deleteMutation.isPending}
           >
             Delete
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Bulk Delete Confirmation Modal */}
+      <Modal
+        isOpen={isBulkDeleteModalOpen}
+        onClose={() => setIsBulkDeleteModalOpen(false)}
+        title="Delete Multiple Overrides"
+        size="sm"
+      >
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Are you sure you want to delete <strong>{selectedIds.size}</strong> hostname overrides?
+          Future syncs will use default settings for these hostnames.
+        </p>
+        <div className="mt-3 max-h-40 overflow-y-auto">
+          <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+            {filteredOverrides
+              .filter((o) => selectedIds.has(o.id))
+              .slice(0, 10)
+              .map((o) => (
+                <li key={o.id} className="font-mono">&bull; {o.hostname}</li>
+              ))}
+            {selectedIds.size > 10 && (
+              <li className="text-gray-400">...and {selectedIds.size - 10} more</li>
+            )}
+          </ul>
+        </div>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setIsBulkDeleteModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => bulkDeleteMutation.mutate(Array.from(selectedIds))}
+            isLoading={bulkDeleteMutation.isPending}
+          >
+            Delete {selectedIds.size} Overrides
           </Button>
         </ModalFooter>
       </Modal>
@@ -2021,6 +2090,8 @@ function PreservedHostnamesTab() {
   const [deleteHostname, setDeleteHostname] = useState<PreservedHostname | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
 
   // Debounce search input
   useEffect(() => {
@@ -2053,9 +2124,21 @@ function PreservedHostnamesTab() {
     },
   });
 
-  const columns = [
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => preservedHostnamesApi.bulkDelete(ids),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['preserved-hostnames'] });
+      setSelectedIds(new Set());
+      setIsBulkDeleteModalOpen(false);
+      if (result.failed > 0) {
+        console.warn('Some preserved hostnames failed to delete:', result.errors);
+      }
+    },
+  });
+
+  const columns: DataTableColumn<PreservedHostname>[] = [
     {
-      key: 'hostname',
+      id: 'hostname',
       header: 'Hostname',
       render: (row: PreservedHostname) => (
         <div className="flex items-center gap-2">
@@ -2065,14 +2148,14 @@ function PreservedHostnamesTab() {
       ),
     },
     {
-      key: 'reason',
+      id: 'reason',
       header: 'Reason',
       render: (row: PreservedHostname) => (
         <span className="text-sm text-gray-500 dark:text-gray-400">{row.reason || '-'}</span>
       ),
     },
     {
-      key: 'createdAt',
+      id: 'createdAt',
       header: 'Created',
       render: (row: PreservedHostname) => (
         <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -2081,7 +2164,7 @@ function PreservedHostnamesTab() {
       ),
     },
     {
-      key: 'actions',
+      id: 'actions',
       header: '',
       render: (row: PreservedHostname) => (
         <div className="flex items-center gap-1">
@@ -2108,11 +2191,16 @@ function PreservedHostnamesTab() {
     <>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">Preserved Hostnames</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Hostnames that will never be deleted during orphan cleanup, even when their containers go offline.
-          </p>
+        <div className="flex items-center gap-3">
+          <div>
+            <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">Preserved Hostnames</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Hostnames that will never be deleted during orphan cleanup, even when their containers go offline.
+            </p>
+          </div>
+          {selectedIds.size > 0 && (
+            <Badge variant="info">{selectedIds.size} selected</Badge>
+          )}
         </div>
         <div className="flex items-center gap-3">
           {/* Search Box */}
@@ -2135,6 +2223,15 @@ function PreservedHostnamesTab() {
               </button>
             )}
           </div>
+          {selectedIds.size > 0 && (
+            <Button
+              variant="danger"
+              leftIcon={<Trash2 className="w-4 h-4" />}
+              onClick={() => setIsBulkDeleteModalOpen(true)}
+            >
+              Delete ({selectedIds.size})
+            </Button>
+          )}
           <Button
             leftIcon={<Plus className="w-4 h-4" />}
             onClick={() => setIsCreateModalOpen(true)}
@@ -2163,12 +2260,15 @@ function PreservedHostnamesTab() {
 
       {/* Table */}
       <div className="card p-0">
-        <Table
+        <DataTable
           columns={columns}
           data={filteredHostnames}
           keyField="id"
           isLoading={isLoading}
           emptyMessage={debouncedSearch ? `No preserved hostnames matching "${debouncedSearch}"` : "No preserved hostnames. Add one to prevent automatic cleanup of specific DNS records."}
+          selectable
+          selectedIds={selectedIds}
+          onSelectionChange={setSelectedIds}
         />
       </div>
 
@@ -2208,6 +2308,44 @@ function PreservedHostnamesTab() {
             isLoading={deleteMutation.isPending}
           >
             Remove
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Bulk Delete Confirmation Modal */}
+      <Modal
+        isOpen={isBulkDeleteModalOpen}
+        onClose={() => setIsBulkDeleteModalOpen(false)}
+        title="Remove Multiple Preserved Hostnames"
+        size="sm"
+      >
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Are you sure you want to remove preservation for <strong>{selectedIds.size}</strong> hostnames?
+          Their DNS records may be automatically deleted if their containers go offline.
+        </p>
+        <div className="mt-3 max-h-40 overflow-y-auto">
+          <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+            {filteredHostnames
+              .filter((h) => selectedIds.has(h.id))
+              .slice(0, 10)
+              .map((h) => (
+                <li key={h.id} className="font-mono">&bull; {h.hostname}</li>
+              ))}
+            {selectedIds.size > 10 && (
+              <li className="text-gray-400">...and {selectedIds.size - 10} more</li>
+            )}
+          </ul>
+        </div>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setIsBulkDeleteModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => bulkDeleteMutation.mutate(Array.from(selectedIds))}
+            isLoading={bulkDeleteMutation.isPending}
+          >
+            Remove {selectedIds.size} Hostnames
           </Button>
         </ModalFooter>
       </Modal>

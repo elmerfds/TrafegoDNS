@@ -47,4 +47,10 @@ export const preservedHostnamesApi = {
    * Delete a preserved hostname
    */
   delete: (id: string) => apiClient.delete(`/preserved-hostnames/${id}`),
+
+  /**
+   * Bulk delete preserved hostnames
+   */
+  bulkDelete: (ids: string[]) =>
+    apiClient.post<{ deleted: number; failed: number; errors?: Array<{ id: string; error: string }> }>('/preserved-hostnames/bulk-delete', { ids }),
 };

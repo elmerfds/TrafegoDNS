@@ -111,6 +111,7 @@ import {
   createPreservedHostname,
   updatePreservedHostname,
   deletePreservedHostname,
+  bulkDeletePreservedHostnames,
 } from '../controllers/preservedHostnamesController.js';
 
 import {
@@ -119,6 +120,7 @@ import {
   createOverride,
   updateOverride,
   deleteOverride,
+  bulkDeleteOverrides,
   createOverrideFromRecord,
 } from '../controllers/overridesController.js';
 
@@ -256,8 +258,9 @@ const preservedRouter = Router();
 preservedRouter.use(authenticate);
 preservedRouter.use(auditMiddleware);
 preservedRouter.get('/', requirePermission('read'), listPreservedHostnames);
-preservedRouter.get('/:id', requirePermission('read'), getPreservedHostname);
 preservedRouter.post('/', requirePermission('write'), createPreservedHostname);
+preservedRouter.post('/bulk-delete', requirePermission('write'), bulkDeletePreservedHostnames);
+preservedRouter.get('/:id', requirePermission('read'), getPreservedHostname);
 preservedRouter.put('/:id', requirePermission('write'), updatePreservedHostname);
 preservedRouter.delete('/:id', requirePermission('write'), deletePreservedHostname);
 router.use('/preserved-hostnames', preservedRouter);
@@ -267,9 +270,10 @@ const overridesRouter = Router();
 overridesRouter.use(authenticate);
 overridesRouter.use(auditMiddleware);
 overridesRouter.get('/', requirePermission('read'), listOverrides);
-overridesRouter.get('/:id', requirePermission('read'), getOverride);
 overridesRouter.post('/', requirePermission('write'), createOverride);
+overridesRouter.post('/bulk-delete', requirePermission('write'), bulkDeleteOverrides);
 overridesRouter.post('/from-record', requirePermission('write'), createOverrideFromRecord);
+overridesRouter.get('/:id', requirePermission('read'), getOverride);
 overridesRouter.put('/:id', requirePermission('write'), updateOverride);
 overridesRouter.delete('/:id', requirePermission('write'), deleteOverride);
 router.use('/overrides', overridesRouter);

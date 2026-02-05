@@ -154,6 +154,65 @@ export const updatePreservedHostname = asyncHandler(async (req: Request, res: Re
 });
 
 /**
+ * Bulk delete preserved hostnames
+ */
+export const bulkDeletePreservedHostnames = asyncHandler(async (req: Request, res: Response) => {
+  const { ids } = req.body as { ids: string[] };
+
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    throw ApiError.badRequest('No preserved hostname IDs provided');
+  }
+
+  if (ids.length > 100) {
+    throw ApiError.badRequest('Cannot delete more than 100 preserved hostnames at once');
+  }
+
+  const db = getDatabase();
+
+  let deleted = 0;
+  let failed = 0;
+  const errors: Array<{ id: string; error: string }> = [];
+
+  for (const id of ids) {
+    try {
+      const [existing] = await db
+        .select()
+        .from(preservedHostnames)
+        .where(eq(preservedHostnames.id, id))
+        .limit(1);
+
+      if (!existing) {
+        failed++;
+        errors.push({ id, error: 'Preserved hostname not found' });
+        continue;
+      }
+
+      await db.delete(preservedHostnames).where(eq(preservedHostnames.id, id));
+      deleted++;
+    } catch (error) {
+      failed++;
+      errors.push({ id, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  }
+
+  setAuditContext(req, {
+    action: 'bulk_delete',
+    resourceType: 'preserved_hostname',
+    details: { requested: ids.length, deleted, failed },
+  });
+
+  res.json({
+    success: true,
+    data: {
+      deleted,
+      failed,
+      errors: errors.length > 0 ? errors : undefined,
+    },
+    message: `Deleted ${deleted} preserved hostnames${failed > 0 ? `, ${failed} failed` : ''}`,
+  });
+});
+
+/**
  * Delete a preserved hostname
  */
 export const deletePreservedHostname = asyncHandler(async (req: Request, res: Response) => {

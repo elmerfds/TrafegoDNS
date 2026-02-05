@@ -65,4 +65,8 @@ export const overridesApi = {
   async deleteOverride(id: string): Promise<void> {
     await apiClient.delete(`/overrides/${id}`);
   },
+
+  async bulkDeleteOverrides(ids: string[]): Promise<{ deleted: number; failed: number; errors?: Array<{ id: string; error: string }> }> {
+    return apiClient.post<{ deleted: number; failed: number; errors?: Array<{ id: string; error: string }> }>('/overrides/bulk-delete', { ids });
+  },
 };

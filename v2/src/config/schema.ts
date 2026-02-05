@@ -20,7 +20,7 @@ export const dnsRoutingModeSchema = z.enum([
 export const dnsRecordTypeSchema = z.enum(['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA', 'NS']);
 
 // Provider type schema
-export const providerTypeSchema = z.enum(['cloudflare', 'digitalocean', 'route53', 'technitium']);
+export const providerTypeSchema = z.enum(['cloudflare', 'digitalocean', 'route53', 'technitium', 'adguard', 'pihole']);
 
 // Base application config schema
 export const appConfigSchema = z.object({

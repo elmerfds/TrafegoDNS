@@ -239,6 +239,75 @@ export const deleteOverride = asyncHandler(async (req: Request, res: Response) =
 });
 
 /**
+ * Bulk delete hostname overrides
+ */
+export const bulkDeleteOverrides = asyncHandler(async (req: Request, res: Response) => {
+  const { ids } = req.body as { ids: string[] };
+
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    throw ApiError.badRequest('No override IDs provided');
+  }
+
+  if (ids.length > 100) {
+    throw ApiError.badRequest('Cannot delete more than 100 overrides at once');
+  }
+
+  const db = getDatabase();
+
+  let deleted = 0;
+  let failed = 0;
+  const errors: Array<{ id: string; error: string }> = [];
+
+  for (const id of ids) {
+    try {
+      const [existing] = await db
+        .select()
+        .from(hostnameOverrides)
+        .where(eq(hostnameOverrides.id, id))
+        .limit(1);
+
+      if (!existing) {
+        failed++;
+        errors.push({ id, error: 'Override not found' });
+        continue;
+      }
+
+      await db.delete(hostnameOverrides).where(eq(hostnameOverrides.id, id));
+      deleted++;
+    } catch (error) {
+      failed++;
+      errors.push({ id, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  }
+
+  // Refresh DNS Manager's override cache once after all deletions
+  if (deleted > 0) {
+    try {
+      const dnsManager = container.resolveSync<DNSManager>(ServiceTokens.DNS_MANAGER);
+      await dnsManager.refreshHostnameOverrides();
+    } catch {
+      // DNS Manager may not be initialized yet
+    }
+  }
+
+  setAuditContext(req, {
+    action: 'bulk_delete',
+    resourceType: 'hostnameOverride',
+    details: { requested: ids.length, deleted, failed },
+  });
+
+  res.json({
+    success: true,
+    data: {
+      deleted,
+      failed,
+      errors: errors.length > 0 ? errors : undefined,
+    },
+    message: `Deleted ${deleted} overrides${failed > 0 ? `, ${failed} failed` : ''}`,
+  });
+});
+
+/**
  * Create override from existing DNS record
  * Preserves the current settings of a record as an override
  */
