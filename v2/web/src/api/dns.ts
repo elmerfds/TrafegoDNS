@@ -182,7 +182,14 @@ export const dnsApi = {
 
     if (filters?.format === 'csv') {
       // For CSV, we need to get the raw response
-      const response = await fetch(`/api/v1/dns/records/export?${new URLSearchParams(params as Record<string, string>)}`, {
+      // Filter out undefined values before creating URLSearchParams
+      const cleanParams: Record<string, string> = {};
+      for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined && value !== null) {
+          cleanParams[key] = String(value);
+        }
+      }
+      const response = await fetch(`/api/v1/dns/records/export?${new URLSearchParams(cleanParams)}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
         },
