@@ -367,21 +367,34 @@ function runSchemaMigrations(sqliteDb: Database.Database): void {
  * This is needed because the original table was created without 'discovered'
  */
 function migrateSourceConstraint(sqliteDb: Database.Database): void {
-  // Check if 'discovered' source works by trying a test insert
-  try {
-    // Try to create a temp record with 'discovered' source
-    sqliteDb.exec(`
-      INSERT INTO dns_records (id, provider_id, type, name, content, source)
-      SELECT 'test_discovered_check', id, 'A', 'test.check', '127.0.0.1', 'discovered'
-      FROM providers LIMIT 1
-    `);
-    // If it worked, delete the test record and we're done
-    sqliteDb.exec(`DELETE FROM dns_records WHERE id = 'test_discovered_check'`);
-    return; // Constraint already includes 'discovered'
-  } catch {
-    // CHECK constraint failed - need to migrate
-    logger.info('Migrating dns_records table to support discovered source');
+  // Check if dns_records table exists
+  const tableExists = sqliteDb
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='dns_records'")
+    .get();
+  if (!tableExists) {
+    return; // Table doesn't exist yet, will be created with correct constraint
   }
+
+  // Check current columns in the table
+  const tableInfo = sqliteDb.prepare('PRAGMA table_info(dns_records)').all() as Array<{
+    name: string;
+    type: string;
+    notnull: number;
+    dflt_value: string | null;
+  }>;
+  const columnNames = tableInfo.map((col) => col.name);
+  const hasManaged = columnNames.includes('managed');
+
+  // Check if 'discovered' source works by checking the table's SQL definition
+  const tableSchema = sqliteDb
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='dns_records'")
+    .get() as { sql: string } | undefined;
+
+  if (tableSchema && tableSchema.sql.includes("'discovered'")) {
+    return; // Constraint already includes 'discovered'
+  }
+
+  logger.info('Migrating dns_records table to support discovered source');
 
   // SQLite doesn't support ALTER TABLE to modify CHECK constraints
   // We need to recreate the table
@@ -413,11 +426,36 @@ function migrateSourceConstraint(sqliteDb: Database.Database): void {
       )
     `);
 
-    // Copy data from old table
-    sqliteDb.exec(`
-      INSERT INTO dns_records_new
-      SELECT * FROM dns_records
-    `);
+    // Copy data from old table - explicitly list columns to handle schema differences
+    // Only copy columns that exist in both old and new tables
+    if (hasManaged) {
+      sqliteDb.exec(`
+        INSERT INTO dns_records_new (
+          id, provider_id, external_id, type, name, content, ttl, proxied, priority,
+          weight, port, flags, tag, comment, source, managed, orphaned_at, last_synced_at,
+          created_at, updated_at
+        )
+        SELECT
+          id, provider_id, external_id, type, name, content, ttl, proxied, priority,
+          weight, port, flags, tag, comment, source, managed, orphaned_at, last_synced_at,
+          created_at, updated_at
+        FROM dns_records
+      `);
+    } else {
+      // Old table doesn't have 'managed' column - use default value
+      sqliteDb.exec(`
+        INSERT INTO dns_records_new (
+          id, provider_id, external_id, type, name, content, ttl, proxied, priority,
+          weight, port, flags, tag, comment, source, orphaned_at, last_synced_at,
+          created_at, updated_at
+        )
+        SELECT
+          id, provider_id, external_id, type, name, content, ttl, proxied, priority,
+          weight, port, flags, tag, comment, source, orphaned_at, last_synced_at,
+          created_at, updated_at
+        FROM dns_records
+      `);
+    }
 
     // Drop old table
     sqliteDb.exec('DROP TABLE dns_records');
