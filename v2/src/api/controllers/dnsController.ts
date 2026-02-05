@@ -13,6 +13,7 @@ import {
   updateDnsRecordSchema,
   dnsRecordFilterSchema,
   toggleManagedSchema,
+  extendGraceSchema,
 } from '../validation.js';
 import type { DNSManager } from '../../services/DNSManager.js';
 
@@ -746,5 +747,76 @@ export const importRecords = asyncHandler(async (req: Request, res: Response) =>
     message: dryRun
       ? `Preview: ${results.created} to create, ${results.skipped} to skip, ${results.failed} errors`
       : `Imported ${results.created} records, skipped ${results.skipped}, failed ${results.failed}`,
+  });
+});
+
+/**
+ * Extend orphan grace period for a DNS record
+ * Pushes the orphanedAt timestamp forward by the specified minutes
+ * This is useful for temporary maintenance where a container may be down longer than expected
+ */
+export const extendGracePeriod = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const input = extendGraceSchema.parse(req.body);
+  const db = getDatabase();
+
+  // Get existing record
+  const [existing] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+  if (!existing) {
+    throw ApiError.notFound('DNS record');
+  }
+
+  if (!existing.orphanedAt) {
+    throw ApiError.badRequest('Record is not orphaned');
+  }
+
+  // Extend the orphanedAt timestamp by the specified minutes
+  // This effectively delays the deletion countdown
+  const newOrphanedAt = new Date(Date.now() - (input.minutes * 60 * 1000));
+  // The grace period is measured from orphanedAt, so to add more time before deletion,
+  // we set orphanedAt to be more recent (closer to now), effectively giving more time
+  // Actually, let's think about this more carefully:
+  // - orphanedAt marks when the record became orphaned
+  // - The record gets deleted when: now - orphanedAt > gracePeriodMs
+  // - To extend the countdown, we want to make orphanedAt more recent (closer to now)
+  // - So if user wants +15 minutes, we set orphanedAt = now, giving them a full grace period again
+  // - Or we could set it to: now - (elapsed time) + (extension minutes)
+  //
+  // Actually the simplest approach: just reset orphanedAt to now, which gives them
+  // the full grace period again. Or we can add minutes to the existing orphanedAt.
+  //
+  // User's request: "extend countdown to x number" - this means add MORE time
+  // So if grace period is 15min and they've been orphaned for 10min (5min left),
+  // and they extend by 15min, they should now have 20min left total.
+  //
+  // Current time remaining = gracePeriod - (now - orphanedAt)
+  // After extension = gracePeriod - (now - newOrphanedAt) = timeRemaining + extensionMinutes
+  // So: newOrphanedAt = orphanedAt + extensionMinutes
+
+  const extensionMs = input.minutes * 60 * 1000;
+  const extendedOrphanedAt = new Date(new Date(existing.orphanedAt).getTime() + extensionMs);
+
+  await db
+    .update(dnsRecords)
+    .set({
+      orphanedAt: extendedOrphanedAt,
+      updatedAt: new Date(),
+    })
+    .where(eq(dnsRecords.id, id));
+
+  setAuditContext(req, {
+    action: 'update',
+    resourceType: 'dnsRecord',
+    resourceId: id,
+    details: { action: 'extend_grace', minutes: input.minutes, name: existing.name },
+  });
+
+  const [record] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+  res.json({
+    success: true,
+    data: record,
+    message: `Grace period extended by ${input.minutes} minutes`,
   });
 });

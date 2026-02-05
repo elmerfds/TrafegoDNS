@@ -3,7 +3,7 @@
  */
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X, Filter, Settings2, Download, Upload } from 'lucide-react';
+import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X, Filter, Settings2, Download, Upload, Clock, Timer } from 'lucide-react';
 import { dnsApi, providersApi, preservedHostnamesApi, settingsApi, overridesApi, type DNSRecord, type CreateDNSRecordInput, type UpdateDNSRecordInput, type PreservedHostname, type HostnameOverride, type CreateOverrideInput, type UpdateOverrideInput, type ImportRecordsInput, type ImportRecordsResponse } from '../api';
 import { preferencesApi, DEFAULT_DNS_TABLE_PREFERENCES, type TableViewPreference } from '../api/preferences';
 import { Button, Table, Pagination, Badge, Modal, ModalFooter, Alert, Select, DataTable, ColumnCustomizer, ProviderCell, type DataTableColumn } from '../components/common';
@@ -68,10 +68,12 @@ function DNSRecordsTab() {
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [managedFilter, setManagedFilter] = useState<'all' | 'managed' | 'unmanaged'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'orphaned'>('all');
   const [providerFilter, setProviderFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [zoneFilter, setZoneFilter] = useState<string>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
+  const [extendMenuOpenFor, setExtendMenuOpenFor] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editRecord, setEditRecord] = useState<DNSRecord | null>(null);
@@ -126,6 +128,20 @@ function DNSRecordsTab() {
     queryFn: () => providersApi.listProviders(),
   });
 
+  // Get cleanup grace period from settings
+  const { data: cleanupGracePeriod } = useQuery({
+    queryKey: ['settings', 'cleanupGracePeriod'],
+    queryFn: async () => {
+      try {
+        const setting = await settingsApi.getSetting('cleanupGracePeriod');
+        return Number(setting.value) || 15; // Default 15 minutes
+      } catch {
+        return 15;
+      }
+    },
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  });
+
   // Build filters object
   const filters = useMemo(() => ({
     page,
@@ -175,14 +191,15 @@ function DNSRecordsTab() {
   const clearAllFilters = () => {
     clearSearch();
     setManagedFilter('all');
+    setStatusFilter('all');
     setProviderFilter('all');
     setTypeFilter('all');
     setZoneFilter('all');
     setSourceFilter('all');
   };
 
-  const hasActiveFilters = search || managedFilter !== 'all' || providerFilter !== 'all' ||
-    typeFilter !== 'all' || zoneFilter !== 'all' || sourceFilter !== 'all';
+  const hasActiveFilters = search || managedFilter !== 'all' || statusFilter !== 'all' ||
+    providerFilter !== 'all' || typeFilter !== 'all' || zoneFilter !== 'all' || sourceFilter !== 'all';
 
   const syncMutation = useMutation({
     mutationFn: () => dnsApi.syncRecords(providerFilter !== 'all' ? providerFilter : undefined),
@@ -212,10 +229,66 @@ function DNSRecordsTab() {
     },
   });
 
+  // Extend grace period mutation
+  const extendGraceMutation = useMutation({
+    mutationFn: ({ id, minutes }: { id: string; minutes: number }) =>
+      dnsApi.extendGracePeriod(id, minutes),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dns-records'] });
+      setExtendMenuOpenFor(null);
+    },
+  });
+
+  // Quick preserve hostname mutation
+  const preserveMutation = useMutation({
+    mutationFn: (hostname: string) =>
+      preservedHostnamesApi.create({ hostname, reason: 'Preserved from DNS Records page' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dns-records'] });
+      queryClient.invalidateQueries({ queryKey: ['preserved-hostnames'] });
+    },
+  });
+
   // Clear selection when page/filters change
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [page, search, managedFilter, providerFilter, typeFilter, zoneFilter, sourceFilter]);
+  }, [page, search, managedFilter, statusFilter, providerFilter, typeFilter, zoneFilter, sourceFilter]);
+
+  // Close extend menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setExtendMenuOpenFor(null);
+    if (extendMenuOpenFor) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [extendMenuOpenFor]);
+
+  // Calculate time remaining before orphaned record deletion
+  const getTimeRemaining = useCallback((orphanedAt: string | undefined): { minutes: number; text: string } | null => {
+    if (!orphanedAt || !cleanupGracePeriod) return null;
+    const orphanedTime = new Date(orphanedAt).getTime();
+    const gracePeriodMs = cleanupGracePeriod * 60 * 1000;
+    const deletionTime = orphanedTime + gracePeriodMs;
+    const now = Date.now();
+    const remainingMs = deletionTime - now;
+
+    if (remainingMs <= 0) return { minutes: 0, text: 'Deleting soon...' };
+
+    const remainingMinutes = Math.ceil(remainingMs / (60 * 1000));
+    if (remainingMinutes < 60) {
+      return { minutes: remainingMinutes, text: `${remainingMinutes}m remaining` };
+    }
+    const hours = Math.floor(remainingMinutes / 60);
+    const mins = remainingMinutes % 60;
+    return { minutes: remainingMinutes, text: `${hours}h ${mins}m remaining` };
+  }, [cleanupGracePeriod]);
+
+  // Filter records by status (client-side since API doesn't have status filter)
+  const filteredRecords = useMemo(() => {
+    if (!data?.records) return [];
+    if (statusFilter === 'all') return data.records;
+    return data.records.filter(r => r.status === statusFilter);
+  }, [data?.records, statusFilter]);
 
   // Column configurations for DataTable
   const columns: DataTableColumn<DNSRecord>[] = useMemo(() => [
@@ -287,18 +360,29 @@ function DNSRecordsTab() {
       header: 'Status',
       sortable: true,
       defaultVisible: true,
-      minWidth: 90,
-      render: (row: DNSRecord) => (
-        <Badge
-          variant={
-            row.status === 'active' ? 'success' :
-            row.status === 'orphaned' ? 'warning' :
-            row.status === 'error' ? 'error' : 'default'
-          }
-        >
-          {row.status}
-        </Badge>
-      ),
+      minWidth: 130,
+      render: (row: DNSRecord) => {
+        const timeRemaining = row.status === 'orphaned' ? getTimeRemaining(row.orphanedAt) : null;
+        return (
+          <div className="flex flex-col gap-0.5">
+            <Badge
+              variant={
+                row.status === 'active' ? 'success' :
+                row.status === 'orphaned' ? 'warning' :
+                row.status === 'error' ? 'error' : 'default'
+              }
+            >
+              {row.status}
+            </Badge>
+            {timeRemaining && (
+              <span className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
+                <Timer className="w-3 h-3" />
+                {timeRemaining.text}
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       id: 'provider',
@@ -372,9 +456,63 @@ function DNSRecordsTab() {
       header: 'Actions',
       sortable: false,
       defaultVisible: true,
-      minWidth: 80,
+      minWidth: 140,
       render: (row: DNSRecord) => (
         <div className="flex items-center space-x-1">
+          {row.status === 'orphaned' && (
+            <>
+              {/* Extend Grace Period Dropdown */}
+              <div className="relative">
+                <button
+                  className="p-1.5 text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExtendMenuOpenFor(extendMenuOpenFor === row.id ? null : row.id);
+                  }}
+                  title="Extend grace period"
+                >
+                  <Clock className="w-4 h-4" />
+                </button>
+                {extendMenuOpenFor === row.id && (
+                  <div className="absolute right-0 top-8 z-50 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1">
+                    <div className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                      Extend by
+                    </div>
+                    {[
+                      { label: '+15 minutes', minutes: 15 },
+                      { label: '+1 hour', minutes: 60 },
+                      { label: '+6 hours', minutes: 360 },
+                      { label: '+24 hours', minutes: 1440 },
+                    ].map((option) => (
+                      <button
+                        key={option.minutes}
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          extendGraceMutation.mutate({ id: row.id, minutes: option.minutes });
+                        }}
+                        disabled={extendGraceMutation.isPending}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Quick Preserve */}
+              <button
+                className="p-1.5 text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  preserveMutation.mutate(row.hostname);
+                }}
+                title="Preserve hostname (never delete)"
+                disabled={preserveMutation.isPending}
+              >
+                <Shield className="w-4 h-4" />
+              </button>
+            </>
+          )}
           <button
             className="p-1.5 text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
             onClick={(e) => {
@@ -398,7 +536,7 @@ function DNSRecordsTab() {
         </div>
       ),
     },
-  ], [providers, tablePreferences.density]);
+  ], [providers, tablePreferences.density, extendMenuOpenFor, extendGraceMutation, preserveMutation, getTimeRemaining]);
 
   return (
     <>
@@ -439,6 +577,7 @@ function DNSRecordsTab() {
           >
             Filters{hasActiveFilters && ` (${[
               managedFilter !== 'all' ? 1 : 0,
+              statusFilter !== 'all' ? 1 : 0,
               providerFilter !== 'all' ? 1 : 0,
               typeFilter !== 'all' ? 1 : 0,
               zoneFilter !== 'all' ? 1 : 0,
@@ -562,7 +701,7 @@ function DNSRecordsTab() {
       {/* Filters Panel */}
       {showFilters && (
         <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             {/* Provider Filter */}
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Provider</label>
@@ -655,6 +794,23 @@ function DNSRecordsTab() {
                 className="w-full"
               />
             </div>
+            {/* Status Filter */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Status</label>
+              <Select
+                value={statusFilter}
+                onChange={(value) => {
+                  setStatusFilter(value as 'all' | 'active' | 'orphaned');
+                  setPage(1);
+                }}
+                options={[
+                  { value: 'all', label: 'All Statuses' },
+                  { value: 'active', label: 'Active Only' },
+                  { value: 'orphaned', label: 'Orphaned Only' },
+                ]}
+                className="w-full"
+              />
+            </div>
           </div>
           {hasActiveFilters && (
             <div className="mt-3 flex justify-end">
@@ -675,6 +831,9 @@ function DNSRecordsTab() {
           <span>Filters:</span>
           {managedFilter !== 'all' && (
             <Badge variant="default">{managedFilter}</Badge>
+          )}
+          {statusFilter !== 'all' && (
+            <Badge variant={statusFilter === 'orphaned' ? 'warning' : 'success'}>{statusFilter}</Badge>
           )}
           {providerFilter !== 'all' && (
             <Badge variant="default">{providers?.find((p) => p.id === providerFilter)?.name ?? 'Provider'}</Badge>
@@ -703,10 +862,10 @@ function DNSRecordsTab() {
       {/* Table */}
       <DataTable
         columns={columns}
-        data={data?.records ?? []}
+        data={filteredRecords}
         keyField="id"
         isLoading={isLoading || isLoadingPreferences}
-        emptyMessage="No DNS records found"
+        emptyMessage={statusFilter === 'orphaned' ? 'No orphaned records' : 'No DNS records found'}
         emptyIcon={<Globe className="w-8 h-8 text-gray-400" />}
         preferences={tablePreferences}
         onPreferencesChange={handlePreferencesChange}

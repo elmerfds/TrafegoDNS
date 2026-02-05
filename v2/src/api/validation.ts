@@ -122,6 +122,13 @@ export const toggleManagedSchema = z.object({
   managed: z.boolean(),
 });
 
+// Schema for extending orphan grace period
+export const extendGraceSchema = z.object({
+  minutes: z.number().int().positive().max(10080), // Max 1 week
+});
+
+export type ExtendGraceInput = z.infer<typeof extendGraceSchema>;
+
 // Provider schemas
 export const providerTypeSchema = z.enum([
   'cloudflare',

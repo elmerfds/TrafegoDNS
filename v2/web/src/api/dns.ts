@@ -18,6 +18,7 @@ export interface DNSRecord {
   source: string;
   status: 'active' | 'pending' | 'orphaned' | 'error';
   managed: boolean;
+  orphanedAt?: string;
   lastSyncedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -107,6 +108,7 @@ function transformRecord(record: ApiDNSRecord): DNSRecord {
     source: record.source,
     status: record.orphanedAt ? 'orphaned' : 'active', // Compute status from orphanedAt
     managed: record.managed,
+    orphanedAt: record.orphanedAt ?? undefined,
     lastSyncedAt: record.lastSyncedAt,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -203,6 +205,11 @@ export const dnsApi = {
 
   async importRecords(data: ImportRecordsInput): Promise<ImportRecordsResponse> {
     return apiClient.post<ImportRecordsResponse>('/dns/records/import', data);
+  },
+
+  async extendGracePeriod(id: string, minutes: number): Promise<DNSRecord> {
+    const record = await apiClient.patch<ApiDNSRecord>(`/dns/records/${id}/extend-grace`, { minutes });
+    return transformRecord(record);
   },
 };
 

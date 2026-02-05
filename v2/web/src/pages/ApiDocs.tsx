@@ -63,6 +63,7 @@ const apiGroups: EndpointGroup[] = [
       { method: 'POST', path: '/records/sync', description: 'Sync records with provider', auth: 'required', permission: 'write' },
       { method: 'POST', path: '/records/bulk-delete', description: 'Delete multiple records', auth: 'required', permission: 'write', body: { ids: 'string[]' } },
       { method: 'PATCH', path: '/records/:id/managed', description: 'Toggle managed status', auth: 'required', permission: 'write' },
+      { method: 'PATCH', path: '/records/:id/extend-grace', description: 'Extend orphan grace period', auth: 'required', permission: 'write', body: { minutes: 'number (1-10080)' } },
     ],
   },
   {

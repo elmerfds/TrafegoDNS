@@ -42,6 +42,7 @@ import {
   toggleManaged,
   exportRecords,
   importRecords,
+  extendGracePeriod,
 } from '../controllers/dnsController.js';
 
 import {
@@ -166,6 +167,7 @@ dnsRouter.delete('/records/:id', requirePermission('write'), deleteRecord);
 dnsRouter.post('/records/sync', requirePermission('write'), syncRecords);
 dnsRouter.post('/records/bulk-delete', requirePermission('write'), bulkDeleteRecords);
 dnsRouter.patch('/records/:id/managed', requirePermission('write'), toggleManaged);
+dnsRouter.patch('/records/:id/extend-grace', requirePermission('write'), extendGracePeriod);
 router.use('/dns', dnsRouter);
 
 // Providers routes
