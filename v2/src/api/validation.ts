@@ -136,6 +136,8 @@ export const providerTypeSchema = z.enum([
   'digitalocean',
   'route53',
   'technitium',
+  'adguard',
+  'pihole',
 ]);
 
 export const createProviderSchema = z.object({
