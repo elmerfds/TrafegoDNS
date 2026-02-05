@@ -236,8 +236,8 @@ export const updateRecord = asyncHandler(async (req: Request, res: Response) => 
     throw ApiError.badRequest('Record has no external ID');
   }
 
-  // Update in provider
-  await provider.updateRecord(existing.externalId, {
+  // Update in provider - capture returned record for updated externalId
+  const updatedProviderRecord = await provider.updateRecord(existing.externalId, {
     type: input.type ?? existing.type,
     name: input.name ?? existing.name,
     content: input.content ?? existing.content,
@@ -250,10 +250,11 @@ export const updateRecord = asyncHandler(async (req: Request, res: Response) => 
     tag: input.tag ?? existing.tag ?? undefined,
   });
 
-  // Update database
+  // Update database - include new externalId from provider (may change when content changes)
   await db
     .update(dnsRecords)
     .set({
+      externalId: updatedProviderRecord.id,
       type: input.type ?? existing.type,
       name: input.name ?? existing.name,
       content: input.content ?? existing.content,
