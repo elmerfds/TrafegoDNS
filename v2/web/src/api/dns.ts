@@ -168,4 +168,86 @@ export const dnsApi = {
       details: Array<{ hostname: string; field: string; oldValue: string; newValue: string }>;
     }>('/dns/records/sync', params);
   },
+
+  async exportRecords(filters?: {
+    format?: 'json' | 'csv';
+    providerId?: string;
+    type?: DNSRecordType;
+    managed?: boolean;
+  }): Promise<ExportRecordsResponse | string> {
+    const params: Record<string, unknown> = { ...filters };
+    if (filters?.managed !== undefined) {
+      params.managed = String(filters.managed);
+    }
+
+    if (filters?.format === 'csv') {
+      // For CSV, we need to get the raw response
+      const response = await fetch(`/api/v1/dns/records/export?${new URLSearchParams(params as Record<string, string>)}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+        },
+      });
+      if (!response.ok) throw new Error('Export failed');
+      return response.text();
+    }
+
+    return apiClient.get<ExportRecordsResponse>('/dns/records/export', params);
+  },
+
+  async importRecords(data: ImportRecordsInput): Promise<ImportRecordsResponse> {
+    return apiClient.post<ImportRecordsResponse>('/dns/records/import', data);
+  },
 };
+
+export interface ExportRecordsResponse {
+  exportedAt: string;
+  count: number;
+  records: Array<{
+    hostname: string;
+    type: string;
+    content: string;
+    ttl: number;
+    proxied?: boolean;
+    priority?: number;
+    weight?: number;
+    port?: number;
+    flags?: number;
+    tag?: string;
+    managed: boolean;
+    source: string;
+    providerId: string;
+  }>;
+}
+
+export interface ImportRecordsInput {
+  records: Array<{
+    hostname: string;
+    type: string;
+    content: string;
+    ttl?: number;
+    proxied?: boolean;
+    priority?: number;
+    weight?: number;
+    port?: number;
+    flags?: number;
+    tag?: string;
+  }>;
+  providerId: string;
+  skipDuplicates?: boolean;
+  dryRun?: boolean;
+}
+
+export interface ImportRecordsResponse {
+  total: number;
+  created: number;
+  skipped: number;
+  failed: number;
+  errors: Array<{ hostname: string; error: string }>;
+  preview: Array<{
+    hostname: string;
+    type: string;
+    content: string;
+    action: 'create' | 'skip' | 'error';
+    reason?: string;
+  }>;
+}

@@ -977,9 +977,11 @@ export class DNSManager {
         : (override?.ttl ?? finalDefaults.ttl),
     };
 
-    // Add proxied for supported types (Cloudflare)
+    // Add proxied for supported types (Cloudflare only)
     // Priority: label > override > default
-    if (['A', 'AAAA', 'CNAME'].includes(type)) {
+    // Only set proxied if provider supports it (to avoid false update detections)
+    const providerSupportsProxied = provider?.getInfo().features.proxied === true;
+    if (['A', 'AAAA', 'CNAME'].includes(type) && providerSupportsProxied) {
       const proxiedKey = `${labelPrefix}proxied`;
       const proxiedLabel = labels[proxiedKey];
       if (proxiedLabel !== undefined) {

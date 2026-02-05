@@ -3,8 +3,8 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X, Filter, CheckSquare, Square, MinusSquare, Settings2 } from 'lucide-react';
-import { dnsApi, providersApi, preservedHostnamesApi, settingsApi, overridesApi, type DNSRecord, type CreateDNSRecordInput, type UpdateDNSRecordInput, type PreservedHostname, type HostnameOverride, type CreateOverrideInput, type UpdateOverrideInput } from '../api';
+import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X, Filter, CheckSquare, Square, MinusSquare, Settings2, Download, Upload } from 'lucide-react';
+import { dnsApi, providersApi, preservedHostnamesApi, settingsApi, overridesApi, type DNSRecord, type CreateDNSRecordInput, type UpdateDNSRecordInput, type PreservedHostname, type HostnameOverride, type CreateOverrideInput, type UpdateOverrideInput, type ImportRecordsInput, type ImportRecordsResponse } from '../api';
 import { Button, Table, Pagination, Badge, Modal, ModalFooter, Alert, Select } from '../components/common';
 
 type TabType = 'records' | 'overrides' | 'preserved';
@@ -84,6 +84,8 @@ function DNSRecordsTab() {
     errors: number;
     details: Array<{ hostname: string; field: string; oldValue: string; newValue: string }>;
   } | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   const { data: providers } = useQuery({
     queryKey: ['providers'],
@@ -411,6 +413,70 @@ function DNSRecordsTab() {
               Delete ({selectedIds.size})
             </Button>
           )}
+          {/* Export Dropdown */}
+          <div className="relative">
+            <Button
+              variant="secondary"
+              leftIcon={<Download className="w-4 h-4" />}
+              onClick={() => setShowExportMenu(!showExportMenu)}
+            >
+              Export
+            </Button>
+            {showExportMenu && (
+              <div className="absolute right-0 mt-1 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-10">
+                <button
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-t-lg"
+                  onClick={async () => {
+                    setShowExportMenu(false);
+                    const data = await dnsApi.exportRecords({
+                      format: 'json',
+                      providerId: providerFilter !== 'all' ? providerFilter : undefined,
+                      type: typeFilter !== 'all' ? typeFilter as any : undefined,
+                      managed: managedFilter !== 'all' ? managedFilter === 'managed' : undefined,
+                    });
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `dns-records-${new Date().toISOString().split('T')[0]}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  Export as JSON
+                </button>
+                <button
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-b-lg"
+                  onClick={async () => {
+                    setShowExportMenu(false);
+                    const csv = await dnsApi.exportRecords({
+                      format: 'csv',
+                      providerId: providerFilter !== 'all' ? providerFilter : undefined,
+                      type: typeFilter !== 'all' ? typeFilter as any : undefined,
+                      managed: managedFilter !== 'all' ? managedFilter === 'managed' : undefined,
+                    });
+                    const blob = new Blob([csv as string], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `dns-records-${new Date().toISOString().split('T')[0]}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  Export as CSV
+                </button>
+              </div>
+            )}
+          </div>
+          {/* Import */}
+          <Button
+            variant="secondary"
+            leftIcon={<Upload className="w-4 h-4" />}
+            onClick={() => setIsImportModalOpen(true)}
+          >
+            Import
+          </Button>
           <Button
             variant="secondary"
             leftIcon={<RefreshCw className="w-4 h-4" />}
@@ -726,7 +792,274 @@ function DNSRecordsTab() {
           <Button onClick={() => setSyncResult(null)}>Close</Button>
         </ModalFooter>
       </Modal>
+
+      {/* Import Modal */}
+      <ImportRecordsModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        providers={providers ?? []}
+      />
     </>
+  );
+}
+
+interface ImportRecordsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  providers: Array<{ id: string; name: string; type: string }>;
+}
+
+function ImportRecordsModal({ isOpen, onClose, providers }: ImportRecordsModalProps) {
+  const queryClient = useQueryClient();
+  const [providerId, setProviderId] = useState<string>('');
+  const [skipDuplicates, setSkipDuplicates] = useState(true);
+  const [jsonInput, setJsonInput] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [previewResult, setPreviewResult] = useState<ImportRecordsResponse | null>(null);
+  const [importResult, setImportResult] = useState<ImportRecordsResponse | null>(null);
+
+  const parseRecords = (): ImportRecordsInput['records'] | null => {
+    try {
+      const parsed = JSON.parse(jsonInput);
+      // Support both { records: [...] } and direct array format
+      const records = Array.isArray(parsed) ? parsed : parsed.records;
+      if (!Array.isArray(records)) {
+        setError('Invalid format: expected an array of records or { records: [...] }');
+        return null;
+      }
+      return records;
+    } catch {
+      setError('Invalid JSON format');
+      return null;
+    }
+  };
+
+  const previewMutation = useMutation({
+    mutationFn: (data: ImportRecordsInput) => dnsApi.importRecords({ ...data, dryRun: true }),
+    onSuccess: (result) => {
+      setPreviewResult(result);
+      setError(null);
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Preview failed');
+    },
+  });
+
+  const importMutation = useMutation({
+    mutationFn: (data: ImportRecordsInput) => dnsApi.importRecords(data),
+    onSuccess: (result) => {
+      setImportResult(result);
+      setPreviewResult(null);
+      queryClient.invalidateQueries({ queryKey: ['dns-records'] });
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Import failed');
+    },
+  });
+
+  const handlePreview = () => {
+    if (!providerId) {
+      setError('Please select a provider');
+      return;
+    }
+    const records = parseRecords();
+    if (records) {
+      previewMutation.mutate({ records, providerId, skipDuplicates });
+    }
+  };
+
+  const handleImport = () => {
+    if (!providerId) {
+      setError('Please select a provider');
+      return;
+    }
+    const records = parseRecords();
+    if (records) {
+      importMutation.mutate({ records, providerId, skipDuplicates });
+    }
+  };
+
+  const handleClose = () => {
+    setJsonInput('');
+    setProviderId('');
+    setError(null);
+    setPreviewResult(null);
+    setImportResult(null);
+    onClose();
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      setJsonInput(content);
+      setPreviewResult(null);
+      setImportResult(null);
+    };
+    reader.readAsText(file);
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={handleClose} title="Import DNS Records" size="lg">
+      <div className="space-y-4">
+        {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
+
+        {importResult ? (
+          // Import completed view
+          <div className="space-y-4">
+            <Alert variant={importResult.failed > 0 ? 'warning' : 'success'}>
+              Imported {importResult.created} records, skipped {importResult.skipped}, failed {importResult.failed}
+            </Alert>
+
+            {importResult.failed > 0 && importResult.errors.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Errors:</h4>
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {importResult.errors.map((err, idx) => (
+                    <div key={idx} className="text-xs text-red-600 dark:text-red-400">
+                      {err.hostname}: {err.error}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <ModalFooter>
+              <Button onClick={handleClose}>Done</Button>
+            </ModalFooter>
+          </div>
+        ) : previewResult ? (
+          // Preview view
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
+                <div className="text-xl font-bold text-green-600 dark:text-green-400">{previewResult.created}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">To Create</div>
+              </div>
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3">
+                <div className="text-xl font-bold text-yellow-600 dark:text-yellow-400">{previewResult.skipped}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">To Skip</div>
+              </div>
+              <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3">
+                <div className="text-xl font-bold text-red-600 dark:text-red-400">{previewResult.failed}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Errors</div>
+              </div>
+            </div>
+
+            <div className="max-h-60 overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0">
+                  <tr>
+                    <th className="px-2 py-1 text-left">Hostname</th>
+                    <th className="px-2 py-1 text-left">Type</th>
+                    <th className="px-2 py-1 text-left">Content</th>
+                    <th className="px-2 py-1 text-left">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewResult.preview.map((item, idx) => (
+                    <tr key={idx} className="border-t border-gray-100 dark:border-gray-800">
+                      <td className="px-2 py-1 font-mono">{item.hostname}</td>
+                      <td className="px-2 py-1">{item.type}</td>
+                      <td className="px-2 py-1 font-mono truncate max-w-[150px]" title={item.content}>{item.content}</td>
+                      <td className="px-2 py-1">
+                        <Badge variant={item.action === 'create' ? 'success' : item.action === 'skip' ? 'warning' : 'error'}>
+                          {item.action}
+                        </Badge>
+                        {item.reason && <span className="ml-1 text-gray-400" title={item.reason}>ℹ️</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <ModalFooter>
+              <Button variant="secondary" onClick={() => setPreviewResult(null)}>
+                Back
+              </Button>
+              <Button
+                onClick={handleImport}
+                isLoading={importMutation.isPending}
+                disabled={previewResult.created === 0}
+              >
+                Import {previewResult.created} Records
+              </Button>
+            </ModalFooter>
+          </div>
+        ) : (
+          // Input view
+          <>
+            <div>
+              <label className="label">Target Provider *</label>
+              <Select
+                className="mt-1"
+                value={providerId}
+                onChange={setProviderId}
+                placeholder="Select provider"
+                options={providers.map((p) => ({ value: p.id, label: p.name }))}
+              />
+            </div>
+
+            <div>
+              <label className="label">Records (JSON)</label>
+              <div className="mt-1 space-y-2">
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={handleFileUpload}
+                  className="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 dark:file:bg-primary-900/20 dark:file:text-primary-400"
+                />
+                <textarea
+                  className="input mt-1 font-mono text-xs"
+                  rows={10}
+                  value={jsonInput}
+                  onChange={(e) => {
+                    setJsonInput(e.target.value);
+                    setError(null);
+                  }}
+                  placeholder={`[
+  { "hostname": "app.example.com", "type": "A", "content": "192.168.1.1", "ttl": 300 },
+  { "hostname": "mail.example.com", "type": "CNAME", "content": "mail.provider.com" }
+]
+
+Or paste an exported JSON file content`}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="skip-duplicates"
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                checked={skipDuplicates}
+                onChange={(e) => setSkipDuplicates(e.target.checked)}
+              />
+              <label htmlFor="skip-duplicates" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                Skip duplicate records (recommended)
+              </label>
+            </div>
+
+            <ModalFooter>
+              <Button variant="secondary" onClick={handleClose}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handlePreview}
+                isLoading={previewMutation.isPending}
+                disabled={!jsonInput.trim() || !providerId}
+              >
+                Preview Import
+              </Button>
+            </ModalFooter>
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }
 

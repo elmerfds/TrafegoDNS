@@ -179,11 +179,30 @@ export abstract class DNSProvider {
    * Check if a record needs to be updated
    */
   recordNeedsUpdate(existing: DNSRecord, newRecord: DNSRecordCreateInput): boolean {
+    // Log comparison details at debug level for diagnosing sync issues
+    this.logger.debug(
+      {
+        name: newRecord.name,
+        type: newRecord.type,
+        existing: {
+          content: existing.content,
+          ttl: existing.ttl,
+          proxied: existing.proxied,
+        },
+        new: {
+          content: newRecord.content,
+          ttl: newRecord.ttl,
+          proxied: newRecord.proxied,
+        },
+      },
+      'Comparing record for update check'
+    );
+
     // Basic field comparison
     if (existing.content !== newRecord.content) {
       this.logger.debug(
         { name: newRecord.name, oldContent: existing.content, newContent: newRecord.content },
-        'Content changed'
+        'Content changed - update needed'
       );
       return true;
     }
@@ -194,18 +213,25 @@ export abstract class DNSProvider {
       if (!(existing.proxied === true && newRecord.proxied === true)) {
         this.logger.debug(
           { name: newRecord.name, oldTtl: existing.ttl, newTtl: newRecord.ttl },
-          'TTL changed'
+          'TTL changed - update needed'
         );
         return true;
       }
     }
 
     // Proxied comparison (for A, AAAA, CNAME only)
+    // Only compare if BOTH have proxied defined - providers that don't support proxied will have undefined
     if (['A', 'AAAA', 'CNAME'].includes(newRecord.type)) {
-      if (newRecord.proxied !== undefined && existing.proxied !== newRecord.proxied) {
+      // Skip comparison if existing.proxied is undefined (provider doesn't support proxied)
+      // This prevents false positives for non-Cloudflare providers
+      if (
+        newRecord.proxied !== undefined &&
+        existing.proxied !== undefined &&
+        existing.proxied !== newRecord.proxied
+      ) {
         this.logger.debug(
           { name: newRecord.name, oldProxied: existing.proxied, newProxied: newRecord.proxied },
-          'Proxied status changed'
+          'Proxied status changed - update needed'
         );
         return true;
       }
@@ -239,6 +265,7 @@ export abstract class DNSProvider {
         break;
     }
 
+    this.logger.debug({ name: newRecord.name, type: newRecord.type }, 'No update needed');
     return false;
   }
 
@@ -250,7 +277,25 @@ export abstract class DNSProvider {
       return { created: [], updated: [], unchanged: [], errors: [] };
     }
 
-    this.logger.debug({ count: recordConfigs.length }, 'Batch processing DNS records');
+    // Log all incoming records for debugging
+    this.logger.debug(
+      {
+        count: recordConfigs.length,
+        records: recordConfigs.map((r) => ({ name: r.name, type: r.type, ttl: r.ttl, content: r.content?.substring(0, 50) })),
+      },
+      'Batch processing DNS records'
+    );
+
+    // Check for duplicate records in input
+    const seen = new Map<string, number>();
+    for (const config of recordConfigs) {
+      const key = `${config.type}:${config.name}`;
+      const count = (seen.get(key) ?? 0) + 1;
+      seen.set(key, count);
+      if (count > 1) {
+        this.logger.warn({ type: config.type, name: config.name, count }, 'Duplicate record in batch input');
+      }
+    }
 
     const result: BatchResult = {
       created: [],
@@ -261,6 +306,7 @@ export abstract class DNSProvider {
 
     // Refresh cache before processing
     await this.getRecordsFromCache();
+    this.logger.debug({ cacheSize: this.recordCache.records.length }, 'Cache refreshed');
 
     for (const recordConfig of recordConfigs) {
       try {
@@ -269,6 +315,15 @@ export abstract class DNSProvider {
 
         // Find existing record
         const existing = this.findRecordInCache(recordConfig.type, recordConfig.name);
+        this.logger.debug(
+          {
+            type: recordConfig.type,
+            name: recordConfig.name,
+            found: !!existing,
+            existingId: existing?.id,
+          },
+          'Cache lookup result'
+        );
 
         if (existing) {
           // Check if update is needed

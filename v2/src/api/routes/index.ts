@@ -38,6 +38,8 @@ import {
   bulkDeleteRecords,
   syncRecords,
   toggleManaged,
+  exportRecords,
+  importRecords,
 } from '../controllers/dnsController.js';
 
 import {
@@ -142,8 +144,10 @@ const dnsRouter = Router();
 dnsRouter.use(authenticate);
 dnsRouter.use(auditMiddleware);
 dnsRouter.get('/records', requirePermission('read'), listRecords);
+dnsRouter.get('/records/export', requirePermission('read'), exportRecords);
 dnsRouter.get('/records/:id', requirePermission('read'), getRecord);
 dnsRouter.post('/records', requirePermission('write'), createRecord);
+dnsRouter.post('/records/import', requirePermission('write'), importRecords);
 dnsRouter.put('/records/:id', requirePermission('write'), updateRecord);
 dnsRouter.delete('/records/:id', requirePermission('write'), deleteRecord);
 dnsRouter.post('/records/sync', requirePermission('write'), syncRecords);

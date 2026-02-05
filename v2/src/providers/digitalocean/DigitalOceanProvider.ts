@@ -433,10 +433,18 @@ export class DigitalOceanProvider extends DNSProvider {
     }
 
     // DigitalOcean returns FQDN data with trailing dots - strip them for internal consistency
+    // Also normalize @ to domain name for CNAME records pointing to apex
     let content = record.data;
     const hostnameRecordTypes = ['CNAME', 'NS', 'MX', 'SRV'];
-    if (hostnameRecordTypes.includes(type) && content && content.endsWith('.')) {
-      content = content.slice(0, -1);
+    if (hostnameRecordTypes.includes(type) && content) {
+      // Normalize @ to domain name (apex)
+      if (content === '@') {
+        content = this.domain;
+      }
+      // Strip trailing dots
+      if (content.endsWith('.')) {
+        content = content.slice(0, -1);
+      }
     }
 
     return {

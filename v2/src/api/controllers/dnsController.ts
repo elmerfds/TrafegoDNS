@@ -469,3 +469,280 @@ export const toggleManaged = asyncHandler(async (req: Request, res: Response) =>
     message: input.managed ? 'Record claimed by TrafegoDNS' : 'Record released from TrafegoDNS management',
   });
 });
+
+/**
+ * Export DNS records
+ * Supports JSON and CSV formats
+ */
+export const exportRecords = asyncHandler(async (req: Request, res: Response) => {
+  const { format = 'json', providerId, type, managed } = req.query as {
+    format?: 'json' | 'csv';
+    providerId?: string;
+    type?: string;
+    managed?: string;
+  };
+  const db = getDatabase();
+
+  // Build where conditions
+  const conditions = [];
+  if (providerId) {
+    conditions.push(eq(dnsRecords.providerId, providerId));
+  }
+  if (type) {
+    conditions.push(eq(dnsRecords.type, type as typeof dnsRecords.type.enumValues[number]));
+  }
+  if (managed !== undefined) {
+    conditions.push(eq(dnsRecords.managed, managed === 'true'));
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const records = await db
+    .select()
+    .from(dnsRecords)
+    .where(whereClause)
+    .orderBy(dnsRecords.name);
+
+  // Map to export format
+  const exportData = records.map((r) => ({
+    hostname: r.name,
+    type: r.type,
+    content: r.content,
+    ttl: r.ttl,
+    proxied: r.proxied,
+    priority: r.priority,
+    weight: r.weight,
+    port: r.port,
+    flags: r.flags,
+    tag: r.tag,
+    managed: r.managed,
+    source: r.source,
+    providerId: r.providerId,
+  }));
+
+  if (format === 'csv') {
+    // Generate CSV
+    const headers = ['hostname', 'type', 'content', 'ttl', 'proxied', 'priority', 'weight', 'port', 'flags', 'tag', 'managed', 'source', 'providerId'];
+    const csvRows = [headers.join(',')];
+
+    for (const record of exportData) {
+      const row = headers.map((h) => {
+        const value = record[h as keyof typeof record];
+        if (value === null || value === undefined) return '';
+        if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
+          return `"${value.replace(/"/g, '""')}"`;
+        }
+        return String(value);
+      });
+      csvRows.push(row.join(','));
+    }
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="dns-records-${new Date().toISOString().split('T')[0]}.csv"`);
+    res.send(csvRows.join('\n'));
+    return;
+  }
+
+  // JSON format
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', `attachment; filename="dns-records-${new Date().toISOString().split('T')[0]}.json"`);
+  res.json({
+    exportedAt: new Date().toISOString(),
+    count: exportData.length,
+    records: exportData,
+  });
+});
+
+/**
+ * Import DNS records
+ * Accepts JSON array of records and creates them in the specified provider
+ */
+export const importRecords = asyncHandler(async (req: Request, res: Response) => {
+  const { records: inputRecords, providerId, skipDuplicates = true, dryRun = false } = req.body as {
+    records: Array<{
+      hostname: string;
+      type: string;
+      content: string;
+      ttl?: number;
+      proxied?: boolean;
+      priority?: number;
+      weight?: number;
+      port?: number;
+      flags?: number;
+      tag?: string;
+    }>;
+    providerId: string;
+    skipDuplicates?: boolean;
+    dryRun?: boolean;
+  };
+
+  if (!inputRecords || !Array.isArray(inputRecords)) {
+    throw ApiError.badRequest('Records array is required');
+  }
+
+  if (!providerId) {
+    throw ApiError.badRequest('Provider ID is required');
+  }
+
+  if (inputRecords.length > 500) {
+    throw ApiError.badRequest('Cannot import more than 500 records at once');
+  }
+
+  // Get DNS manager and provider
+  const dnsManager = container.resolveSync<DNSManager>(ServiceTokens.DNS_MANAGER);
+  const provider = dnsManager.getProvider(providerId);
+
+  if (!provider) {
+    throw ApiError.badRequest(`Provider not found: ${providerId}`);
+  }
+
+  const db = getDatabase();
+  const results = {
+    total: inputRecords.length,
+    created: 0,
+    skipped: 0,
+    failed: 0,
+    errors: [] as Array<{ hostname: string; error: string }>,
+    preview: [] as Array<{ hostname: string; type: string; content: string; action: 'create' | 'skip' | 'error'; reason?: string }>,
+  };
+
+  // Refresh provider cache
+  await provider.getRecordsFromCache(true);
+
+  for (const record of inputRecords) {
+    // Validate required fields
+    if (!record.hostname || !record.type || !record.content) {
+      results.failed++;
+      results.errors.push({ hostname: record.hostname ?? 'unknown', error: 'Missing required fields (hostname, type, content)' });
+      results.preview.push({
+        hostname: record.hostname ?? 'unknown',
+        type: record.type ?? 'unknown',
+        content: record.content ?? 'unknown',
+        action: 'error',
+        reason: 'Missing required fields',
+      });
+      continue;
+    }
+
+    // Check if record already exists
+    const existing = provider.findRecordInCache(record.type as any, record.hostname);
+    if (existing) {
+      if (skipDuplicates) {
+        results.skipped++;
+        results.preview.push({
+          hostname: record.hostname,
+          type: record.type,
+          content: record.content,
+          action: 'skip',
+          reason: `Existing record: ${existing.content}`,
+        });
+        continue;
+      } else {
+        results.failed++;
+        results.errors.push({ hostname: record.hostname, error: `Record already exists with content: ${existing.content}` });
+        results.preview.push({
+          hostname: record.hostname,
+          type: record.type,
+          content: record.content,
+          action: 'error',
+          reason: `Duplicate: ${existing.content}`,
+        });
+        continue;
+      }
+    }
+
+    // Preview mode - don't actually create
+    if (dryRun) {
+      results.created++;
+      results.preview.push({
+        hostname: record.hostname,
+        type: record.type,
+        content: record.content,
+        action: 'create',
+      });
+      continue;
+    }
+
+    // Create the record
+    try {
+      const providerRecord = await provider.createRecord({
+        type: record.type as any,
+        name: record.hostname,
+        content: record.content,
+        ttl: record.ttl,
+        proxied: record.proxied,
+        priority: record.priority,
+        weight: record.weight,
+        port: record.port,
+        flags: record.flags,
+        tag: record.tag,
+      });
+
+      // Save to database
+      const id = uuidv4();
+      const now = new Date();
+
+      await db.insert(dnsRecords).values({
+        id,
+        providerId: provider.getProviderId(),
+        externalId: providerRecord.id,
+        type: providerRecord.type,
+        name: providerRecord.name,
+        content: providerRecord.content,
+        ttl: providerRecord.ttl,
+        proxied: providerRecord.proxied,
+        priority: providerRecord.priority,
+        weight: providerRecord.weight,
+        port: providerRecord.port,
+        flags: providerRecord.flags,
+        tag: providerRecord.tag,
+        source: 'api',
+        managed: true,
+        lastSyncedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      results.created++;
+      results.preview.push({
+        hostname: record.hostname,
+        type: record.type,
+        content: record.content,
+        action: 'create',
+      });
+    } catch (error) {
+      results.failed++;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      results.errors.push({ hostname: record.hostname, error: errorMessage });
+      results.preview.push({
+        hostname: record.hostname,
+        type: record.type,
+        content: record.content,
+        action: 'error',
+        reason: errorMessage,
+      });
+    }
+  }
+
+  if (!dryRun) {
+    setAuditContext(req, {
+      action: 'import',
+      resourceType: 'dnsRecords',
+      details: {
+        providerId,
+        total: results.total,
+        created: results.created,
+        skipped: results.skipped,
+        failed: results.failed,
+      },
+    });
+  }
+
+  res.json({
+    success: true,
+    data: results,
+    message: dryRun
+      ? `Preview: ${results.created} to create, ${results.skipped} to skip, ${results.failed} errors`
+      : `Imported ${results.created} records, skipped ${results.skipped}, failed ${results.failed}`,
+  });
+});
