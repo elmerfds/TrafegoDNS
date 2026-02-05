@@ -44,7 +44,7 @@ export interface UpdateDNSRecordInput {
 export interface DNSRecordFilters {
   hostname?: string;
   type?: DNSRecordType;
-  status?: string;
+  status?: 'active' | 'orphaned';
   providerId?: string;
   managed?: boolean;
   search?: string;

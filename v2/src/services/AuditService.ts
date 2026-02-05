@@ -95,7 +95,7 @@ export class AuditService {
    * Log an event to the audit log
    */
   private async logEvent(
-    action: 'create' | 'update' | 'delete' | 'login' | 'logout' | 'sync' | 'deploy' | 'orphan',
+    action: 'create' | 'update' | 'delete' | 'bulk_delete' | 'login' | 'logout' | 'sync' | 'deploy' | 'orphan' | 'import' | 'export',
     resourceType: string,
     resourceId?: string,
     details?: Record<string, unknown>
@@ -122,7 +122,7 @@ export class AuditService {
         'Audit event logged'
       );
     } catch (error) {
-      logger.error({ error, action, resourceType }, 'Failed to log audit event');
+      logger.error({ error: error instanceof Error ? error.message : error, action, resourceType, resourceId }, 'Failed to log audit event');
     }
   }
 

@@ -113,6 +113,7 @@ export const dnsRecordFilterSchema = z.object({
   providerId: z.string().uuid().optional(),
   source: z.enum(['traefik', 'direct', 'api', 'managed', 'discovered']).optional(),
   managed: queryBooleanSchema, // Filter by managed status
+  status: z.enum(['active', 'orphaned']).optional(), // Filter by status (active = no orphanedAt, orphaned = has orphanedAt)
   search: z.string().optional(), // General search across name and content
   zone: z.string().optional(), // Filter by zone/domain (e.g., "example.com")
 }).merge(paginationSchema);

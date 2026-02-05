@@ -60,6 +60,14 @@ export const listRecords = asyncHandler(async (req: Request, res: Response) => {
       sql`(LOWER(${dnsRecords.name}) = ${zone} OR LOWER(${dnsRecords.name}) LIKE ${`%.${zone}`})`
     );
   }
+  // Filter by status (active = no orphanedAt, orphaned = has orphanedAt)
+  if (filter.status) {
+    if (filter.status === 'orphaned') {
+      conditions.push(sql`${dnsRecords.orphanedAt} IS NOT NULL`);
+    } else if (filter.status === 'active') {
+      conditions.push(sql`${dnsRecords.orphanedAt} IS NULL`);
+    }
+  }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 

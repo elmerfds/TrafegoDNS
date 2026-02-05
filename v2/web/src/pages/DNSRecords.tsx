@@ -148,15 +148,23 @@ function DNSRecordsTab() {
     limit: 20,
     search: search || undefined,
     managed: managedFilter === 'all' ? undefined : managedFilter === 'managed',
+    status: statusFilter === 'all' ? undefined : statusFilter as 'active' | 'orphaned',
     providerId: providerFilter === 'all' ? undefined : providerFilter,
     type: typeFilter === 'all' ? undefined : typeFilter,
     zone: zoneFilter === 'all' ? undefined : zoneFilter,
     source: sourceFilter === 'all' ? undefined : sourceFilter,
-  }), [page, search, managedFilter, providerFilter, typeFilter, zoneFilter, sourceFilter]);
+  }), [page, search, managedFilter, statusFilter, providerFilter, typeFilter, zoneFilter, sourceFilter]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['dns-records', filters],
     queryFn: () => dnsApi.listRecords(filters as Parameters<typeof dnsApi.listRecords>[0]),
+  });
+
+  // Separate query for orphaned records count (for attention banner)
+  const { data: orphanedCountData } = useQuery({
+    queryKey: ['dns-records-orphaned-count'],
+    queryFn: () => dnsApi.listRecords({ status: 'orphaned', limit: 1, page: 1 }),
+    staleTime: 1000 * 30, // 30 seconds
   });
 
   // Extract unique zones from providers for zone filter dropdown
@@ -283,12 +291,11 @@ function DNSRecordsTab() {
     return { minutes: remainingMinutes, text: `${hours}h ${mins}m remaining` };
   }, [cleanupGracePeriod]);
 
-  // Filter records by status (client-side since API doesn't have status filter)
-  const filteredRecords = useMemo(() => {
-    if (!data?.records) return [];
-    if (statusFilter === 'all') return data.records;
-    return data.records.filter(r => r.status === statusFilter);
-  }, [data?.records, statusFilter]);
+  // Records are now filtered server-side
+  const filteredRecords = data?.records ?? [];
+
+  // Total orphaned records count for attention banner
+  const orphanedCount = orphanedCountData?.pagination?.total ?? 0;
 
   // Column configurations for DataTable
   const columns: DataTableColumn<DNSRecord>[] = useMemo(() => [
@@ -360,27 +367,27 @@ function DNSRecordsTab() {
       header: 'Status',
       sortable: true,
       defaultVisible: true,
-      minWidth: 130,
+      minWidth: 110,
       render: (row: DNSRecord) => {
         const timeRemaining = row.status === 'orphaned' ? getTimeRemaining(row.orphanedAt) : null;
+        if (row.status === 'orphaned' && timeRemaining) {
+          return (
+            <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+              <Timer className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="text-xs font-medium whitespace-nowrap">{timeRemaining.text}</span>
+            </div>
+          );
+        }
         return (
-          <div className="flex flex-col gap-0.5">
-            <Badge
-              variant={
-                row.status === 'active' ? 'success' :
-                row.status === 'orphaned' ? 'warning' :
-                row.status === 'error' ? 'error' : 'default'
-              }
-            >
-              {row.status}
-            </Badge>
-            {timeRemaining && (
-              <span className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
-                <Timer className="w-3 h-3" />
-                {timeRemaining.text}
-              </span>
-            )}
-          </div>
+          <Badge
+            variant={
+              row.status === 'active' ? 'success' :
+              row.status === 'orphaned' ? 'warning' :
+              row.status === 'error' ? 'error' : 'default'
+            }
+          >
+            {row.status}
+          </Badge>
         );
       },
     },
@@ -474,7 +481,14 @@ function DNSRecordsTab() {
                   <Clock className="w-4 h-4" />
                 </button>
                 {extendMenuOpenFor === row.id && (
-                  <div className="absolute right-0 top-8 z-50 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1">
+                  <div
+                    className="fixed w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl py-1"
+                    style={{
+                      zIndex: 9999,
+                      marginTop: '2rem',
+                      marginLeft: '-8rem',
+                    }}
+                  >
                     <div className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
                       Extend by
                     </div>
@@ -486,7 +500,7 @@ function DNSRecordsTab() {
                     ].map((option) => (
                       <button
                         key={option.minutes}
-                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
                         onClick={(e) => {
                           e.stopPropagation();
                           extendGraceMutation.mutate({ id: row.id, minutes: option.minutes });
@@ -856,6 +870,35 @@ function DNSRecordsTab() {
           >
             Clear all
           </button>
+        </div>
+      )}
+
+      {/* Orphaned Records Alert */}
+      {orphanedCount > 0 && statusFilter !== 'orphaned' && (
+        <div className="flex items-center justify-between gap-4 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0 p-2 rounded-full bg-amber-100 dark:bg-amber-900/40">
+              <Timer className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div>
+              <h4 className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                {orphanedCount} orphaned record{orphanedCount !== 1 ? 's' : ''} pending deletion
+              </h4>
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                Records from stopped containers will be deleted after the grace period expires
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setStatusFilter('orphaned');
+              setShowFilters(true);
+            }}
+          >
+            View Orphaned
+          </Button>
         </div>
       )}
 
