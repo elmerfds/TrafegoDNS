@@ -10,3 +10,4 @@ export { webhooksApi, type Webhook, type WebhookDelivery, type WebhookEventType,
 export { settingsApi, type SettingDefinition, type SettingValue, type SettingsMap } from './settings';
 export { healthApi, type HealthStatus, type AuditLog } from './health';
 export { preservedHostnamesApi, type PreservedHostname, type CreatePreservedHostnameInput, type UpdatePreservedHostnameInput } from './preservedHostnames';
+export { overridesApi, type HostnameOverride, type CreateOverrideInput, type UpdateOverrideInput } from './overrides';

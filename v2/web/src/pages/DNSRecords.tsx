@@ -3,11 +3,11 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X, Filter, CheckSquare, Square, MinusSquare } from 'lucide-react';
-import { dnsApi, providersApi, preservedHostnamesApi, settingsApi, type DNSRecord, type CreateDNSRecordInput, type UpdateDNSRecordInput, type PreservedHostname } from '../api';
+import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X, Filter, CheckSquare, Square, MinusSquare, Settings2 } from 'lucide-react';
+import { dnsApi, providersApi, preservedHostnamesApi, settingsApi, overridesApi, type DNSRecord, type CreateDNSRecordInput, type UpdateDNSRecordInput, type PreservedHostname, type HostnameOverride, type CreateOverrideInput, type UpdateOverrideInput } from '../api';
 import { Button, Table, Pagination, Badge, Modal, ModalFooter, Alert, Select } from '../components/common';
 
-type TabType = 'records' | 'preserved';
+type TabType = 'records' | 'overrides' | 'preserved';
 
 export function DNSRecordsPage() {
   const [activeTab, setActiveTab] = useState<TabType>('records');
@@ -29,6 +29,17 @@ export function DNSRecordsPage() {
             DNS Records
           </button>
           <button
+            onClick={() => setActiveTab('overrides')}
+            className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'overrides'
+                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+            }`}
+          >
+            <Settings2 className="w-4 h-4" />
+            Hostname Overrides
+          </button>
+          <button
             onClick={() => setActiveTab('preserved')}
             className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
               activeTab === 'preserved'
@@ -43,7 +54,9 @@ export function DNSRecordsPage() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'records' ? <DNSRecordsTab /> : <PreservedHostnamesTab />}
+      {activeTab === 'records' && <DNSRecordsTab />}
+      {activeTab === 'overrides' && <OverridesTab />}
+      {activeTab === 'preserved' && <PreservedHostnamesTab />}
     </div>
   );
 }
@@ -696,6 +709,633 @@ function DNSRecordsTab() {
         </ModalFooter>
       </Modal>
     </>
+  );
+}
+
+function OverridesTab() {
+  const queryClient = useQueryClient();
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editOverride, setEditOverride] = useState<HostnameOverride | null>(null);
+  const [deleteOverride, setDeleteOverride] = useState<HostnameOverride | null>(null);
+
+  const { data: overrides, isLoading } = useQuery({
+    queryKey: ['overrides'],
+    queryFn: () => overridesApi.listOverrides(),
+  });
+
+  const { data: providers } = useQuery({
+    queryKey: ['providers'],
+    queryFn: () => providersApi.listProviders(),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => overridesApi.deleteOverride(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['overrides'] });
+      setDeleteOverride(null);
+    },
+  });
+
+  const getProviderName = (providerId: string | null) => {
+    if (!providerId) return '-';
+    return providers?.find((p) => p.id === providerId)?.name ?? providerId.slice(0, 8);
+  };
+
+  const columns = [
+    {
+      key: 'hostname',
+      header: 'Hostname',
+      render: (row: HostnameOverride) => (
+        <div className="flex items-center gap-2">
+          <Settings2 className="w-4 h-4 text-primary-500" />
+          <span className="font-medium text-gray-900 dark:text-gray-100">{row.hostname}</span>
+          {!row.enabled && (
+            <Badge variant="warning">Disabled</Badge>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'proxied',
+      header: 'Proxied',
+      render: (row: HostnameOverride) => (
+        <span className="text-sm">
+          {row.proxied === null ? (
+            <span className="text-gray-400">-</span>
+          ) : row.proxied ? (
+            <Badge variant="success">Yes</Badge>
+          ) : (
+            <Badge variant="default">No</Badge>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'ttl',
+      header: 'TTL',
+      render: (row: HostnameOverride) => (
+        <span className="text-sm text-gray-500 dark:text-gray-400">
+          {row.ttl ?? '-'}
+        </span>
+      ),
+    },
+    {
+      key: 'recordType',
+      header: 'Type',
+      render: (row: HostnameOverride) => (
+        row.recordType ? (
+          <Badge variant="info">{row.recordType}</Badge>
+        ) : (
+          <span className="text-gray-400">-</span>
+        )
+      ),
+    },
+    {
+      key: 'content',
+      header: 'Content',
+      render: (row: HostnameOverride) => (
+        <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
+          {row.content ?? '-'}
+        </span>
+      ),
+    },
+    {
+      key: 'provider',
+      header: 'Provider',
+      render: (row: HostnameOverride) => (
+        <span className="text-sm text-gray-500 dark:text-gray-400">
+          {getProviderName(row.providerId)}
+        </span>
+      ),
+    },
+    {
+      key: 'reason',
+      header: 'Reason',
+      render: (row: HostnameOverride) => (
+        <span className="text-sm text-gray-500 dark:text-gray-400 truncate max-w-[150px]" title={row.reason ?? undefined}>
+          {row.reason || '-'}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      render: (row: HostnameOverride) => (
+        <div className="flex items-center space-x-2">
+          <button
+            className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            onClick={() => setEditOverride(row)}
+            title="Edit override"
+          >
+            <Edit className="w-4 h-4" />
+          </button>
+          <button
+            className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+            onClick={() => setDeleteOverride(row)}
+            title="Delete override"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">Hostname Overrides</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Per-hostname settings that persist across sync cycles and override global defaults.
+          </p>
+        </div>
+        <Button
+          leftIcon={<Plus className="w-4 h-4" />}
+          onClick={() => setIsCreateModalOpen(true)}
+        >
+          Add Override
+        </Button>
+      </div>
+
+      {/* Info Box */}
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+        <div className="flex gap-3">
+          <Settings2 className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-blue-700 dark:text-blue-300">
+            <p className="font-medium">How hostname overrides work</p>
+            <p className="mt-1 text-blue-600 dark:text-blue-400">
+              Overrides let you customize DNS settings for specific hostnames without using container labels.
+              These settings persist through sync cycles and won't be overwritten by global defaults.
+            </p>
+            <p className="mt-2 text-blue-600 dark:text-blue-400">
+              <strong>Priority order:</strong> Container Label → Hostname Override → Provider Default → Global Default
+            </p>
+            <p className="mt-2 text-blue-600 dark:text-blue-400">
+              <strong>Use cases:</strong> Disable Cloudflare proxy for specific apps (Plex, Jellyfin),
+              set custom TTLs, or route specific hostnames to different providers.
+            </p>
+            <p className="mt-2 text-blue-600 dark:text-blue-400">
+              <strong>Wildcard support:</strong> Use <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">*.example.com</code> to apply overrides to all subdomains.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="card p-0">
+        <Table
+          columns={columns}
+          data={overrides ?? []}
+          keyField="id"
+          isLoading={isLoading}
+          emptyMessage="No hostname overrides. Add one to customize settings for specific hostnames."
+        />
+      </div>
+
+      {/* Create Modal */}
+      <CreateOverrideModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        providers={providers ?? []}
+      />
+
+      {/* Edit Modal */}
+      <EditOverrideModal
+        isOpen={!!editOverride}
+        onClose={() => setEditOverride(null)}
+        override={editOverride}
+        providers={providers ?? []}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={!!deleteOverride}
+        onClose={() => setDeleteOverride(null)}
+        title="Delete Override"
+        size="sm"
+      >
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Are you sure you want to delete the override for{' '}
+          <strong>{deleteOverride?.hostname}</strong>? Future syncs will use default settings for this hostname.
+        </p>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setDeleteOverride(null)}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => deleteOverride && deleteMutation.mutate(deleteOverride.id)}
+            isLoading={deleteMutation.isPending}
+          >
+            Delete
+          </Button>
+        </ModalFooter>
+      </Modal>
+    </>
+  );
+}
+
+interface CreateOverrideModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  providers: Array<{ id: string; name: string; type: string }>;
+}
+
+function CreateOverrideModal({ isOpen, onClose, providers }: CreateOverrideModalProps) {
+  const queryClient = useQueryClient();
+  const [formData, setFormData] = useState<CreateOverrideInput>({
+    hostname: '',
+    proxied: null,
+    ttl: null,
+    recordType: null,
+    content: null,
+    providerId: null,
+    reason: null,
+    enabled: true,
+  });
+  const [error, setError] = useState<string | null>(null);
+
+  const createMutation = useMutation({
+    mutationFn: (data: CreateOverrideInput) => overridesApi.createOverride(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['overrides'] });
+      onClose();
+      setFormData({
+        hostname: '',
+        proxied: null,
+        ttl: null,
+        recordType: null,
+        content: null,
+        providerId: null,
+        reason: null,
+        enabled: true,
+      });
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Failed to create override');
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.hostname) {
+      setError('Hostname is required');
+      return;
+    }
+    createMutation.mutate(formData);
+  };
+
+  // Reset form when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setError(null);
+    }
+  }, [isOpen]);
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Add Hostname Override" size="lg">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
+
+        <div>
+          <label className="label">Hostname *</label>
+          <input
+            type="text"
+            className="input mt-1"
+            value={formData.hostname}
+            onChange={(e) => setFormData({ ...formData, hostname: e.target.value })}
+            placeholder="app.example.com or *.example.com"
+          />
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Use *.domain.com for wildcard matching of all subdomains
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">Proxied</label>
+            <Select
+              className="mt-1"
+              value={formData.proxied === null ? 'inherit' : formData.proxied ? 'true' : 'false'}
+              onChange={(value) => setFormData({
+                ...formData,
+                proxied: value === 'inherit' ? null : value === 'true',
+              })}
+              options={[
+                { value: 'inherit', label: 'Inherit (use default)' },
+                { value: 'true', label: 'Yes - Proxy through Cloudflare' },
+                { value: 'false', label: 'No - Direct DNS' },
+              ]}
+            />
+          </div>
+          <div>
+            <label className="label">TTL (seconds)</label>
+            <input
+              type="number"
+              className="input mt-1"
+              value={formData.ttl ?? ''}
+              onChange={(e) => setFormData({
+                ...formData,
+                ttl: e.target.value ? parseInt(e.target.value) : null,
+              })}
+              placeholder="Leave empty to inherit"
+              min={1}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">Record Type</label>
+            <Select
+              className="mt-1"
+              value={formData.recordType ?? 'inherit'}
+              onChange={(value) => setFormData({
+                ...formData,
+                recordType: value === 'inherit' ? null : value as CreateOverrideInput['recordType'],
+              })}
+              options={[
+                { value: 'inherit', label: 'Inherit (use default)' },
+                { value: 'A', label: 'A' },
+                { value: 'AAAA', label: 'AAAA' },
+                { value: 'CNAME', label: 'CNAME' },
+                { value: 'MX', label: 'MX' },
+                { value: 'TXT', label: 'TXT' },
+                { value: 'SRV', label: 'SRV' },
+                { value: 'CAA', label: 'CAA' },
+                { value: 'NS', label: 'NS' },
+              ]}
+            />
+          </div>
+          <div>
+            <label className="label">Provider</label>
+            <Select
+              className="mt-1"
+              value={formData.providerId ?? 'inherit'}
+              onChange={(value) => setFormData({
+                ...formData,
+                providerId: value === 'inherit' ? null : value,
+              })}
+              options={[
+                { value: 'inherit', label: 'Inherit (use default)' },
+                ...providers.map((p) => ({ value: p.id, label: p.name })),
+              ]}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="label">Content</label>
+          <input
+            type="text"
+            className="input mt-1"
+            value={formData.content ?? ''}
+            onChange={(e) => setFormData({
+              ...formData,
+              content: e.target.value || null,
+            })}
+            placeholder="Leave empty to inherit (e.g., IP address)"
+          />
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Override the record content (IP, CNAME target, etc.)
+          </p>
+        </div>
+
+        <div>
+          <label className="label">Reason (optional)</label>
+          <input
+            type="text"
+            className="input mt-1"
+            value={formData.reason ?? ''}
+            onChange={(e) => setFormData({
+              ...formData,
+              reason: e.target.value || null,
+            })}
+            placeholder="e.g., Disable proxy for Plex streaming"
+          />
+        </div>
+
+        <div className="flex items-center">
+          <input
+            type="checkbox"
+            id="override-enabled"
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            checked={formData.enabled ?? true}
+            onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
+          />
+          <label htmlFor="override-enabled" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+            Enabled
+          </label>
+        </div>
+
+        <ModalFooter>
+          <Button variant="secondary" onClick={onClose} type="button">
+            Cancel
+          </Button>
+          <Button type="submit" isLoading={createMutation.isPending}>
+            Create Override
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
+  );
+}
+
+interface EditOverrideModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  override: HostnameOverride | null;
+  providers: Array<{ id: string; name: string; type: string }>;
+}
+
+function EditOverrideModal({ isOpen, onClose, override, providers }: EditOverrideModalProps) {
+  const queryClient = useQueryClient();
+  const [formData, setFormData] = useState<UpdateOverrideInput>({});
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset form when override changes
+  useEffect(() => {
+    if (override) {
+      setFormData({
+        hostname: override.hostname,
+        proxied: override.proxied,
+        ttl: override.ttl,
+        recordType: override.recordType,
+        content: override.content,
+        providerId: override.providerId,
+        reason: override.reason,
+        enabled: override.enabled,
+      });
+      setError(null);
+    }
+  }, [override]);
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateOverrideInput }) =>
+      overridesApi.updateOverride(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['overrides'] });
+      onClose();
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Failed to update override');
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!override) return;
+    if (!formData.hostname) {
+      setError('Hostname is required');
+      return;
+    }
+    updateMutation.mutate({ id: override.id, data: formData });
+  };
+
+  if (!override) return null;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Edit Hostname Override" size="lg">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
+
+        <div>
+          <label className="label">Hostname *</label>
+          <input
+            type="text"
+            className="input mt-1"
+            value={formData.hostname ?? ''}
+            onChange={(e) => setFormData({ ...formData, hostname: e.target.value })}
+            placeholder="app.example.com or *.example.com"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">Proxied</label>
+            <Select
+              className="mt-1"
+              value={formData.proxied === null ? 'inherit' : formData.proxied ? 'true' : 'false'}
+              onChange={(value) => setFormData({
+                ...formData,
+                proxied: value === 'inherit' ? null : value === 'true',
+              })}
+              options={[
+                { value: 'inherit', label: 'Inherit (use default)' },
+                { value: 'true', label: 'Yes - Proxy through Cloudflare' },
+                { value: 'false', label: 'No - Direct DNS' },
+              ]}
+            />
+          </div>
+          <div>
+            <label className="label">TTL (seconds)</label>
+            <input
+              type="number"
+              className="input mt-1"
+              value={formData.ttl ?? ''}
+              onChange={(e) => setFormData({
+                ...formData,
+                ttl: e.target.value ? parseInt(e.target.value) : null,
+              })}
+              placeholder="Leave empty to inherit"
+              min={1}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">Record Type</label>
+            <Select
+              className="mt-1"
+              value={formData.recordType ?? 'inherit'}
+              onChange={(value) => setFormData({
+                ...formData,
+                recordType: value === 'inherit' ? null : value as CreateOverrideInput['recordType'],
+              })}
+              options={[
+                { value: 'inherit', label: 'Inherit (use default)' },
+                { value: 'A', label: 'A' },
+                { value: 'AAAA', label: 'AAAA' },
+                { value: 'CNAME', label: 'CNAME' },
+                { value: 'MX', label: 'MX' },
+                { value: 'TXT', label: 'TXT' },
+                { value: 'SRV', label: 'SRV' },
+                { value: 'CAA', label: 'CAA' },
+                { value: 'NS', label: 'NS' },
+              ]}
+            />
+          </div>
+          <div>
+            <label className="label">Provider</label>
+            <Select
+              className="mt-1"
+              value={formData.providerId ?? 'inherit'}
+              onChange={(value) => setFormData({
+                ...formData,
+                providerId: value === 'inherit' ? null : value,
+              })}
+              options={[
+                { value: 'inherit', label: 'Inherit (use default)' },
+                ...providers.map((p) => ({ value: p.id, label: p.name })),
+              ]}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="label">Content</label>
+          <input
+            type="text"
+            className="input mt-1"
+            value={formData.content ?? ''}
+            onChange={(e) => setFormData({
+              ...formData,
+              content: e.target.value || null,
+            })}
+            placeholder="Leave empty to inherit"
+          />
+        </div>
+
+        <div>
+          <label className="label">Reason (optional)</label>
+          <input
+            type="text"
+            className="input mt-1"
+            value={formData.reason ?? ''}
+            onChange={(e) => setFormData({
+              ...formData,
+              reason: e.target.value || null,
+            })}
+            placeholder="e.g., Disable proxy for Plex streaming"
+          />
+        </div>
+
+        <div className="flex items-center">
+          <input
+            type="checkbox"
+            id="edit-override-enabled"
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            checked={formData.enabled ?? true}
+            onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
+          />
+          <label htmlFor="edit-override-enabled" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+            Enabled
+          </label>
+        </div>
+
+        <ModalFooter>
+          <Button variant="secondary" onClick={onClose} type="button">
+            Cancel
+          </Button>
+          <Button type="submit" isLoading={updateMutation.isPending}>
+            Save Changes
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
   );
 }
 
