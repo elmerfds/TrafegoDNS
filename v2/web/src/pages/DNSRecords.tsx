@@ -130,10 +130,10 @@ function DNSRecordsTab() {
 
   // Get cleanup grace period from settings
   const { data: cleanupGracePeriod } = useQuery({
-    queryKey: ['settings', 'cleanupGracePeriod'],
+    queryKey: ['settings', 'cleanup_grace_period'],
     queryFn: async () => {
       try {
-        const setting = await settingsApi.getSetting('cleanupGracePeriod');
+        const setting = await settingsApi.getSetting('cleanup_grace_period');
         return Number(setting.value) || 15; // Default 15 minutes
       } catch {
         return 15;
