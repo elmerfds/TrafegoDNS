@@ -2,8 +2,9 @@
  * Logger configuration using Pino
  * Provides structured logging with configurable levels and user-friendly output
  */
-import pino from 'pino';
+import pino, { multistream } from 'pino';
 import pretty from 'pino-pretty';
+import { Transform, PassThrough } from 'stream';
 import { logBuffer, levelNumbers, levelNames } from './LogBuffer.js';
 
 export type LogLevel = 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
@@ -153,8 +154,6 @@ function createPrettyStream() {
  * Create a write stream that captures logs to buffer
  */
 function createBufferCaptureStream(destination: NodeJS.WritableStream) {
-  const { Transform } = require('stream');
-
   const captureStream = new Transform({
     objectMode: true,
     transform(chunk: string, encoding: string, callback: (err?: Error, data?: unknown) => void) {
@@ -208,8 +207,6 @@ function createLogger(options: LoggerOptions = defaultOptions): pino.Logger {
   if (options.pretty) {
     // Use pino-pretty stream for human-readable output
     // Create a multistream that writes to both buffer capture and pretty output
-    const { multistream } = require('pino');
-    const { PassThrough } = require('stream');
 
     // Create JSON stream for buffer capture
     const jsonStream = new PassThrough();
