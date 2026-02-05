@@ -578,17 +578,27 @@ export class DNSManager {
     if (hostnamesChanged || this.syncCount === 1) {
       const added = hostnames.filter(h => !this.previousHostnames.has(h));
       const removed = Array.from(this.previousHostnames).filter(h => !currentHostnamesSet.has(h));
+      const isInitialSync = this.previousHostnames.size === 0;
 
       if (added.length > 0 || removed.length > 0) {
-        this.logger.info(
-          { total: hostnames.length, added: added.length, removed: removed.length },
-          'Hostname changes detected'
-        );
-        if (added.length > 0 && added.length <= 5) {
-          this.logger.info({ hostnames: added }, 'New hostnames');
-        }
-        if (removed.length > 0 && removed.length <= 5) {
-          this.logger.info({ hostnames: removed }, 'Removed hostnames');
+        if (isInitialSync) {
+          // First sync - just report what was found, not "changes"
+          this.logger.info(
+            { total: hostnames.length },
+            'Initial sync complete'
+          );
+        } else {
+          // Subsequent syncs - report actual changes
+          this.logger.info(
+            { total: hostnames.length, added: added.length, removed: removed.length },
+            'Hostname changes detected'
+          );
+          if (added.length > 0 && added.length <= 5) {
+            this.logger.info({ hostnames: added }, 'New hostnames');
+          }
+          if (removed.length > 0 && removed.length <= 5) {
+            this.logger.info({ hostnames: removed }, 'Removed hostnames');
+          }
         }
       }
       this.previousHostnames = currentHostnamesSet;
