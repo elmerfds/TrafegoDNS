@@ -1140,6 +1140,7 @@ export class DNSManager {
 
         if (existing.length > 0) {
           // Update existing record (also update externalId in case it changed)
+          // Also reclaim "discovered" records that are now being actively synced from Traefik
           await db
             .update(dnsRecords)
             .set({
@@ -1150,13 +1151,14 @@ export class DNSManager {
               priority: record.priority,
               lastSyncedAt: now,
               orphanedAt: null, // Clear orphaned status
+              source: 'traefik', // Reclaim as Traefik-managed
+              managed: true, // Mark as managed since we're actively syncing
             })
             .where(eq(dnsRecords.id, existing[0]!.id));
         } else {
           // Insert record that exists at provider but not in our database
-          // Check ownership marker to determine if we should manage it
-          const isOwned = provider?.isOwnedByTrafego(record) ?? false;
-
+          // Since we're actively syncing from Traefik, mark as managed
+          // (The ownership marker check is only for manual "discover" operations)
           await db.insert(dnsRecords).values({
             id: uuidv4(),
             providerId,
@@ -1172,13 +1174,13 @@ export class DNSManager {
             flags: record.flags,
             tag: record.tag,
             comment: record.comment,
-            source: isOwned ? 'traefik' : 'discovered',
-            managed: isOwned, // Only manage if we created it (has ownership marker)
+            source: 'traefik',
+            managed: true, // Record is being actively synced from Traefik
             lastSyncedAt: now,
           });
           this.logger.debug(
-            { name: record.name, type: record.type, managed: isOwned },
-            isOwned ? 'Imported owned record to database' : 'Discovered unmanaged record at provider'
+            { name: record.name, type: record.type },
+            'Claimed existing record at provider'
           );
         }
       }
