@@ -1005,18 +1005,36 @@ export class DNSManager {
     // (unchanged records may exist at provider but not in our database - e.g., fresh v2 install)
     for (const record of [...result.updated, ...result.unchanged]) {
       if (record.id) {
-        // Check if record exists in database
-        const existing = await db
+        // First try to find by externalId (works for providers with stable IDs like DigitalOcean/Cloudflare)
+        let existing = await db
           .select({ id: dnsRecords.id })
           .from(dnsRecords)
           .where(eq(dnsRecords.externalId, record.id))
           .limit(1);
 
+        // If not found by externalId, try by providerId + name + type
+        // This handles providers like Technitium where externalId is generated client-side
+        // and may change if content normalization differs between syncs
+        if (existing.length === 0) {
+          existing = await db
+            .select({ id: dnsRecords.id })
+            .from(dnsRecords)
+            .where(
+              and(
+                eq(dnsRecords.providerId, providerId),
+                eq(dnsRecords.name, record.name),
+                eq(dnsRecords.type, record.type)
+              )
+            )
+            .limit(1);
+        }
+
         if (existing.length > 0) {
-          // Update existing record
+          // Update existing record (also update externalId in case it changed)
           await db
             .update(dnsRecords)
             .set({
+              externalId: record.id, // Update externalId in case it changed
               content: record.content,
               ttl: record.ttl,
               proxied: record.proxied,
@@ -1024,7 +1042,7 @@ export class DNSManager {
               lastSyncedAt: now,
               orphanedAt: null, // Clear orphaned status
             })
-            .where(eq(dnsRecords.externalId, record.id));
+            .where(eq(dnsRecords.id, existing[0]!.id));
         } else {
           // Insert record that exists at provider but not in our database
           // Check ownership marker to determine if we should manage it
