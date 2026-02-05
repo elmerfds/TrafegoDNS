@@ -544,12 +544,14 @@ export const exportRecords = asyncHandler(async (req: Request, res: Response) =>
   }
 
   // JSON format
-  res.setHeader('Content-Type', 'application/json');
   res.setHeader('Content-Disposition', `attachment; filename="dns-records-${new Date().toISOString().split('T')[0]}.json"`);
   res.json({
-    exportedAt: new Date().toISOString(),
-    count: exportData.length,
-    records: exportData,
+    success: true,
+    data: {
+      exportedAt: new Date().toISOString(),
+      count: exportData.length,
+      records: exportData,
+    },
   });
 });
 
