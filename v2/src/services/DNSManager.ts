@@ -707,7 +707,9 @@ export class DNSManager {
     this.logStats();
 
     // Cleanup orphaned records if enabled (check all providers)
-    if (this.config.app.cleanupOrphaned && processedHostnames.length > 0) {
+    // Read from SettingsService (database-persisted) rather than ConfigManager (env-only)
+    const cleanupEnabled = getSettingsService().get<boolean>('cleanup_orphaned');
+    if (cleanupEnabled && processedHostnames.length > 0) {
       await this.cleanupOrphanedRecords(processedHostnames);
     }
 
@@ -1202,7 +1204,9 @@ export class DNSManager {
    */
   private async cleanupOrphanedRecords(processedHostnames: ProcessedHostname[]): Promise<void> {
     const db = getDatabase();
-    const gracePeriodMs = this.config.app.cleanupGracePeriod * 60 * 1000;
+    // Read grace period from SettingsService (database-persisted) so changes survive restarts
+    const gracePeriodMinutes = getSettingsService().get<number>('cleanup_grace_period');
+    const gracePeriodMs = gracePeriodMinutes * 60 * 1000;
     const now = new Date();
     const cutoffTime = new Date(now.getTime() - gracePeriodMs);
 
@@ -1221,12 +1225,31 @@ export class DNSManager {
       activeByProvider.get(providerId)!.add(hostname.toLowerCase());
     }
 
+    // Also include providers that have orphaned records but no active hostnames
+    // (otherwise orphaned records on idle providers would never be cleaned up)
+    const orphanedRecords = await db
+      .select({ providerId: dnsRecords.providerId })
+      .from(dnsRecords)
+      .where(
+        and(
+          eq(dnsRecords.source, 'traefik'),
+          eq(dnsRecords.managed, true),
+        )
+      )
+      .groupBy(dnsRecords.providerId);
+
+    for (const { providerId } of orphanedRecords) {
+      if (!activeByProvider.has(providerId)) {
+        activeByProvider.set(providerId, new Set());
+      }
+    }
+
     let totalOrphaned = 0;
     let totalDeleted = 0;
     let totalReactivated = 0;
     let totalPreserved = 0;
 
-    // Process each provider that has active records
+    // Process each provider that has active or tracked records
     for (const [providerId, activeHostnames] of activeByProvider) {
       const provider = this.providerInstances.get(providerId);
       if (!provider) continue;
@@ -1293,7 +1316,7 @@ export class DNSManager {
                 name: record.name,
                 content: record.content,
               },
-              gracePeriodMinutes: this.config.app.cleanupGracePeriod,
+              gracePeriodMinutes,
             });
           } else if (new Date(record.orphanedAt) < cutoffTime) {
             // Grace period elapsed - delete
