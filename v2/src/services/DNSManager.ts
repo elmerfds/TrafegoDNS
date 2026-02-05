@@ -672,10 +672,14 @@ export class DNSManager {
         await this.trackRecords(result, providerId);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error ? error.stack : undefined;
         this.logger.error(
-          { error: errorMessage, providerId, providerName: group.provider.getProviderName(), recordCount: group.records.length },
-          'Error processing records for provider'
+          { providerId, providerName: group.provider.getProviderName(), recordCount: group.records.length },
+          `Error processing records for provider: ${errorMessage}`
         );
+        if (errorStack) {
+          this.logger.debug({ stack: errorStack }, 'Error stack trace');
+        }
         this.stats.errors += group.records.length;
       }
     }
