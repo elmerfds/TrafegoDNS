@@ -102,19 +102,16 @@ export class AuditService {
   ): Promise<void> {
     try {
       const db = getDatabase();
-      const now = new Date();
 
       await db.insert(auditLogs).values({
         id: uuidv4(),
         userId: null, // System-generated events have no user
-        action,
+        action: action as 'create' | 'update' | 'delete' | 'bulk_delete' | 'login' | 'logout' | 'sync' | 'deploy' | 'orphan' | 'import' | 'export',
         resourceType,
         resourceId: resourceId ?? null,
         details: JSON.stringify(details ?? {}),
         ipAddress: 'system',
         userAgent: 'TrafegoDNS/auto-discovery',
-        createdAt: now,
-        updatedAt: now,
       });
 
       logger.debug(
@@ -122,7 +119,15 @@ export class AuditService {
         'Audit event logged'
       );
     } catch (error) {
-      logger.error({ error: error instanceof Error ? error.message : error, action, resourceType, resourceId }, 'Failed to log audit event');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      logger.error({
+        error: errorMessage,
+        stack: errorStack,
+        action,
+        resourceType,
+        resourceId
+      }, 'Failed to log audit event');
     }
   }
 
