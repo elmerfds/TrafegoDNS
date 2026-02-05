@@ -160,6 +160,141 @@ export class DNSManager {
   }
 
   /**
+   * Force re-sync all managed records with current provider defaults
+   * This re-applies default content/TTL from provider settings to existing records
+   */
+  async forceResyncRecords(providerId?: string): Promise<{
+    total: number;
+    updated: number;
+    unchanged: number;
+    errors: number;
+    details: Array<{ hostname: string; field: string; oldValue: string; newValue: string }>;
+  }> {
+    const db = getDatabase();
+    const result = {
+      total: 0,
+      updated: 0,
+      unchanged: 0,
+      errors: 0,
+      details: [] as Array<{ hostname: string; field: string; oldValue: string; newValue: string }>,
+    };
+
+    this.logger.info({ providerId: providerId ?? 'all' }, 'Starting force re-sync of DNS records');
+
+    // Get all managed records (optionally filtered by provider)
+    const conditions = [eq(dnsRecords.managed, true)];
+    if (providerId) {
+      conditions.push(eq(dnsRecords.providerId, providerId));
+    }
+
+    const records = await db
+      .select()
+      .from(dnsRecords)
+      .where(and(...conditions));
+
+    result.total = records.length;
+    this.logger.info({ count: records.length }, 'Found managed records to re-sync');
+
+    for (const record of records) {
+      try {
+        const provider = this.providerInstances.get(record.providerId);
+        if (!provider) {
+          this.logger.warn({ providerId: record.providerId, hostname: record.name }, 'Provider not found for record');
+          result.errors++;
+          continue;
+        }
+
+        // Re-resolve defaults for this record's type
+        const defaults = this.resolveRecordDefaults(record.type as DNSRecordType, provider);
+
+        // Determine what the content should be based on current defaults
+        let expectedContent = record.content;
+        if (record.source === 'traefik' || record.source === 'direct' || record.source === 'managed') {
+          // Only update content for auto-managed records, not manually created ones
+          if (record.type === 'A') {
+            expectedContent = defaults.publicIp;
+          } else if (record.type === 'AAAA') {
+            expectedContent = defaults.publicIpv6;
+          } else if (record.type === 'CNAME') {
+            expectedContent = defaults.content || provider.getZoneName() || '';
+          }
+        }
+
+        const expectedTtl = defaults.ttl;
+        const expectedProxied = ['A', 'AAAA', 'CNAME'].includes(record.type) ? defaults.proxied : undefined;
+
+        // Check if update is needed
+        const contentChanged = expectedContent && record.content !== expectedContent;
+        const ttlChanged = record.ttl !== expectedTtl;
+        const proxiedChanged = expectedProxied !== undefined && record.proxied !== expectedProxied;
+
+        if (!contentChanged && !ttlChanged && !proxiedChanged) {
+          result.unchanged++;
+          continue;
+        }
+
+        // Log what's changing
+        if (contentChanged) {
+          result.details.push({
+            hostname: record.name,
+            field: 'content',
+            oldValue: record.content,
+            newValue: expectedContent,
+          });
+          this.logger.info(
+            { hostname: record.name, oldContent: record.content, newContent: expectedContent },
+            'Updating record content'
+          );
+        }
+        if (ttlChanged) {
+          result.details.push({
+            hostname: record.name,
+            field: 'ttl',
+            oldValue: String(record.ttl),
+            newValue: String(expectedTtl),
+          });
+        }
+
+        // Update at provider
+        if (record.externalId) {
+          await provider.updateRecord(record.externalId, {
+            type: record.type as DNSRecordType,
+            name: record.name,
+            content: expectedContent,
+            ttl: expectedTtl,
+            proxied: expectedProxied,
+          });
+        }
+
+        // Update in database
+        await db
+          .update(dnsRecords)
+          .set({
+            content: expectedContent,
+            ttl: expectedTtl,
+            proxied: expectedProxied ?? record.proxied,
+            lastSyncedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(dnsRecords.id, record.id));
+
+        result.updated++;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.error({ hostname: record.name, error: errorMessage }, 'Failed to re-sync record');
+        result.errors++;
+      }
+    }
+
+    this.logger.info(
+      { total: result.total, updated: result.updated, unchanged: result.unchanged, errors: result.errors },
+      'Force re-sync completed'
+    );
+
+    return result;
+  }
+
+  /**
    * Find provider by name (case-insensitive)
    */
   getProviderByName(name: string): { id: string; provider: DNSProvider } | undefined {

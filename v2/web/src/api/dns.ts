@@ -150,7 +150,22 @@ export const dnsApi = {
     return apiClient.post<{ deleted: number; failed: number; errors?: Array<{ id: string; error: string }> }>('/dns/records/bulk-delete', { ids });
   },
 
-  async syncRecords(): Promise<{ message: string }> {
-    return apiClient.post<{ message: string }>('/dns/records/sync');
+  async syncRecords(providerId?: string): Promise<{
+    message: string;
+    total: number;
+    updated: number;
+    unchanged: number;
+    errors: number;
+    details: Array<{ hostname: string; field: string; oldValue: string; newValue: string }>;
+  }> {
+    const params = providerId ? { providerId } : undefined;
+    return apiClient.post<{
+      message: string;
+      total: number;
+      updated: number;
+      unchanged: number;
+      errors: number;
+      details: Array<{ hostname: string; field: string; oldValue: string; newValue: string }>;
+    }>('/dns/records/sync', params);
   },
 };

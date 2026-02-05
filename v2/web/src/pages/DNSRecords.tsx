@@ -64,6 +64,13 @@ function DNSRecordsTab() {
   const [deleteRecord, setDeleteRecord] = useState<DNSRecord | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [syncResult, setSyncResult] = useState<{
+    total: number;
+    updated: number;
+    unchanged: number;
+    errors: number;
+    details: Array<{ hostname: string; field: string; oldValue: string; newValue: string }>;
+  } | null>(null);
 
   const { data: providers } = useQuery({
     queryKey: ['providers'],
@@ -131,9 +138,10 @@ function DNSRecordsTab() {
     typeFilter !== 'all' || zoneFilter !== 'all' || sourceFilter !== 'all';
 
   const syncMutation = useMutation({
-    mutationFn: () => dnsApi.syncRecords(),
-    onSuccess: () => {
+    mutationFn: () => dnsApi.syncRecords(providerFilter !== 'all' ? providerFilter : undefined),
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['dns-records'] });
+      setSyncResult(result);
     },
   });
 
@@ -624,6 +632,67 @@ function DNSRecordsTab() {
           >
             Delete {selectedIds.size} Records
           </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Sync Result Modal */}
+      <Modal
+        isOpen={!!syncResult}
+        onClose={() => setSyncResult(null)}
+        title="Sync Complete"
+        size="md"
+      >
+        {syncResult && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-gray-900 dark:text-white">{syncResult.total}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Total Records</div>
+              </div>
+              <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-green-600 dark:text-green-400">{syncResult.updated}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Updated</div>
+              </div>
+            </div>
+
+            {syncResult.updated > 0 && syncResult.details.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Changes Applied:</h4>
+                <div className="max-h-48 overflow-y-auto space-y-2">
+                  {syncResult.details.slice(0, 20).map((detail, idx) => (
+                    <div key={idx} className="bg-gray-50 dark:bg-gray-800 rounded p-2 text-xs">
+                      <div className="font-medium text-gray-900 dark:text-white">{detail.hostname}</div>
+                      <div className="text-gray-500 dark:text-gray-400">
+                        {detail.field}: <span className="line-through text-red-500">{detail.oldValue}</span>
+                        {' → '}
+                        <span className="text-green-600 dark:text-green-400">{detail.newValue}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {syncResult.details.length > 20 && (
+                    <div className="text-xs text-gray-400 text-center">
+                      ...and {syncResult.details.length - 20} more changes
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {syncResult.updated === 0 && (
+              <div className="text-center py-4 text-gray-500 dark:text-gray-400">
+                All records are already up to date with current provider defaults.
+              </div>
+            )}
+
+            {syncResult.errors > 0 && (
+              <Alert variant="warning">
+                {syncResult.errors} record(s) failed to sync. Check the logs for details.
+              </Alert>
+            )}
+          </div>
+        )}
+        <ModalFooter>
+          <Button onClick={() => setSyncResult(null)}>Close</Button>
         </ModalFooter>
       </Modal>
     </>

@@ -387,19 +387,40 @@ export const bulkDeleteRecords = asyncHandler(async (req: Request, res: Response
 });
 
 /**
- * Force sync DNS records
+ * Force sync DNS records - re-applies current provider defaults to all managed records
  */
 export const syncRecords = asyncHandler(async (req: Request, res: Response) => {
-  // This would trigger a full sync with the provider
-  // For now, just return success
+  const { providerId } = req.query as { providerId?: string };
+
+  // Get DNS manager
+  const dnsManager = container.resolveSync<DNSManager>(ServiceTokens.DNS_MANAGER);
+
+  // Force re-sync records with current defaults
+  const result = await dnsManager.forceResyncRecords(providerId);
+
   setAuditContext(req, {
     action: 'sync',
     resourceType: 'dnsRecords',
+    details: {
+      providerId: providerId ?? 'all',
+      total: result.total,
+      updated: result.updated,
+      errors: result.errors,
+    },
   });
 
   res.json({
     success: true,
-    message: 'Sync initiated',
+    data: {
+      total: result.total,
+      updated: result.updated,
+      unchanged: result.unchanged,
+      errors: result.errors,
+      details: result.details,
+    },
+    message: result.updated > 0
+      ? `Synced ${result.updated} records with current defaults`
+      : 'All records are already up to date',
   });
 });
 
