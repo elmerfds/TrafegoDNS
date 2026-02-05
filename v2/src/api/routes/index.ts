@@ -41,6 +41,8 @@ import {
 } from '../controllers/dnsController.js';
 
 import {
+  listProviderTypes,
+  getProviderType,
   listProviders,
   getProvider,
   createProviderHandler,
@@ -144,6 +146,9 @@ router.use('/dns', dnsRouter);
 const providersRouter = Router();
 providersRouter.use(authenticate);
 providersRouter.use(auditMiddleware);
+// Provider types - must be before /:id routes
+providersRouter.get('/types', requirePermission('read'), listProviderTypes);
+providersRouter.get('/types/:type', requirePermission('read'), getProviderType);
 providersRouter.get('/', requirePermission('read'), listProviders);
 // Test credentials before creating (must be before /:id routes)
 providersRouter.post('/test', requireRole('admin'), testProviderCredentials);

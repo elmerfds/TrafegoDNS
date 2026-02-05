@@ -432,11 +432,18 @@ export class DigitalOceanProvider extends DNSProvider {
       name = `${name}.${this.domain}`;
     }
 
+    // DigitalOcean returns FQDN data with trailing dots - strip them for internal consistency
+    let content = record.data;
+    const hostnameRecordTypes = ['CNAME', 'NS', 'MX', 'SRV'];
+    if (hostnameRecordTypes.includes(type) && content && content.endsWith('.')) {
+      content = content.slice(0, -1);
+    }
+
     return {
       id: String(record.id),
       type,
       name,
-      content: record.data,
+      content,
       ttl: record.ttl,
       priority: record.priority,
       weight: record.weight,
@@ -461,10 +468,18 @@ export class DigitalOceanProvider extends DNSProvider {
       name = fqdn.slice(0, -(this.domain.length + 1));
     }
 
+    // DigitalOcean requires FQDN data values (hostnames) to end with a trailing dot
+    let data = record.content;
+    const hostnameRecordTypes = ['CNAME', 'NS', 'MX', 'SRV'];
+    if (hostnameRecordTypes.includes(record.type) && data && !data.endsWith('.')) {
+      data = data + '.';
+      this.logger.debug({ type: record.type, original: record.content, normalized: data }, 'Added trailing dot to FQDN data');
+    }
+
     const result: Record<string, unknown> = {
       type: record.type,
       name,
-      data: record.content,
+      data,
       ttl: record.ttl ?? 30,
     };
 

@@ -5,6 +5,29 @@ import { apiClient } from './client';
 
 export type ProviderType = 'cloudflare' | 'digitalocean' | 'route53' | 'technitium';
 
+export interface ProviderFeatures {
+  proxied: boolean;
+  ttlMin: number;
+  ttlMax: number;
+  ttlDefault: number;
+  supportedTypes: string[];
+  batchOperations: boolean;
+}
+
+export interface ProviderTypeInfo {
+  type: string;
+  name: string;
+  features: ProviderFeatures;
+  requiredCredentials: Array<{
+    key: string;
+    label: string;
+    type: 'text' | 'password' | 'select';
+    required: boolean;
+    placeholder?: string;
+    options?: Array<{ value: string; label: string }>;
+  }>;
+}
+
 export interface Provider {
   id: string;
   name: string;
@@ -13,6 +36,7 @@ export interface Provider {
   enabled: boolean;
   settings?: Record<string, unknown>;
   credentials?: Record<string, string>; // Masked credentials returned on getProvider
+  features?: ProviderFeatures; // Provider type features (TTL limits, etc.)
   createdAt: string;
   updatedAt: string;
 }
@@ -48,6 +72,14 @@ export interface DiscoverRecordsResult {
 }
 
 export const providersApi = {
+  async listProviderTypes(): Promise<ProviderTypeInfo[]> {
+    return apiClient.get<ProviderTypeInfo[]>('/providers/types');
+  },
+
+  async getProviderType(type: string): Promise<ProviderTypeInfo> {
+    return apiClient.get<ProviderTypeInfo>(`/providers/types/${type}`);
+  },
+
   async listProviders(): Promise<Provider[]> {
     return apiClient.get<Provider[]>('/providers');
   },

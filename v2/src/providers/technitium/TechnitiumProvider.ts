@@ -594,13 +594,25 @@ export class TechnitiumProvider extends DNSProvider {
         break;
     }
 
-    // Generate a unique ID from name+type+content
-    const id = Buffer.from(`${record.name}:${type}:${content}`).toString('base64');
+    // Technitium returns FQDN content with trailing dots - strip them for internal consistency
+    const hostnameRecordTypes = ['CNAME', 'NS', 'MX', 'SRV'];
+    if (hostnameRecordTypes.includes(type) && content && content.endsWith('.')) {
+      content = content.slice(0, -1);
+    }
+
+    // Also strip trailing dot from record name if present
+    let name = record.name;
+    if (name && name.endsWith('.')) {
+      name = name.slice(0, -1);
+    }
+
+    // Generate a unique ID from name+type+content (after normalization)
+    const id = Buffer.from(`${name}:${type}:${content}`).toString('base64');
 
     return {
       id,
       type,
-      name: record.name,
+      name,
       content,
       ttl: record.ttl,
       priority: rData.preference ?? rData.priority,

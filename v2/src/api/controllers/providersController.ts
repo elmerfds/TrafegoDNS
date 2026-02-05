@@ -9,7 +9,37 @@ import { eq, and } from 'drizzle-orm';
 import { ApiError, asyncHandler, setAuditContext } from '../middleware/index.js';
 import { createProviderSchema, updateProviderSchema } from '../validation.js';
 import { createProvider, TRAFEGO_OWNERSHIP_MARKER } from '../../providers/index.js';
+import { getAllProviderTypes, getProviderTypeInfo } from '../../providers/providerTypes.js';
 import type { ProviderType } from '../../types/index.js';
+
+/**
+ * Get all available provider types with their features
+ */
+export const listProviderTypes = asyncHandler(async (_req: Request, res: Response) => {
+  const types = getAllProviderTypes();
+
+  res.json({
+    success: true,
+    data: types,
+  });
+});
+
+/**
+ * Get a specific provider type info
+ */
+export const getProviderType = asyncHandler(async (req: Request, res: Response) => {
+  const type = req.params.type as string;
+  const info = getProviderTypeInfo(type);
+
+  if (!info) {
+    throw ApiError.notFound('Provider type');
+  }
+
+  res.json({
+    success: true,
+    data: info,
+  });
+});
 
 /**
  * List all providers
@@ -23,13 +53,24 @@ export const listProviders = asyncHandler(async (req: Request, res: Response) =>
     type: providers.type,
     isDefault: providers.isDefault,
     enabled: providers.enabled,
+    settings: providers.settings,
     createdAt: providers.createdAt,
     updatedAt: providers.updatedAt,
   }).from(providers);
 
+  // Add type info (features) to each provider
+  const providersWithFeatures = allProviders.map((p) => {
+    const typeInfo = getProviderTypeInfo(p.type);
+    return {
+      ...p,
+      settings: JSON.parse(p.settings),
+      features: typeInfo?.features ?? null,
+    };
+  });
+
   res.json({
     success: true,
-    data: allProviders,
+    data: providersWithFeatures,
   });
 });
 

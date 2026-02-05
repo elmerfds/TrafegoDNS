@@ -741,27 +741,49 @@ export class DNSManager {
     }
 
     // Resolve TTL
-    // 1. Provider type-specific
-    if (typeDefaults?.ttl !== undefined) {
-      result.ttl = typeDefaults.ttl;
-      result.sources.ttl = 'provider-type';
-    }
-    // 2. Provider general
-    else if (providerDefaults?.ttl !== undefined) {
-      result.ttl = providerDefaults.ttl;
-      result.sources.ttl = 'provider';
-    }
-    // 3. Global setting
-    else {
+    // First check if global override is enabled
+    const globalTtlOverride = settingsService.get('dns_default_ttl_override');
+    const isGlobalOverrideEnabled = globalTtlOverride === true || globalTtlOverride === 'true';
+
+    // Get provider TTL constraints for clamping
+    const providerInfo = provider?.getInfo();
+    const ttlMin = providerInfo?.features?.ttlMin ?? 1;
+    const ttlMax = providerInfo?.features?.ttlMax ?? 86400;
+
+    // Helper to clamp TTL to provider limits
+    const clampTtl = (ttl: number): number => Math.min(Math.max(ttl, ttlMin), ttlMax);
+
+    if (isGlobalOverrideEnabled) {
+      // Global override is enabled - use global TTL (clamped to provider limits)
       const globalTtl = settingsService.get('dns_default_ttl');
       if (globalTtl !== undefined) {
-        result.ttl = typeof globalTtl === 'number' ? globalTtl : parseInt(String(globalTtl), 10);
+        const ttlValue = typeof globalTtl === 'number' ? globalTtl : parseInt(String(globalTtl), 10);
+        result.ttl = clampTtl(ttlValue);
         result.sources.ttl = 'global';
       }
-      // 4. Env var
+    } else {
+      // Normal priority chain (provider-specific > provider-general > env > builtin)
+      // 1. Provider type-specific
+      if (typeDefaults?.ttl !== undefined) {
+        result.ttl = clampTtl(typeDefaults.ttl);
+        result.sources.ttl = 'provider-type';
+      }
+      // 2. Provider general
+      else if (providerDefaults?.ttl !== undefined) {
+        result.ttl = clampTtl(providerDefaults.ttl);
+        result.sources.ttl = 'provider';
+      }
+      // 3. Env var (when global override is disabled, skip global setting)
       else if (envDefaults.ttl !== undefined) {
-        result.ttl = envDefaults.ttl;
+        result.ttl = clampTtl(envDefaults.ttl);
         result.sources.ttl = 'env';
+      }
+      // 4. Provider type default (from provider info)
+      else if (providerInfo?.features?.ttlMin !== undefined) {
+        // Use provider's recommended default (ttlMin for Cloudflare=1=auto, or a sensible value)
+        const providerDefault = providerInfo.features.ttlMin === 1 ? 1 : Math.max(300, providerInfo.features.ttlMin);
+        result.ttl = providerDefault;
+        result.sources.ttl = 'builtin';
       }
     }
 
