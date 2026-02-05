@@ -299,6 +299,23 @@ function createTablesDirectly(): void {
     )
   `);
 
+  // Create hostname_overrides table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS hostname_overrides (
+      id TEXT PRIMARY KEY,
+      hostname TEXT NOT NULL UNIQUE,
+      proxied INTEGER,
+      ttl INTEGER,
+      record_type TEXT CHECK(record_type IN ('A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA', 'NS')),
+      content TEXT,
+      provider_id TEXT REFERENCES providers(id) ON DELETE CASCADE,
+      reason TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
   // Run schema migrations for existing databases BEFORE creating indexes
   // This ensures new columns exist before we try to create indexes on them
   runSchemaMigrations(sqliteDb);
@@ -318,6 +335,7 @@ function createTablesDirectly(): void {
     CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
     CREATE INDEX IF NOT EXISTS idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
     CREATE INDEX IF NOT EXISTS idx_managed_hostnames_provider ON managed_hostnames(provider_id);
+    CREATE INDEX IF NOT EXISTS idx_hostname_overrides_hostname ON hostname_overrides(hostname);
   `);
 
   logger.info('Database tables created directly');

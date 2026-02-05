@@ -207,6 +207,24 @@ export const preservedHostnames = sqliteTable('preserved_hostnames', {
   ...timestamps,
 });
 
+/**
+ * Hostname Overrides table
+ * Per-hostname settings that override global/provider defaults during sync
+ * Useful for: manually edited records, specific apps that need proxied=false, etc.
+ */
+export const hostnameOverrides = sqliteTable('hostname_overrides', {
+  id: text('id').primaryKey(),
+  hostname: text('hostname').notNull().unique(), // Exact hostname or pattern (*.example.com)
+  proxied: integer('proxied', { mode: 'boolean' }), // Nullable - only override if set
+  ttl: integer('ttl'), // Nullable
+  recordType: text('record_type', { enum: ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA', 'NS'] }), // Nullable
+  content: text('content'), // Nullable
+  providerId: text('provider_id').references(() => providers.id, { onDelete: 'cascade' }), // Nullable - override provider routing
+  reason: text('reason'), // Why this override exists (e.g., "Plex needs direct IP")
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  ...timestamps,
+});
+
 // Export types inferred from schema
 export type Provider = typeof providers.$inferSelect;
 export type NewProvider = typeof providers.$inferInsert;
@@ -246,3 +264,6 @@ export type NewManagedHostname = typeof managedHostnames.$inferInsert;
 
 export type PreservedHostname = typeof preservedHostnames.$inferSelect;
 export type NewPreservedHostname = typeof preservedHostnames.$inferInsert;
+
+export type HostnameOverride = typeof hostnameOverrides.$inferSelect;
+export type NewHostnameOverride = typeof hostnameOverrides.$inferInsert;

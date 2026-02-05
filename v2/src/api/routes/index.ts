@@ -108,6 +108,15 @@ import {
   deletePreservedHostname,
 } from '../controllers/preservedHostnamesController.js';
 
+import {
+  listOverrides,
+  getOverride,
+  createOverride,
+  updateOverride,
+  deleteOverride,
+  createOverrideFromRecord,
+} from '../controllers/overridesController.js';
+
 const router = Router();
 
 // Apply standard rate limiting to all routes
@@ -233,5 +242,17 @@ preservedRouter.post('/', requirePermission('write'), createPreservedHostname);
 preservedRouter.put('/:id', requirePermission('write'), updatePreservedHostname);
 preservedRouter.delete('/:id', requirePermission('write'), deletePreservedHostname);
 router.use('/preserved-hostnames', preservedRouter);
+
+// Hostname Overrides routes (per-hostname settings that persist across syncs)
+const overridesRouter = Router();
+overridesRouter.use(authenticate);
+overridesRouter.use(auditMiddleware);
+overridesRouter.get('/', requirePermission('read'), listOverrides);
+overridesRouter.get('/:id', requirePermission('read'), getOverride);
+overridesRouter.post('/', requirePermission('write'), createOverride);
+overridesRouter.post('/from-record', requirePermission('write'), createOverrideFromRecord);
+overridesRouter.put('/:id', requirePermission('write'), updateOverride);
+overridesRouter.delete('/:id', requirePermission('write'), deleteOverride);
+router.use('/overrides', overridesRouter);
 
 export { router as apiRouter };

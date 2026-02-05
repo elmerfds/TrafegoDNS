@@ -6,8 +6,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { logger, createChildLogger } from '../core/Logger.js';
 import { eventBus, EventTypes } from '../core/EventBus.js';
 import { getDatabase } from '../database/connection.js';
-import { dnsRecords, providers, preservedHostnames } from '../database/schema/index.js';
-import { eq, and, isNull, lt } from 'drizzle-orm';
+import { dnsRecords, providers, preservedHostnames, hostnameOverrides } from '../database/schema/index.js';
+import { eq, and, isNull, lt, or, like, sql } from 'drizzle-orm';
 import { DNSProvider, createProvider, type BatchResult } from '../providers/index.js';
 import type { ConfigManager } from '../config/ConfigManager.js';
 import type { DNSRecord, DNSRecordCreateInput, DNSRecordType, ProviderType, ProviderDefaults, SettingSource } from '../types/index.js';
@@ -54,11 +54,24 @@ interface ProviderRecordGroup {
   records: DNSRecordCreateInput[];
 }
 
+/**
+ * Cached hostname override
+ */
+interface CachedHostnameOverride {
+  hostname: string;
+  proxied?: boolean | null;
+  ttl?: number | null;
+  recordType?: DNSRecordType | null;
+  content?: string | null;
+  providerId?: string | null;
+}
+
 export class DNSManager {
   private logger: Logger;
   private config: ConfigManager;
   private providerInstances: Map<string, DNSProvider> = new Map();
   private defaultProviderId: string | null = null;
+  private hostnameOverridesCache: Map<string, CachedHostnameOverride> = new Map();
   private stats: DNSManagerStats = {
     created: 0,
     updated: 0,
@@ -90,12 +103,71 @@ export class DNSManager {
       // Load providers from database
       await this.loadProviders();
 
+      // Load hostname overrides
+      await this.loadHostnameOverrides();
+
       this.initialized = true;
       this.logger.info('DNS Manager initialized successfully');
     } catch (error) {
       this.logger.error({ error }, 'Failed to initialize DNS Manager');
       throw error;
     }
+  }
+
+  /**
+   * Load hostname overrides from database into cache
+   */
+  private async loadHostnameOverrides(): Promise<void> {
+    const db = getDatabase();
+    const overrides = await db
+      .select()
+      .from(hostnameOverrides)
+      .where(eq(hostnameOverrides.enabled, true));
+
+    this.hostnameOverridesCache.clear();
+    for (const override of overrides) {
+      this.hostnameOverridesCache.set(override.hostname.toLowerCase(), {
+        hostname: override.hostname,
+        proxied: override.proxied,
+        ttl: override.ttl,
+        recordType: override.recordType as DNSRecordType | null,
+        content: override.content,
+        providerId: override.providerId,
+      });
+    }
+
+    this.logger.debug({ count: overrides.length }, 'Loaded hostname overrides');
+  }
+
+  /**
+   * Refresh hostname overrides cache (call after changes)
+   */
+  async refreshHostnameOverrides(): Promise<void> {
+    await this.loadHostnameOverrides();
+  }
+
+  /**
+   * Get hostname override from cache
+   * Supports exact match and wildcard patterns (*.example.com)
+   */
+  private getHostnameOverride(hostname: string): CachedHostnameOverride | undefined {
+    const lowerHostname = hostname.toLowerCase();
+
+    // Try exact match first
+    const exact = this.hostnameOverridesCache.get(lowerHostname);
+    if (exact) return exact;
+
+    // Try wildcard matches (*.example.com matches sub.example.com)
+    for (const [pattern, override] of this.hostnameOverridesCache) {
+      if (pattern.startsWith('*.')) {
+        const suffix = pattern.slice(1); // .example.com
+        if (lowerHostname.endsWith(suffix) && lowerHostname.length > suffix.length) {
+          return override;
+        }
+      }
+    }
+
+    return undefined;
   }
 
   /**
@@ -887,21 +959,39 @@ export class DNSManager {
       }
     }
 
-    // Build record config
+    // Check for hostname overrides (persistent per-hostname settings)
+    const override = this.getHostnameOverride(fqdn);
+    if (override) {
+      this.logger.debug({ hostname: fqdn, override }, 'Applying hostname override');
+    }
+
+    // Build record config with override support
+    // Priority: label > override > default
+    const ttlLabel = labels[`${labelPrefix}ttl`];
     const config: DNSRecordCreateInput = {
       type,
       name: fqdn,
-      content,
-      ttl: parseInt(labels[`${labelPrefix}ttl`] ?? String(finalDefaults.ttl), 10),
+      content: override?.content ?? content,
+      ttl: ttlLabel !== undefined
+        ? parseInt(ttlLabel, 10)
+        : (override?.ttl ?? finalDefaults.ttl),
     };
 
     // Add proxied for supported types (Cloudflare)
+    // Priority: label > override > default
     if (['A', 'AAAA', 'CNAME'].includes(type)) {
       const proxiedKey = `${labelPrefix}proxied`;
       const proxiedLabel = labels[proxiedKey];
-      config.proxied = proxiedLabel !== undefined
-        ? proxiedLabel.toLowerCase() === 'true'
-        : finalDefaults.proxied;
+      if (proxiedLabel !== undefined) {
+        // Label has highest priority
+        config.proxied = proxiedLabel.toLowerCase() === 'true';
+      } else if (override?.proxied !== undefined && override?.proxied !== null) {
+        // Override is second priority
+        config.proxied = override.proxied;
+      } else {
+        // Fall back to defaults
+        config.proxied = finalDefaults.proxied;
+      }
     }
 
     // Add priority for MX/SRV (use env defaults for these special fields)
