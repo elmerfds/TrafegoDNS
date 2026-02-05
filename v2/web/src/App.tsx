@@ -22,6 +22,7 @@ import {
   WebhooksPage,
   SettingsPage,
   AuditLogPage,
+  UsersPage,
 } from './pages';
 
 // Create query client
@@ -45,6 +46,16 @@ const requireAuth = () => {
 const requireGuest = () => {
   const { isAuthenticated } = useAuthStore.getState();
   if (isAuthenticated) {
+    throw redirect({ to: '/' });
+  }
+};
+
+const requireAdmin = () => {
+  const { isAuthenticated, user } = useAuthStore.getState();
+  if (!isAuthenticated) {
+    throw redirect({ to: '/login' });
+  }
+  if (user?.role !== 'admin') {
     throw redirect({ to: '/' });
   }
 };
@@ -110,6 +121,13 @@ const auditRoute = createRoute({
   component: AuditLogPage,
 });
 
+const usersRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/users',
+  beforeLoad: requireAdmin,
+  component: UsersPage,
+});
+
 // Create route tree
 const routeTree = rootRoute.addChildren([
   loginRoute,
@@ -121,6 +139,7 @@ const routeTree = rootRoute.addChildren([
     webhooksRoute,
     settingsRoute,
     auditRoute,
+    usersRoute,
   ]),
 ]);
 

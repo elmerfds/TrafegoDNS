@@ -144,10 +144,9 @@ export class TraefikMonitor {
 
       if (hasChanges) {
         this.lastHostnames = currentHostnamesSet;
-        this.logger.info({ hostnames: hostnames.length }, 'Hostnames changed');
-      } else {
-        this.logger.debug({ hostnames: hostnames.length }, 'No hostname changes');
+        this.logger.info({ count: hostnames.length }, 'Discovered hostnames from Traefik');
       }
+      // Don't log when no changes - that's the normal state
 
       // Always publish event to let DNSManager sync (it will skip if no changes needed)
       if (hostnames.length > 0) {

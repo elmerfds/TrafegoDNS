@@ -330,16 +330,15 @@ export abstract class DNSProvider {
           if (this.recordNeedsUpdate(existing, recordConfig)) {
             const updated = await this.updateRecord(existing.id!, recordConfig);
             result.updated.push(updated);
-            this.logger.info({ type: recordConfig.type, name: recordConfig.name }, 'DNS record updated');
+            this.logger.debug({ name: recordConfig.name }, 'Record updated');
           } else {
             result.unchanged.push(existing);
-            this.logger.debug({ type: recordConfig.type, name: recordConfig.name }, 'DNS record unchanged');
           }
         } else {
           // Create new record
           const created = await this.createRecord(recordConfig);
           result.created.push(created);
-          this.logger.info({ type: recordConfig.type, name: recordConfig.name }, 'DNS record created');
+          this.logger.debug({ name: recordConfig.name }, 'Record created');
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -354,17 +353,14 @@ export abstract class DNSProvider {
     // Only log at info level if there were actual changes
     const hasChanges = result.created.length > 0 || result.updated.length > 0 || result.errors.length > 0;
     if (hasChanges) {
-      this.logger.info(
-        {
-          created: result.created.length,
-          updated: result.updated.length,
-          errors: result.errors.length,
-        },
-        'DNS sync completed'
-      );
-    } else {
-      this.logger.debug({ unchanged: result.unchanged.length }, 'DNS in sync');
+      // Build a concise summary
+      const parts: string[] = [];
+      if (result.created.length > 0) parts.push(`+${result.created.length} created`);
+      if (result.updated.length > 0) parts.push(`~${result.updated.length} updated`);
+      if (result.errors.length > 0) parts.push(`!${result.errors.length} errors`);
+      this.logger.info({ zone: this.getZoneName() }, `DNS sync: ${parts.join(', ')}`);
     }
+    // Don't log anything when in sync - that's the expected state
 
     return result;
   }

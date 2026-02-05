@@ -9,3 +9,4 @@ export { TunnelsPage } from './Tunnels';
 export { WebhooksPage } from './Webhooks';
 export { SettingsPage } from './Settings';
 export { AuditLogPage } from './AuditLog';
+export { UsersPage } from './Users';

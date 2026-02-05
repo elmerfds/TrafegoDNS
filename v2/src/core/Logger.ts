@@ -35,6 +35,7 @@ export const symbols = {
   traefik: '🚦',
   sync: '🔄',
   startup: '🚀',
+  separator: '─',
 };
 
 const defaultOptions: LoggerOptions = {
@@ -44,27 +45,32 @@ const defaultOptions: LoggerOptions = {
 
 /**
  * Format a value for clean inline display
+ * Keeps output concise for log readability
  */
-function formatValue(value: unknown): string {
+function formatValue(value: unknown, maxLen: number = 60): string {
   if (value === undefined || value === null) return '';
-  if (typeof value === 'string') return value;
+  if (typeof value === 'string') {
+    return value.length > maxLen ? value.substring(0, maxLen) + '...' : value;
+  }
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
 
   if (Array.isArray(value)) {
     if (value.length === 0) return '[]';
-    if (value.length <= 3) return `[${value.join(', ')}]`;
-    return `[${value.slice(0, 3).join(', ')}, ...+${value.length - 3}]`;
+    // For short arrays, show all items
+    if (value.length <= 3) {
+      const items = value.map(v => formatValue(v, 30));
+      return items.join(', ');
+    }
+    // For longer arrays, show count only
+    return `${value.length} items`;
   }
 
   if (typeof value === 'object') {
     const obj = value as Record<string, unknown>;
     const keys = Object.keys(obj);
     if (keys.length === 0) return '{}';
-    if (keys.length <= 3) {
-      const pairs = keys.map((k) => `${k}=${formatValue(obj[k])}`);
-      return `{${pairs.join(', ')}}`;
-    }
-    return `{${keys.length} props}`;
+    // For objects, show key count
+    return `{${keys.length} fields}`;
   }
 
   return String(value);
@@ -72,13 +78,26 @@ function formatValue(value: unknown): string {
 
 /**
  * Format context data in a clean, readable way
+ * Prioritizes important fields and keeps output short
  */
 function formatContext(log: Record<string, unknown>, excludeKeys: string[]): string {
   const contextKeys = Object.keys(log).filter((k) => !excludeKeys.includes(k));
   if (contextKeys.length === 0) return '';
 
+  // Priority order for context fields
+  const priorityKeys = ['name', 'hostname', 'type', 'count', 'provider', 'providerId', 'zone', 'id'];
+  const sortedKeys = contextKeys.sort((a, b) => {
+    const aIdx = priorityKeys.indexOf(a);
+    const bIdx = priorityKeys.indexOf(b);
+    if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx;
+    if (aIdx >= 0) return -1;
+    if (bIdx >= 0) return 1;
+    return 0;
+  });
+
   const contextParts: string[] = [];
-  for (const key of contextKeys.slice(0, 6)) {
+  // Limit to 4 context items for readability
+  for (const key of sortedKeys.slice(0, 4)) {
     const value = log[key];
     if (value === undefined || value === null) continue;
     const formatted = formatValue(value);

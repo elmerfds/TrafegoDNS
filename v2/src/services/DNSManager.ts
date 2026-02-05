@@ -81,6 +81,9 @@ export class DNSManager {
     total: 0,
   };
   private initialized: boolean = false;
+  private previousHostnames: Set<string> = new Set();
+  private syncCount: number = 0;
+  private lastLoggedHostnameCount: number = 0;
 
   constructor(config: ConfigManager) {
     this.config = config;
@@ -508,18 +511,17 @@ export class DNSManager {
     if (zoneMatches.length > 0) {
       if (multiProviderSameZone) {
         // Return ALL matching providers
-        const providerNames = zoneMatches.map(m => m.provider.getProviderName()).join(', ');
-        this.logger.info(
-          { hostname, providers: providerNames, count: zoneMatches.length },
-          'Auto-routed to multiple providers by zone (multi-provider mode)'
+        this.logger.debug(
+          { hostname, count: zoneMatches.length },
+          'Auto-routed to multiple providers'
         );
         return zoneMatches;
       } else {
         // Return only the best match (most specific zone)
         const bestMatch = zoneMatches[0]!; // Safe: we checked length > 0
-        this.logger.info(
-          { hostname, providerId: bestMatch.id, providerName: bestMatch.provider.getProviderName(), zone: bestMatch.provider.getZoneName() },
-          'Auto-routed to provider by zone'
+        this.logger.debug(
+          { hostname, provider: bestMatch.provider.getProviderName() },
+          'Auto-routed to provider'
         );
         return [bestMatch];
       }
@@ -534,28 +536,16 @@ export class DNSManager {
         // Only fallback if hostname ends with the default provider's zone
         // This prevents creating invalid cross-zone records
         if (defaultZone && (lowerHostname === defaultZone || lowerHostname.endsWith(`.${defaultZone}`))) {
-          this.logger.info(
-            { hostname, providerId: this.defaultProviderId, providerName: defaultProvider.getProviderName(), mode: 'fallback' },
-            'Using default provider (auto-with-fallback mode)'
-          );
+          this.logger.debug({ hostname, provider: defaultProvider.getProviderName() }, 'Using fallback provider');
           return [{ id: this.defaultProviderId, provider: defaultProvider }];
         } else {
-          this.logger.warn(
-            { hostname, defaultZone, mode: 'fallback-rejected' },
-            'Hostname does not belong to default provider zone - skipping to prevent cross-zone pollution'
-          );
+          this.logger.debug({ hostname }, 'Hostname does not match default provider zone');
         }
       }
     }
 
-    // No matching zone and no fallback - skip this hostname
-    const configuredZones = Array.from(this.providerInstances.values())
-      .map(p => `${p.getProviderName()} (${p.getZoneName()})`)
-      .filter(z => z);
-    this.logger.info(
-      { hostname, configuredZones: configuredZones.join(', '), routingMode },
-      'Skipping hostname - no matching zone configured'
-    );
+    // No matching zone and no fallback - skip this hostname (only log at debug, this is normal)
+    this.logger.debug({ hostname }, 'No matching provider zone');
     return [];
   }
 
@@ -578,13 +568,32 @@ export class DNSManager {
     hostnames: string[],
     containerLabels: Record<string, Record<string, string>>
   ): Promise<{ stats: DNSManagerStats; processedHostnames: ProcessedHostname[] }> {
-    // Log all hostnames being processed and available providers
-    const availableProviders = Array.from(this.providerInstances.entries()).map(([id, p]) => ({
-      id,
-      name: p.getProviderName(),
-      zone: p.getZoneName(),
-    }));
-    this.logger.info({ count: hostnames.length, hostnames, providers: availableProviders }, 'Processing hostnames from Traefik');
+    this.syncCount++;
+
+    // Detect if hostnames changed since last sync
+    const currentHostnamesSet = new Set(hostnames);
+    const hostnamesChanged = this.hasHostnamesChanged(currentHostnamesSet);
+
+    // Only log hostname details when they change or on first sync
+    if (hostnamesChanged || this.syncCount === 1) {
+      const added = hostnames.filter(h => !this.previousHostnames.has(h));
+      const removed = Array.from(this.previousHostnames).filter(h => !currentHostnamesSet.has(h));
+
+      if (added.length > 0 || removed.length > 0) {
+        this.logger.info(
+          { total: hostnames.length, added: added.length, removed: removed.length },
+          'Hostname changes detected'
+        );
+        if (added.length > 0 && added.length <= 5) {
+          this.logger.info({ hostnames: added }, 'New hostnames');
+        }
+        if (removed.length > 0 && removed.length <= 5) {
+          this.logger.info({ hostnames: removed }, 'Removed hostnames');
+        }
+      }
+      this.previousHostnames = currentHostnamesSet;
+      this.lastLoggedHostnameCount = hostnames.length;
+    }
 
     // Reset stats
     this.resetStats();
@@ -714,7 +723,7 @@ export class DNSManager {
 
     // Check skip label first (takes precedence)
     if (labels[skipKey]?.toLowerCase() === 'true') {
-      this.logger.info({ hostname, reason: 'skip label set to true' }, 'Skipping hostname');
+      this.logger.debug({ hostname }, 'Skipping hostname (skip label)');
       return false;
     }
 
@@ -723,7 +732,7 @@ export class DNSManager {
     const defaultManage = this.config.dnsDefaults.manage;
 
     if (!defaultManage && manageLabel !== 'true') {
-      this.logger.info({ hostname, defaultManage, manageLabel, reason: 'default manage=false and no manage=true label' }, 'Not managing hostname');
+      this.logger.debug({ hostname }, 'Not managing hostname (manage=false)');
       return false;
     }
 
@@ -1243,7 +1252,7 @@ export class DNSManager {
               .set({ orphanedAt: null })
               .where(eq(dnsRecords.id, record.id));
             totalReactivated++;
-            this.logger.info({ name: record.name, type: record.type, providerId }, 'Record reactivated');
+            this.logger.debug({ name: record.name }, 'Record reactivated');
           }
         } else if (isPreserved) {
           // Record is preserved - never delete
@@ -1254,7 +1263,6 @@ export class DNSManager {
               .where(eq(dnsRecords.id, record.id));
           }
           totalPreserved++;
-          this.logger.debug({ name: record.name, type: record.type, providerId }, 'Record preserved from deletion');
         } else {
           // Record is not active and not preserved
           if (!record.orphanedAt) {
@@ -1264,7 +1272,7 @@ export class DNSManager {
               .set({ orphanedAt: now })
               .where(eq(dnsRecords.id, record.id));
             totalOrphaned++;
-            this.logger.info({ name: record.name, type: record.type, providerId }, 'Record marked as orphaned');
+            this.logger.debug({ name: record.name }, 'Record marked orphaned');
 
             eventBus.publish(EventTypes.DNS_RECORD_ORPHANED, {
               record: {
@@ -1283,8 +1291,7 @@ export class DNSManager {
               }
               await db.delete(dnsRecords).where(eq(dnsRecords.id, record.id));
               totalDeleted++;
-
-              this.logger.info({ name: record.name, type: record.type, providerId }, 'Orphaned record deleted');
+              this.logger.debug({ name: record.name }, 'Orphaned record deleted');
 
               eventBus.publish(EventTypes.DNS_RECORD_DELETED, {
                 record: {
@@ -1296,18 +1303,20 @@ export class DNSManager {
                 providerId,
               });
             } catch (error) {
-              this.logger.error({ error, name: record.name, providerId }, 'Failed to delete orphaned record');
+              this.logger.error({ error, name: record.name }, 'Failed to delete orphaned record');
             }
           }
         }
       }
     }
 
-    if (totalOrphaned > 0 || totalDeleted > 0 || totalReactivated > 0 || totalPreserved > 0) {
-      this.logger.info(
-        { orphanedCount: totalOrphaned, deletedCount: totalDeleted, reactivatedCount: totalReactivated, preservedCount: totalPreserved },
-        'Orphaned records cleanup summary'
-      );
+    // Only log if there were any changes
+    if (totalOrphaned > 0 || totalDeleted > 0 || totalReactivated > 0) {
+      const parts: string[] = [];
+      if (totalOrphaned > 0) parts.push(`${totalOrphaned} orphaned`);
+      if (totalDeleted > 0) parts.push(`${totalDeleted} deleted`);
+      if (totalReactivated > 0) parts.push(`${totalReactivated} reactivated`);
+      this.logger.info({}, `Cleanup: ${parts.join(', ')}`);
     }
   }
 
@@ -1377,27 +1386,31 @@ export class DNSManager {
     const hasChanges = this.stats.created > 0 || this.stats.updated > 0 || this.stats.errors > 0;
 
     if (hasChanges) {
-      // Log individual change types at info level when there are changes
-      if (this.stats.created > 0) {
-        this.logger.info({ count: this.stats.created }, 'DNS records created');
-      }
-      if (this.stats.updated > 0) {
-        this.logger.info({ count: this.stats.updated }, 'DNS records updated');
-      }
+      // Build a concise one-line summary
+      const parts: string[] = [];
+      if (this.stats.created > 0) parts.push(`+${this.stats.created} created`);
+      if (this.stats.updated > 0) parts.push(`~${this.stats.updated} updated`);
+      if (this.stats.upToDate > 0) parts.push(`${this.stats.upToDate} in sync`);
+      if (this.stats.errors > 0) parts.push(`!${this.stats.errors} errors`);
+
       if (this.stats.errors > 0) {
-        this.logger.warn({ count: this.stats.errors }, 'DNS record errors');
+        this.logger.warn({ total: this.stats.total }, `Sync: ${parts.join(', ')}`);
+      } else {
+        this.logger.info({ total: this.stats.total }, `Sync: ${parts.join(', ')}`);
       }
-    } else {
-      // Log summary at info level when everything is in sync (but only on first sync or periodically)
-      this.logger.debug(
-        {
-          total: this.stats.total,
-          upToDate: this.stats.upToDate,
-          skipped: this.stats.skipped,
-        },
-        'DNS sync complete - all records in sync'
-      );
     }
+    // Don't log when everything is in sync - that's the expected normal state
+  }
+
+  /**
+   * Check if the set of hostnames has changed since last sync
+   */
+  private hasHostnamesChanged(current: Set<string>): boolean {
+    if (current.size !== this.previousHostnames.size) return true;
+    for (const hostname of current) {
+      if (!this.previousHostnames.has(hostname)) return true;
+    }
+    return false;
   }
 
   /**

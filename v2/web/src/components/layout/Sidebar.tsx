@@ -11,6 +11,7 @@ import {
   Settings,
   FileText,
   LogOut,
+  Users,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores';
 
@@ -19,6 +20,7 @@ interface NavItem {
   href: string;
   icon: React.ElementType;
   badge?: string;
+  adminOnly?: boolean;
 }
 
 const navigation: NavItem[] = [
@@ -28,6 +30,7 @@ const navigation: NavItem[] = [
   { name: 'Tunnels', href: '/tunnels', icon: Cable },
   { name: 'Webhooks', href: '/webhooks', icon: Webhook },
   { name: 'Settings', href: '/settings', icon: Settings },
+  { name: 'Users', href: '/users', icon: Users, adminOnly: true },
   { name: 'Audit Log', href: '/audit', icon: FileText },
 ];
 
@@ -62,7 +65,9 @@ export function Sidebar() {
             Menu
           </span>
         </div>
-        {navigation.map((item) => {
+        {navigation
+          .filter((item) => !item.adminOnly || user?.role === 'admin')
+          .map((item) => {
           const isActive = location.pathname === item.href ||
             (item.href !== '/' && location.pathname.startsWith(item.href));
           const Icon = item.icon;
