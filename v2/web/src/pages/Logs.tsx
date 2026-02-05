@@ -10,7 +10,7 @@ import { formatDistanceToNow } from 'date-fns';
 import {
   Plus, Edit, Trash2, LogIn, LogOut, RefreshCw, CloudUpload,
   AlertCircle, User, Clock, Globe, Server, Webhook, Settings,
-  ChevronRight, FileText, Terminal, Pause, Play, Download
+  ChevronRight, ChevronDown, FileText, Terminal, Pause, Play, Download
 } from 'lucide-react';
 
 type TabType = 'audit' | 'application';
@@ -311,22 +311,42 @@ function AuditLogTab() {
 interface LogLine {
   timestamp: string;
   level: string;
+  service?: string;
   message: string;
+  context?: Record<string, unknown>;
+  error?: { message?: string; type?: string; stack?: string };
   raw: string;
 }
 
+// Keys that are part of the log structure, not user context
+const LOG_STRUCTURAL_KEYS = new Set(['time', 'level', 'msg', 'app', 'service', 'err', 'error', 'stack']);
+
 function parseLogLine(line: string): LogLine {
-  // Try to parse as JSON (pino format)
   try {
     const parsed = JSON.parse(line);
+
+    // Extract context (everything that isn't structural)
+    const context: Record<string, unknown> = {};
+    for (const key of Object.keys(parsed)) {
+      if (!LOG_STRUCTURAL_KEYS.has(key)) {
+        context[key] = parsed[key];
+      }
+    }
+
     return {
       timestamp: parsed.time ? new Date(parsed.time).toISOString() : new Date().toISOString(),
-      level: parsed.level ? getLevelName(parsed.level) : 'info',
+      level: typeof parsed.level === 'number'
+        ? getLevelName(parsed.level)
+        : (typeof parsed.level === 'string' ? parsed.level : 'info'),
+      service: parsed.service || undefined,
       message: parsed.msg || line,
+      context: Object.keys(context).length > 0 ? context : undefined,
+      error: parsed.err
+        ? { message: parsed.err.message, type: parsed.err.type, stack: parsed.err.stack }
+        : undefined,
       raw: line,
     };
   } catch {
-    // Fallback for non-JSON logs
     return {
       timestamp: new Date().toISOString(),
       level: 'info',
@@ -345,16 +365,153 @@ function getLevelName(level: number): string {
   return 'fatal';
 }
 
-function getLevelColor(level: string): string {
-  switch (level) {
-    case 'trace': return 'text-gray-400';
-    case 'debug': return 'text-blue-400';
-    case 'info': return 'text-green-400';
-    case 'warn': return 'text-yellow-400';
-    case 'error': return 'text-red-400';
-    case 'fatal': return 'text-red-600';
-    default: return 'text-gray-400';
+// Visual styles per log level
+const LEVEL_STYLES: Record<string, { border: string; badge: string; bg: string }> = {
+  trace: { border: 'border-l-gray-600', badge: 'bg-gray-800/80 text-gray-400', bg: '' },
+  debug: { border: 'border-l-blue-500', badge: 'bg-blue-500/15 text-blue-400', bg: '' },
+  info:  { border: 'border-l-emerald-500', badge: 'bg-emerald-500/15 text-emerald-400', bg: '' },
+  warn:  { border: 'border-l-amber-500', badge: 'bg-amber-500/15 text-amber-400', bg: 'bg-amber-950/10' },
+  error: { border: 'border-l-red-500', badge: 'bg-red-500/15 text-red-400', bg: 'bg-red-950/15' },
+  fatal: { border: 'border-l-red-600', badge: 'bg-red-500/25 text-red-300', bg: 'bg-red-950/25' },
+};
+
+function formatDisplayValue(value: unknown, truncateLen: number = 64): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') {
+    return value.length > truncateLen ? value.substring(0, truncateLen) + '\u2026' : value;
   }
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '[]';
+    if (value.length <= 3) return value.map(v => formatDisplayValue(v, 30)).join(', ');
+    return `[${value.length} items]`;
+  }
+  if (typeof value === 'object') {
+    try {
+      const str = JSON.stringify(value);
+      return str.length > truncateLen ? str.substring(0, truncateLen) + '\u2026' : str;
+    } catch { return '{...}'; }
+  }
+  return String(value);
+}
+
+// Friendly labels for common context keys
+const KEY_LABELS: Record<string, string> = {
+  containerId: 'Container',
+  containerName: 'Name',
+  hostname: 'Hostname',
+  hostnames: 'Hostnames',
+  providerId: 'Provider ID',
+  provider: 'Provider',
+  zone: 'Zone',
+  recordType: 'Record Type',
+  name: 'Name',
+  type: 'Type',
+  count: 'Count',
+  action: 'Action',
+  resourceType: 'Resource',
+  resourceId: 'Resource ID',
+  ttl: 'TTL',
+  content: 'Content',
+  proxied: 'Proxied',
+  source: 'Source',
+  externalId: 'External ID',
+};
+
+function getKeyLabel(key: string): string {
+  return KEY_LABELS[key] || key;
+}
+
+function LogEntryRow({ log, isExpanded, onToggle }: {
+  log: LogLine;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const hasDetails = (log.context && Object.keys(log.context).length > 0) || log.error;
+  const styles = LEVEL_STYLES[log.level] || LEVEL_STYLES.info;
+
+  return (
+    <div
+      className={`border-l-2 ${styles.border} ${styles.bg} ${hasDetails ? 'cursor-pointer' : ''} hover:bg-white/[0.03] transition-colors`}
+      onClick={hasDetails ? onToggle : undefined}
+    >
+      {/* Main line */}
+      <div className="flex items-start gap-2.5 px-3 py-1.5 min-h-[28px]">
+        {/* Timestamp */}
+        <span className="text-gray-500 flex-shrink-0 text-[11px] leading-5 w-[68px] tabular-nums">
+          {new Date(log.timestamp).toLocaleTimeString()}
+        </span>
+
+        {/* Level badge */}
+        <span className={`flex-shrink-0 inline-flex items-center justify-center w-[46px] text-[10px] font-semibold uppercase tracking-wider leading-5 rounded ${styles.badge}`}>
+          {log.level}
+        </span>
+
+        {/* Service tag */}
+        {log.service && (
+          <span className="flex-shrink-0 text-[11px] font-medium text-cyan-400/90 leading-5">
+            [{log.service}]
+          </span>
+        )}
+
+        {/* Message */}
+        <span className="text-gray-200 text-[12px] leading-5 flex-1 min-w-0 break-words">
+          {log.message}
+        </span>
+
+        {/* Expand indicator */}
+        {hasDetails && (
+          <ChevronDown
+            className={`w-3.5 h-3.5 text-gray-600 flex-shrink-0 mt-[3px] transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`}
+          />
+        )}
+      </div>
+
+      {/* Expanded detail panel */}
+      {isExpanded && hasDetails && (
+        <div className="pb-2.5 pr-3" style={{ paddingLeft: 'calc(68px + 46px + 30px)' }}>
+          <div className="bg-black/25 border border-white/[0.05] rounded-md px-3 py-2 space-y-0.5">
+            {/* Context key-value pairs */}
+            {log.context && Object.entries(log.context).map(([key, value]) => (
+              <div key={key} className="flex gap-2 text-[11px] leading-relaxed">
+                <span className="text-gray-500 w-24 flex-shrink-0 text-right select-none">
+                  {getKeyLabel(key)}
+                </span>
+                <span className="text-amber-300/80 break-all">
+                  {formatDisplayValue(value)}
+                </span>
+              </div>
+            ))}
+
+            {/* Error details */}
+            {log.error && (
+              <>
+                {log.error.message && (
+                  <div className="flex gap-2 text-[11px] leading-relaxed">
+                    <span className="text-gray-500 w-24 flex-shrink-0 text-right select-none">Error</span>
+                    <span className="text-red-400 break-all">{log.error.message}</span>
+                  </div>
+                )}
+                {log.error.type && (
+                  <div className="flex gap-2 text-[11px] leading-relaxed">
+                    <span className="text-gray-500 w-24 flex-shrink-0 text-right select-none">Type</span>
+                    <span className="text-red-400/80 break-all">{log.error.type}</span>
+                  </div>
+                )}
+                {log.error.stack && (
+                  <div className="mt-1.5 pt-1.5 border-t border-white/[0.05]">
+                    <pre className="text-[10px] text-gray-500 whitespace-pre-wrap break-all leading-relaxed">
+                      {log.error.stack}
+                    </pre>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ApplicationLogTab() {
@@ -362,6 +519,7 @@ function ApplicationLogTab() {
   const [isPaused, setIsPaused] = useState(false);
   const [levelFilter, setLevelFilter] = useState<string>('all');
   const [searchFilter, setSearchFilter] = useState('');
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const logContainerRef = useRef<HTMLDivElement>(null);
   const shouldScrollRef = useRef(true);
 
@@ -369,15 +527,14 @@ function ApplicationLogTab() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['application-logs'],
     queryFn: () => healthApi.getApplicationLogs({ lines: 500 }),
-    refetchInterval: isPaused ? false : 2000, // Poll every 2 seconds unless paused
+    refetchInterval: isPaused ? false : 2000,
     staleTime: 1000,
   });
 
   // Update logs when data changes
   useEffect(() => {
     if (data?.logs) {
-      const parsedLogs = data.logs.map(parseLogLine);
-      setLogs(parsedLogs);
+      setLogs(data.logs.map(parseLogLine));
     }
   }, [data]);
 
@@ -396,10 +553,27 @@ function ApplicationLogTab() {
     }
   }, []);
 
+  const toggleExpand = useCallback((index: number) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }, []);
+
   // Filter logs
   const filteredLogs = logs.filter(log => {
     if (levelFilter !== 'all' && log.level !== levelFilter) return false;
-    if (searchFilter && !log.message.toLowerCase().includes(searchFilter.toLowerCase())) return false;
+    if (searchFilter) {
+      const term = searchFilter.toLowerCase();
+      const inMessage = log.message.toLowerCase().includes(term);
+      const inService = log.service?.toLowerCase().includes(term);
+      const inContext = log.context
+        ? Object.values(log.context).some(v => String(v).toLowerCase().includes(term))
+        : false;
+      if (!inMessage && !inService && !inContext) return false;
+    }
     return true;
   });
 
@@ -479,14 +653,14 @@ function ApplicationLogTab() {
       </div>
 
       {/* Log Viewer */}
-      <div className="card p-0 overflow-hidden">
+      <div className="card p-0 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700/50">
         {isLoading && logs.length === 0 ? (
-          <div className="p-8 text-center">
+          <div className="p-8 text-center bg-gray-900 dark:bg-gray-950">
             <RefreshCw className="w-8 h-8 text-gray-400 mx-auto animate-spin" />
             <p className="mt-2 text-gray-500">Loading application logs...</p>
           </div>
         ) : filteredLogs.length === 0 ? (
-          <div className="p-8 text-center">
+          <div className="p-8 text-center bg-gray-900 dark:bg-gray-950">
             <Terminal className="w-12 h-12 text-gray-300 mx-auto" />
             <p className="mt-2 text-gray-500">No logs found</p>
           </div>
@@ -494,18 +668,15 @@ function ApplicationLogTab() {
           <div
             ref={logContainerRef}
             onScroll={handleScroll}
-            className="h-[600px] overflow-auto bg-gray-900 dark:bg-gray-950 p-4 font-mono text-xs"
+            className="h-[600px] overflow-auto bg-gray-900 dark:bg-gray-950 font-mono text-xs divide-y divide-white/[0.04]"
           >
             {filteredLogs.map((log, index) => (
-              <div key={index} className="flex gap-2 hover:bg-gray-800/50 py-0.5 px-1 -mx-1 rounded">
-                <span className="text-gray-500 flex-shrink-0 w-44">
-                  {new Date(log.timestamp).toLocaleString()}
-                </span>
-                <span className={`flex-shrink-0 w-12 uppercase font-semibold ${getLevelColor(log.level)}`}>
-                  {log.level}
-                </span>
-                <span className="text-gray-300 break-all">{log.message}</span>
-              </div>
+              <LogEntryRow
+                key={index}
+                log={log}
+                isExpanded={expandedRows.has(index)}
+                onToggle={() => toggleExpand(index)}
+              />
             ))}
           </div>
         )}
