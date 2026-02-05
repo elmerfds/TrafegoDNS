@@ -6,6 +6,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Bell, X, Check, AlertCircle, RefreshCw, Trash2, Plus, Edit, LogIn, LogOut, CloudUpload, CheckCheck } from 'lucide-react';
 import { healthApi, type AuditLog } from '../../api';
+import { Badge } from '../common';
 
 interface NotificationPanelProps {
   className?: string;
@@ -185,9 +186,9 @@ export function NotificationPanel({ className }: NotificationPanelProps) {
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Notifications</h3>
               {unreadCount > 0 && (
-                <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded text-xs font-medium">
+                <Badge variant="info" size="sm">
                   {unreadCount} new
-                </span>
+                </Badge>
               )}
             </div>
             <div className="flex items-center gap-1">

@@ -21,7 +21,7 @@ import {
   TunnelsPage,
   WebhooksPage,
   SettingsPage,
-  AuditLogPage,
+  LogsPage,
   UsersPage,
   ProfilePage,
 } from './pages';
@@ -116,10 +116,10 @@ const settingsRoute = createRoute({
   component: SettingsPage,
 });
 
-const auditRoute = createRoute({
+const logsRoute = createRoute({
   getParentRoute: () => layoutRoute,
-  path: '/audit',
-  component: AuditLogPage,
+  path: '/logs',
+  component: LogsPage,
 });
 
 const usersRoute = createRoute({
@@ -145,7 +145,7 @@ const routeTree = rootRoute.addChildren([
     tunnelsRoute,
     webhooksRoute,
     settingsRoute,
-    auditRoute,
+    logsRoute,
     usersRoute,
     profileRoute,
   ]),

@@ -6,6 +6,7 @@ import { getDatabase } from '../../database/connection.js';
 import { container, ServiceTokens } from '../../core/ServiceContainer.js';
 import type { DNSManager } from '../../services/DNSManager.js';
 import type { TunnelManager } from '../../services/TunnelManager.js';
+import { logBuffer, levelNumbers } from '../../core/LogBuffer.js';
 
 interface HealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
@@ -104,4 +105,23 @@ export function readinessCheck(req: Request, res: Response): void {
  */
 export function livenessCheck(req: Request, res: Response): void {
   res.status(200).json({ alive: true });
+}
+
+/**
+ * Get application logs
+ */
+export function getApplicationLogs(req: Request, res: Response): void {
+  const lines = Math.min(parseInt(req.query['lines'] as string) || 500, 2000);
+  const levelParam = req.query['level'] as string;
+
+  const minLevel = levelParam ? levelNumbers[levelParam] : undefined;
+  const logLines = logBuffer.getFormattedLines(lines, minLevel);
+
+  res.json({
+    success: true,
+    data: {
+      logs: logLines,
+      total: logBuffer.size,
+    },
+  });
 }

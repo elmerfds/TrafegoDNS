@@ -54,16 +54,37 @@ export const listProviders = asyncHandler(async (req: Request, res: Response) =>
     isDefault: providers.isDefault,
     enabled: providers.enabled,
     settings: providers.settings,
+    credentials: providers.credentials,
     createdAt: providers.createdAt,
     updatedAt: providers.updatedAt,
   }).from(providers);
 
-  // Add type info (features) to each provider
+  // Non-sensitive credential fields that can be exposed (zone info)
+  const nonSensitiveFields = ['domain', 'zoneName', 'zoneId', 'zone', 'region', 'accountId', 'url', 'hostedZoneId'];
+
+  // Add type info (features) and extract zone info from credentials
   const providersWithFeatures = allProviders.map((p) => {
     const typeInfo = getProviderTypeInfo(p.type);
+    const parsedSettings = JSON.parse(p.settings);
+    const credentials = JSON.parse(p.credentials) as Record<string, string>;
+
+    // Extract non-sensitive zone info from credentials and add to settings
+    const zoneInfo: Record<string, string> = {};
+    for (const [key, value] of Object.entries(credentials)) {
+      if (nonSensitiveFields.includes(key) && value) {
+        zoneInfo[key] = value;
+      }
+    }
+
     return {
-      ...p,
-      settings: JSON.parse(p.settings),
+      id: p.id,
+      name: p.name,
+      type: p.type,
+      isDefault: p.isDefault,
+      enabled: p.enabled,
+      settings: { ...parsedSettings, ...zoneInfo },
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
       features: typeInfo?.features ?? null,
     };
   });

@@ -148,16 +148,14 @@ function DNSRecordsTab() {
     if (!providers) return [];
     const zones = new Set<string>();
     providers.forEach((provider) => {
-      // Try to get zone from provider settings
+      // Try to get zone from various provider settings
       const zone = provider.settings?.zone as string | undefined;
-      if (zone) {
-        zones.add(zone);
-      }
-      // Also check for domain setting (some providers use 'domain' instead of 'zone')
       const domain = provider.settings?.domain as string | undefined;
-      if (domain) {
-        zones.add(domain);
-      }
+      const zoneName = provider.settings?.zoneName as string | undefined;
+
+      if (zone) zones.add(zone);
+      if (domain) zones.add(domain);
+      if (zoneName) zones.add(zoneName);
     });
     return Array.from(zones).sort();
   }, [providers]);
@@ -478,7 +476,7 @@ function DNSRecordsTab() {
               Export
             </Button>
             {showExportMenu && (
-              <div className="absolute right-0 mt-1 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-10">
+              <div className="absolute right-0 mt-1 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50">
                 <button
                   className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-t-lg"
                   onClick={async () => {

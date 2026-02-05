@@ -43,6 +43,11 @@ export interface AuditLogsResponse {
   };
 }
 
+export interface ApplicationLogsResponse {
+  logs: string[];
+  total: number;
+}
+
 export const healthApi = {
   async getHealth(): Promise<HealthStatus> {
     return apiClient.get<HealthStatus>('/health');
@@ -56,5 +61,12 @@ export const healthApi = {
     userId?: string;
   }): Promise<AuditLogsResponse> {
     return apiClient.get<AuditLogsResponse>('/audit', params);
+  },
+
+  async getApplicationLogs(params?: {
+    lines?: number;
+    level?: string;
+  }): Promise<ApplicationLogsResponse> {
+    return apiClient.get<ApplicationLogsResponse>('/logs', params);
   },
 };

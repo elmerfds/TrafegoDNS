@@ -31,7 +31,7 @@ const navigation: NavItem[] = [
   { name: 'Webhooks', href: '/webhooks', icon: Webhook },
   { name: 'Settings', href: '/settings', icon: Settings },
   { name: 'Users', href: '/users', icon: Users, adminOnly: true },
-  { name: 'Audit Log', href: '/audit', icon: FileText },
+  { name: 'Logs', href: '/logs', icon: FileText },
 ];
 
 export function Sidebar() {

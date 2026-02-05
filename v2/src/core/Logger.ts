@@ -4,6 +4,7 @@
  */
 import pino from 'pino';
 import pretty from 'pino-pretty';
+import { logBuffer, levelNumbers, levelNames } from './LogBuffer.js';
 
 export type LogLevel = 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
 
@@ -148,37 +149,52 @@ function createPrettyStream() {
   });
 }
 
-function createLogger(options: LoggerOptions = defaultOptions): pino.Logger {
-  if (options.pretty) {
-    // Use pino-pretty stream for human-readable output
-    const stream = createPrettyStream();
-    return pino(
-      {
-        level: options.level,
-        base: {
-          app: 'trafegodns',
-          pid: undefined, // Don't include pid in logs
-          hostname: undefined, // Don't include machine hostname in logs
-        },
-        formatters: {
-          level: (label: string) => ({ level: label }),
-        },
-        serializers: {
-          err: pino.stdSerializers.err,
-          error: pino.stdSerializers.err,
-        },
-      },
-      stream
-    );
-  }
+/**
+ * Create a write stream that captures logs to buffer
+ */
+function createBufferCaptureStream(destination: NodeJS.WritableStream) {
+  const { Transform } = require('stream');
 
-  // Production mode - structured JSON logging
-  return pino({
+  const captureStream = new Transform({
+    objectMode: true,
+    transform(chunk: string, encoding: string, callback: (err?: Error, data?: unknown) => void) {
+      // Parse the log line and add to buffer
+      try {
+        const logObj = JSON.parse(chunk.toString());
+        const levelNum = typeof logObj.level === 'number'
+          ? logObj.level
+          : levelNumbers[logObj.level] ?? 30;
+
+        logBuffer.push({
+          timestamp: logObj.time ?? Date.now(),
+          level: levelNum,
+          levelLabel: levelNames[levelNum] ?? 'info',
+          message: logObj.msg ?? '',
+          context: (() => {
+            const { time, level, msg, app, ...rest } = logObj;
+            return Object.keys(rest).length > 0 ? rest : undefined;
+          })(),
+        });
+      } catch {
+        // Ignore parse errors
+      }
+
+      // Pass through to original destination
+      callback(undefined, chunk);
+    },
+  });
+
+  captureStream.pipe(destination);
+  return captureStream;
+}
+
+function createLogger(options: LoggerOptions = defaultOptions): pino.Logger {
+  const baseConfig: pino.LoggerOptions = {
     level: options.level,
     base: {
       app: 'trafegodns',
-      pid: undefined,
-      hostname: undefined,
+      pid: undefined, // Don't include pid in logs
+      hostname: undefined, // Don't include machine hostname in logs
     },
     formatters: {
       level: (label: string) => ({ level: label }),
@@ -187,7 +203,52 @@ function createLogger(options: LoggerOptions = defaultOptions): pino.Logger {
       err: pino.stdSerializers.err,
       error: pino.stdSerializers.err,
     },
-  });
+  };
+
+  if (options.pretty) {
+    // Use pino-pretty stream for human-readable output
+    // Create a multistream that writes to both buffer capture and pretty output
+    const { multistream } = require('pino');
+    const { PassThrough } = require('stream');
+
+    // Create JSON stream for buffer capture
+    const jsonStream = new PassThrough();
+    jsonStream.on('data', (chunk: Buffer) => {
+      try {
+        const logObj = JSON.parse(chunk.toString());
+        const levelNum = typeof logObj.level === 'number'
+          ? logObj.level
+          : levelNumbers[logObj.level] ?? 30;
+
+        logBuffer.push({
+          timestamp: logObj.time ?? Date.now(),
+          level: levelNum,
+          levelLabel: levelNames[levelNum] ?? 'info',
+          message: logObj.msg ?? '',
+          context: (() => {
+            const { time, level, msg, app, ...rest } = logObj;
+            return Object.keys(rest).length > 0 ? rest : undefined;
+          })(),
+        });
+      } catch {
+        // Ignore parse errors
+      }
+    });
+
+    const prettyStream = createPrettyStream();
+
+    return pino(
+      baseConfig,
+      multistream([
+        { stream: jsonStream },
+        { stream: prettyStream },
+      ])
+    );
+  }
+
+  // Production mode - structured JSON logging with buffer capture
+  const captureStream = createBufferCaptureStream(process.stdout);
+  return pino(baseConfig, captureStream);
 }
 
 export const logger = createLogger();

@@ -536,16 +536,17 @@ function ProviderDefaultsSection({ provider, formData, setFormData }: ProviderDe
             {/* Default Record Type */}
             <div>
               <label className="label text-xs">Default Record Type</label>
-              <select
-                className="input mt-1 text-sm"
-                value={defaults.recordType ?? ''}
-                onChange={(e) => updateDefaults('recordType', e.target.value || undefined)}
-              >
-                <option value="">Use global default</option>
-                {recordTypes.map((type) => (
-                  <option key={type} value={type}>{type}</option>
-                ))}
-              </select>
+              <div className="mt-1">
+                <Select
+                  options={[
+                    { value: '', label: 'Use global default' },
+                    ...recordTypes.map((type) => ({ value: type, label: type })),
+                  ]}
+                  value={defaults.recordType ?? ''}
+                  onChange={(value) => updateDefaults('recordType', value || undefined)}
+                  size="sm"
+                />
+              </div>
             </div>
 
             {/* Default TTL */}

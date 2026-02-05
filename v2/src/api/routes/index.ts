@@ -18,6 +18,7 @@ import {
   healthCheck,
   readinessCheck,
   livenessCheck,
+  getApplicationLogs,
 } from '../controllers/healthController.js';
 
 import {
@@ -136,6 +137,9 @@ router.use(standardRateLimit);
 router.get('/health', healthCheck);
 router.get('/health/ready', readinessCheck);
 router.get('/health/live', livenessCheck);
+
+// Application logs (requires auth)
+router.get('/logs', authenticate, getApplicationLogs);
 
 // Auth routes
 const authRouter = Router();

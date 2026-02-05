@@ -8,6 +8,6 @@ export { ProvidersPage } from './Providers';
 export { TunnelsPage } from './Tunnels';
 export { WebhooksPage } from './Webhooks';
 export { SettingsPage } from './Settings';
-export { AuditLogPage } from './AuditLog';
+export { LogsPage, AuditLogPage } from './Logs';
 export { UsersPage } from './Users';
 export { ProfilePage } from './Profile';

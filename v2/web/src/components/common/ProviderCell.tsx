@@ -35,9 +35,13 @@ export function ProviderCell({ provider, density = 'normal' }: ProviderCellProps
     || provider.settings?.zoneName
     || null;
 
+  // Format provider type for display (e.g., "cloudflare" -> "Cloudflare")
+  const providerTypeName = provider.type.charAt(0).toUpperCase() + provider.type.slice(1);
+  const tooltipText = `${providerTypeName} - ${provider.name}`;
+
   if (density === 'compact') {
     return (
-      <div className="flex items-center gap-2 min-w-0">
+      <div className="flex items-center gap-2 min-w-0" title={tooltipText}>
         <ProviderIcon type={provider.type} className="w-4 h-4 flex-shrink-0" />
         <span className="truncate text-gray-700 dark:text-gray-300 text-xs">
           {provider.name}
@@ -48,18 +52,18 @@ export function ProviderCell({ provider, density = 'normal' }: ProviderCellProps
 
   return (
     <div className="flex items-center gap-2.5 min-w-0">
-      <div className="flex-shrink-0">
-        <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+      <div className="flex-shrink-0" title={tooltipText}>
+        <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center cursor-help">
           <ProviderIcon type={provider.type} className="w-5 h-5" />
         </div>
       </div>
       <div className="min-w-0 flex-1">
         {zone && (
-          <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+          <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate" title={zone}>
             {zone}
           </div>
         )}
-        <div className={`text-gray-500 dark:text-gray-400 truncate ${zone ? 'text-xs' : 'text-sm'}`}>
+        <div className={`text-gray-500 dark:text-gray-400 truncate ${zone ? 'text-xs' : 'text-sm'}`} title={provider.name}>
           {provider.name}
         </div>
       </div>
