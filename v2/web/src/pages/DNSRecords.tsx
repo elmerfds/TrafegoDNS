@@ -272,6 +272,24 @@ function DNSRecordsTab() {
       header: 'TTL',
     },
     {
+      key: 'proxied',
+      header: 'Proxied',
+      render: (row: DNSRecord) => {
+        const provider = providers?.find((p) => p.id === row.providerId) as ProviderWithFeatures | undefined;
+        const supportsProxy = provider?.features?.proxied ?? false;
+
+        if (!supportsProxy) {
+          return <span className="text-xs text-gray-400">N/A</span>;
+        }
+
+        return (
+          <Badge variant={row.proxied ? 'success' : 'default'}>
+            {row.proxied ? 'Yes' : 'No'}
+          </Badge>
+        );
+      },
+    },
+    {
       key: 'status',
       header: 'Status',
       render: (row: DNSRecord) => (
