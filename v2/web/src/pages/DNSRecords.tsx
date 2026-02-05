@@ -65,9 +65,22 @@ export function DNSRecordsPage() {
 function DNSRecordsTab() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [managedFilter, setManagedFilter] = useState<'all' | 'managed' | 'unmanaged'>('all');
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchInput);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  // Reset page when debounced search changes
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'orphaned'>('all');
   const [providerFilter, setProviderFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
@@ -146,14 +159,14 @@ function DNSRecordsTab() {
   const filters = useMemo(() => ({
     page,
     limit: 20,
-    search: search || undefined,
+    search: debouncedSearch || undefined,
     managed: managedFilter === 'all' ? undefined : managedFilter === 'managed',
     status: statusFilter === 'all' ? undefined : statusFilter as 'active' | 'orphaned',
     providerId: providerFilter === 'all' ? undefined : providerFilter,
     type: typeFilter === 'all' ? undefined : typeFilter,
     zone: zoneFilter === 'all' ? undefined : zoneFilter,
     source: sourceFilter === 'all' ? undefined : sourceFilter,
-  }), [page, search, managedFilter, statusFilter, providerFilter, typeFilter, zoneFilter, sourceFilter]);
+  }), [page, debouncedSearch, managedFilter, statusFilter, providerFilter, typeFilter, zoneFilter, sourceFilter]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['dns-records', filters],
@@ -184,15 +197,9 @@ function DNSRecordsTab() {
     return Array.from(zones).sort();
   }, [providers]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSearch(searchInput);
-    setPage(1);
-  };
-
   const clearSearch = () => {
     setSearchInput('');
-    setSearch('');
+    setDebouncedSearch('');
     setPage(1);
   };
 
@@ -206,7 +213,7 @@ function DNSRecordsTab() {
     setSourceFilter('all');
   };
 
-  const hasActiveFilters = search || managedFilter !== 'all' || statusFilter !== 'all' ||
+  const hasActiveFilters = debouncedSearch || managedFilter !== 'all' || statusFilter !== 'all' ||
     providerFilter !== 'all' || typeFilter !== 'all' || zoneFilter !== 'all' || sourceFilter !== 'all';
 
   const syncMutation = useMutation({
@@ -260,7 +267,7 @@ function DNSRecordsTab() {
   // Clear selection when page/filters change
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [page, search, managedFilter, statusFilter, providerFilter, typeFilter, zoneFilter, sourceFilter]);
+  }, [page, debouncedSearch, managedFilter, statusFilter, providerFilter, typeFilter, zoneFilter, sourceFilter]);
 
   // Close extend menu when clicking outside
   useEffect(() => {
@@ -564,7 +571,7 @@ function DNSRecordsTab() {
         </div>
         <div className="flex items-center gap-3">
           {/* Search Box */}
-          <form onSubmit={handleSearch} className="relative">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
@@ -573,7 +580,7 @@ function DNSRecordsTab() {
               placeholder="Search records..."
               className="pl-9 pr-8 py-2 w-64 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             />
-            {(searchInput || search) && (
+            {searchInput && (
               <button
                 type="button"
                 onClick={clearSearch}
@@ -582,7 +589,7 @@ function DNSRecordsTab() {
                 <X className="w-4 h-4" />
               </button>
             )}
-          </form>
+          </div>
           {/* Filters Toggle */}
           <Button
             variant={showFilters || hasActiveFilters ? 'primary' : 'secondary'}
@@ -861,8 +868,8 @@ function DNSRecordsTab() {
           {sourceFilter !== 'all' && (
             <Badge variant="default">{sourceFilter}</Badge>
           )}
-          {search && (
-            <Badge variant="default">"{search}"</Badge>
+          {debouncedSearch && (
+            <Badge variant="default">"{debouncedSearch}"</Badge>
           )}
           <button
             onClick={clearAllFilters}
@@ -1342,6 +1349,16 @@ function OverridesTab() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editOverride, setEditOverride] = useState<HostnameOverride | null>(null);
   const [deleteOverride, setDeleteOverride] = useState<HostnameOverride | null>(null);
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchInput);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const { data: overrides, isLoading } = useQuery({
     queryKey: ['overrides'],
@@ -1365,6 +1382,17 @@ function OverridesTab() {
     if (!providerId) return '-';
     return providers?.find((p) => p.id === providerId)?.name ?? providerId.slice(0, 8);
   };
+
+  // Filter overrides based on search
+  const filteredOverrides = useMemo(() => {
+    if (!overrides || !debouncedSearch.trim()) return overrides ?? [];
+    const query = debouncedSearch.toLowerCase();
+    return overrides.filter((override) =>
+      override.hostname.toLowerCase().includes(query) ||
+      override.reason?.toLowerCase().includes(query) ||
+      override.content?.toLowerCase().includes(query)
+    );
+  }, [overrides, debouncedSearch]);
 
   const columns = [
     {
@@ -1469,19 +1497,41 @@ function OverridesTab() {
   return (
     <>
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">Hostname Overrides</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Per-hostname settings that persist across sync cycles and override global defaults.
           </p>
         </div>
-        <Button
-          leftIcon={<Plus className="w-4 h-4" />}
-          onClick={() => setIsCreateModalOpen(true)}
-        >
-          Add Override
-        </Button>
+        <div className="flex items-center gap-3">
+          {/* Search Box */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search overrides..."
+              className="pl-9 pr-8 py-2 w-48 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            />
+            {searchInput && (
+              <button
+                type="button"
+                onClick={() => setSearchInput('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          <Button
+            leftIcon={<Plus className="w-4 h-4" />}
+            onClick={() => setIsCreateModalOpen(true)}
+          >
+            Add Override
+          </Button>
+        </div>
       </div>
 
       {/* Info Box */}
@@ -1512,10 +1562,10 @@ function OverridesTab() {
       <div className="card p-0">
         <Table
           columns={columns}
-          data={overrides ?? []}
+          data={filteredOverrides}
           keyField="id"
           isLoading={isLoading}
-          emptyMessage="No hostname overrides. Add one to customize settings for specific hostnames."
+          emptyMessage={debouncedSearch ? `No overrides matching "${debouncedSearch}"` : "No hostname overrides. Add one to customize settings for specific hostnames."}
         />
       </div>
 
@@ -1969,11 +2019,31 @@ function PreservedHostnamesTab() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editHostname, setEditHostname] = useState<PreservedHostname | null>(null);
   const [deleteHostname, setDeleteHostname] = useState<PreservedHostname | null>(null);
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchInput);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const { data: preservedHostnames, isLoading } = useQuery({
     queryKey: ['preserved-hostnames'],
     queryFn: () => preservedHostnamesApi.list(),
   });
+
+  // Filter hostnames based on search
+  const filteredHostnames = useMemo(() => {
+    if (!preservedHostnames || !debouncedSearch.trim()) return preservedHostnames ?? [];
+    const query = debouncedSearch.toLowerCase();
+    return preservedHostnames.filter((hostname) =>
+      hostname.hostname.toLowerCase().includes(query) ||
+      hostname.reason?.toLowerCase().includes(query)
+    );
+  }, [preservedHostnames, debouncedSearch]);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => preservedHostnamesApi.delete(id),
@@ -2037,19 +2107,41 @@ function PreservedHostnamesTab() {
   return (
     <>
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">Preserved Hostnames</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Hostnames that will never be deleted during orphan cleanup, even when their containers go offline.
           </p>
         </div>
-        <Button
-          leftIcon={<Plus className="w-4 h-4" />}
-          onClick={() => setIsCreateModalOpen(true)}
-        >
-          Preserve Hostname
-        </Button>
+        <div className="flex items-center gap-3">
+          {/* Search Box */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search preserved..."
+              className="pl-9 pr-8 py-2 w-48 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            />
+            {searchInput && (
+              <button
+                type="button"
+                onClick={() => setSearchInput('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          <Button
+            leftIcon={<Plus className="w-4 h-4" />}
+            onClick={() => setIsCreateModalOpen(true)}
+          >
+            Preserve Hostname
+          </Button>
+        </div>
       </div>
 
       {/* Info Box */}
@@ -2073,10 +2165,10 @@ function PreservedHostnamesTab() {
       <div className="card p-0">
         <Table
           columns={columns}
-          data={preservedHostnames ?? []}
+          data={filteredHostnames}
           keyField="id"
           isLoading={isLoading}
-          emptyMessage="No preserved hostnames. Add one to prevent automatic cleanup of specific DNS records."
+          emptyMessage={debouncedSearch ? `No preserved hostnames matching "${debouncedSearch}"` : "No preserved hostnames. Add one to prevent automatic cleanup of specific DNS records."}
         />
       </div>
 

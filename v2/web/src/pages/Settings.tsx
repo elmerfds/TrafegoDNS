@@ -2,11 +2,12 @@
  * Settings Page
  * Dynamic settings management with schema-driven UI and tabbed interface
  */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, RotateCcw, AlertTriangle, Settings as SettingsIcon, Globe, Trash2, Server, Webhook, Shield, Search, X } from 'lucide-react';
 import { settingsApi, providersApi } from '../api';
 import { Button, Alert, Badge, Select } from '../components/common';
+import { useSpotlightContext } from '../contexts/SpotlightContext';
 
 interface SettingDefinition {
   key: string;
@@ -55,6 +56,46 @@ export function SettingsPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [restartWarning, setRestartWarning] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Handle spotlight navigation from command palette
+  const { settingsTab, spotlightId, clearSpotlight } = useSpotlightContext();
+
+  useEffect(() => {
+    if (settingsTab) {
+      // Switch to the correct tab
+      setActiveTab(settingsTab);
+    }
+  }, [settingsTab]);
+
+  // Auto-scroll and highlight spotlighted element
+  useEffect(() => {
+    if (spotlightId && spotlightId.startsWith('setting-')) {
+      // Small delay to allow tab switch and render
+      const timer = setTimeout(() => {
+        const element = document.getElementById(spotlightId);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('spotlight-active');
+
+          // Remove highlight after animation
+          setTimeout(() => {
+            element.classList.remove('spotlight-active');
+            clearSpotlight();
+          }, 2000);
+        }
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [spotlightId, clearSpotlight]);
 
   const { data: settingsData, isLoading, error } = useQuery({
     queryKey: ['settings', 'categorized'],
@@ -67,13 +108,13 @@ export function SettingsPage() {
     queryFn: () => providersApi.listProviders(),
   });
 
-  // Filter settings based on search query
+  // Filter settings based on search query (debounced)
   const filteredSettingsByCategory = useMemo(() => {
-    if (!settingsData || !searchQuery.trim()) {
+    if (!settingsData || !debouncedSearch.trim()) {
       return settingsData as Record<string, SettingDefinition[]> | undefined;
     }
 
-    const query = searchQuery.toLowerCase();
+    const query = debouncedSearch.toLowerCase();
     const filtered: Record<string, SettingDefinition[]> = {};
 
     for (const [category, settings] of Object.entries(settingsData as Record<string, SettingDefinition[]>)) {
@@ -89,10 +130,10 @@ export function SettingsPage() {
     }
 
     return filtered;
-  }, [settingsData, searchQuery]);
+  }, [settingsData, debouncedSearch]);
 
   // When searching, show all matching results regardless of tab
-  const isSearching = searchQuery.trim().length > 0;
+  const isSearching = debouncedSearch.trim().length > 0;
 
   const saveMutation = useMutation({
     mutationFn: (settings: Record<string, string>) => settingsApi.updateBulkSettings(settings),
@@ -434,7 +475,10 @@ function SettingInput({ setting, value, onChange, onReset, isModified, providers
   }, [setting.key, providers, allSettings, editedSettings, value]);
 
   return (
-    <div className="group p-4 -mx-4 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+    <div
+      id={`setting-${setting.key}`}
+      className="group p-4 -mx-4 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+    >
       <div className="flex flex-col lg:flex-row lg:items-start gap-4">
         {/* Label and description */}
         <div className="lg:w-1/3 space-y-1">

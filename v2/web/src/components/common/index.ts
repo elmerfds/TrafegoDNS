@@ -11,3 +11,4 @@ export { ColumnCustomizer, type ColumnConfig } from './ColumnCustomizer';
 export { ProviderCell } from './ProviderCell';
 export { Select, NativeSelect, type SelectOption } from './Select';
 export { ProviderIcon } from './ProviderIcon';
+export { CommandPalette } from './CommandPalette';
