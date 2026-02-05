@@ -356,6 +356,91 @@ function runSchemaMigrations(sqliteDb: Database.Database): void {
     sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_dns_records_managed ON dns_records(managed)');
     logger.info('Migration complete: added managed column');
   }
+
+  // Fix CHECK constraint for source column (add 'discovered' if missing)
+  // SQLite doesn't allow modifying CHECK constraints, so we need to recreate the table
+  migrateSourceConstraint(sqliteDb);
+}
+
+/**
+ * Migrate dns_records table to include 'discovered' in source CHECK constraint
+ * This is needed because the original table was created without 'discovered'
+ */
+function migrateSourceConstraint(sqliteDb: Database.Database): void {
+  // Check if 'discovered' source works by trying a test insert
+  try {
+    // Try to create a temp record with 'discovered' source
+    sqliteDb.exec(`
+      INSERT INTO dns_records (id, provider_id, type, name, content, source)
+      SELECT 'test_discovered_check', id, 'A', 'test.check', '127.0.0.1', 'discovered'
+      FROM providers LIMIT 1
+    `);
+    // If it worked, delete the test record and we're done
+    sqliteDb.exec(`DELETE FROM dns_records WHERE id = 'test_discovered_check'`);
+    return; // Constraint already includes 'discovered'
+  } catch {
+    // CHECK constraint failed - need to migrate
+    logger.info('Migrating dns_records table to support discovered source');
+  }
+
+  // SQLite doesn't support ALTER TABLE to modify CHECK constraints
+  // We need to recreate the table
+  sqliteDb.exec('BEGIN TRANSACTION');
+  try {
+    // Create new table with correct constraint
+    sqliteDb.exec(`
+      CREATE TABLE dns_records_new (
+        id TEXT PRIMARY KEY,
+        provider_id TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+        external_id TEXT,
+        type TEXT NOT NULL CHECK(type IN ('A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA', 'NS')),
+        name TEXT NOT NULL,
+        content TEXT NOT NULL,
+        ttl INTEGER NOT NULL DEFAULT 1,
+        proxied INTEGER,
+        priority INTEGER,
+        weight INTEGER,
+        port INTEGER,
+        flags INTEGER,
+        tag TEXT,
+        comment TEXT,
+        source TEXT NOT NULL DEFAULT 'traefik' CHECK(source IN ('traefik', 'direct', 'api', 'managed', 'discovered')),
+        managed INTEGER NOT NULL DEFAULT 1,
+        orphaned_at INTEGER,
+        last_synced_at INTEGER,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )
+    `);
+
+    // Copy data from old table
+    sqliteDb.exec(`
+      INSERT INTO dns_records_new
+      SELECT * FROM dns_records
+    `);
+
+    // Drop old table
+    sqliteDb.exec('DROP TABLE dns_records');
+
+    // Rename new table
+    sqliteDb.exec('ALTER TABLE dns_records_new RENAME TO dns_records');
+
+    // Recreate indexes
+    sqliteDb.exec(`
+      CREATE INDEX IF NOT EXISTS idx_dns_records_provider ON dns_records(provider_id);
+      CREATE INDEX IF NOT EXISTS idx_dns_records_name ON dns_records(name);
+      CREATE INDEX IF NOT EXISTS idx_dns_records_type ON dns_records(type);
+      CREATE INDEX IF NOT EXISTS idx_dns_records_orphaned ON dns_records(orphaned_at);
+      CREATE INDEX IF NOT EXISTS idx_dns_records_managed ON dns_records(managed);
+    `);
+
+    sqliteDb.exec('COMMIT');
+    logger.info('Migration complete: dns_records table updated with discovered source support');
+  } catch (error) {
+    sqliteDb.exec('ROLLBACK');
+    logger.error({ error }, 'Failed to migrate dns_records table');
+    throw error;
+  }
 }
 
 /**
