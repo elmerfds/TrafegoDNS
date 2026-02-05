@@ -24,6 +24,7 @@ import {
   LogsPage,
   UsersPage,
   ProfilePage,
+  ApiDocsPage,
 } from './pages';
 
 // Create query client
@@ -135,6 +136,12 @@ const profileRoute = createRoute({
   component: ProfilePage,
 });
 
+const apiDocsRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/api-docs',
+  component: ApiDocsPage,
+});
+
 // Create route tree
 const routeTree = rootRoute.addChildren([
   loginRoute,
@@ -148,6 +155,7 @@ const routeTree = rootRoute.addChildren([
     logsRoute,
     usersRoute,
     profileRoute,
+    apiDocsRoute,
   ]),
 ]);
 

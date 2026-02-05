@@ -17,6 +17,7 @@ const routeTitles: Record<string, string> = {
   '/logs': 'Logs',
   '/users': 'Users',
   '/profile': 'Profile',
+  '/api-docs': 'API Reference',
 };
 
 export function Layout() {

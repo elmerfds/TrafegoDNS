@@ -12,6 +12,7 @@ import {
   FileText,
   LogOut,
   Users,
+  BookOpen,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores';
 
@@ -32,6 +33,7 @@ const navigation: NavItem[] = [
   { name: 'Settings', href: '/settings', icon: Settings },
   { name: 'Users', href: '/users', icon: Users, adminOnly: true },
   { name: 'Logs', href: '/logs', icon: FileText },
+  { name: 'API Reference', href: '/api-docs', icon: BookOpen },
 ];
 
 export function Sidebar() {

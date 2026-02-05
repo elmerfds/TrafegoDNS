@@ -284,3 +284,24 @@ Additional v2-specific variables:
 - `AUTH_DEFAULT_ADMIN_PASSWORD`: Initial admin password (default: admin)
 - `WEB_PORT`: Web UI port (default: 3070)
 - `DATABASE_PATH`: SQLite database path (default: /config/data/trafegodns.db)
+
+### Maintaining API Documentation
+
+**IMPORTANT**: When making changes to the API (adding endpoints, modifying request/response schemas, changing permissions), you MUST update the API documentation page.
+
+**Files to update:**
+1. `v2/web/src/pages/ApiDocs.tsx` - The in-app API reference page
+   - Update the `apiGroups` array with new/modified endpoints
+   - Each endpoint group has: `name`, `description`, `basePath`, `endpoints`
+   - Each endpoint has: `method`, `path`, `description`, `auth`, `permission`, optionally `body`
+
+2. This file (`CLAUDE.md`) - Update the "v2 API Endpoints" section above
+
+**When to update:**
+- Adding a new API endpoint
+- Changing endpoint path or method
+- Modifying request body parameters
+- Changing authentication or permission requirements
+- Adding new endpoint groups/categories
+
+The API docs page is accessible at `/api-docs` in the web UI and shows all endpoints with their methods, paths, descriptions, and permission requirements.

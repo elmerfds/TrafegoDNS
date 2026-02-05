@@ -11,3 +11,4 @@ export { SettingsPage } from './Settings';
 export { LogsPage, AuditLogPage } from './Logs';
 export { UsersPage } from './Users';
 export { ProfilePage } from './Profile';
+export { ApiDocsPage } from './ApiDocs';
