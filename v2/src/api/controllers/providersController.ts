@@ -65,8 +65,22 @@ export const listProviders = asyncHandler(async (req: Request, res: Response) =>
   // Add type info (features) and extract zone info from credentials
   const providersWithFeatures = allProviders.map((p) => {
     const typeInfo = getProviderTypeInfo(p.type);
-    const parsedSettings = JSON.parse(p.settings);
-    const credentials = JSON.parse(p.credentials) as Record<string, string>;
+
+    // Safely parse settings and credentials
+    let parsedSettings: Record<string, unknown> = {};
+    let credentials: Record<string, string> = {};
+
+    try {
+      parsedSettings = p.settings ? JSON.parse(p.settings) : {};
+    } catch {
+      // Invalid settings JSON, use empty object
+    }
+
+    try {
+      credentials = p.credentials ? JSON.parse(p.credentials) : {};
+    } catch {
+      // Invalid credentials JSON, use empty object
+    }
 
     // Extract non-sensitive zone info from credentials and add to settings
     const zoneInfo: Record<string, string> = {};
