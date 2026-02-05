@@ -742,8 +742,8 @@ export class DNSManager {
 
     // Resolve TTL
     // First check if global override is enabled
-    const globalTtlOverride = settingsService.get('dns_default_ttl_override');
-    const isGlobalOverrideEnabled = globalTtlOverride === true || globalTtlOverride === 'true';
+    const globalTtlOverride = settingsService.get<boolean>('dns_default_ttl_override');
+    const isGlobalOverrideEnabled = globalTtlOverride === true;
 
     // Get provider TTL constraints for clamping
     const providerInfo = provider?.getInfo();
@@ -800,9 +800,9 @@ export class DNSManager {
     }
     // 3. Global setting
     else {
-      const globalProxied = settingsService.get('dns_default_proxied');
+      const globalProxied = settingsService.get<boolean>('dns_default_proxied');
       if (globalProxied !== undefined) {
-        result.proxied = globalProxied === 'true';
+        result.proxied = globalProxied;
         result.sources.proxied = 'global';
       }
       // 4. Env var
