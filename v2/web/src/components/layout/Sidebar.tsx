@@ -99,19 +99,25 @@ export function Sidebar() {
       {/* User section */}
       <div className="flex-shrink-0 p-4 border-t border-white/10">
         <div className="flex items-center">
-          <div className="flex-shrink-0">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-emerald-500/20">
-              {user?.username?.charAt(0).toUpperCase() || 'U'}
+          <Link
+            to="/profile"
+            className="flex items-center flex-1 min-w-0 group cursor-pointer hover:opacity-80 transition-opacity"
+            title="Profile settings"
+          >
+            <div className="flex-shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-emerald-500/20 group-hover:shadow-emerald-500/40 transition-shadow">
+                {user?.username?.charAt(0).toUpperCase() || 'U'}
+              </div>
             </div>
-          </div>
-          <div className="ml-3 flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white truncate">
-              {user?.username || 'User'}
-            </p>
-            <p className="text-xs text-gray-500 truncate capitalize">
-              {user?.role || 'user'}
-            </p>
-          </div>
+            <div className="ml-3 flex-1 min-w-0">
+              <p className="text-sm font-semibold text-white truncate group-hover:text-primary-300 transition-colors">
+                {user?.username || 'User'}
+              </p>
+              <p className="text-xs text-gray-500 truncate capitalize">
+                {user?.role || 'user'}
+              </p>
+            </div>
+          </Link>
           <button
             onClick={() => logout()}
             className="ml-2 p-2 text-gray-500 hover:text-white rounded-lg hover:bg-white/10 transition-all duration-200"

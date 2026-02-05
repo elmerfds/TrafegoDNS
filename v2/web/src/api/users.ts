@@ -39,28 +39,28 @@ export interface UpdateUserInput {
 
 export const usersApi = {
   async listUsers(page: number = 1, limit: number = 50): Promise<UsersResponse> {
-    const response = await apiClient.get<{ success: boolean; data: UsersResponse }>(
-      `/users?page=${page}&limit=${limit}`
-    );
-    return response.data;
+    // apiClient.get already extracts response.data.data
+    return apiClient.get<UsersResponse>(`/users?page=${page}&limit=${limit}`);
   },
 
   async getUser(id: string): Promise<UserListItem> {
-    const response = await apiClient.get<{ success: boolean; data: UserListItem }>(`/users/${id}`);
-    return response.data;
+    return apiClient.get<UserListItem>(`/users/${id}`);
   },
 
   async createUser(data: CreateUserInput): Promise<UserListItem> {
-    const response = await apiClient.post<{ success: boolean; data: UserListItem }>('/users', data);
-    return response.data;
+    return apiClient.post<UserListItem>('/users', data);
   },
 
   async updateUser(id: string, data: UpdateUserInput): Promise<UserListItem> {
-    const response = await apiClient.put<{ success: boolean; data: UserListItem }>(`/users/${id}`, data);
-    return response.data;
+    return apiClient.put<UserListItem>(`/users/${id}`, data);
   },
 
   async deleteUser(id: string): Promise<void> {
     await apiClient.delete(`/users/${id}`);
+  },
+
+  // Update current user's own profile
+  async updateProfile(data: { email?: string; password?: string }): Promise<UserListItem> {
+    return apiClient.put<UserListItem>('/auth/profile', data);
   },
 };

@@ -243,6 +243,78 @@ export const revokeApiKey = asyncHandler(async (req: Request, res: Response) => 
 });
 
 /**
+ * Update current user's own profile (email, password)
+ */
+export const updateProfile = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw ApiError.unauthorized();
+  }
+
+  const { email, password } = req.body;
+  const db = getDatabase();
+
+  // Check user exists
+  const [existing] = await db.select().from(users).where(eq(users.id, req.user.id)).limit(1);
+  if (!existing) {
+    throw ApiError.notFound('User');
+  }
+
+  // Check email conflict if changing
+  if (email && email !== existing.email) {
+    const [emailConflict] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+
+    if (emailConflict) {
+      throw ApiError.conflict('Email already in use');
+    }
+  }
+
+  // Build update object
+  const updateData: Record<string, unknown> = { updatedAt: new Date() };
+  if (email !== undefined) updateData.email = email;
+  if (password !== undefined) {
+    if (password.length < 8) {
+      throw ApiError.badRequest('Password must be at least 8 characters');
+    }
+    updateData.passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  }
+
+  if (Object.keys(updateData).length === 1) {
+    throw ApiError.badRequest('No changes to save');
+  }
+
+  await db.update(users).set(updateData).where(eq(users.id, req.user.id));
+
+  setAuditContext(req, {
+    action: 'update',
+    resourceType: 'user',
+    resourceId: req.user.id,
+    details: { self: true },
+  });
+
+  const [user] = await db
+    .select({
+      id: users.id,
+      username: users.username,
+      email: users.email,
+      role: users.role,
+      createdAt: users.createdAt,
+      lastLoginAt: users.lastLoginAt,
+    })
+    .from(users)
+    .where(eq(users.id, req.user.id))
+    .limit(1);
+
+  res.json({
+    success: true,
+    data: user,
+  });
+});
+
+/**
  * Helper to create initial admin user if none exists
  */
 export async function ensureAdminUser(

@@ -24,6 +24,7 @@ import {
   login,
   logout,
   getCurrentUser,
+  updateProfile,
   createApiKeyHandler,
   listApiKeys,
   revokeApiKey,
@@ -134,6 +135,7 @@ const authRouter = Router();
 authRouter.post('/login', authRateLimit, login);
 authRouter.post('/logout', authenticate, logout);
 authRouter.get('/me', authenticate, getCurrentUser);
+authRouter.put('/profile', authenticate, auditMiddleware, updateProfile);
 authRouter.post('/api-keys', authenticate, createApiKeyHandler);
 authRouter.get('/api-keys', authenticate, listApiKeys);
 authRouter.delete('/api-keys/:id', authenticate, revokeApiKey);

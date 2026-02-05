@@ -23,6 +23,7 @@ import {
   SettingsPage,
   AuditLogPage,
   UsersPage,
+  ProfilePage,
 } from './pages';
 
 // Create query client
@@ -128,6 +129,12 @@ const usersRoute = createRoute({
   component: UsersPage,
 });
 
+const profileRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/profile',
+  component: ProfilePage,
+});
+
 // Create route tree
 const routeTree = rootRoute.addChildren([
   loginRoute,
@@ -140,6 +147,7 @@ const routeTree = rootRoute.addChildren([
     settingsRoute,
     auditRoute,
     usersRoute,
+    profileRoute,
   ]),
 ]);
 
