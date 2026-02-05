@@ -1,11 +1,12 @@
 /**
  * DNS Records Page
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X, Filter, CheckSquare, Square, MinusSquare, Settings2, Download, Upload } from 'lucide-react';
+import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X, Filter, Settings2, Download, Upload } from 'lucide-react';
 import { dnsApi, providersApi, preservedHostnamesApi, settingsApi, overridesApi, type DNSRecord, type CreateDNSRecordInput, type UpdateDNSRecordInput, type PreservedHostname, type HostnameOverride, type CreateOverrideInput, type UpdateOverrideInput, type ImportRecordsInput, type ImportRecordsResponse } from '../api';
-import { Button, Table, Pagination, Badge, Modal, ModalFooter, Alert, Select } from '../components/common';
+import { preferencesApi, DEFAULT_DNS_TABLE_PREFERENCES, type TableViewPreference } from '../api/preferences';
+import { Button, Table, Pagination, Badge, Modal, ModalFooter, Alert, Select, DataTable, ColumnCustomizer, ProviderCell, type DataTableColumn } from '../components/common';
 
 type TabType = 'records' | 'overrides' | 'preserved';
 
@@ -86,6 +87,39 @@ function DNSRecordsTab() {
   } | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+
+  // Table view preferences
+  const [tablePreferences, setTablePreferences] = useState<TableViewPreference>(DEFAULT_DNS_TABLE_PREFERENCES);
+
+  const { data: savedPreferences, isLoading: isLoadingPreferences } = useQuery({
+    queryKey: ['preferences', 'dns_records_view'],
+    queryFn: () => preferencesApi.getTablePreference('dns_records_view', DEFAULT_DNS_TABLE_PREFERENCES),
+    retry: false,
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  });
+
+  // Apply saved preferences when loaded
+  useEffect(() => {
+    if (savedPreferences) {
+      setTablePreferences(savedPreferences);
+    }
+  }, [savedPreferences]);
+
+  // Save preferences when they change
+  const savePreferencesMutation = useMutation({
+    mutationFn: (prefs: TableViewPreference) =>
+      preferencesApi.updatePreference('dns_records_view', prefs),
+  });
+
+  const handlePreferencesChange = useCallback((prefs: TableViewPreference) => {
+    setTablePreferences(prefs);
+    savePreferencesMutation.mutate(prefs);
+  }, [savePreferencesMutation]);
+
+  const handleResetPreferences = useCallback(() => {
+    setTablePreferences(DEFAULT_DNS_TABLE_PREFERENCES);
+    savePreferencesMutation.mutate(DEFAULT_DNS_TABLE_PREFERENCES);
+  }, [savePreferencesMutation]);
 
   const { data: providers } = useQuery({
     queryKey: ['providers'],
@@ -180,102 +214,61 @@ function DNSRecordsTab() {
     },
   });
 
-  // Selection handlers
-  const toggleSelect = (id: string) => {
-    const newSelected = new Set(selectedIds);
-    if (newSelected.has(id)) {
-      newSelected.delete(id);
-    } else {
-      newSelected.add(id);
-    }
-    setSelectedIds(newSelected);
-  };
-
-  const toggleSelectAll = () => {
-    if (!data?.records) return;
-    const allIds = data.records.map((r) => r.id);
-    const allSelected = allIds.every((id) => selectedIds.has(id));
-    if (allSelected) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(allIds));
-    }
-  };
-
-  const getSelectAllState = (): 'none' | 'some' | 'all' => {
-    if (!data?.records || data.records.length === 0) return 'none';
-    const allIds = data.records.map((r) => r.id);
-    const selectedCount = allIds.filter((id) => selectedIds.has(id)).length;
-    if (selectedCount === 0) return 'none';
-    if (selectedCount === allIds.length) return 'all';
-    return 'some';
-  };
-
   // Clear selection when page/filters change
   useEffect(() => {
     setSelectedIds(new Set());
   }, [page, search, managedFilter, providerFilter, typeFilter, zoneFilter, sourceFilter]);
 
-  const selectAllState = getSelectAllState();
-
-  const columns = [
+  // Column configurations for DataTable
+  const columns: DataTableColumn<DNSRecord>[] = useMemo(() => [
     {
-      key: 'select',
-      header: (
-        <button
-          onClick={toggleSelectAll}
-          className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-          title={selectAllState === 'all' ? 'Deselect all' : 'Select all'}
-        >
-          {selectAllState === 'none' && <Square className="w-4 h-4 text-gray-400" />}
-          {selectAllState === 'some' && <MinusSquare className="w-4 h-4 text-primary-500" />}
-          {selectAllState === 'all' && <CheckSquare className="w-4 h-4 text-primary-500" />}
-        </button>
-      ),
-      render: (row: DNSRecord) => (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleSelect(row.id);
-          }}
-          className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-        >
-          {selectedIds.has(row.id) ? (
-            <CheckSquare className="w-4 h-4 text-primary-500" />
-          ) : (
-            <Square className="w-4 h-4 text-gray-400" />
-          )}
-        </button>
-      ),
-    },
-    {
-      key: 'hostname',
+      id: 'hostname',
       header: 'Hostname',
+      sortable: true,
+      defaultVisible: true,
+      minWidth: 200,
       render: (row: DNSRecord) => (
         <span className="font-medium text-gray-900 dark:text-gray-100">{row.hostname}</span>
       ),
     },
     {
-      key: 'type',
+      id: 'type',
       header: 'Type',
+      sortable: true,
+      defaultVisible: true,
+      minWidth: 80,
       render: (row: DNSRecord) => (
         <Badge variant="info">{row.type}</Badge>
       ),
     },
     {
-      key: 'content',
+      id: 'content',
       header: 'Content',
+      sortable: true,
+      defaultVisible: true,
+      minWidth: 150,
       render: (row: DNSRecord) => (
-        <span className="font-mono text-xs">{row.content}</span>
+        <span className="font-mono text-xs truncate max-w-xs block" title={row.content}>
+          {row.content}
+        </span>
       ),
     },
     {
-      key: 'ttl',
+      id: 'ttl',
       header: 'TTL',
+      sortable: true,
+      defaultVisible: true,
+      minWidth: 70,
+      render: (row: DNSRecord) => (
+        <span className="text-gray-600 dark:text-gray-400">{row.ttl}</span>
+      ),
     },
     {
-      key: 'proxied',
+      id: 'proxied',
       header: 'Proxied',
+      sortable: false,
+      defaultVisible: true,
+      minWidth: 80,
       render: (row: DNSRecord) => {
         const provider = providers?.find((p) => p.id === row.providerId) as ProviderWithFeatures | undefined;
         const supportsProxy = provider?.features?.proxied ?? false;
@@ -292,8 +285,11 @@ function DNSRecordsTab() {
       },
     },
     {
-      key: 'status',
+      id: 'status',
       header: 'Status',
+      sortable: true,
+      defaultVisible: true,
+      minWidth: 90,
       render: (row: DNSRecord) => (
         <Badge
           variant={
@@ -307,27 +303,32 @@ function DNSRecordsTab() {
       ),
     },
     {
-      key: 'source',
-      header: 'Source',
-      render: (row: DNSRecord) => (
-        <span className="text-xs text-gray-500 dark:text-gray-400">{row.source}</span>
-      ),
-    },
-    {
-      key: 'provider',
+      id: 'provider',
       header: 'Provider',
+      sortable: true,
+      defaultVisible: true,
+      minWidth: 150,
       render: (row: DNSRecord) => {
         const provider = providers?.find((p) => p.id === row.providerId);
         return (
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            {provider?.name ?? row.providerId.slice(0, 8)}
-          </span>
+          <ProviderCell
+            provider={provider ? {
+              id: provider.id,
+              name: provider.name,
+              type: provider.type,
+              settings: provider.settings as { zone?: string; domain?: string; zoneName?: string },
+            } : null}
+            density={tablePreferences.density}
+          />
         );
       },
     },
     {
-      key: 'managed',
+      id: 'managed',
       header: 'Ownership',
+      sortable: false,
+      defaultVisible: true,
+      minWidth: 100,
       render: (row: DNSRecord) => (
         <Badge variant={row.managed ? 'success' : 'warning'}>
           {row.managed ? 'Managed' : 'Unmanaged'}
@@ -335,20 +336,63 @@ function DNSRecordsTab() {
       ),
     },
     {
-      key: 'actions',
-      header: '',
+      id: 'source',
+      header: 'Source',
+      sortable: true,
+      defaultVisible: false,
+      minWidth: 90,
       render: (row: DNSRecord) => (
-        <div className="flex items-center space-x-2">
+        <span className="text-xs text-gray-500 dark:text-gray-400 capitalize">{row.source}</span>
+      ),
+    },
+    {
+      id: 'lastSynced',
+      header: 'Last Synced',
+      sortable: true,
+      defaultVisible: false,
+      minWidth: 140,
+      render: (row: DNSRecord) => (
+        <span className="text-xs text-gray-500 dark:text-gray-400">
+          {row.lastSyncedAt ? new Date(row.lastSyncedAt).toLocaleString() : 'Never'}
+        </span>
+      ),
+    },
+    {
+      id: 'created',
+      header: 'Created',
+      sortable: true,
+      defaultVisible: false,
+      minWidth: 140,
+      render: (row: DNSRecord) => (
+        <span className="text-xs text-gray-500 dark:text-gray-400">
+          {row.createdAt ? new Date(row.createdAt).toLocaleString() : '-'}
+        </span>
+      ),
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      sortable: false,
+      defaultVisible: true,
+      minWidth: 80,
+      render: (row: DNSRecord) => (
+        <div className="flex items-center space-x-1">
           <button
-            className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            onClick={() => setEditRecord(row)}
+            className="p-1.5 text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditRecord(row);
+            }}
             title="Edit record"
           >
             <Edit className="w-4 h-4" />
           </button>
           <button
-            className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
-            onClick={() => setDeleteRecord(row)}
+            className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              setDeleteRecord(row);
+            }}
             title="Delete record"
           >
             <Trash2 className="w-4 h-4" />
@@ -356,7 +400,7 @@ function DNSRecordsTab() {
         </div>
       ),
     },
-  ];
+  ], [providers, tablePreferences.density]);
 
   return (
     <>
@@ -403,6 +447,17 @@ function DNSRecordsTab() {
               sourceFilter !== 'all' ? 1 : 0,
             ].reduce((a, b) => a + b, 0)})`}
           </Button>
+          {/* Column Customizer */}
+          <ColumnCustomizer
+            columns={columns.map(c => ({
+              id: c.id,
+              header: typeof c.header === 'string' ? c.header : c.id,
+              defaultVisible: c.defaultVisible,
+            }))}
+            preferences={tablePreferences}
+            onPreferencesChange={handlePreferencesChange}
+            onReset={handleResetPreferences}
+          />
           {/* Bulk Delete */}
           {selectedIds.size > 0 && (
             <Button
@@ -428,19 +483,25 @@ function DNSRecordsTab() {
                   className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-t-lg"
                   onClick={async () => {
                     setShowExportMenu(false);
-                    const data = await dnsApi.exportRecords({
-                      format: 'json',
-                      providerId: providerFilter !== 'all' ? providerFilter : undefined,
-                      type: typeFilter !== 'all' ? typeFilter as any : undefined,
-                      managed: managedFilter !== 'all' ? managedFilter === 'managed' : undefined,
-                    });
-                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `dns-records-${new Date().toISOString().split('T')[0]}.json`;
-                    a.click();
-                    URL.revokeObjectURL(url);
+                    try {
+                      const data = await dnsApi.exportRecords({
+                        format: 'json',
+                        providerId: providerFilter !== 'all' ? providerFilter : undefined,
+                        type: typeFilter !== 'all' ? typeFilter as any : undefined,
+                        managed: managedFilter !== 'all' ? managedFilter === 'managed' : undefined,
+                      });
+                      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `dns-records-${new Date().toISOString().split('T')[0]}.json`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                    } catch (error) {
+                      console.error('Export failed:', error);
+                    }
                   }}
                 >
                   Export as JSON
@@ -449,19 +510,25 @@ function DNSRecordsTab() {
                   className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-b-lg"
                   onClick={async () => {
                     setShowExportMenu(false);
-                    const csv = await dnsApi.exportRecords({
-                      format: 'csv',
-                      providerId: providerFilter !== 'all' ? providerFilter : undefined,
-                      type: typeFilter !== 'all' ? typeFilter as any : undefined,
-                      managed: managedFilter !== 'all' ? managedFilter === 'managed' : undefined,
-                    });
-                    const blob = new Blob([csv as string], { type: 'text/csv' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `dns-records-${new Date().toISOString().split('T')[0]}.csv`;
-                    a.click();
-                    URL.revokeObjectURL(url);
+                    try {
+                      const csv = await dnsApi.exportRecords({
+                        format: 'csv',
+                        providerId: providerFilter !== 'all' ? providerFilter : undefined,
+                        type: typeFilter !== 'all' ? typeFilter as any : undefined,
+                        managed: managedFilter !== 'all' ? managedFilter === 'managed' : undefined,
+                      });
+                      const blob = new Blob([csv as string], { type: 'text/csv' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `dns-records-${new Date().toISOString().split('T')[0]}.csv`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                    } catch (error) {
+                      console.error('Export failed:', error);
+                    }
                   }}
                 >
                   Export as CSV
@@ -636,15 +703,22 @@ function DNSRecordsTab() {
       )}
 
       {/* Table */}
-      <div className="card p-0">
-        <Table
-          columns={columns}
-          data={data?.records ?? []}
-          keyField="id"
-          isLoading={isLoading}
-          emptyMessage="No DNS records found"
-        />
-        {data && data.pagination.totalPages > 1 && (
+      <DataTable
+        columns={columns}
+        data={data?.records ?? []}
+        keyField="id"
+        isLoading={isLoading || isLoadingPreferences}
+        emptyMessage="No DNS records found"
+        emptyIcon={<Globe className="w-8 h-8 text-gray-400" />}
+        preferences={tablePreferences}
+        onPreferencesChange={handlePreferencesChange}
+        selectable
+        selectedIds={selectedIds}
+        onSelectionChange={setSelectedIds}
+        onRowClick={(row) => setEditRecord(row)}
+      />
+      {data && data.pagination.totalPages > 1 && (
+        <div className="mt-4">
           <Pagination
             page={data.pagination.page}
             totalPages={data.pagination.totalPages}
@@ -652,8 +726,8 @@ function DNSRecordsTab() {
             limit={data.pagination.limit}
             onPageChange={setPage}
           />
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Create Modal */}
       <CreateRecordModal

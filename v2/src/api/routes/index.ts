@@ -120,6 +120,13 @@ import {
   createOverrideFromRecord,
 } from '../controllers/overridesController.js';
 
+import {
+  listPreferences,
+  getPreference,
+  updatePreference,
+  deletePreference,
+} from '../controllers/preferencesController.js';
+
 const router = Router();
 
 // Apply standard rate limiting to all routes
@@ -260,5 +267,14 @@ overridesRouter.post('/from-record', requirePermission('write'), createOverrideF
 overridesRouter.put('/:id', requirePermission('write'), updateOverride);
 overridesRouter.delete('/:id', requirePermission('write'), deleteOverride);
 router.use('/overrides', overridesRouter);
+
+// User Preferences routes (per-user UI settings like table columns, view options)
+const preferencesRouter = Router();
+preferencesRouter.use(authenticate);
+preferencesRouter.get('/', listPreferences);
+preferencesRouter.get('/:key', getPreference);
+preferencesRouter.put('/:key', updatePreference);
+preferencesRouter.delete('/:key', deletePreference);
+router.use('/preferences', preferencesRouter);
 
 export { router as apiRouter };

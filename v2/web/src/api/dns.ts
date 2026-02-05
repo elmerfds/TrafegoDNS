@@ -184,7 +184,7 @@ export const dnsApi = {
       // For CSV, we need to get the raw response
       const response = await fetch(`/api/v1/dns/records/export?${new URLSearchParams(params as Record<string, string>)}`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
         },
       });
       if (!response.ok) throw new Error('Export failed');

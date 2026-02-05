@@ -316,6 +316,19 @@ function createTablesDirectly(): void {
     )
   `);
 
+  // Create user_preferences table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      preference_key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      UNIQUE(user_id, preference_key)
+    )
+  `);
+
   // Run schema migrations for existing databases BEFORE creating indexes
   // This ensures new columns exist before we try to create indexes on them
   runSchemaMigrations(sqliteDb);
@@ -336,6 +349,7 @@ function createTablesDirectly(): void {
     CREATE INDEX IF NOT EXISTS idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
     CREATE INDEX IF NOT EXISTS idx_managed_hostnames_provider ON managed_hostnames(provider_id);
     CREATE INDEX IF NOT EXISTS idx_hostname_overrides_hostname ON hostname_overrides(hostname);
+    CREATE INDEX IF NOT EXISTS idx_user_preferences_user ON user_preferences(user_id);
   `);
 
   logger.info('Database tables created directly');

@@ -267,3 +267,18 @@ export type NewPreservedHostname = typeof preservedHostnames.$inferInsert;
 
 export type HostnameOverride = typeof hostnameOverrides.$inferSelect;
 export type NewHostnameOverride = typeof hostnameOverrides.$inferInsert;
+
+/**
+ * User Preferences table
+ * Stores per-user UI preferences like table column visibility, sort order, etc.
+ */
+export const userPreferences = sqliteTable('user_preferences', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  preferenceKey: text('preference_key').notNull(), // e.g., 'dns_records_view', 'providers_view'
+  value: text('value').notNull(), // JSON stringified preference object
+  ...timestamps,
+});
+
+export type UserPreference = typeof userPreferences.$inferSelect;
+export type NewUserPreference = typeof userPreferences.$inferInsert;
