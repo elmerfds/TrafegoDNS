@@ -21,7 +21,7 @@ const timestamps = {
 export const providers = sqliteTable('providers', {
   id: text('id').primaryKey(),
   name: text('name').notNull().unique(),
-  type: text('type', { enum: ['cloudflare', 'digitalocean', 'route53', 'technitium'] }).notNull(),
+  type: text('type', { enum: ['cloudflare', 'digitalocean', 'route53', 'technitium', 'adguard', 'pihole'] }).notNull(),
   isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
   credentials: text('credentials').notNull(), // Encrypted JSON
   settings: text('settings').notNull().default('{}'), // JSON

@@ -291,6 +291,17 @@ const providerFields: Record<ProviderType, Array<{ key: string; label: string; t
     { key: 'zone', label: 'Zone *', placeholder: 'example.com' },
     { key: 'apiToken', label: 'API Token *' },
   ],
+  adguard: [
+    { key: 'url', label: 'Server URL *', placeholder: 'http://adguard:80' },
+    { key: 'username', label: 'Username *', placeholder: 'Admin username' },
+    { key: 'password', label: 'Password *', type: 'password' },
+    { key: 'domain', label: 'Domain Filter', placeholder: 'example.com (optional)' },
+  ],
+  pihole: [
+    { key: 'url', label: 'Server URL *', placeholder: 'http://pihole:80' },
+    { key: 'password', label: 'Web Password *', type: 'password' },
+    { key: 'domain', label: 'Domain Filter', placeholder: 'example.com (optional)' },
+  ],
 };
 
 function CreateProviderModal({ isOpen, onClose }: CreateProviderModalProps) {
@@ -398,6 +409,8 @@ function CreateProviderModal({ isOpen, onClose }: CreateProviderModalProps) {
               { value: 'digitalocean', label: 'DigitalOcean', description: 'DNS management' },
               { value: 'route53', label: 'AWS Route53', description: 'Amazon DNS service' },
               { value: 'technitium', label: 'Technitium DNS', description: 'Self-hosted DNS' },
+              { value: 'adguard', label: 'AdGuard Home', description: 'Self-hosted DNS with ad blocking' },
+              { value: 'pihole', label: 'Pi-hole', description: 'Network-wide ad blocking DNS' },
             ]}
           />
         </div>

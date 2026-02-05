@@ -50,7 +50,7 @@ export interface DNSRecordUpdateInput {
 }
 
 // Provider Types
-export type ProviderType = 'cloudflare' | 'digitalocean' | 'route53' | 'technitium';
+export type ProviderType = 'cloudflare' | 'digitalocean' | 'route53' | 'technitium' | 'adguard' | 'pihole';
 
 export interface ProviderConfig {
   id?: string;
@@ -90,6 +90,19 @@ export interface TechnitiumCredentials {
   username?: string;
   password?: string;
   zone: string;
+}
+
+export interface AdGuardCredentials {
+  url: string;
+  username: string;
+  password: string;
+  domain?: string; // Optional domain filter
+}
+
+export interface PiHoleCredentials {
+  url: string;
+  password: string;
+  domain?: string; // Optional domain filter
 }
 
 // Tunnel Types (Cloudflare)

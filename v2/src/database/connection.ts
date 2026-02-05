@@ -104,7 +104,7 @@ function createTablesDirectly(): void {
     CREATE TABLE IF NOT EXISTS providers (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
-      type TEXT NOT NULL CHECK(type IN ('cloudflare', 'digitalocean', 'route53', 'technitium')),
+      type TEXT NOT NULL CHECK(type IN ('cloudflare', 'digitalocean', 'route53', 'technitium', 'adguard', 'pihole')),
       is_default INTEGER NOT NULL DEFAULT 0,
       credentials TEXT NOT NULL,
       settings TEXT NOT NULL DEFAULT '{}',
@@ -385,6 +385,9 @@ function runSchemaMigrations(sqliteDb: Database.Database): void {
 
   // Fix CHECK constraint for audit_logs action column (add new action types)
   migrateAuditLogsActionConstraint(sqliteDb);
+
+  // Add new provider types (adguard, pihole) to providers table CHECK constraint
+  migrateProviderTypeConstraint(sqliteDb);
 }
 
 /**
@@ -580,6 +583,61 @@ function migrateAuditLogsActionConstraint(sqliteDb: Database.Database): void {
   } catch (error) {
     sqliteDb.exec('ROLLBACK');
     logger.error({ error }, 'Failed to migrate audit_logs table');
+    throw error;
+  }
+}
+
+/**
+ * Migrate providers table to include 'adguard' and 'pihole' in type CHECK constraint
+ */
+function migrateProviderTypeConstraint(sqliteDb: Database.Database): void {
+  const tableExists = sqliteDb
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='providers'")
+    .get();
+  if (!tableExists) {
+    return;
+  }
+
+  const tableSchema = sqliteDb
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='providers'")
+    .get() as { sql: string } | undefined;
+
+  if (tableSchema && tableSchema.sql.includes("'adguard'")) {
+    return; // Already migrated
+  }
+
+  logger.info('Migrating providers table to support adguard and pihole provider types');
+
+  sqliteDb.exec('BEGIN TRANSACTION');
+  try {
+    sqliteDb.exec(`
+      CREATE TABLE providers_new (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL CHECK(type IN ('cloudflare', 'digitalocean', 'route53', 'technitium', 'adguard', 'pihole')),
+        is_default INTEGER NOT NULL DEFAULT 0,
+        credentials TEXT NOT NULL,
+        settings TEXT NOT NULL DEFAULT '{}',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )
+    `);
+
+    sqliteDb.exec(`
+      INSERT INTO providers_new (id, name, type, is_default, credentials, settings, enabled, created_at, updated_at)
+      SELECT id, name, type, is_default, credentials, settings, enabled, created_at, updated_at
+      FROM providers
+    `);
+
+    sqliteDb.exec('DROP TABLE providers');
+    sqliteDb.exec('ALTER TABLE providers_new RENAME TO providers');
+
+    sqliteDb.exec('COMMIT');
+    logger.info('Migration complete: providers table updated with adguard and pihole types');
+  } catch (error) {
+    sqliteDb.exec('ROLLBACK');
+    logger.error({ error }, 'Failed to migrate providers table');
     throw error;
   }
 }

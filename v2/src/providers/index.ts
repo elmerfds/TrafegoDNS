@@ -6,6 +6,8 @@ export { CloudflareProvider, type CloudflareProviderCredentials } from './cloudf
 export { DigitalOceanProvider, type DigitalOceanProviderCredentials } from './digitalocean/index.js';
 export { Route53Provider, type Route53ProviderCredentials } from './route53/index.js';
 export { TechnitiumProvider, type TechnitiumProviderCredentials } from './technitium/index.js';
+export { AdGuardProvider, type AdGuardProviderCredentials } from './adguard/index.js';
+export { PiHoleProvider, type PiHoleProviderCredentials } from './pihole/index.js';
 export {
   createProvider,
   createProviderFromEnv,

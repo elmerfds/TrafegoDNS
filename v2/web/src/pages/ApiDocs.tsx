@@ -68,7 +68,7 @@ const apiGroups: EndpointGroup[] = [
   },
   {
     name: 'Providers',
-    description: 'DNS provider configuration',
+    description: 'DNS provider configuration (Cloudflare, DigitalOcean, Route53, Technitium, AdGuard Home, Pi-hole)',
     basePath: '/api/v1/providers',
     endpoints: [
       { method: 'GET', path: '/types', description: 'List available provider types', auth: 'required', permission: 'read' },

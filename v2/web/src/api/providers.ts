@@ -3,7 +3,7 @@
  */
 import { apiClient } from './client';
 
-export type ProviderType = 'cloudflare' | 'digitalocean' | 'route53' | 'technitium';
+export type ProviderType = 'cloudflare' | 'digitalocean' | 'route53' | 'technitium' | 'adguard' | 'pihole';
 
 export interface ProviderFeatures {
   proxied: boolean;

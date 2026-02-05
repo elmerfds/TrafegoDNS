@@ -18,6 +18,10 @@ export function ProviderIcon({ type, className = 'w-5 h-5' }: ProviderIconProps)
       return <Route53Icon className={className} />;
     case 'technitium':
       return <TechnitiumIcon className={className} />;
+    case 'adguard':
+      return <AdGuardIcon className={className} />;
+    case 'pihole':
+      return <PiHoleIcon className={className} />;
     default:
       return <DefaultProviderIcon className={className} />;
   }
@@ -82,6 +86,26 @@ function TechnitiumIcon({ className }: { className: string }) {
     <img
       src="https://cdn.jsdelivr.net/gh/selfhst/icons@main/png/technitium.png"
       alt="Technitium DNS"
+      className={className}
+    />
+  );
+}
+
+function AdGuardIcon({ className }: { className: string }) {
+  return (
+    <img
+      src="https://cdn.jsdelivr.net/gh/selfhst/icons@main/png/adguard-home.png"
+      alt="AdGuard Home"
+      className={className}
+    />
+  );
+}
+
+function PiHoleIcon({ className }: { className: string }) {
+  return (
+    <img
+      src="https://cdn.jsdelivr.net/gh/selfhst/icons@main/png/pi-hole.png"
+      alt="Pi-hole"
       className={className}
     />
   );

@@ -9,6 +9,8 @@ import { CloudflareProvider, type CloudflareProviderCredentials } from './cloudf
 import { DigitalOceanProvider, type DigitalOceanProviderCredentials } from './digitalocean/index.js';
 import { Route53Provider, type Route53ProviderCredentials } from './route53/index.js';
 import { TechnitiumProvider, type TechnitiumProviderCredentials } from './technitium/index.js';
+import { AdGuardProvider, type AdGuardProviderCredentials } from './adguard/index.js';
+import { PiHoleProvider, type PiHoleProviderCredentials } from './pihole/index.js';
 import type { ProviderType, ProviderSettingsData } from '../types/index.js';
 
 export interface CreateProviderOptions {
@@ -58,6 +60,22 @@ export function createProvider(options: CreateProviderOptions): DNSProvider {
         id,
         name,
         credentials as TechnitiumProviderCredentials,
+        { cacheRefreshInterval, settings }
+      );
+
+    case 'adguard':
+      return new AdGuardProvider(
+        id,
+        name,
+        credentials as AdGuardProviderCredentials,
+        { cacheRefreshInterval, settings }
+      );
+
+    case 'pihole':
+      return new PiHoleProvider(
+        id,
+        name,
+        credentials as PiHoleProviderCredentials,
         { cacheRefreshInterval, settings }
       );
 
@@ -169,6 +187,48 @@ export function createProviderFromEnv(): DNSProvider | null {
       });
     }
 
+    case 'adguard': {
+      const url = process.env['ADGUARD_URL'];
+      const username = process.env['ADGUARD_USERNAME'];
+      const password = process.env['ADGUARD_PASSWORD'];
+
+      if (!url || !username || !password) {
+        throw new Error('ADGUARD_URL, ADGUARD_USERNAME, and ADGUARD_PASSWORD are required');
+      }
+
+      return createProvider({
+        id,
+        name,
+        type: 'adguard',
+        credentials: {
+          url,
+          username,
+          password,
+          domain: process.env['ADGUARD_DOMAIN'],
+        } as AdGuardProviderCredentials,
+      });
+    }
+
+    case 'pihole': {
+      const url = process.env['PIHOLE_URL'];
+      const password = process.env['PIHOLE_PASSWORD'];
+
+      if (!url || !password) {
+        throw new Error('PIHOLE_URL and PIHOLE_PASSWORD are required');
+      }
+
+      return createProvider({
+        id,
+        name,
+        type: 'pihole',
+        credentials: {
+          url,
+          password,
+          domain: process.env['PIHOLE_DOMAIN'],
+        } as PiHoleProviderCredentials,
+      });
+    }
+
     default:
       throw new Error(`Unsupported provider type: ${providerType}`);
   }
@@ -201,6 +261,16 @@ export function validateCredentials(type: ProviderType, credentials: ProviderCre
       return !!(creds.username && creds.password);
     }
 
+    case 'adguard': {
+      const creds = credentials as AdGuardProviderCredentials;
+      return !!(creds.url && creds.username && creds.password);
+    }
+
+    case 'pihole': {
+      const creds = credentials as PiHoleProviderCredentials;
+      return !!(creds.url && creds.password);
+    }
+
     default:
       return false;
   }
@@ -210,7 +280,7 @@ export function validateCredentials(type: ProviderType, credentials: ProviderCre
  * Get supported provider types
  */
 export function getSupportedProviders(): ProviderType[] {
-  return ['cloudflare', 'digitalocean', 'route53', 'technitium'];
+  return ['cloudflare', 'digitalocean', 'route53', 'technitium', 'adguard', 'pihole'];
 }
 
 /**
@@ -305,6 +375,44 @@ export function detectProvidersFromEnv(): DetectedProviderConfig[] {
         username: techUser,
         password: techPass,
       } as TechnitiumProviderCredentials,
+    });
+  }
+
+  // Check AdGuard Home
+  const adguardUrl = process.env['ADGUARD_URL'];
+  const adguardUser = process.env['ADGUARD_USERNAME'];
+  const adguardPass = process.env['ADGUARD_PASSWORD'];
+  const adguardDomain = process.env['ADGUARD_DOMAIN'] || 'all';
+
+  if (adguardUrl && adguardUser && adguardPass) {
+    detected.push({
+      type: 'adguard',
+      name: `AdGuard Home (${adguardDomain})`,
+      zone: adguardDomain,
+      credentials: {
+        url: adguardUrl,
+        username: adguardUser,
+        password: adguardPass,
+        domain: process.env['ADGUARD_DOMAIN'],
+      } as AdGuardProviderCredentials,
+    });
+  }
+
+  // Check Pi-hole
+  const piholeUrl = process.env['PIHOLE_URL'];
+  const piholePass = process.env['PIHOLE_PASSWORD'];
+  const piholeDomain = process.env['PIHOLE_DOMAIN'] || 'all';
+
+  if (piholeUrl && piholePass) {
+    detected.push({
+      type: 'pihole',
+      name: `Pi-hole (${piholeDomain})`,
+      zone: piholeDomain,
+      credentials: {
+        url: piholeUrl,
+        password: piholePass,
+        domain: process.env['PIHOLE_DOMAIN'],
+      } as PiHoleProviderCredentials,
     });
   }
 

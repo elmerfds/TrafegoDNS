@@ -90,6 +90,41 @@ export const PROVIDER_TYPES: Record<string, ProviderTypeInfo> = {
       { key: 'password', label: 'Password', type: 'password', required: false, placeholder: 'For session auth' },
     ],
   },
+  adguard: {
+    type: 'adguard',
+    name: 'AdGuard Home',
+    features: {
+      proxied: false,
+      ttlMin: 0,
+      ttlMax: 0,
+      ttlDefault: 0,
+      supportedTypes: ['A', 'AAAA', 'CNAME'],
+      batchOperations: false,
+    },
+    requiredCredentials: [
+      { key: 'url', label: 'Server URL', type: 'text', required: true, placeholder: 'e.g., http://adguard:80' },
+      { key: 'username', label: 'Username', type: 'text', required: true, placeholder: 'Admin username' },
+      { key: 'password', label: 'Password', type: 'password', required: true, placeholder: 'Admin password' },
+      { key: 'domain', label: 'Domain Filter', type: 'text', required: false, placeholder: 'e.g., example.com (optional)' },
+    ],
+  },
+  pihole: {
+    type: 'pihole',
+    name: 'Pi-hole',
+    features: {
+      proxied: false,
+      ttlMin: 0,
+      ttlMax: 0,
+      ttlDefault: 0,
+      supportedTypes: ['A', 'AAAA', 'CNAME'],
+      batchOperations: false,
+    },
+    requiredCredentials: [
+      { key: 'url', label: 'Server URL', type: 'text', required: true, placeholder: 'e.g., http://pihole:80' },
+      { key: 'password', label: 'Web Password', type: 'password', required: true, placeholder: 'Pi-hole admin password' },
+      { key: 'domain', label: 'Domain Filter', type: 'text', required: false, placeholder: 'e.g., example.com (optional)' },
+    ],
+  },
   route53: {
     type: 'route53',
     name: 'AWS Route 53',
