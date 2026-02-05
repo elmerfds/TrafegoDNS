@@ -123,6 +123,7 @@ export const users = sqliteTable('users', {
   email: text('email').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   role: text('role', { enum: ['admin', 'user', 'readonly'] }).notNull().default('user'),
+  avatar: text('avatar'), // Base64 data URI or URL
   lastLoginAt: integer('last_login_at', { mode: 'timestamp' }),
   ...timestamps,
 });

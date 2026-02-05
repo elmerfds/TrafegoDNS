@@ -40,40 +40,47 @@ export function Table<T>({
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-        <thead className="bg-gray-50 dark:bg-gray-800">
-          <tr>
-            {columns.map((column) => (
-              <th
-                key={column.key}
-                className={`
-                  px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider
-                  ${column.className || ''}
-                `}
-              >
-                {column.header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-          {data.map((row) => (
-            <tr key={String((row as Record<string, unknown>)[keyField as string])} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-              {columns.map((column) => (
-                <td
+    <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead className="bg-gray-50 dark:bg-gray-800/50">
+            <tr>
+              {columns.map((column, index) => (
+                <th
                   key={column.key}
-                  className={`px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 ${column.className || ''}`}
+                  className={`
+                    px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider
+                    ${index === 0 ? 'rounded-tl-xl' : ''}
+                    ${index === columns.length - 1 ? 'rounded-tr-xl' : ''}
+                    ${column.className || ''}
+                  `}
                 >
-                  {column.render
-                    ? column.render(row)
-                    : String((row as Record<string, unknown>)[column.key] ?? '')}
-                </td>
+                  {column.header}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+            {data.map((row, rowIndex) => (
+              <tr
+                key={String((row as Record<string, unknown>)[keyField as string])}
+                className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${rowIndex === data.length - 1 ? 'last:rounded-b-xl' : ''}`}
+              >
+                {columns.map((column) => (
+                  <td
+                    key={column.key}
+                    className={`px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 ${column.className || ''}`}
+                  >
+                    {column.render
+                      ? column.render(row)
+                      : String((row as Record<string, unknown>)[column.key] ?? '')}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

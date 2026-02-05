@@ -1,33 +1,36 @@
 /**
  * Profile Page - User's own settings
  */
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { User, Mail, Lock, Shield } from 'lucide-react';
-import { usersApi } from '../api/users';
+import { User, Mail, Lock, Shield, Camera, X } from 'lucide-react';
+import { authApi } from '../api/auth';
 import { Button, Alert, Badge } from '../components/common';
 import { useAuthStore } from '../stores';
 
 export function ProfilePage() {
   const queryClient = useQueryClient();
-  const { user, checkAuth } = useAuthStore();
+  const { user, updateUser } = useAuthStore();
   const [email, setEmail] = useState(user?.email ?? '');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [changePassword, setChangePassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const updateMutation = useMutation({
-    mutationFn: (data: { email?: string; password?: string }) => usersApi.updateProfile(data),
-    onSuccess: () => {
+    mutationFn: (data: { email?: string; password?: string; avatar?: string | null }) => authApi.updateProfile(data),
+    onSuccess: (updatedUser) => {
       setSuccess('Profile updated successfully');
       setError(null);
       setChangePassword(false);
       setNewPassword('');
       setConfirmPassword('');
-      // Refresh user data
-      checkAuth();
+      setAvatarPreview(null);
+      // Update user in store
+      updateUser(updatedUser);
       queryClient.invalidateQueries({ queryKey: ['users'] });
     },
     onError: (error: Error) => {
@@ -36,12 +39,45 @@ export function ProfilePage() {
     },
   });
 
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setError('Please select an image file');
+      return;
+    }
+
+    // Validate file size (max 500KB)
+    if (file.size > 500 * 1024) {
+      setError('Image must be smaller than 500KB');
+      return;
+    }
+
+    // Convert to base64
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      setAvatarPreview(result);
+      setError(null);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveAvatar = () => {
+    setAvatarPreview('__remove__'); // Special marker for removal
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
 
-    const updateData: { email?: string; password?: string } = {};
+    const updateData: { email?: string; password?: string; avatar?: string | null } = {};
 
     if (email !== user?.email) {
       updateData.email = email;
@@ -57,6 +93,13 @@ export function ProfilePage() {
         return;
       }
       updateData.password = newPassword;
+    }
+
+    // Handle avatar changes
+    if (avatarPreview === '__remove__') {
+      updateData.avatar = null;
+    } else if (avatarPreview) {
+      updateData.avatar = avatarPreview;
     }
 
     if (Object.keys(updateData).length === 0) {
@@ -93,8 +136,44 @@ export function ProfilePage() {
       {/* User Info Card */}
       <div className="card p-6">
         <div className="flex items-center space-x-4 mb-6">
-          <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-primary-500 to-purple-500 flex items-center justify-center text-white text-2xl font-bold">
-            {user?.username?.charAt(0).toUpperCase() || 'U'}
+          {/* Avatar with upload */}
+          <div className="relative group">
+            {(avatarPreview && avatarPreview !== '__remove__') || (user?.avatar && avatarPreview !== '__remove__') ? (
+              <img
+                src={avatarPreview && avatarPreview !== '__remove__' ? avatarPreview : user?.avatar || ''}
+                alt="Avatar"
+                className="w-20 h-20 rounded-xl object-cover"
+              />
+            ) : (
+              <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-primary-500 to-purple-500 flex items-center justify-center text-white text-2xl font-bold">
+                {user?.username?.charAt(0).toUpperCase() || 'U'}
+              </div>
+            )}
+            {/* Upload overlay */}
+            <div
+              className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Camera className="w-6 h-6 text-white" />
+            </div>
+            {/* Remove button */}
+            {(user?.avatar || avatarPreview) && avatarPreview !== '__remove__' && (
+              <button
+                type="button"
+                onClick={handleRemoveAvatar}
+                className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                title="Remove avatar"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarChange}
+              className="hidden"
+            />
           </div>
           <div>
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
@@ -106,6 +185,9 @@ export function ProfilePage() {
                 {user?.role}
               </Badge>
             </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              Hover over avatar to change
+            </p>
           </div>
         </div>
 

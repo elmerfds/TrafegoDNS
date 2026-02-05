@@ -2,16 +2,27 @@
  * Main Layout Component
  */
 import { useState } from 'react';
-import { Outlet } from '@tanstack/react-router';
+import { Outlet, useLocation } from '@tanstack/react-router';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 
-interface LayoutProps {
-  title?: string;
-}
+// Map route paths to page titles
+const routeTitles: Record<string, string> = {
+  '/': 'Dashboard',
+  '/dns': 'DNS Records',
+  '/providers': 'Providers',
+  '/tunnels': 'Tunnels',
+  '/webhooks': 'Webhooks',
+  '/settings': 'Settings',
+  '/logs': 'Logs',
+  '/users': 'Users',
+  '/profile': 'Profile',
+};
 
-export function Layout({ title = 'Dashboard' }: LayoutProps) {
+export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
+  const title = routeTitles[location.pathname] || 'Dashboard';
 
   return (
     <div className="flex h-screen overflow-hidden gradient-bg">

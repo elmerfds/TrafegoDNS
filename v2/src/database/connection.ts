@@ -210,11 +210,19 @@ function createTablesDirectly(): void {
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin', 'user', 'readonly')),
+      avatar TEXT,
       last_login_at INTEGER,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()),
       updated_at INTEGER NOT NULL DEFAULT (unixepoch())
     )
   `);
+
+  // Migration: Add avatar column to users table if it doesn't exist
+  try {
+    sqliteDb.exec(`ALTER TABLE users ADD COLUMN avatar TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
 
   // Create api_keys table
   sqliteDb.exec(`

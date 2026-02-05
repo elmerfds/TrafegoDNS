@@ -8,6 +8,7 @@ export interface User {
   username: string;
   email: string;
   role: 'admin' | 'user' | 'readonly';
+  avatar?: string | null;
 }
 
 export interface LoginResponse {
@@ -62,5 +63,13 @@ export const authApi = {
 
   async deleteApiKey(id: string): Promise<void> {
     await apiClient.delete(`/auth/api-keys/${id}`);
+  },
+
+  async updateProfile(data: {
+    email?: string;
+    password?: string;
+    avatar?: string | null;
+  }): Promise<User> {
+    return apiClient.put<User>('/auth/profile', data);
   },
 };

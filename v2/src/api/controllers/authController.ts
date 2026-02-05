@@ -79,6 +79,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
         username: user.username,
         email: user.email,
         role: user.role,
+        avatar: user.avatar,
       },
     },
   });
@@ -117,6 +118,7 @@ export const getCurrentUser = asyncHandler(async (req: Request, res: Response) =
       username: users.username,
       email: users.email,
       role: users.role,
+      avatar: users.avatar,
       createdAt: users.createdAt,
       lastLoginAt: users.lastLoginAt,
     })
@@ -243,14 +245,14 @@ export const revokeApiKey = asyncHandler(async (req: Request, res: Response) => 
 });
 
 /**
- * Update current user's own profile (email, password)
+ * Update current user's own profile (email, password, avatar)
  */
 export const updateProfile = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user) {
     throw ApiError.unauthorized();
   }
 
-  const { email, password } = req.body;
+  const { email, password, avatar } = req.body;
   const db = getDatabase();
 
   // Check user exists
@@ -281,6 +283,21 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response) =>
     }
     updateData.passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   }
+  if (avatar !== undefined) {
+    // Validate avatar is a data URI or URL, or null to remove
+    if (avatar !== null && avatar !== '') {
+      const isDataUri = avatar.startsWith('data:image/');
+      const isUrl = avatar.startsWith('http://') || avatar.startsWith('https://');
+      if (!isDataUri && !isUrl) {
+        throw ApiError.badRequest('Avatar must be a data URI or URL');
+      }
+      // Limit base64 size to ~500KB (after encoding, roughly 670KB string)
+      if (isDataUri && avatar.length > 700000) {
+        throw ApiError.badRequest('Avatar image too large (max 500KB)');
+      }
+    }
+    updateData.avatar = avatar || null;
+  }
 
   if (Object.keys(updateData).length === 1) {
     throw ApiError.badRequest('No changes to save');
@@ -292,7 +309,7 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response) =>
     action: 'update',
     resourceType: 'user',
     resourceId: req.user.id,
-    details: { self: true },
+    details: { self: true, avatarChanged: avatar !== undefined },
   });
 
   const [user] = await db
@@ -301,6 +318,7 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response) =>
       username: users.username,
       email: users.email,
       role: users.role,
+      avatar: users.avatar,
       createdAt: users.createdAt,
       lastLoginAt: users.lastLoginAt,
     })

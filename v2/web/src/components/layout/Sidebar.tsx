@@ -105,9 +105,17 @@ export function Sidebar() {
             title="Profile settings"
           >
             <div className="flex-shrink-0">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-emerald-500/20 group-hover:shadow-emerald-500/40 transition-shadow">
-                {user?.username?.charAt(0).toUpperCase() || 'U'}
-              </div>
+              {user?.avatar ? (
+                <img
+                  src={user.avatar}
+                  alt={user.username}
+                  className="w-10 h-10 rounded-xl object-cover shadow-lg"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-emerald-500/20 group-hover:shadow-emerald-500/40 transition-shadow">
+                  {user?.username?.charAt(0).toUpperCase() || 'U'}
+                </div>
+              )}
             </div>
             <div className="ml-3 flex-1 min-w-0">
               <p className="text-sm font-semibold text-white truncate group-hover:text-primary-300 transition-colors">
