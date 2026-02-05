@@ -49,7 +49,7 @@ const defaultOptions: LoggerOptions = {
  * Format a value for clean inline display
  * Keeps output concise for log readability
  */
-function formatValue(value: unknown, maxLen: number = 60): string {
+function formatValue(value: unknown, maxLen: number = 40): string {
   if (value === undefined || value === null) return '';
   if (typeof value === 'string') {
     return value.length > maxLen ? value.substring(0, maxLen) + '...' : value;
@@ -58,12 +58,10 @@ function formatValue(value: unknown, maxLen: number = 60): string {
 
   if (Array.isArray(value)) {
     if (value.length === 0) return '[]';
-    // For short arrays, show all items
     if (value.length <= 3) {
       const items = value.map(v => formatValue(v, 30));
       return items.join(', ');
     }
-    // For longer arrays, show count only
     return `${value.length} items`;
   }
 
@@ -71,12 +69,14 @@ function formatValue(value: unknown, maxLen: number = 60): string {
     const obj = value as Record<string, unknown>;
     const keys = Object.keys(obj);
     if (keys.length === 0) return '{}';
-    // For objects, show key count
     return `{${keys.length} fields}`;
   }
 
   return String(value);
 }
+
+// Keys that contain IDs — truncate to short form
+const ID_KEYS = new Set(['containerId', 'providerId', 'resourceId', 'externalId', 'id', 'tunnelId']);
 
 /**
  * Format context data in a clean, readable way
@@ -86,23 +86,35 @@ function formatContext(log: Record<string, unknown>, excludeKeys: string[]): str
   const contextKeys = Object.keys(log).filter((k) => !excludeKeys.includes(k));
   if (contextKeys.length === 0) return '';
 
-  // Priority order for context fields
-  const priorityKeys = ['name', 'hostname', 'type', 'count', 'provider', 'providerId', 'zone', 'id'];
-  const sortedKeys = contextKeys.sort((a, b) => {
-    const aIdx = priorityKeys.indexOf(a);
-    const bIdx = priorityKeys.indexOf(b);
-    if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx;
-    if (aIdx >= 0) return -1;
-    if (bIdx >= 0) return 1;
-    return 0;
-  });
+  // Priority order for context fields (most useful first)
+  const priorityKeys = [
+    'name', 'containerName', 'hostname', 'hostnames',
+    'type', 'count', 'provider', 'zone', 'source',
+  ];
+
+  // De-duplicate: if containerName present, skip containerId from display
+  const skipKeys = new Set<string>();
+  if (log['containerName']) skipKeys.add('containerId');
+  if (log['name']) skipKeys.add('id');
+
+  const sortedKeys = contextKeys
+    .filter(k => !skipKeys.has(k))
+    .sort((a, b) => {
+      const aIdx = priorityKeys.indexOf(a);
+      const bIdx = priorityKeys.indexOf(b);
+      if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx;
+      if (aIdx >= 0) return -1;
+      if (bIdx >= 0) return 1;
+      return 0;
+    });
 
   const contextParts: string[] = [];
-  // Limit to 4 context items for readability
-  for (const key of sortedKeys.slice(0, 4)) {
+  for (const key of sortedKeys.slice(0, 5)) {
     const value = log[key];
     if (value === undefined || value === null) continue;
-    const formatted = formatValue(value);
+    // Use short truncation for ID-like fields
+    const maxLen = ID_KEYS.has(key) ? 12 : 40;
+    const formatted = formatValue(value, maxLen);
     if (formatted) {
       contextParts.push(`${key}=${formatted}`);
     }
