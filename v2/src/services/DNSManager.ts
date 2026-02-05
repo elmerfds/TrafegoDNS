@@ -671,7 +671,11 @@ export class DNSManager {
         // Track records in database
         await this.trackRecords(result, providerId);
       } catch (error) {
-        this.logger.error({ error, providerId }, 'Error processing records for provider');
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          { error: errorMessage, providerId, providerName: group.provider.getProviderName(), recordCount: group.records.length },
+          'Error processing records for provider'
+        );
         this.stats.errors += group.records.length;
       }
     }
