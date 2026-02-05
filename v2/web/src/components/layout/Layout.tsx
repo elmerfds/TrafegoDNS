@@ -70,7 +70,11 @@ export function Layout() {
 
         {/* Main content area */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <Header title={title} onMenuClick={() => setSidebarOpen(true)} />
+          <Header
+            title={title}
+            onMenuClick={() => setSidebarOpen(true)}
+            onSearchClick={() => setCommandPaletteOpen(true)}
+          />
 
           <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
             <Outlet />

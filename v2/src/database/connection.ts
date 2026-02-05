@@ -245,7 +245,7 @@ function createTablesDirectly(): void {
     CREATE TABLE IF NOT EXISTS audit_logs (
       id TEXT PRIMARY KEY,
       user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
-      action TEXT NOT NULL CHECK(action IN ('create', 'update', 'delete', 'login', 'logout', 'sync', 'deploy')),
+      action TEXT NOT NULL CHECK(action IN ('create', 'update', 'delete', 'bulk_delete', 'login', 'logout', 'sync', 'deploy', 'orphan', 'import', 'export')),
       resource_type TEXT NOT NULL,
       resource_id TEXT,
       details TEXT NOT NULL DEFAULT '{}',
@@ -382,6 +382,9 @@ function runSchemaMigrations(sqliteDb: Database.Database): void {
   // Fix CHECK constraint for source column (add 'discovered' if missing)
   // SQLite doesn't allow modifying CHECK constraints, so we need to recreate the table
   migrateSourceConstraint(sqliteDb);
+
+  // Fix CHECK constraint for audit_logs action column (add new action types)
+  migrateAuditLogsActionConstraint(sqliteDb);
 }
 
 /**
@@ -499,6 +502,84 @@ function migrateSourceConstraint(sqliteDb: Database.Database): void {
   } catch (error) {
     sqliteDb.exec('ROLLBACK');
     logger.error({ error }, 'Failed to migrate dns_records table');
+    throw error;
+  }
+}
+
+/**
+ * Migrate audit_logs table to include all action types in CHECK constraint
+ * Original constraint only had: 'create', 'update', 'delete', 'login', 'logout', 'sync', 'deploy'
+ * New constraint adds: 'bulk_delete', 'orphan', 'import', 'export'
+ */
+function migrateAuditLogsActionConstraint(sqliteDb: Database.Database): void {
+  // Check if audit_logs table exists
+  const tableExists = sqliteDb
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='audit_logs'")
+    .get();
+  if (!tableExists) {
+    return; // Table doesn't exist yet, will be created with correct constraint
+  }
+
+  // Check if the constraint already includes new action types by examining the table schema
+  const tableSchema = sqliteDb
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='audit_logs'")
+    .get() as { sql: string } | undefined;
+
+  if (tableSchema && tableSchema.sql.includes("'orphan'")) {
+    return; // Constraint already includes new action types
+  }
+
+  logger.info('Migrating audit_logs table to support new action types (orphan, bulk_delete, import, export)');
+
+  // SQLite doesn't support ALTER TABLE to modify CHECK constraints
+  // We need to recreate the table
+  sqliteDb.exec('BEGIN TRANSACTION');
+  try {
+    // Create new table with correct constraint
+    sqliteDb.exec(`
+      CREATE TABLE audit_logs_new (
+        id TEXT PRIMARY KEY,
+        user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        action TEXT NOT NULL CHECK(action IN ('create', 'update', 'delete', 'bulk_delete', 'login', 'logout', 'sync', 'deploy', 'orphan', 'import', 'export')),
+        resource_type TEXT NOT NULL,
+        resource_id TEXT,
+        details TEXT NOT NULL DEFAULT '{}',
+        ip_address TEXT,
+        user_agent TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )
+    `);
+
+    // Copy data from old table
+    sqliteDb.exec(`
+      INSERT INTO audit_logs_new (
+        id, user_id, action, resource_type, resource_id, details, ip_address, user_agent,
+        created_at, updated_at
+      )
+      SELECT
+        id, user_id, action, resource_type, resource_id, details, ip_address, user_agent,
+        created_at, updated_at
+      FROM audit_logs
+    `);
+
+    // Drop old table
+    sqliteDb.exec('DROP TABLE audit_logs');
+
+    // Rename new table
+    sqliteDb.exec('ALTER TABLE audit_logs_new RENAME TO audit_logs');
+
+    // Recreate indexes
+    sqliteDb.exec(`
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
+    `);
+
+    sqliteDb.exec('COMMIT');
+    logger.info('Migration complete: audit_logs table updated with new action types');
+  } catch (error) {
+    sqliteDb.exec('ROLLBACK');
+    logger.error({ error }, 'Failed to migrate audit_logs table');
     throw error;
   }
 }

@@ -120,14 +120,10 @@ export class AuditService {
       );
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      const errorStack = error instanceof Error ? error.stack : undefined;
-      logger.error({
-        error: errorMessage,
-        stack: errorStack,
-        action,
-        resourceType,
-        resourceId
-      }, 'Failed to log audit event');
+      logger.error(
+        { action, resourceType, resourceId, err: error },
+        `Failed to log audit event: ${errorMessage}`
+      );
     }
   }
 
