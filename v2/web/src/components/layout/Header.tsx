@@ -13,9 +13,10 @@ interface HeaderProps {
 function ThemeToggle() {
   const { theme, setTheme } = useThemeStore();
 
+  // Order: dark → light → system ensures clicking from an explicit mode always produces visible change
   const themes = [
-    { value: 'light', icon: Sun, label: 'Light' },
     { value: 'dark', icon: Moon, label: 'Dark' },
+    { value: 'light', icon: Sun, label: 'Light' },
     { value: 'system', icon: Monitor, label: 'System' },
   ] as const;
 
