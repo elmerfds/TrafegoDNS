@@ -1693,6 +1693,7 @@ function EditOverrideModal({ isOpen, onClose, override, providers }: EditOverrid
 function PreservedHostnamesTab() {
   const queryClient = useQueryClient();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editHostname, setEditHostname] = useState<PreservedHostname | null>(null);
   const [deleteHostname, setDeleteHostname] = useState<PreservedHostname | null>(null);
 
   const { data: preservedHostnames, isLoading } = useQuery({
@@ -1739,13 +1740,22 @@ function PreservedHostnamesTab() {
       key: 'actions',
       header: '',
       render: (row: PreservedHostname) => (
-        <button
-          className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
-          onClick={() => setDeleteHostname(row)}
-          title="Remove preservation"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
+            onClick={() => setEditHostname(row)}
+            title="Edit preservation"
+          >
+            <Edit className="w-4 h-4" />
+          </button>
+          <button
+            className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+            onClick={() => setDeleteHostname(row)}
+            title="Remove preservation"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
       ),
     },
   ];
@@ -1801,6 +1811,15 @@ function PreservedHostnamesTab() {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
       />
+
+      {/* Edit Modal */}
+      {editHostname && (
+        <EditPreservedHostnameModal
+          isOpen={!!editHostname}
+          onClose={() => setEditHostname(null)}
+          hostname={editHostname}
+        />
+      )}
 
       {/* Delete Confirmation Modal */}
       <Modal
@@ -1899,6 +1918,81 @@ function CreatePreservedHostnameModal({ isOpen, onClose }: CreatePreservedHostna
           </Button>
           <Button type="submit" isLoading={createMutation.isPending}>
             Preserve
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
+  );
+}
+
+interface EditPreservedHostnameModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  hostname: PreservedHostname;
+}
+
+function EditPreservedHostnameModal({ isOpen, onClose, hostname }: EditPreservedHostnameModalProps) {
+  const queryClient = useQueryClient();
+  const [reason, setReason] = useState(hostname.reason || '');
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset form when hostname changes
+  useEffect(() => {
+    setReason(hostname.reason || '');
+    setError(null);
+  }, [hostname]);
+
+  const updateMutation = useMutation({
+    mutationFn: () => preservedHostnamesApi.update(hostname.id, { reason: reason || undefined }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['preserved-hostnames'] });
+      onClose();
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Failed to update preserved hostname');
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateMutation.mutate();
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Edit Preserved Hostname" size="md">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
+
+        <div>
+          <label className="label">Hostname</label>
+          <input
+            type="text"
+            className="input mt-1 bg-gray-100 dark:bg-gray-700"
+            value={hostname.hostname}
+            disabled
+          />
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Hostname cannot be changed. Delete and recreate to change it.
+          </p>
+        </div>
+
+        <div>
+          <label className="label">Reason</label>
+          <input
+            type="text"
+            className="input mt-1"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g., Production critical service"
+          />
+        </div>
+
+        <ModalFooter>
+          <Button variant="secondary" onClick={onClose} type="button">
+            Cancel
+          </Button>
+          <Button type="submit" isLoading={updateMutation.isPending}>
+            Save Changes
           </Button>
         </ModalFooter>
       </form>
