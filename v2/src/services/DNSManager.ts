@@ -550,10 +550,10 @@ export class DNSManager {
 
     // No matching zone and no fallback - skip this hostname
     const configuredZones = Array.from(this.providerInstances.values())
-      .map(p => ({ name: p.getProviderName(), zone: p.getZoneName() }))
-      .filter(z => z.zone);
+      .map(p => `${p.getProviderName()} (${p.getZoneName()})`)
+      .filter(z => z);
     this.logger.info(
-      { hostname, configuredZones, routingMode },
+      { hostname, configuredZones: configuredZones.join(', '), routingMode },
       'Skipping hostname - no matching zone configured'
     );
     return [];

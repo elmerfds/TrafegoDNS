@@ -245,7 +245,22 @@ export class TraefikMonitor {
       }
     }
 
-    return hosts.filter((h) => h && !h.includes('{') && !h.includes('*'));
+    // Filter out invalid hostnames:
+    // - Empty strings
+    // - Strings with template variables: {}, *
+    // - Pure regex patterns: .+, .*, ^, $, etc.
+    // - Hostnames that don't look like valid domains (must have at least one dot and valid characters)
+    return hosts.filter((h) => {
+      if (!h) return false;
+      if (h.includes('{') || h.includes('*')) return false;
+      // Check for regex metacharacters that indicate this is a pattern, not a hostname
+      if (/^[\.\+\*\^\$\[\]\(\)\|\\]+$/.test(h)) return false;
+      // Must look like a valid hostname (alphanumeric, dots, hyphens)
+      if (!/^[a-zA-Z0-9]([a-zA-Z0-9\-\.]*[a-zA-Z0-9])?$/.test(h)) return false;
+      // Must have at least one dot (to be a FQDN)
+      if (!h.includes('.')) return false;
+      return true;
+    });
   }
 
   /**

@@ -349,7 +349,14 @@ export class DockerMonitor {
       }
     }
 
-    return hosts;
+    // Filter out invalid hostnames (regex patterns, templates, etc.)
+    return hosts.filter((h) => {
+      if (!h) return false;
+      if (h.includes('{') || h.includes('*')) return false;
+      // Must look like a valid hostname (alphanumeric, dots, hyphens)
+      if (!/^[a-zA-Z0-9]([a-zA-Z0-9\-\.]*[a-zA-Z0-9])?$/.test(h)) return false;
+      return true;
+    });
   }
 
   /**
