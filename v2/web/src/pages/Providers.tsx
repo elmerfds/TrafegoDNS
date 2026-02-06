@@ -4,8 +4,9 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Edit, Play, Search, ChevronDown, ChevronRight, Settings } from 'lucide-react';
-import { providersApi, type Provider, type CreateProviderInput, type UpdateProviderInput, type ProviderType, type DiscoverRecordsResult } from '../api';
+import { providersApi, type Provider, type UpdateProviderInput, type ProviderType, type DiscoverRecordsResult } from '../api';
 import { Button, Table, Badge, Modal, ModalFooter, Alert, Select, ProviderIcon } from '../components/common';
+import { ProviderWizard } from '../components/providers';
 
 export function ProvidersPage() {
   const queryClient = useQueryClient();
@@ -153,8 +154,8 @@ export function ProvidersPage() {
         />
       </div>
 
-      {/* Create Modal */}
-      <CreateProviderModal
+      {/* Create Wizard */}
+      <ProviderWizard
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
       />
@@ -263,10 +264,7 @@ export function ProvidersPage() {
   );
 }
 
-interface CreateProviderModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-}
+// ── providerFields used by EditProviderModal ─────────────────────────────
 
 const providerFields: Record<ProviderType, Array<{ key: string; label: string; type?: string; placeholder?: string }>> = {
   cloudflare: [
@@ -303,170 +301,6 @@ const providerFields: Record<ProviderType, Array<{ key: string; label: string; t
     { key: 'domain', label: 'Domain Filter', placeholder: 'example.com (optional)' },
   ],
 };
-
-function CreateProviderModal({ isOpen, onClose }: CreateProviderModalProps) {
-  const queryClient = useQueryClient();
-  const [formData, setFormData] = useState<Partial<CreateProviderInput>>({
-    type: 'cloudflare',
-    credentials: {},
-    enabled: true,
-  });
-  const [error, setError] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<{ connected: boolean; message: string } | null>(null);
-
-  const createMutation = useMutation({
-    mutationFn: (data: CreateProviderInput) => providersApi.createProvider(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['providers'] });
-      onClose();
-      setFormData({ type: 'cloudflare', credentials: {}, enabled: true });
-      setTestResult(null);
-    },
-    onError: (err) => {
-      setError(err instanceof Error ? err.message : 'Failed to create provider');
-    },
-  });
-
-  const testMutation = useMutation({
-    mutationFn: (data: CreateProviderInput) => providersApi.testProviderCredentials(data),
-    onSuccess: (result) => {
-      setTestResult(result);
-      setError(null);
-    },
-    onError: (err) => {
-      setTestResult({ connected: false, message: err instanceof Error ? err.message : 'Test failed' });
-    },
-  });
-
-  // Build credentials with authMethod for Technitium
-  const buildCredentials = () => {
-    let credentials = { ...formData.credentials };
-    if (formData.type === 'technitium' && credentials) {
-      credentials = {
-        ...credentials,
-        authMethod: 'token', // Default to token auth
-      };
-    }
-    return credentials;
-  };
-
-  const handleTest = () => {
-    if (!formData.name || !formData.type) {
-      setError('Please fill in name and type first');
-      return;
-    }
-    setTestResult(null);
-    testMutation.mutate({ ...formData, credentials: buildCredentials() } as CreateProviderInput);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.name || !formData.type) {
-      setError('Please fill in all required fields');
-      return;
-    }
-
-    createMutation.mutate({ ...formData, credentials: buildCredentials() } as CreateProviderInput);
-  };
-
-  const currentFields = providerFields[formData.type as ProviderType] ?? [];
-
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Add DNS Provider" size="md">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
-        {testResult && (
-          <Alert
-            variant={testResult.connected ? 'success' : 'error'}
-            onClose={() => setTestResult(null)}
-          >
-            {testResult.message}
-          </Alert>
-        )}
-
-        <div>
-          <label className="label">Name *</label>
-          <input
-            type="text"
-            className="input mt-1"
-            value={formData.name ?? ''}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            placeholder="My Cloudflare"
-          />
-        </div>
-
-        <div>
-          <label className="label">Type *</label>
-          <Select
-            className="mt-1"
-            value={formData.type ?? 'cloudflare'}
-            onChange={(value) => {
-              setFormData({ ...formData, type: value as ProviderType, credentials: {} });
-              setTestResult(null);
-            }}
-            options={[
-              { value: 'cloudflare', label: 'Cloudflare', description: 'DNS and Tunnel support' },
-              { value: 'digitalocean', label: 'DigitalOcean', description: 'DNS management' },
-              { value: 'route53', label: 'AWS Route53', description: 'Amazon DNS service' },
-              { value: 'technitium', label: 'Technitium DNS', description: 'Self-hosted DNS' },
-              { value: 'adguard', label: 'AdGuard Home', description: 'Self-hosted DNS with ad blocking' },
-              { value: 'pihole', label: 'Pi-hole', description: 'Network-wide ad blocking DNS' },
-            ]}
-          />
-        </div>
-
-        {currentFields.map((field) => (
-          <div key={field.key}>
-            <label className="label">{field.label}</label>
-            <input
-              type={field.type ?? 'text'}
-              className="input mt-1"
-              placeholder={field.placeholder}
-              value={(formData.credentials as Record<string, string>)?.[field.key] ?? ''}
-              onChange={(e) => setFormData({
-                ...formData,
-                credentials: {
-                  ...formData.credentials,
-                  [field.key]: e.target.value,
-                },
-              })}
-            />
-          </div>
-        ))}
-
-        <div className="flex items-center">
-          <input
-            type="checkbox"
-            id="isDefault"
-            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-            checked={formData.isDefault ?? false}
-            onChange={(e) => setFormData({ ...formData, isDefault: e.target.checked })}
-          />
-          <label htmlFor="isDefault" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
-            Set as default provider
-          </label>
-        </div>
-
-        <ModalFooter>
-          <Button variant="secondary" onClick={onClose} type="button">
-            Cancel
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={handleTest}
-            type="button"
-            isLoading={testMutation.isPending}
-          >
-            Test Connection
-          </Button>
-          <Button type="submit" isLoading={createMutation.isPending}>
-            Create Provider
-          </Button>
-        </ModalFooter>
-      </form>
-    </Modal>
-  );
-}
 
 interface EditProviderModalProps {
   isOpen: boolean;
