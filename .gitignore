@@ -44,3 +44,9 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
+
+# Claude Code
+CLAUDE.md
+
+# Debug
+debug/
