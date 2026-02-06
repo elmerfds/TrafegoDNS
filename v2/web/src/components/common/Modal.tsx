@@ -66,7 +66,7 @@ interface ModalFooterProps {
 
 export function ModalFooter({ children }: ModalFooterProps) {
   return (
-    <div className="flex justify-end space-x-3 px-6 py-4 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 -mx-6 -mb-4 mt-4">
+    <div className="flex justify-end space-x-3 px-6 py-4 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 -mx-6 -mb-4 mt-4 rounded-b-lg">
       {children}
     </div>
   );

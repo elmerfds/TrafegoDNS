@@ -10,7 +10,7 @@
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 </div>
 
-TrafegoDNS automatically manages DNS records based on your Docker container configuration. It monitors containers via Traefik integration or direct Docker labels and keeps your DNS providers in sync — with a full Web UI, REST API, and support for 6 DNS providers.
+TrafegoDNS automatically manages DNS records based on your Docker container configuration. It monitors containers via Traefik integration or direct Docker labels and keeps your DNS providers in sync — with a full Web UI, REST API, and support for 7 DNS providers.
 
 ## Table of Contents
 
@@ -26,6 +26,7 @@ TrafegoDNS automatically manages DNS records based on your Docker container conf
 - [Environment Variables](#environment-variables)
 - [Orphaned Record Cleanup](#orphaned-record-cleanup)
 - [Cloudflare Tunnels](#cloudflare-tunnels)
+- [RFC 2136 (Dynamic DNS) Setup](#rfc-2136-dynamic-dns-setup)
 - [Webhooks](#webhooks)
 - [Migration from v1](#migration-from-v1)
 - [Supported Architectures](#supported-architectures)
@@ -42,7 +43,7 @@ TrafegoDNS v2 is a complete rewrite in TypeScript with significant new capabilit
 - **Web UI** — Full-featured React dashboard for managing DNS records, providers, tunnels, webhooks, and settings
 - **REST API** — Comprehensive API with 80+ endpoints for complete programmatic control
 - **SQLite Database** — Persistent storage replacing the JSON file tracking system
-- **Multi-Provider** — Support for 6 DNS providers simultaneously (up from 3), including self-hosted options
+- **Multi-Provider** — Support for 7 DNS providers simultaneously (up from 3), including self-hosted options
 - **Authentication** — JWT-based auth with user management, roles, and API keys
 - **Cloudflare Tunnels** — Create and manage Zero Trust tunnels directly from the UI
 - **Webhooks** — Event-driven notifications for DNS changes, sync events, and errors
@@ -56,7 +57,7 @@ TrafegoDNS v2 is a complete rewrite in TypeScript with significant new capabilit
 - Support for Traefik integration and direct container label mode (works with any reverse proxy)
 - Real-time monitoring of Docker container events
 - Support for multiple DNS record types (A, AAAA, CNAME, MX, TXT, SRV, CAA, NS)
-- 6 DNS providers: Cloudflare, DigitalOcean, Route 53, Technitium, AdGuard Home, Pi-hole
+- 7 DNS providers: Cloudflare, DigitalOcean, Route 53, Technitium, AdGuard Home, Pi-hole, RFC 2136 (BIND9, PowerDNS, Knot, etc.)
 - Full Web UI with dark mode for managing all aspects of DNS
 - REST API with JWT authentication and API key support
 - Cloudflare Tunnel management (Zero Trust)
@@ -221,6 +222,7 @@ Providers are added and managed via the Web UI or REST API.
 | **Technitium DNS** | A, AAAA, CNAME, MX, TXT, SRV, CAA, NS | Self-hosted, token or username/password auth |
 | **AdGuard Home** | A, AAAA, CNAME | Self-hosted, DNS rewrites |
 | **Pi-hole** | A, AAAA, CNAME | Self-hosted, local DNS records |
+| **RFC 2136** | A, AAAA, CNAME, MX, TXT, SRV, CAA, NS | Dynamic DNS updates, TSIG auth, works with BIND9/PowerDNS/Knot/Windows DNS |
 
 ### Provider Credentials
 
@@ -234,6 +236,7 @@ Each provider requires specific credentials when adding via the UI:
 | **Technitium** | Server URL, Zone, Token *or* Username + Password |
 | **AdGuard Home** | Server URL, Username, Password |
 | **Pi-hole** | Server URL, Web Password |
+| **RFC 2136** | DNS Server, Zone, TSIG Key Name + Algorithm + Secret (optional) |
 
 ## REST API
 
@@ -453,6 +456,112 @@ TrafegoDNS v2 can create and manage Cloudflare Zero Trust tunnels:
 - **View tunnel status** and manage connections
 
 Tunnels require a Cloudflare provider with an API token that has the `Cloudflare Tunnel` permission.
+
+## RFC 2136 (Dynamic DNS) Setup
+
+TrafegoDNS supports [RFC 2136](https://datatracker.ietf.org/doc/html/rfc2136) dynamic DNS updates, allowing it to manage records on any compliant authoritative DNS server — including **BIND9**, **PowerDNS**, **Knot DNS**, and **Windows DNS Server**.
+
+### How It Works
+
+RFC 2136 defines a standard protocol for dynamically updating DNS zones. TrafegoDNS uses the `nsupdate` and `dig` utilities (bundled in the Docker image) to send signed update commands to your DNS server. Authentication is handled via **TSIG** (Transaction Signature) — a shared-secret mechanism built into the DNS protocol.
+
+### BIND9 Setup Example
+
+**1. Generate a TSIG key** on your BIND9 server:
+
+```bash
+tsig-keygen -a hmac-sha256 trafegodns-key
+```
+
+This outputs a key block like:
+
+```
+key "trafegodns-key" {
+    algorithm hmac-sha256;
+    secret "BASE64_SECRET_HERE";
+};
+```
+
+**2. Configure BIND9** — add the key and allow dynamic updates for your zone in `named.conf`:
+
+```
+key "trafegodns-key" {
+    algorithm hmac-sha256;
+    secret "BASE64_SECRET_HERE";
+};
+
+zone "example.com" {
+    type primary;
+    file "/var/lib/bind/example.com.zone";
+    allow-update { key "trafegodns-key"; };
+};
+```
+
+**3. Restart BIND9** to apply the configuration:
+
+```bash
+sudo systemctl restart named
+# or
+sudo rndc reconfig
+```
+
+**4. Add the provider in TrafegoDNS** — go to the **Providers** page in the Web UI and click **Add Provider**, then select **RFC 2136** and fill in:
+
+| Field | Value | Description |
+|-------|-------|-------------|
+| **DNS Server** | `192.168.1.10` | Hostname or IP of your BIND9 server |
+| **Port** | `53` | DNS port (default: 53) |
+| **Zone** | `example.com` | The zone to manage |
+| **TSIG Key Name** | `trafegodns-key` | Must match the key name in `named.conf` |
+| **TSIG Algorithm** | `hmac-sha256` | Must match the algorithm in `named.conf` |
+| **TSIG Secret** | `BASE64_SECRET_HERE` | The base64-encoded secret from `tsig-keygen` |
+
+> **Note**: TSIG authentication is optional but strongly recommended. Without it, you would need to allow updates by IP address (`allow-update { 172.18.0.0/16; };`), which is less secure.
+
+### Docker Compose Example (BIND9 + TrafegoDNS)
+
+```yaml
+services:
+  bind9:
+    image: ubuntu/bind9:9.18-22.04_beta
+    restart: unless-stopped
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+    volumes:
+      - bind-data:/var/lib/bind
+      - ./named.conf:/etc/bind/named.conf:ro
+      - ./example.com.zone:/var/lib/bind/example.com.zone
+
+  trafegodns:
+    image: ghcr.io/elmerfds/trafegodns:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - trafegodns-data:/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - OPERATION_MODE=direct
+
+volumes:
+  bind-data:
+  trafegodns-data:
+```
+
+After deploying, open the TrafegoDNS Web UI and add your BIND9 server as an RFC 2136 provider using the credentials above.
+
+### Other DNS Servers
+
+RFC 2136 is a standard protocol, so TrafegoDNS works with any compliant server:
+
+- **PowerDNS**: Enable the `dnsupdate` feature and configure TSIG keys via the API or `pdnsutil`
+- **Knot DNS**: Configure `acl` with TSIG in `knot.conf` and set `update: on` for the zone
+- **Windows DNS Server**: Enable dynamic updates on the zone and configure TSIG keys via `dnscmd`
+
+### Supported Record Types
+
+RFC 2136 supports the full range of record types: **A**, **AAAA**, **CNAME**, **MX**, **TXT**, **SRV**, **CAA**, and **NS**.
 
 ## Webhooks
 

@@ -1,9 +1,9 @@
 /**
  * DNS Records Page
  */
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X, Filter, Settings2, Download, Upload, Clock, Timer } from 'lucide-react';
+import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X, Filter, Settings2, Download, Upload, Clock, Timer, ExternalLink, Lock, Unlock } from 'lucide-react';
 import { dnsApi, providersApi, preservedHostnamesApi, settingsApi, overridesApi, type DNSRecord, type CreateDNSRecordInput, type UpdateDNSRecordInput, type PreservedHostname, type HostnameOverride, type CreateOverrideInput, type UpdateOverrideInput, type ImportRecordsInput, type ImportRecordsResponse } from '../api';
 import { preferencesApi, DEFAULT_DNS_TABLE_PREFERENCES, type TableViewPreference } from '../api/preferences';
 import { Button, Pagination, Badge, Modal, ModalFooter, Alert, Select, DataTable, ColumnCustomizer, ProviderCell, type DataTableColumn } from '../components/common';
@@ -58,6 +58,57 @@ export function DNSRecordsPage() {
       {activeTab === 'records' && <DNSRecordsTab />}
       {activeTab === 'overrides' && <OverridesTab />}
       {activeTab === 'preserved' && <PreservedHostnamesTab />}
+    </div>
+  );
+}
+
+function HostnameLink({ hostname }: { hostname: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+        className="font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 dark:hover:text-primary-400 transition-colors text-left"
+      >
+        {hostname}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[200px]">
+          <a
+            href={`https://${hostname}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 no-underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Lock className="w-3.5 h-3.5 text-green-500" />
+            <span>https://{hostname}</span>
+            <ExternalLink className="w-3 h-3 ml-auto text-gray-400" />
+          </a>
+          <a
+            href={`http://${hostname}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 no-underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Unlock className="w-3.5 h-3.5 text-gray-400" />
+            <span>http://{hostname}</span>
+            <ExternalLink className="w-3 h-3 ml-auto text-gray-400" />
+          </a>
+        </div>
+      )}
     </div>
   );
 }
@@ -312,9 +363,7 @@ function DNSRecordsTab() {
       sortable: true,
       defaultVisible: true,
       minWidth: 200,
-      render: (row: DNSRecord) => (
-        <span className="font-medium text-gray-900 dark:text-gray-100">{row.hostname}</span>
-      ),
+      render: (row: DNSRecord) => <HostnameLink hostname={row.hostname} />,
     },
     {
       id: 'type',
@@ -925,15 +974,13 @@ function DNSRecordsTab() {
         onRowClick={(row) => setEditRecord(row)}
       />
       {data && data.pagination.totalPages > 1 && (
-        <div className="mt-4">
-          <Pagination
-            page={data.pagination.page}
-            totalPages={data.pagination.totalPages}
-            total={data.pagination.total}
-            limit={data.pagination.limit}
-            onPageChange={setPage}
-          />
-        </div>
+        <Pagination
+          page={data.pagination.page}
+          totalPages={data.pagination.totalPages}
+          total={data.pagination.total}
+          limit={data.pagination.limit}
+          onPageChange={setPage}
+        />
       )}
 
       {/* Create Modal */}

@@ -104,7 +104,7 @@ export function Pagination({
   const end = Math.min(page * limit, total);
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 sm:px-6">
+    <div className="flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 -mt-[1px] rounded-b-lg sm:px-6">
       <div className="flex justify-between flex-1 sm:hidden">
         <button
           onClick={() => onPageChange(page - 1)}
