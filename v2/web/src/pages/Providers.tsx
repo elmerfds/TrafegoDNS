@@ -3,7 +3,7 @@
  */
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Edit, Play, Search, ChevronDown, ChevronRight, Settings } from 'lucide-react';
+import { Plus, Trash2, Edit, Play, Search, ChevronDown, ChevronRight, Settings, AlertTriangle, Key, Sliders, Tag, Globe } from 'lucide-react';
 import { providersApi, type Provider, type UpdateProviderInput, type ProviderType, type DiscoverRecordsResult } from '../api';
 import { Button, Table, Badge, Modal, ModalFooter, Alert, Select, ProviderIcon } from '../components/common';
 import { ProviderWizard } from '../components/providers';
@@ -174,10 +174,17 @@ export function ProvidersPage() {
         title="Delete Provider"
         size="sm"
       >
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Are you sure you want to delete <strong className="text-gray-900 dark:text-white">{deleteProvider?.name}</strong>?
-          This will not delete any DNS records managed by this provider.
-        </p>
+        <div className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+          <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-red-800 dark:text-red-200">
+              This action cannot be undone
+            </p>
+            <p className="text-sm text-red-600 dark:text-red-300 mt-1">
+              Provider <strong>{deleteProvider?.name}</strong> will be permanently removed. Existing DNS records managed by this provider will not be deleted.
+            </p>
+          </div>
+        </div>
         <ModalFooter>
           <Button variant="secondary" onClick={() => setDeleteProvider(null)}>
             Cancel
@@ -540,61 +547,85 @@ function EditProviderModal({ isOpen, onClose, provider }: EditProviderModalProps
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
 
-        <div>
-          <label className="label">Name</label>
-          <input
-            type="text"
-            className="input mt-1"
-            value={formData.name ?? displayProvider.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          />
-        </div>
+        {/* Provider Identity */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <Globe className="w-4 h-4 text-primary-500" />
+            Provider Identity
+          </div>
 
-        <div>
-          <label className="label">Type</label>
-          <input
-            type="text"
-            className="input mt-1 bg-gray-50 dark:bg-gray-800"
-            value={displayProvider.type}
-            disabled
-          />
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Provider type cannot be changed</p>
-        </div>
-
-        {currentFields.map((field) => {
-          const currentValue = displayProvider.credentials?.[field.key];
-          const isSensitive = currentValue?.startsWith('••••');
-          const newValue = (formData.credentials as Record<string, string>)?.[field.key];
-
-          return (
-            <div key={field.key}>
-              <label className="label">{field.label}</label>
-              {currentValue && !newValue && (
-                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                  Current: <span className="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">{currentValue}</span>
-                </div>
-              )}
+          <div>
+            <label className="label">Name</label>
+            <div className="relative">
+              <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               <input
-                type={field.type ?? 'text'}
-                className="input mt-1"
-                placeholder={currentValue ? 'Leave blank to keep current value' : field.placeholder}
-                value={newValue ?? ''}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  credentials: {
-                    ...formData.credentials,
-                    [field.key]: e.target.value,
-                  },
-                })}
+                type="text"
+                className="input mt-1 pl-10"
+                value={formData.name ?? displayProvider.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
-              {currentValue && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  {isSensitive ? 'Leave blank to keep current value' : 'Enter a new value to update'}
-                </p>
-              )}
             </div>
-          );
-        })}
+          </div>
+
+          <div>
+            <label className="label">Type</label>
+            <input
+              type="text"
+              className="input mt-1 bg-gray-50 dark:bg-gray-800 cursor-not-allowed"
+              value={displayProvider.type}
+              disabled
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Provider type cannot be changed</p>
+          </div>
+        </div>
+
+        {/* Credentials */}
+        {currentFields.length > 0 && (
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <Key className="w-4 h-4 text-primary-500" />
+            Credentials
+          </div>
+
+          {currentFields.map((field) => {
+            const currentValue = displayProvider.credentials?.[field.key];
+            const isSensitive = currentValue?.startsWith('••••');
+            const newValue = (formData.credentials as Record<string, string>)?.[field.key];
+
+            return (
+              <div key={field.key}>
+                <label className="label">{field.label}</label>
+                {currentValue && !newValue && (
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    Current: <span className="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">{currentValue}</span>
+                  </div>
+                )}
+                <div className="relative">
+                  <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  <input
+                    type={field.type ?? 'text'}
+                    className="input mt-1 pl-10"
+                    placeholder={currentValue ? 'Leave blank to keep current value' : field.placeholder}
+                    value={newValue ?? ''}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      credentials: {
+                        ...formData.credentials,
+                        [field.key]: e.target.value,
+                      },
+                    })}
+                  />
+                </div>
+                {currentValue && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {isSensitive ? 'Leave blank to keep current value' : 'Enter a new value to update'}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        )}
 
         {/* Default Record Settings */}
         <ProviderDefaultsSection
@@ -603,31 +634,39 @@ function EditProviderModal({ isOpen, onClose, provider }: EditProviderModalProps
           setFormData={setFormData}
         />
 
-        <div className="space-y-2">
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="editEnabled"
-              className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-              checked={formData.enabled ?? displayProvider.enabled}
-              onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-            />
-            <label htmlFor="editEnabled" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
-              Enabled
-            </label>
+        {/* Options */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <Sliders className="w-4 h-4 text-primary-500" />
+            Options
           </div>
 
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="editIsDefault"
-              className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 dark:border-gray-600 rounded"
-              checked={formData.isDefault ?? displayProvider.isDefault}
-              onChange={(e) => setFormData({ ...formData, isDefault: e.target.checked })}
-            />
-            <label htmlFor="editIsDefault" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
-              Set as default provider
-            </label>
+          <div className="space-y-2">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="editEnabled"
+                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                checked={formData.enabled ?? displayProvider.enabled}
+                onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
+              />
+              <label htmlFor="editEnabled" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                Enabled
+              </label>
+            </div>
+
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="editIsDefault"
+                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 dark:border-gray-600 rounded"
+                checked={formData.isDefault ?? displayProvider.isDefault}
+                onChange={(e) => setFormData({ ...formData, isDefault: e.target.checked })}
+              />
+              <label htmlFor="editIsDefault" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                Set as default provider
+              </label>
+            </div>
           </div>
         </div>
 

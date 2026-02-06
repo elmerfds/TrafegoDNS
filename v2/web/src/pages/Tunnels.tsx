@@ -3,7 +3,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Rocket, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, Rocket, ExternalLink, AlertTriangle, Key, Tag, Globe } from 'lucide-react';
 import { tunnelsApi, type Tunnel, type CreateTunnelInput } from '../api';
 import { Button, Table, Badge, Modal, ModalFooter, Alert } from '../components/common';
 
@@ -155,10 +155,13 @@ export function TunnelsPage() {
         title="Delete Tunnel"
         size="sm"
       >
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Are you sure you want to delete tunnel <strong>{deleteTunnel?.name}</strong>?
-          This will remove the tunnel from Cloudflare.
-        </p>
+        <div className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+          <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-red-800 dark:text-red-200">This action cannot be undone</p>
+            <p className="text-sm text-red-600 dark:text-red-300 mt-1">This will remove the tunnel from Cloudflare. Services routing through <strong>{deleteTunnel?.name}</strong> will become inaccessible.</p>
+          </div>
+        </div>
         <ModalFooter>
           <Button variant="secondary" onClick={() => setDeleteTunnel(null)}>
             Cancel
@@ -212,29 +215,42 @@ function CreateTunnelModal({ isOpen, onClose }: CreateTunnelModalProps) {
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
 
-        <div>
-          <label className="label">Tunnel Name *</label>
-          <input
-            type="text"
-            className="input mt-1"
-            value={formData.name ?? ''}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            placeholder="my-tunnel"
-          />
-        </div>
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <Globe className="w-4 h-4 text-primary-500" />
+            Tunnel Configuration
+          </div>
 
-        <div>
-          <label className="label">Secret (optional)</label>
-          <input
-            type="text"
-            className="input mt-1"
-            value={formData.secret ?? ''}
-            onChange={(e) => setFormData({ ...formData, secret: e.target.value })}
-            placeholder="Leave empty to auto-generate"
-          />
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Used for running cloudflared connector. Auto-generated if not provided.
-          </p>
+          <div>
+            <label className="label">Tunnel Name *</label>
+            <div className="relative">
+              <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                className="input mt-1 pl-10"
+                value={formData.name ?? ''}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="my-tunnel"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Secret (optional)</label>
+            <div className="relative">
+              <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                className="input mt-1 pl-10"
+                value={formData.secret ?? ''}
+                onChange={(e) => setFormData({ ...formData, secret: e.target.value })}
+                placeholder="Leave empty to auto-generate"
+              />
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Used for running cloudflared connector. Auto-generated if not provided.
+            </p>
+          </div>
         </div>
 
         <ModalFooter>

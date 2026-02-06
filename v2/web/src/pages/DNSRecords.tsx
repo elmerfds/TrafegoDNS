@@ -3,7 +3,7 @@
  */
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X, Filter, Settings2, Download, Upload, Clock, Timer, ExternalLink, Lock, Unlock } from 'lucide-react';
+import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X, Filter, Settings2, Download, Upload, Clock, Timer, ExternalLink, Lock, Unlock, AlertTriangle, FileText, Sliders, MessageSquare } from 'lucide-react';
 import { dnsApi, providersApi, preservedHostnamesApi, settingsApi, overridesApi, type DNSRecord, type CreateDNSRecordInput, type UpdateDNSRecordInput, type PreservedHostname, type HostnameOverride, type CreateOverrideInput, type UpdateOverrideInput, type ImportRecordsInput, type ImportRecordsResponse } from '../api';
 import { preferencesApi, DEFAULT_DNS_TABLE_PREFERENCES, type TableViewPreference } from '../api/preferences';
 import { Button, Pagination, Badge, Modal, ModalFooter, Alert, Select, DataTable, ColumnCustomizer, ProviderCell, type DataTableColumn } from '../components/common';
@@ -1004,10 +1004,17 @@ function DNSRecordsTab() {
         title="Delete DNS Record"
         size="sm"
       >
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Are you sure you want to delete the record for{' '}
-          <strong>{deleteRecord?.hostname}</strong>? This action cannot be undone.
-        </p>
+        <div className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+          <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-red-800 dark:text-red-200">
+              This action cannot be undone
+            </p>
+            <p className="text-sm text-red-600 dark:text-red-300 mt-1">
+              The DNS record for <strong>{deleteRecord?.hostname}</strong> will be permanently removed from both the database and the DNS provider.
+            </p>
+          </div>
+        </div>
         <ModalFooter>
           <Button variant="secondary" onClick={() => setDeleteRecord(null)}>
             Cancel
@@ -1029,22 +1036,31 @@ function DNSRecordsTab() {
         title="Delete Multiple DNS Records"
         size="sm"
       >
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Are you sure you want to delete <strong>{selectedIds.size}</strong> DNS records?
-          This action cannot be undone and will remove them from both the database and the DNS provider.
-        </p>
-        <div className="mt-3 max-h-40 overflow-y-auto">
-          <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-            {data?.records
-              .filter((r) => selectedIds.has(r.id))
-              .slice(0, 10)
-              .map((r) => (
-                <li key={r.id} className="font-mono">• {r.hostname} ({r.type})</li>
-              ))}
-            {selectedIds.size > 10 && (
-              <li className="text-gray-400">...and {selectedIds.size - 10} more</li>
-            )}
-          </ul>
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+            <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                This action cannot be undone
+              </p>
+              <p className="text-sm text-red-600 dark:text-red-300 mt-1">
+                <strong>{selectedIds.size}</strong> DNS records will be permanently removed from both the database and the DNS provider.
+              </p>
+            </div>
+          </div>
+          <div className="max-h-40 overflow-y-auto">
+            <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+              {data?.records
+                .filter((r) => selectedIds.has(r.id))
+                .slice(0, 10)
+                .map((r) => (
+                  <li key={r.id} className="font-mono">&bull; {r.hostname} ({r.type})</li>
+                ))}
+              {selectedIds.size > 10 && (
+                <li className="text-gray-400">...and {selectedIds.size - 10} more</li>
+              )}
+            </ul>
+          </div>
         </div>
         <ModalFooter>
           <Button variant="secondary" onClick={() => setIsBulkDeleteModalOpen(false)}>
@@ -1321,55 +1337,76 @@ function ImportRecordsModal({ isOpen, onClose, providers }: ImportRecordsModalPr
         ) : (
           // Input view
           <>
-            <div>
-              <label className="label">Target Provider *</label>
-              <Select
-                className="mt-1"
-                value={providerId}
-                onChange={setProviderId}
-                placeholder="Select provider"
-                options={providers.map((p) => ({ value: p.id, label: p.name }))}
-              />
+            {/* Target Provider */}
+            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                <Globe className="w-4 h-4 text-primary-500" />
+                Target Provider
+              </div>
+              <div>
+                <label className="label">Provider *</label>
+                <Select
+                  className="mt-1"
+                  value={providerId}
+                  onChange={setProviderId}
+                  placeholder="Select provider"
+                  options={providers.map((p) => ({ value: p.id, label: p.name }))}
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="label">Records (JSON)</label>
-              <div className="mt-1 space-y-2">
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={handleFileUpload}
-                  className="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 dark:file:bg-primary-900/20 dark:file:text-primary-400"
-                />
-                <textarea
-                  className="input mt-1 font-mono text-xs"
-                  rows={10}
-                  value={jsonInput}
-                  onChange={(e) => {
-                    setJsonInput(e.target.value);
-                    setError(null);
-                  }}
-                  placeholder={`[
+            {/* Records Data */}
+            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                <Upload className="w-4 h-4 text-primary-500" />
+                Records Data
+              </div>
+              <div>
+                <label className="label">Upload or Paste JSON</label>
+                <div className="mt-1 space-y-2">
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleFileUpload}
+                    className="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 dark:file:bg-primary-900/20 dark:file:text-primary-400"
+                  />
+                  <textarea
+                    className="input mt-1 font-mono text-xs"
+                    rows={10}
+                    value={jsonInput}
+                    onChange={(e) => {
+                      setJsonInput(e.target.value);
+                      setError(null);
+                    }}
+                    placeholder={`[
   { "hostname": "app.example.com", "type": "A", "content": "192.168.1.1", "ttl": 300 },
   { "hostname": "mail.example.com", "type": "CNAME", "content": "mail.provider.com" }
 ]
 
 Or paste an exported JSON file content`}
-                />
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                id="skip-duplicates"
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                checked={skipDuplicates}
-                onChange={(e) => setSkipDuplicates(e.target.checked)}
-              />
-              <label htmlFor="skip-duplicates" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
-                Skip duplicate records (recommended)
-              </label>
+            {/* Options */}
+            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                <Sliders className="w-4 h-4 text-primary-500" />
+                Options
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="skip-duplicates"
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  checked={skipDuplicates}
+                  onChange={(e) => setSkipDuplicates(e.target.checked)}
+                />
+                <label htmlFor="skip-duplicates" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                  Skip duplicate records (recommended)
+                </label>
+              </div>
             </div>
 
             <ModalFooter>
@@ -1669,10 +1706,17 @@ function OverridesTab() {
         title="Delete Override"
         size="sm"
       >
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Are you sure you want to delete the override for{' '}
-          <strong>{deleteOverride?.hostname}</strong>? Future syncs will use default settings for this hostname.
-        </p>
+        <div className="flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+          <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+              Override will be removed
+            </p>
+            <p className="text-sm text-amber-600 dark:text-amber-300 mt-1">
+              Future syncs will use default settings for <strong>{deleteOverride?.hostname}</strong>. The DNS record itself will not be deleted.
+            </p>
+          </div>
+        </div>
         <ModalFooter>
           <Button variant="secondary" onClick={() => setDeleteOverride(null)}>
             Cancel
@@ -1694,11 +1738,18 @@ function OverridesTab() {
         title="Delete Multiple Overrides"
         size="sm"
       >
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Are you sure you want to delete <strong>{selectedIds.size}</strong> hostname overrides?
-          Future syncs will use default settings for these hostnames.
-        </p>
-        <div className="mt-3 max-h-40 overflow-y-auto">
+        <div className="flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg mb-4">
+          <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+              Overrides will be removed
+            </p>
+            <p className="text-sm text-amber-600 dark:text-amber-300 mt-1">
+              Future syncs will use default settings for <strong>{selectedIds.size}</strong> hostnames. DNS records will not be deleted.
+            </p>
+          </div>
+        </div>
+        <div className="max-h-40 overflow-y-auto">
           <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
             {filteredOverrides
               .filter((o) => selectedIds.has(o.id))
@@ -1790,135 +1841,165 @@ function CreateOverrideModal({ isOpen, onClose, providers }: CreateOverrideModal
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
 
-        <div>
-          <label className="label">Hostname *</label>
-          <input
-            type="text"
-            className="input mt-1"
-            value={formData.hostname}
-            onChange={(e) => setFormData({ ...formData, hostname: e.target.value })}
-            placeholder="app.example.com or *.example.com"
-          />
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Use *.domain.com for wildcard matching of all subdomains
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="label">Proxied</label>
-            <Select
-              className="mt-1"
-              value={formData.proxied === null ? 'inherit' : formData.proxied ? 'true' : 'false'}
-              onChange={(value) => setFormData({
-                ...formData,
-                proxied: value === 'inherit' ? null : value === 'true',
-              })}
-              options={[
-                { value: 'inherit', label: 'Inherit (use default)' },
-                { value: 'true', label: 'Yes - Proxy through Cloudflare' },
-                { value: 'false', label: 'No - Direct DNS' },
-              ]}
-            />
+        {/* Target */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <Globe className="w-4 h-4 text-primary-500" />
+            Target
           </div>
           <div>
-            <label className="label">TTL (seconds)</label>
+            <label className="label">Hostname *</label>
+            <div className="relative">
+              <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                className="input mt-1 pl-10"
+                value={formData.hostname}
+                onChange={(e) => setFormData({ ...formData, hostname: e.target.value })}
+                placeholder="app.example.com or *.example.com"
+              />
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Use *.domain.com for wildcard matching of all subdomains
+            </p>
+          </div>
+        </div>
+
+        {/* DNS Settings */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <Settings2 className="w-4 h-4 text-primary-500" />
+            DNS Settings
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2">
+            Leave fields as &ldquo;Inherit&rdquo; to use default values
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Proxied</label>
+              <Select
+                className="mt-1"
+                value={formData.proxied === null ? 'inherit' : formData.proxied ? 'true' : 'false'}
+                onChange={(value) => setFormData({
+                  ...formData,
+                  proxied: value === 'inherit' ? null : value === 'true',
+                })}
+                options={[
+                  { value: 'inherit', label: 'Inherit (use default)' },
+                  { value: 'true', label: 'Yes - Proxy through Cloudflare' },
+                  { value: 'false', label: 'No - Direct DNS' },
+                ]}
+              />
+            </div>
+            <div>
+              <label className="label">TTL (seconds)</label>
+              <div className="relative">
+                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <input
+                  type="number"
+                  className="input mt-1 pl-10"
+                  value={formData.ttl ?? ''}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    ttl: e.target.value ? parseInt(e.target.value) : null,
+                  })}
+                  placeholder="Inherit"
+                  min={1}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Record Type</label>
+              <Select
+                className="mt-1"
+                value={formData.recordType ?? 'inherit'}
+                onChange={(value) => setFormData({
+                  ...formData,
+                  recordType: value === 'inherit' ? null : value as CreateOverrideInput['recordType'],
+                })}
+                options={[
+                  { value: 'inherit', label: 'Inherit (use default)' },
+                  { value: 'A', label: 'A' },
+                  { value: 'AAAA', label: 'AAAA' },
+                  { value: 'CNAME', label: 'CNAME' },
+                  { value: 'MX', label: 'MX' },
+                  { value: 'TXT', label: 'TXT' },
+                  { value: 'SRV', label: 'SRV' },
+                  { value: 'CAA', label: 'CAA' },
+                  { value: 'NS', label: 'NS' },
+                ]}
+              />
+            </div>
+            <div>
+              <label className="label">Provider</label>
+              <Select
+                className="mt-1"
+                value={formData.providerId ?? 'inherit'}
+                onChange={(value) => setFormData({
+                  ...formData,
+                  providerId: value === 'inherit' ? null : value,
+                })}
+                options={[
+                  { value: 'inherit', label: 'Inherit (use default)' },
+                  ...providers.map((p) => ({ value: p.id, label: p.name })),
+                ]}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="label">Content</label>
+            <div className="relative">
+              <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                className="input mt-1 pl-10"
+                value={formData.content ?? ''}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  content: e.target.value || null,
+                })}
+                placeholder="Leave empty to inherit (e.g., IP address)"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Details */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <FileText className="w-4 h-4 text-primary-500" />
+            Details
+          </div>
+          <div>
+            <label className="label">Reason (optional)</label>
+            <div className="relative">
+              <MessageSquare className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                className="input mt-1 pl-10"
+                value={formData.reason ?? ''}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  reason: e.target.value || null,
+                })}
+                placeholder="e.g., Disable proxy for Plex streaming"
+              />
+            </div>
+          </div>
+          <div className="flex items-center">
             <input
-              type="number"
-              className="input mt-1"
-              value={formData.ttl ?? ''}
-              onChange={(e) => setFormData({
-                ...formData,
-                ttl: e.target.value ? parseInt(e.target.value) : null,
-              })}
-              placeholder="Leave empty to inherit"
-              min={1}
+              type="checkbox"
+              id="override-enabled"
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              checked={formData.enabled ?? true}
+              onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
             />
+            <label htmlFor="override-enabled" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+              Enabled
+            </label>
           </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="label">Record Type</label>
-            <Select
-              className="mt-1"
-              value={formData.recordType ?? 'inherit'}
-              onChange={(value) => setFormData({
-                ...formData,
-                recordType: value === 'inherit' ? null : value as CreateOverrideInput['recordType'],
-              })}
-              options={[
-                { value: 'inherit', label: 'Inherit (use default)' },
-                { value: 'A', label: 'A' },
-                { value: 'AAAA', label: 'AAAA' },
-                { value: 'CNAME', label: 'CNAME' },
-                { value: 'MX', label: 'MX' },
-                { value: 'TXT', label: 'TXT' },
-                { value: 'SRV', label: 'SRV' },
-                { value: 'CAA', label: 'CAA' },
-                { value: 'NS', label: 'NS' },
-              ]}
-            />
-          </div>
-          <div>
-            <label className="label">Provider</label>
-            <Select
-              className="mt-1"
-              value={formData.providerId ?? 'inherit'}
-              onChange={(value) => setFormData({
-                ...formData,
-                providerId: value === 'inherit' ? null : value,
-              })}
-              options={[
-                { value: 'inherit', label: 'Inherit (use default)' },
-                ...providers.map((p) => ({ value: p.id, label: p.name })),
-              ]}
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="label">Content</label>
-          <input
-            type="text"
-            className="input mt-1"
-            value={formData.content ?? ''}
-            onChange={(e) => setFormData({
-              ...formData,
-              content: e.target.value || null,
-            })}
-            placeholder="Leave empty to inherit (e.g., IP address)"
-          />
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Override the record content (IP, CNAME target, etc.)
-          </p>
-        </div>
-
-        <div>
-          <label className="label">Reason (optional)</label>
-          <input
-            type="text"
-            className="input mt-1"
-            value={formData.reason ?? ''}
-            onChange={(e) => setFormData({
-              ...formData,
-              reason: e.target.value || null,
-            })}
-            placeholder="e.g., Disable proxy for Plex streaming"
-          />
-        </div>
-
-        <div className="flex items-center">
-          <input
-            type="checkbox"
-            id="override-enabled"
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            checked={formData.enabled ?? true}
-            onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-          />
-          <label htmlFor="override-enabled" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
-            Enabled
-          </label>
         </div>
 
         <ModalFooter>
@@ -1992,129 +2073,162 @@ function EditOverrideModal({ isOpen, onClose, override, providers }: EditOverrid
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
 
-        <div>
-          <label className="label">Hostname *</label>
-          <input
-            type="text"
-            className="input mt-1"
-            value={formData.hostname ?? ''}
-            onChange={(e) => setFormData({ ...formData, hostname: e.target.value })}
-            placeholder="app.example.com or *.example.com"
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="label">Proxied</label>
-            <Select
-              className="mt-1"
-              value={formData.proxied === null ? 'inherit' : formData.proxied ? 'true' : 'false'}
-              onChange={(value) => setFormData({
-                ...formData,
-                proxied: value === 'inherit' ? null : value === 'true',
-              })}
-              options={[
-                { value: 'inherit', label: 'Inherit (use default)' },
-                { value: 'true', label: 'Yes - Proxy through Cloudflare' },
-                { value: 'false', label: 'No - Direct DNS' },
-              ]}
-            />
+        {/* Target */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <Globe className="w-4 h-4 text-primary-500" />
+            Target
           </div>
           <div>
-            <label className="label">TTL (seconds)</label>
+            <label className="label">Hostname *</label>
+            <div className="relative">
+              <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                className="input mt-1 pl-10"
+                value={formData.hostname ?? ''}
+                onChange={(e) => setFormData({ ...formData, hostname: e.target.value })}
+                placeholder="app.example.com or *.example.com"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* DNS Settings */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <Settings2 className="w-4 h-4 text-primary-500" />
+            DNS Settings
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2">
+            Leave fields as &ldquo;Inherit&rdquo; to use default values
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Proxied</label>
+              <Select
+                className="mt-1"
+                value={formData.proxied === null ? 'inherit' : formData.proxied ? 'true' : 'false'}
+                onChange={(value) => setFormData({
+                  ...formData,
+                  proxied: value === 'inherit' ? null : value === 'true',
+                })}
+                options={[
+                  { value: 'inherit', label: 'Inherit (use default)' },
+                  { value: 'true', label: 'Yes - Proxy through Cloudflare' },
+                  { value: 'false', label: 'No - Direct DNS' },
+                ]}
+              />
+            </div>
+            <div>
+              <label className="label">TTL (seconds)</label>
+              <div className="relative">
+                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <input
+                  type="number"
+                  className="input mt-1 pl-10"
+                  value={formData.ttl ?? ''}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    ttl: e.target.value ? parseInt(e.target.value) : null,
+                  })}
+                  placeholder="Inherit"
+                  min={1}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Record Type</label>
+              <Select
+                className="mt-1"
+                value={formData.recordType ?? 'inherit'}
+                onChange={(value) => setFormData({
+                  ...formData,
+                  recordType: value === 'inherit' ? null : value as CreateOverrideInput['recordType'],
+                })}
+                options={[
+                  { value: 'inherit', label: 'Inherit (use default)' },
+                  { value: 'A', label: 'A' },
+                  { value: 'AAAA', label: 'AAAA' },
+                  { value: 'CNAME', label: 'CNAME' },
+                  { value: 'MX', label: 'MX' },
+                  { value: 'TXT', label: 'TXT' },
+                  { value: 'SRV', label: 'SRV' },
+                  { value: 'CAA', label: 'CAA' },
+                  { value: 'NS', label: 'NS' },
+                ]}
+              />
+            </div>
+            <div>
+              <label className="label">Provider</label>
+              <Select
+                className="mt-1"
+                value={formData.providerId ?? 'inherit'}
+                onChange={(value) => setFormData({
+                  ...formData,
+                  providerId: value === 'inherit' ? null : value,
+                })}
+                options={[
+                  { value: 'inherit', label: 'Inherit (use default)' },
+                  ...providers.map((p) => ({ value: p.id, label: p.name })),
+                ]}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="label">Content</label>
+            <div className="relative">
+              <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                className="input mt-1 pl-10"
+                value={formData.content ?? ''}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  content: e.target.value || null,
+                })}
+                placeholder="Leave empty to inherit"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Details */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <FileText className="w-4 h-4 text-primary-500" />
+            Details
+          </div>
+          <div>
+            <label className="label">Reason (optional)</label>
+            <div className="relative">
+              <MessageSquare className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                className="input mt-1 pl-10"
+                value={formData.reason ?? ''}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  reason: e.target.value || null,
+                })}
+                placeholder="e.g., Disable proxy for Plex streaming"
+              />
+            </div>
+          </div>
+          <div className="flex items-center">
             <input
-              type="number"
-              className="input mt-1"
-              value={formData.ttl ?? ''}
-              onChange={(e) => setFormData({
-                ...formData,
-                ttl: e.target.value ? parseInt(e.target.value) : null,
-              })}
-              placeholder="Leave empty to inherit"
-              min={1}
+              type="checkbox"
+              id="edit-override-enabled"
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              checked={formData.enabled ?? true}
+              onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
             />
+            <label htmlFor="edit-override-enabled" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+              Enabled
+            </label>
           </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="label">Record Type</label>
-            <Select
-              className="mt-1"
-              value={formData.recordType ?? 'inherit'}
-              onChange={(value) => setFormData({
-                ...formData,
-                recordType: value === 'inherit' ? null : value as CreateOverrideInput['recordType'],
-              })}
-              options={[
-                { value: 'inherit', label: 'Inherit (use default)' },
-                { value: 'A', label: 'A' },
-                { value: 'AAAA', label: 'AAAA' },
-                { value: 'CNAME', label: 'CNAME' },
-                { value: 'MX', label: 'MX' },
-                { value: 'TXT', label: 'TXT' },
-                { value: 'SRV', label: 'SRV' },
-                { value: 'CAA', label: 'CAA' },
-                { value: 'NS', label: 'NS' },
-              ]}
-            />
-          </div>
-          <div>
-            <label className="label">Provider</label>
-            <Select
-              className="mt-1"
-              value={formData.providerId ?? 'inherit'}
-              onChange={(value) => setFormData({
-                ...formData,
-                providerId: value === 'inherit' ? null : value,
-              })}
-              options={[
-                { value: 'inherit', label: 'Inherit (use default)' },
-                ...providers.map((p) => ({ value: p.id, label: p.name })),
-              ]}
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="label">Content</label>
-          <input
-            type="text"
-            className="input mt-1"
-            value={formData.content ?? ''}
-            onChange={(e) => setFormData({
-              ...formData,
-              content: e.target.value || null,
-            })}
-            placeholder="Leave empty to inherit"
-          />
-        </div>
-
-        <div>
-          <label className="label">Reason (optional)</label>
-          <input
-            type="text"
-            className="input mt-1"
-            value={formData.reason ?? ''}
-            onChange={(e) => setFormData({
-              ...formData,
-              reason: e.target.value || null,
-            })}
-            placeholder="e.g., Disable proxy for Plex streaming"
-          />
-        </div>
-
-        <div className="flex items-center">
-          <input
-            type="checkbox"
-            id="edit-override-enabled"
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            checked={formData.enabled ?? true}
-            onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-          />
-          <label htmlFor="edit-override-enabled" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
-            Enabled
-          </label>
         </div>
 
         <ModalFooter>
@@ -2341,10 +2455,17 @@ function PreservedHostnamesTab() {
         title="Remove Preservation"
         size="sm"
       >
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Are you sure you want to remove preservation for{' '}
-          <strong>{deleteHostname?.hostname}</strong>? The DNS record may be automatically deleted if its container goes offline.
-        </p>
+        <div className="flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+          <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+              Protection will be removed
+            </p>
+            <p className="text-sm text-amber-600 dark:text-amber-300 mt-1">
+              The DNS record for <strong>{deleteHostname?.hostname}</strong> may be automatically deleted if its container goes offline.
+            </p>
+          </div>
+        </div>
         <ModalFooter>
           <Button variant="secondary" onClick={() => setDeleteHostname(null)}>
             Cancel
@@ -2366,22 +2487,31 @@ function PreservedHostnamesTab() {
         title="Remove Multiple Preserved Hostnames"
         size="sm"
       >
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Are you sure you want to remove preservation for <strong>{selectedIds.size}</strong> hostnames?
-          Their DNS records may be automatically deleted if their containers go offline.
-        </p>
-        <div className="mt-3 max-h-40 overflow-y-auto">
-          <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-            {filteredHostnames
-              .filter((h) => selectedIds.has(h.id))
-              .slice(0, 10)
-              .map((h) => (
-                <li key={h.id} className="font-mono">&bull; {h.hostname}</li>
-              ))}
-            {selectedIds.size > 10 && (
-              <li className="text-gray-400">...and {selectedIds.size - 10} more</li>
-            )}
-          </ul>
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+            <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                Protection will be removed
+              </p>
+              <p className="text-sm text-amber-600 dark:text-amber-300 mt-1">
+                DNS records for <strong>{selectedIds.size}</strong> hostnames may be automatically deleted if their containers go offline.
+              </p>
+            </div>
+          </div>
+          <div className="max-h-40 overflow-y-auto">
+            <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+              {filteredHostnames
+                .filter((h) => selectedIds.has(h.id))
+                .slice(0, 10)
+                .map((h) => (
+                  <li key={h.id} className="font-mono">&bull; {h.hostname}</li>
+                ))}
+              {selectedIds.size > 10 && (
+                <li className="text-gray-400">...and {selectedIds.size - 10} more</li>
+              )}
+            </ul>
+          </div>
         </div>
         <ModalFooter>
           <Button variant="secondary" onClick={() => setIsBulkDeleteModalOpen(false)}>
@@ -2438,29 +2568,41 @@ function CreatePreservedHostnameModal({ isOpen, onClose }: CreatePreservedHostna
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
 
-        <div>
-          <label className="label">Hostname *</label>
-          <input
-            type="text"
-            className="input mt-1"
-            value={hostname}
-            onChange={(e) => setHostname(e.target.value)}
-            placeholder="app.example.com or *.example.com"
-          />
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Use *.domain.com for wildcard preservation of all subdomains
-          </p>
-        </div>
-
-        <div>
-          <label className="label">Reason (optional)</label>
-          <input
-            type="text"
-            className="input mt-1"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g., Production critical service"
-          />
+        {/* Hostname Protection */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <Shield className="w-4 h-4 text-primary-500" />
+            Hostname Protection
+          </div>
+          <div>
+            <label className="label">Hostname *</label>
+            <div className="relative">
+              <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                className="input mt-1 pl-10"
+                value={hostname}
+                onChange={(e) => setHostname(e.target.value)}
+                placeholder="app.example.com or *.example.com"
+              />
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Use *.domain.com for wildcard preservation of all subdomains
+            </p>
+          </div>
+          <div>
+            <label className="label">Reason (optional)</label>
+            <div className="relative">
+              <MessageSquare className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                className="input mt-1 pl-10"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="e.g., Production critical service"
+              />
+            </div>
+          </div>
         </div>
 
         <ModalFooter>
@@ -2514,28 +2656,40 @@ function EditPreservedHostnameModal({ isOpen, onClose, hostname }: EditPreserved
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
 
-        <div>
-          <label className="label">Hostname</label>
-          <input
-            type="text"
-            className="input mt-1 bg-gray-100 dark:bg-gray-700"
-            value={hostname.hostname}
-            disabled
-          />
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Hostname cannot be changed. Delete and recreate to change it.
-          </p>
-        </div>
-
-        <div>
-          <label className="label">Reason</label>
-          <input
-            type="text"
-            className="input mt-1"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g., Production critical service"
-          />
+        {/* Hostname Protection */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <Shield className="w-4 h-4 text-primary-500" />
+            Hostname Protection
+          </div>
+          <div>
+            <label className="label">Hostname</label>
+            <div className="relative">
+              <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                className="input mt-1 pl-10 bg-gray-50 dark:bg-gray-800 cursor-not-allowed"
+                value={hostname.hostname}
+                disabled
+              />
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Hostname cannot be changed. Delete and recreate to change it.
+            </p>
+          </div>
+          <div>
+            <label className="label">Reason</label>
+            <div className="relative">
+              <MessageSquare className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                className="input mt-1 pl-10"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="e.g., Production critical service"
+              />
+            </div>
+          </div>
         </div>
 
         <ModalFooter>
@@ -2669,109 +2823,135 @@ function CreateRecordModal({ isOpen, onClose, providers }: CreateRecordModalProp
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
 
-        {/* Provider first - so TTL defaults are set correctly */}
-        <div>
-          <label className="label">Provider *</label>
-          <Select
-            className="mt-1"
-            value={formData.providerId ?? ''}
-            onChange={handleProviderChange}
-            placeholder="Select a provider"
-            options={providers.map((provider) => ({
-              value: provider.id,
-              label: provider.name,
-            }))}
-          />
-        </div>
-
-        <div>
-          <label className="label">Hostname *</label>
-          <input
-            type="text"
-            className="input mt-1"
-            value={formData.hostname ?? ''}
-            onChange={(e) => setFormData({ ...formData, hostname: e.target.value })}
-            placeholder="example.com"
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
+        {/* Provider & Hostname */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <Globe className="w-4 h-4 text-primary-500" />
+            Provider & Hostname
+          </div>
           <div>
-            <label className="label">Type *</label>
+            <label className="label">Provider *</label>
             <Select
               className="mt-1"
-              value={formData.type}
-              onChange={(value) => setFormData({ ...formData, type: value as CreateDNSRecordInput['type'] })}
-              options={[
-                { value: 'A', label: 'A', description: 'IPv4 address' },
-                { value: 'AAAA', label: 'AAAA', description: 'IPv6 address' },
-                { value: 'CNAME', label: 'CNAME', description: 'Canonical name' },
-                { value: 'MX', label: 'MX', description: 'Mail exchange' },
-                { value: 'TXT', label: 'TXT', description: 'Text record' },
-                { value: 'SRV', label: 'SRV', description: 'Service record' },
-                { value: 'CAA', label: 'CAA', description: 'Certificate authority' },
-                { value: 'NS', label: 'NS', description: 'Name server' },
-              ]}
+              value={formData.providerId ?? ''}
+              onChange={handleProviderChange}
+              placeholder="Select a provider"
+              options={providers.map((provider) => ({
+                value: provider.id,
+                label: provider.name,
+              }))}
             />
           </div>
           <div>
-            <label className="label">
-              TTL
-              {selectedProvider && (
-                <span className="ml-2 text-xs text-gray-400 font-normal">
-                  ({ttlMin === 1 ? 'auto' : formatTTL(ttlMin)} - {formatTTL(ttlMax)})
-                </span>
-              )}
-            </label>
-            <input
-              type="number"
-              className="input mt-1"
-              value={formData.ttl ?? effectiveTtlDefault}
-              onChange={(e) => setFormData({ ...formData, ttl: parseInt(e.target.value) || effectiveTtlDefault })}
-              min={ttlMin}
-              max={ttlMax}
-            />
-            {selectedProvider && (
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {ttlMin === 1 && 'Use 1 for automatic TTL. '}
-                Current: {formatTTL(formData.ttl ?? effectiveTtlDefault)}
-                {isGlobalTtlOverride && globalTtl !== effectiveTtlDefault && (
-                  <span className="text-amber-500 dark:text-amber-400">
-                    {' '}(global {formatTTL(globalTtl)} clamped)
-                  </span>
-                )}
-                {isGlobalTtlOverride && globalTtl === effectiveTtlDefault && (
-                  <span className="text-blue-500 dark:text-blue-400"> (global override)</span>
-                )}
-              </p>
-            )}
+            <label className="label">Hostname *</label>
+            <div className="relative">
+              <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                className="input mt-1 pl-10"
+                value={formData.hostname ?? ''}
+                onChange={(e) => setFormData({ ...formData, hostname: e.target.value })}
+                placeholder="example.com"
+              />
+            </div>
           </div>
         </div>
 
-        <div>
-          <label className="label">Content *</label>
-          <input
-            type="text"
-            className="input mt-1"
-            value={formData.content ?? ''}
-            onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-            placeholder={formData.type === 'A' ? '192.168.1.1' : 'target.example.com'}
-          />
+        {/* Record Configuration */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <Settings2 className="w-4 h-4 text-primary-500" />
+            Record Configuration
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Type *</label>
+              <Select
+                className="mt-1"
+                value={formData.type}
+                onChange={(value) => setFormData({ ...formData, type: value as CreateDNSRecordInput['type'] })}
+                options={[
+                  { value: 'A', label: 'A', description: 'IPv4 address' },
+                  { value: 'AAAA', label: 'AAAA', description: 'IPv6 address' },
+                  { value: 'CNAME', label: 'CNAME', description: 'Canonical name' },
+                  { value: 'MX', label: 'MX', description: 'Mail exchange' },
+                  { value: 'TXT', label: 'TXT', description: 'Text record' },
+                  { value: 'SRV', label: 'SRV', description: 'Service record' },
+                  { value: 'CAA', label: 'CAA', description: 'Certificate authority' },
+                  { value: 'NS', label: 'NS', description: 'Name server' },
+                ]}
+              />
+            </div>
+            <div>
+              <label className="label">
+                TTL
+                {selectedProvider && (
+                  <span className="ml-2 text-xs text-gray-400 font-normal">
+                    ({ttlMin === 1 ? 'auto' : formatTTL(ttlMin)} - {formatTTL(ttlMax)})
+                  </span>
+                )}
+              </label>
+              <div className="relative">
+                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <input
+                  type="number"
+                  className="input mt-1 pl-10"
+                  value={formData.ttl ?? effectiveTtlDefault}
+                  onChange={(e) => setFormData({ ...formData, ttl: parseInt(e.target.value) || effectiveTtlDefault })}
+                  min={ttlMin}
+                  max={ttlMax}
+                />
+              </div>
+              {selectedProvider && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  {ttlMin === 1 && 'Use 1 for automatic TTL. '}
+                  Current: {formatTTL(formData.ttl ?? effectiveTtlDefault)}
+                  {isGlobalTtlOverride && globalTtl !== effectiveTtlDefault && (
+                    <span className="text-amber-500 dark:text-amber-400">
+                      {' '}(global {formatTTL(globalTtl)} clamped)
+                    </span>
+                  )}
+                  {isGlobalTtlOverride && globalTtl === effectiveTtlDefault && (
+                    <span className="text-blue-500 dark:text-blue-400"> (global override)</span>
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+          <div>
+            <label className="label">Content *</label>
+            <div className="relative">
+              <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                className="input mt-1 pl-10"
+                value={formData.content ?? ''}
+                onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                placeholder={formData.type === 'A' ? '192.168.1.1' : 'target.example.com'}
+              />
+            </div>
+          </div>
         </div>
 
-        {/* Proxied checkbox - only for Cloudflare and compatible types */}
+        {/* Options - only for Cloudflare and compatible types */}
         {supportsProxied && ['A', 'AAAA', 'CNAME'].includes(formData.type ?? '') && (
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="create-proxied"
-              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              checked={formData.proxied ?? false}
-              onChange={(e) => setFormData({ ...formData, proxied: e.target.checked })}
-            />
-            <label htmlFor="create-proxied" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
-              Proxied through Cloudflare
-            </label>
+          <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+              <Sliders className="w-4 h-4 text-primary-500" />
+              Options
+            </div>
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="create-proxied"
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                checked={formData.proxied ?? false}
+                onChange={(e) => setFormData({ ...formData, proxied: e.target.checked })}
+              />
+              <label htmlFor="create-proxied" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                Proxied through Cloudflare
+              </label>
+            </div>
           </div>
         )}
 
@@ -2840,62 +3020,84 @@ function EditRecordModal({ isOpen, onClose, record }: EditRecordModalProps) {
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
 
-        <div>
-          <label className="label">Hostname</label>
-          <input
-            type="text"
-            className="input mt-1 bg-gray-50 dark:bg-gray-800"
-            value={record.hostname}
-            disabled
-          />
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Hostname cannot be changed</p>
+        {/* Record Identity */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <Globe className="w-4 h-4 text-primary-500" />
+            Record Identity
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Hostname</label>
+              <div className="relative">
+                <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <input
+                  type="text"
+                  className="input mt-1 pl-10 bg-gray-50 dark:bg-gray-800 cursor-not-allowed"
+                  value={record.hostname}
+                  disabled
+                />
+              </div>
+            </div>
+            <div>
+              <label className="label">Type</label>
+              <input
+                type="text"
+                className="input mt-1 bg-gray-50 dark:bg-gray-800 cursor-not-allowed"
+                value={record.type}
+                disabled
+              />
+            </div>
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="label">Type</label>
-            <input
-              type="text"
-              className="input mt-1 bg-gray-50 dark:bg-gray-800"
-              value={record.type}
-              disabled
-            />
+        {/* Settings */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <Settings2 className="w-4 h-4 text-primary-500" />
+            Settings
           </div>
-          <div>
-            <label className="label">TTL</label>
-            <input
-              type="number"
-              className="input mt-1"
-              value={formData.ttl ?? record.ttl}
-              onChange={(e) => setFormData({ ...formData, ttl: parseInt(e.target.value) })}
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label">TTL</label>
+              <div className="relative">
+                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <input
+                  type="number"
+                  className="input mt-1 pl-10"
+                  value={formData.ttl ?? record.ttl}
+                  onChange={(e) => setFormData({ ...formData, ttl: parseInt(e.target.value) })}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="label">Content *</label>
+              <div className="relative">
+                <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <input
+                  type="text"
+                  className="input mt-1 pl-10"
+                  value={formData.content ?? ''}
+                  onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                />
+              </div>
+            </div>
           </div>
+          {['A', 'AAAA', 'CNAME'].includes(record.type) && (
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="proxied"
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                checked={formData.proxied ?? record.proxied ?? false}
+                onChange={(e) => setFormData({ ...formData, proxied: e.target.checked })}
+              />
+              <label htmlFor="proxied" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                Proxied (Cloudflare only)
+              </label>
+            </div>
+          )}
         </div>
-
-        <div>
-          <label className="label">Content *</label>
-          <input
-            type="text"
-            className="input mt-1"
-            value={formData.content ?? ''}
-            onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-          />
-        </div>
-
-        {['A', 'AAAA', 'CNAME'].includes(record.type) && (
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="proxied"
-              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              checked={formData.proxied ?? record.proxied ?? false}
-              onChange={(e) => setFormData({ ...formData, proxied: e.target.checked })}
-            />
-            <label htmlFor="proxied" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
-              Proxied (Cloudflare only)
-            </label>
-          </div>
-        )}
 
         <ModalFooter>
           <Button variant="secondary" onClick={onClose} type="button">
