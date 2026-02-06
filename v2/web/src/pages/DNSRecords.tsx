@@ -359,7 +359,7 @@ function DNSRecordsTab() {
         const supportsProxy = provider?.features?.proxied ?? false;
 
         if (!supportsProxy) {
-          return <span className="text-xs text-gray-400">N/A</span>;
+          return <Badge variant="default">n/a</Badge>;
         }
 
         return (
