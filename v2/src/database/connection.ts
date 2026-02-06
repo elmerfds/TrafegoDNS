@@ -104,7 +104,7 @@ function createTablesDirectly(): void {
     CREATE TABLE IF NOT EXISTS providers (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
-      type TEXT NOT NULL CHECK(type IN ('cloudflare', 'digitalocean', 'route53', 'technitium', 'adguard', 'pihole')),
+      type TEXT NOT NULL CHECK(type IN ('cloudflare', 'digitalocean', 'route53', 'technitium', 'adguard', 'pihole', 'rfc2136')),
       is_default INTEGER NOT NULL DEFAULT 0,
       credentials TEXT NOT NULL,
       settings TEXT NOT NULL DEFAULT '{}',
@@ -588,7 +588,8 @@ function migrateAuditLogsActionConstraint(sqliteDb: Database.Database): void {
 }
 
 /**
- * Migrate providers table to include 'adguard' and 'pihole' in type CHECK constraint
+ * Migrate providers table to include all provider types in CHECK constraint
+ * Originally added adguard/pihole, now also includes rfc2136
  */
 function migrateProviderTypeConstraint(sqliteDb: Database.Database): void {
   const tableExists = sqliteDb
@@ -602,11 +603,11 @@ function migrateProviderTypeConstraint(sqliteDb: Database.Database): void {
     .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='providers'")
     .get() as { sql: string } | undefined;
 
-  if (tableSchema && tableSchema.sql.includes("'adguard'")) {
-    return; // Already migrated
+  if (tableSchema && tableSchema.sql.includes("'rfc2136'")) {
+    return; // Already migrated to latest
   }
 
-  logger.info('Migrating providers table to support adguard and pihole provider types');
+  logger.info('Migrating providers table to support all provider types');
 
   sqliteDb.exec('BEGIN TRANSACTION');
   try {
@@ -614,7 +615,7 @@ function migrateProviderTypeConstraint(sqliteDb: Database.Database): void {
       CREATE TABLE providers_new (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,
-        type TEXT NOT NULL CHECK(type IN ('cloudflare', 'digitalocean', 'route53', 'technitium', 'adguard', 'pihole')),
+        type TEXT NOT NULL CHECK(type IN ('cloudflare', 'digitalocean', 'route53', 'technitium', 'adguard', 'pihole', 'rfc2136')),
         is_default INTEGER NOT NULL DEFAULT 0,
         credentials TEXT NOT NULL,
         settings TEXT NOT NULL DEFAULT '{}',
@@ -634,7 +635,7 @@ function migrateProviderTypeConstraint(sqliteDb: Database.Database): void {
     sqliteDb.exec('ALTER TABLE providers_new RENAME TO providers');
 
     sqliteDb.exec('COMMIT');
-    logger.info('Migration complete: providers table updated with adguard and pihole types');
+    logger.info('Migration complete: providers table updated with all provider types');
   } catch (error) {
     sqliteDb.exec('ROLLBACK');
     logger.error({ error }, 'Failed to migrate providers table');

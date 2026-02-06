@@ -22,6 +22,8 @@ export function ProviderIcon({ type, className = 'w-5 h-5' }: ProviderIconProps)
       return <AdGuardIcon className={className} />;
     case 'pihole':
       return <PiHoleIcon className={className} />;
+    case 'rfc2136':
+      return <RFC2136Icon className={className} />;
     default:
       return <DefaultProviderIcon className={className} />;
   }
@@ -108,6 +110,24 @@ function PiHoleIcon({ className }: { className: string }) {
       alt="Pi-hole"
       className={className}
     />
+  );
+}
+
+function RFC2136Icon({ className }: { className: string }) {
+  return (
+    <svg className={className} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Globe with dynamic update arrows */}
+      <circle cx="16" cy="16" r="12" stroke="#4B8BBE" strokeWidth="2" fill="none" />
+      <ellipse cx="16" cy="16" rx="5" ry="12" stroke="#4B8BBE" strokeWidth="1.5" fill="none" />
+      <line x1="4" y1="16" x2="28" y2="16" stroke="#4B8BBE" strokeWidth="1.5" />
+      <line x1="6" y1="10" x2="26" y2="10" stroke="#4B8BBE" strokeWidth="1" opacity="0.6" />
+      <line x1="6" y1="22" x2="26" y2="22" stroke="#4B8BBE" strokeWidth="1" opacity="0.6" />
+      {/* Refresh arrow */}
+      <path d="M24 8 L28 8 L28 12" stroke="#F4A620" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M28 8 C26 5 22 3 16 4" stroke="#F4A620" strokeWidth="2" strokeLinecap="round" fill="none" />
+      <path d="M8 24 L4 24 L4 20" stroke="#F4A620" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 24 C6 27 10 29 16 28" stroke="#F4A620" strokeWidth="2" strokeLinecap="round" fill="none" />
+    </svg>
   );
 }
 

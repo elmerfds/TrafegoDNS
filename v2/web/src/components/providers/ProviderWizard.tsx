@@ -58,6 +58,12 @@ const providerMetadata: Record<ProviderType, ProviderMeta> = {
     supportedTypes: ['A', 'AAAA', 'CNAME'],
     features: ['Self-hosted'],
   },
+  rfc2136: {
+    name: 'RFC 2136',
+    description: 'Dynamic DNS updates for BIND, PowerDNS, Knot, etc.',
+    supportedTypes: ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA', 'NS'],
+    features: ['Self-hosted', 'Standard'],
+  },
 };
 
 // ── Credential field definitions ─────────────────────────────────────────
@@ -105,9 +111,17 @@ const providerFields: Record<ProviderType, CredentialField[]> = {
     { key: 'password', label: 'Web Password', type: 'password', required: true },
     { key: 'domain', label: 'Domain Filter', placeholder: 'example.com', hint: 'Optional. Only manage records matching this domain' },
   ],
+  rfc2136: [
+    { key: 'server', label: 'DNS Server', placeholder: '192.168.1.1 or ns1.example.com', required: true, hint: 'IP or hostname of your authoritative DNS server' },
+    { key: 'port', label: 'Port', placeholder: '53', hint: 'DNS port (default: 53)' },
+    { key: 'zone', label: 'Zone', placeholder: 'example.com', required: true, hint: 'The DNS zone to manage' },
+    { key: 'keyName', label: 'TSIG Key Name', placeholder: 'tsig-key', hint: 'Name of the TSIG key for authentication' },
+    { key: 'keyAlgorithm', label: 'TSIG Algorithm', placeholder: 'hmac-sha256', hint: 'Algorithm: hmac-sha256, hmac-sha512, hmac-sha1, or hmac-md5' },
+    { key: 'keySecret', label: 'TSIG Secret', type: 'password', hint: 'Base64-encoded TSIG secret. Generate with: tsig-keygen -a hmac-sha256 keyname' },
+  ],
 };
 
-const providerOrder: ProviderType[] = ['cloudflare', 'digitalocean', 'route53', 'technitium', 'adguard', 'pihole'];
+const providerOrder: ProviderType[] = ['cloudflare', 'digitalocean', 'route53', 'technitium', 'rfc2136', 'adguard', 'pihole'];
 
 // ── Step Indicator ───────────────────────────────────────────────────────
 

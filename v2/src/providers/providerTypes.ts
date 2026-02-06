@@ -125,6 +125,37 @@ export const PROVIDER_TYPES: Record<string, ProviderTypeInfo> = {
       { key: 'domain', label: 'Domain Filter', type: 'text', required: false, placeholder: 'e.g., example.com (optional)' },
     ],
   },
+  rfc2136: {
+    type: 'rfc2136',
+    name: 'RFC 2136',
+    features: {
+      proxied: false,
+      ttlMin: 1,
+      ttlMax: 604800,
+      ttlDefault: 3600,
+      supportedTypes: ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA', 'NS'],
+      batchOperations: false,
+    },
+    requiredCredentials: [
+      { key: 'server', label: 'DNS Server', type: 'text', required: true, placeholder: 'e.g., 192.168.1.1 or ns1.example.com' },
+      { key: 'port', label: 'Port', type: 'text', required: false, placeholder: '53 (default)' },
+      { key: 'zone', label: 'Zone', type: 'text', required: true, placeholder: 'e.g., example.com' },
+      { key: 'keyName', label: 'TSIG Key Name', type: 'text', required: false, placeholder: 'e.g., tsig-key' },
+      {
+        key: 'keyAlgorithm',
+        label: 'TSIG Algorithm',
+        type: 'select',
+        required: false,
+        options: [
+          { value: 'hmac-sha256', label: 'HMAC-SHA256 (recommended)' },
+          { value: 'hmac-sha512', label: 'HMAC-SHA512' },
+          { value: 'hmac-sha1', label: 'HMAC-SHA1' },
+          { value: 'hmac-md5', label: 'HMAC-MD5 (legacy)' },
+        ],
+      },
+      { key: 'keySecret', label: 'TSIG Secret', type: 'password', required: false, placeholder: 'Base64-encoded TSIG secret' },
+    ],
+  },
   route53: {
     type: 'route53',
     name: 'AWS Route 53',

@@ -138,6 +138,7 @@ export const providerTypeSchema = z.enum([
   'technitium',
   'adguard',
   'pihole',
+  'rfc2136',
 ]);
 
 export const createProviderSchema = z.object({

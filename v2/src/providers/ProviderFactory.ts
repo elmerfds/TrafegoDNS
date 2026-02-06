@@ -11,6 +11,7 @@ import { Route53Provider, type Route53ProviderCredentials } from './route53/inde
 import { TechnitiumProvider, type TechnitiumProviderCredentials } from './technitium/index.js';
 import { AdGuardProvider, type AdGuardProviderCredentials } from './adguard/index.js';
 import { PiHoleProvider, type PiHoleProviderCredentials } from './pihole/index.js';
+import { RFC2136Provider, type RFC2136ProviderCredentials } from './rfc2136/index.js';
 import type { ProviderType, ProviderSettingsData } from '../types/index.js';
 
 export interface CreateProviderOptions {
@@ -76,6 +77,14 @@ export function createProvider(options: CreateProviderOptions): DNSProvider {
         id,
         name,
         credentials as PiHoleProviderCredentials,
+        { cacheRefreshInterval, settings }
+      );
+
+    case 'rfc2136':
+      return new RFC2136Provider(
+        id,
+        name,
+        credentials as RFC2136ProviderCredentials,
         { cacheRefreshInterval, settings }
       );
 
@@ -229,6 +238,29 @@ export function createProviderFromEnv(): DNSProvider | null {
       });
     }
 
+    case 'rfc2136': {
+      const server = process.env['RFC2136_SERVER'];
+      const zone = process.env['RFC2136_ZONE'];
+
+      if (!server || !zone) {
+        throw new Error('RFC2136_SERVER and RFC2136_ZONE are required');
+      }
+
+      return createProvider({
+        id,
+        name,
+        type: 'rfc2136',
+        credentials: {
+          server,
+          port: process.env['RFC2136_PORT'],
+          zone,
+          keyName: process.env['RFC2136_TSIG_KEY_NAME'],
+          keyAlgorithm: process.env['RFC2136_TSIG_ALGORITHM'],
+          keySecret: process.env['RFC2136_TSIG_SECRET'],
+        } as RFC2136ProviderCredentials,
+      });
+    }
+
     default:
       throw new Error(`Unsupported provider type: ${providerType}`);
   }
@@ -271,6 +303,11 @@ export function validateCredentials(type: ProviderType, credentials: ProviderCre
       return !!(creds.url && creds.password);
     }
 
+    case 'rfc2136': {
+      const creds = credentials as RFC2136ProviderCredentials;
+      return !!(creds.server && creds.zone);
+    }
+
     default:
       return false;
   }
@@ -280,7 +317,7 @@ export function validateCredentials(type: ProviderType, credentials: ProviderCre
  * Get supported provider types
  */
 export function getSupportedProviders(): ProviderType[] {
-  return ['cloudflare', 'digitalocean', 'route53', 'technitium', 'adguard', 'pihole'];
+  return ['cloudflare', 'digitalocean', 'route53', 'technitium', 'adguard', 'pihole', 'rfc2136'];
 }
 
 /**
@@ -413,6 +450,26 @@ export function detectProvidersFromEnv(): DetectedProviderConfig[] {
         password: piholePass,
         domain: process.env['PIHOLE_DOMAIN'],
       } as PiHoleProviderCredentials,
+    });
+  }
+
+  // Check RFC 2136
+  const rfc2136Server = process.env['RFC2136_SERVER'];
+  const rfc2136Zone = process.env['RFC2136_ZONE'];
+
+  if (rfc2136Server && rfc2136Zone) {
+    detected.push({
+      type: 'rfc2136',
+      name: `RFC 2136 (${rfc2136Zone})`,
+      zone: rfc2136Zone,
+      credentials: {
+        server: rfc2136Server,
+        port: process.env['RFC2136_PORT'],
+        zone: rfc2136Zone,
+        keyName: process.env['RFC2136_TSIG_KEY_NAME'],
+        keyAlgorithm: process.env['RFC2136_TSIG_ALGORITHM'],
+        keySecret: process.env['RFC2136_TSIG_SECRET'],
+      } as RFC2136ProviderCredentials,
     });
   }
 

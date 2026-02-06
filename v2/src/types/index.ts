@@ -50,7 +50,7 @@ export interface DNSRecordUpdateInput {
 }
 
 // Provider Types
-export type ProviderType = 'cloudflare' | 'digitalocean' | 'route53' | 'technitium' | 'adguard' | 'pihole';
+export type ProviderType = 'cloudflare' | 'digitalocean' | 'route53' | 'technitium' | 'adguard' | 'pihole' | 'rfc2136';
 
 export interface ProviderConfig {
   id?: string;
@@ -103,6 +103,15 @@ export interface PiHoleCredentials {
   url: string;
   password: string;
   domain?: string; // Optional domain filter
+}
+
+export interface RFC2136Credentials {
+  server: string;
+  port?: string;
+  zone: string;
+  keyName?: string;
+  keyAlgorithm?: string;
+  keySecret?: string;
 }
 
 // Tunnel Types (Cloudflare)

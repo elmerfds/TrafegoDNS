@@ -54,7 +54,7 @@ ARG S6_OVERLAY_VERSION=3.1.6.2
 ARG TARGETARCH
 
 # Install runtime dependencies including shadow for usermod/groupmod
-RUN apk add --no-cache curl xz bash shadow \
+RUN apk add --no-cache curl xz bash shadow bind-tools \
     && case "${TARGETARCH}" in \
         "amd64")  S6_ARCH="x86_64"  ;; \
         "arm64")  S6_ARCH="aarch64" ;; \

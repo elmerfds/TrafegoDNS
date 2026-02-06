@@ -8,6 +8,7 @@ export { Route53Provider, type Route53ProviderCredentials } from './route53/inde
 export { TechnitiumProvider, type TechnitiumProviderCredentials } from './technitium/index.js';
 export { AdGuardProvider, type AdGuardProviderCredentials } from './adguard/index.js';
 export { PiHoleProvider, type PiHoleProviderCredentials } from './pihole/index.js';
+export { RFC2136Provider, type RFC2136ProviderCredentials } from './rfc2136/index.js';
 export {
   createProvider,
   createProviderFromEnv,

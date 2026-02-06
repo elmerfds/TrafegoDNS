@@ -300,6 +300,14 @@ const providerFields: Record<ProviderType, Array<{ key: string; label: string; t
     { key: 'password', label: 'Web Password *', type: 'password' },
     { key: 'domain', label: 'Domain Filter', placeholder: 'example.com (optional)' },
   ],
+  rfc2136: [
+    { key: 'server', label: 'DNS Server *', placeholder: '192.168.1.1 or ns1.example.com' },
+    { key: 'port', label: 'Port', placeholder: '53' },
+    { key: 'zone', label: 'Zone *', placeholder: 'example.com' },
+    { key: 'keyName', label: 'TSIG Key Name' },
+    { key: 'keyAlgorithm', label: 'TSIG Algorithm', placeholder: 'hmac-sha256' },
+    { key: 'keySecret', label: 'TSIG Secret', type: 'password' },
+  ],
 };
 
 interface EditProviderModalProps {
