@@ -448,14 +448,144 @@ In v2, you can also:
 
 ## Cloudflare Tunnels
 
-TrafegoDNS v2 can create and manage Cloudflare Zero Trust tunnels:
+TrafegoDNS v2 includes full Cloudflare Zero Trust tunnel management — create tunnels, manage ingress routes, and optionally auto-manage tunnel routes from your container lifecycle, just like DNS records.
 
-- **Create tunnels** from the Web UI's Tunnels page
-- **Configure ingress rules** to route traffic to your services
-- **Deploy tunnel configuration** to Cloudflare with one click
-- **View tunnel status** and manage connections
+### Requirements
 
-Tunnels require a Cloudflare provider with an API token that has the `Cloudflare Tunnel` permission.
+- A **Cloudflare provider** configured in TrafegoDNS
+- The API token must have the **Cloudflare Tunnel** permission (and **Account ID** set in the provider config)
+
+### Manual Tunnel Management
+
+From the **Tunnels** page in the Web UI:
+
+1. **Create a tunnel** — after creation, the connector token and `docker run` / `docker-compose` commands are displayed for running `cloudflared`
+2. **Add ingress rules** — route hostnames to backend services (e.g., `app.example.com` → `http://traefik:80`)
+3. **Edit / delete rules** — modify or remove routes as needed
+4. **Deploy** — push the current configuration to Cloudflare
+
+You can also retrieve the connector token at any time from the tunnel detail view.
+
+### Tunnel Auto-Management
+
+TrafegoDNS can automatically create and remove tunnel ingress rules based on your running containers — the same lifecycle as DNS records. When a container starts, its hostname gets a tunnel route; when it stops, the route is removed after the grace period.
+
+#### Global Settings
+
+Configure auto-management from the **Settings** page under the **Tunnels** tab:
+
+| Setting | Options | Description |
+|---------|---------|-------------|
+| **Tunnel Mode** | `off`, `all`, `labeled` | Controls auto-management behavior |
+| **Default Tunnel** | *(tunnel name)* | Which tunnel to route hostnames through |
+| **Default Service URL** | *(URL)* | Backend service for tunnel routes (e.g., `http://traefik:80`) |
+
+#### Tunnel Modes
+
+**`off`** (default) — No auto-management. Tunnels and routes are manual only.
+
+**`all`** — Every hostname discovered by TrafegoDNS is automatically routed through the tunnel. This is the easiest setup for a typical Traefik configuration — set the three settings and every container gets a tunnel route with zero labels:
+
+```yaml
+# Settings page configuration:
+# Tunnel Mode: all
+# Default Tunnel: my-tunnel
+# Default Service URL: http://traefik:80
+#
+# That's it — every Traefik-discovered hostname gets a tunnel route automatically.
+```
+
+To **opt out** a specific container from tunnel routing in `all` mode:
+
+```yaml
+labels:
+  - "dns.tunnel=false"
+```
+
+**`labeled`** — Only containers with the `dns.tunnel` label are routed through the tunnel. All other containers use normal DNS:
+
+```yaml
+# Only this container gets a tunnel route:
+labels:
+  - "dns.tunnel=true"
+```
+
+#### Per-Container Label Overrides
+
+These labels override the global settings for individual containers:
+
+| Label | Description | Example |
+|-------|-------------|---------|
+| `dns.tunnel=false` | Opt out of tunnel routing (in `all` mode) | Skip this container |
+| `dns.tunnel=true` | Opt in to tunnel routing (in `labeled` mode) | Use default tunnel |
+| `dns.tunnel=<name>` | Use a specific tunnel instead of the default | `dns.tunnel=staging-tunnel` |
+| `dns.tunnel.service=<url>` | Override the backend service URL | `dns.tunnel.service=http://app:8080` |
+| `dns.tunnel.path=<path>` | Route only a specific path | `dns.tunnel.path=/api` |
+| `dns.tunnel.notlsverify=true` | Skip TLS verification to origin | For self-signed certs |
+| `dns.tunnel.httphostheader=<host>` | Override the Host header | Custom host routing |
+
+#### How Auto-Management Works
+
+1. On each sync cycle, TrafegoDNS checks the `tunnel_mode` setting
+2. For each hostname, it resolves the tunnel config from global settings + container labels
+3. If a tunnel route should exist, `ensureIngressRule()` creates it (with `source: auto`) or reactivates it if orphaned
+4. If a hostname is no longer active, its rule is marked as **orphaned**
+5. After the **cleanup grace period** (same setting as DNS records), the orphaned rule and its CNAME record are removed from Cloudflare
+6. If the container restarts within the grace period, the route is automatically restored
+
+Auto-managed rules are shown with an **Auto** badge in the UI. Manual rules (`source: api`) are never automatically removed.
+
+#### Example: Full Traefik + Tunnel Setup
+
+```yaml
+services:
+  trafegodns:
+    image: ghcr.io/elmerfds/trafegodns:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - OPERATION_MODE=traefik
+      - TRAEFIK_API_URL=http://traefik:8080/api
+      - CLEANUP_ORPHANED=true
+      - DEFAULT_ADMIN_PASSWORD=changeme
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config:/config
+
+  # After starting:
+  # 1. Add your Cloudflare provider (with Account ID) via the Providers page
+  # 2. Create a tunnel via the Tunnels page
+  # 3. Start cloudflared using the connector token shown after creation
+  # 4. Go to Settings > Tunnels and set:
+  #    - Tunnel Mode: all
+  #    - Default Tunnel: <your-tunnel-name>
+  #    - Default Service URL: http://traefik:80
+  #
+  # Every container with a Traefik Host rule will now automatically get
+  # both a DNS record AND a tunnel ingress route.
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    restart: unless-stopped
+```
+
+### Tunnel API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/tunnels` | List all tunnels |
+| `POST` | `/api/v1/tunnels` | Create a tunnel |
+| `GET` | `/api/v1/tunnels/:id` | Get tunnel detail with ingress rules |
+| `DELETE` | `/api/v1/tunnels/:id` | Delete a tunnel |
+| `GET` | `/api/v1/tunnels/:id/token` | Get connector token (admin only) |
+| `GET` | `/api/v1/tunnels/:id/ingress` | List ingress rules |
+| `POST` | `/api/v1/tunnels/:id/ingress` | Add an ingress rule |
+| `PUT` | `/api/v1/tunnels/:id/ingress/:hostname` | Update an ingress rule |
+| `DELETE` | `/api/v1/tunnels/:id/ingress/:hostname` | Remove an ingress rule |
+| `PUT` | `/api/v1/tunnels/:id/config` | Update full tunnel config |
+| `POST` | `/api/v1/tunnels/:id/deploy` | Deploy tunnel to Cloudflare |
 
 ## RFC 2136 (Dynamic DNS) Setup
 
