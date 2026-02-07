@@ -121,7 +121,10 @@ export class TunnelManager {
       this.logger.info('Tunnel Manager initialized successfully');
     } catch (error) {
       this.logger.error({ error }, 'Failed to initialize Tunnel Manager');
-      throw error;
+      // Degrade gracefully — tunnel support will be unavailable but the app continues
+      this.tunnelsClient = null;
+      this.providerId = null;
+      this.initialized = true;
     }
   }
 
