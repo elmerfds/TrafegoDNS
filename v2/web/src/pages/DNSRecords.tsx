@@ -3,9 +3,9 @@
  */
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X, Filter, Settings2, Download, Upload, Clock, Timer, ExternalLink, Lock, Unlock, AlertTriangle, FileText, Sliders, MessageSquare, CheckCircle, XCircle, ArrowRight, Server } from 'lucide-react';
+import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X, Filter, Settings2, Download, Upload, Clock, Timer, ExternalLink, Lock, Unlock, AlertTriangle, FileText, Sliders, MessageSquare, CheckCircle, XCircle, Server } from 'lucide-react';
 import { dnsApi, providersApi, preservedHostnamesApi, settingsApi, overridesApi, type DNSRecord, type CreateDNSRecordInput, type UpdateDNSRecordInput, type PreservedHostname, type HostnameOverride, type CreateOverrideInput, type UpdateOverrideInput, type ImportRecordsInput, type ImportRecordsResponse, type MultiCreateDNSRecordInput, type MultiCreateResult } from '../api';
-import { getProviderZone, convertHostname } from '../utils/zoneConversion';
+import { getProviderZone, convertHostname, convertContent, isHostnameContentType } from '../utils/zoneConversion';
 import { preferencesApi, DEFAULT_DNS_TABLE_PREFERENCES, type TableViewPreference } from '../api/preferences';
 import { Button, Pagination, Badge, Modal, ModalFooter, Alert, Select, DataTable, ColumnCustomizer, ProviderCell, type DataTableColumn } from '../components/common';
 
@@ -2729,6 +2729,7 @@ interface CreateRecordModalProps {
 
 interface ProviderOverrides {
   hostname?: string;
+  content?: string;
   ttl?: number;
   proxied?: boolean;
 }
@@ -2807,6 +2808,19 @@ function CreateRecordModal({ isOpen, onClose, providers: allProviders }: CreateR
     return convertHostname(hostname, baseZone, providerZone);
   }, [hostname, baseZone, providerOverrides]);
 
+  // Get the resolved content for a provider (with zone conversion for hostname-based types)
+  const getProviderContent = useCallback((provider: ProviderWithFeatures): string => {
+    const override = providerOverrides[provider.id]?.content;
+    if (override !== undefined) return override;
+
+    if (!content) return '';
+    const providerZone = getProviderZone(provider.settings);
+    if (!providerZone || !baseZone) return content;
+    if (providerZone.toLowerCase() === baseZone.toLowerCase()) return content;
+
+    return convertContent(recordType, content, baseZone, providerZone);
+  }, [content, recordType, baseZone, providerOverrides]);
+
   const toggleProvider = (providerId: string) => {
     const next = new Set(selectedProviderIds);
     if (next.has(providerId)) {
@@ -2879,6 +2893,7 @@ function CreateRecordModal({ isOpen, onClose, providers: allProviders }: CreateR
     const providerTargets = Array.from(selectedProviderIds).map(providerId => {
       const provider = providers.find(p => p.id === providerId);
       const resolvedHostname = provider ? getProviderHostname(provider) : hostname;
+      const resolvedContent = provider ? getProviderContent(provider) : content;
       const overrides = providerOverrides[providerId] || {};
 
       return {
@@ -2886,6 +2901,7 @@ function CreateRecordModal({ isOpen, onClose, providers: allProviders }: CreateR
         hostname: resolvedHostname !== hostname ? resolvedHostname : undefined,
         ttl: overrides.ttl,
         proxied: overrides.proxied,
+        content: resolvedContent !== content ? resolvedContent : undefined,
       };
     });
 
@@ -3088,20 +3104,40 @@ function CreateRecordModal({ isOpen, onClose, providers: allProviders }: CreateR
                   {/* Per-provider config (expanded when selected) */}
                   {isSelected && (
                     <div className="px-3 pb-3 pt-0 space-y-3 border-t border-gray-200 dark:border-gray-700 mt-0">
-                      {/* Zone conversion notice */}
+                      {/* Zone conversion notices */}
                       {needsConversion && hostname && (
-                        <div className="flex items-center gap-2 mt-3 p-2 rounded bg-blue-50 dark:bg-blue-900/20 text-xs text-blue-700 dark:text-blue-300">
-                          <ArrowRight className="w-3.5 h-3.5 flex-shrink-0" />
-                          <span className="truncate">
-                            {hostname} <span className="opacity-60">&rarr;</span>{' '}
-                            <input
-                              type="text"
-                              className="inline bg-transparent border-b border-blue-300 dark:border-blue-600 font-medium px-0.5 py-0 text-xs w-auto focus:outline-none focus:border-blue-500"
-                              value={resolvedHostname}
-                              onChange={(e) => updateProviderOverride(provider.id, { hostname: e.target.value })}
-                              style={{ width: `${Math.max(resolvedHostname.length, 10)}ch` }}
-                            />
-                          </span>
+                        <div className="space-y-2 mt-3">
+                          {/* Hostname conversion */}
+                          <div className="flex items-center gap-2 p-2 rounded bg-blue-50 dark:bg-blue-900/20 text-xs text-blue-700 dark:text-blue-300">
+                            <Globe className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span className="truncate">
+                              {hostname} <span className="opacity-60">&rarr;</span>{' '}
+                              <input
+                                type="text"
+                                className="inline bg-transparent border-b border-blue-300 dark:border-blue-600 font-medium px-0.5 py-0 text-xs w-auto focus:outline-none focus:border-blue-500"
+                                value={resolvedHostname}
+                                onChange={(e) => updateProviderOverride(provider.id, { hostname: e.target.value })}
+                                style={{ width: `${Math.max(resolvedHostname.length, 10)}ch` }}
+                              />
+                            </span>
+                          </div>
+
+                          {/* Content conversion (hostname-based types only) */}
+                          {isHostnameContentType(recordType) && content && (
+                            <div className="flex items-center gap-2 p-2 rounded bg-purple-50 dark:bg-purple-900/20 text-xs text-purple-700 dark:text-purple-300">
+                              <FileText className="w-3.5 h-3.5 flex-shrink-0" />
+                              <span className="truncate">
+                                {content} <span className="opacity-60">&rarr;</span>{' '}
+                                <input
+                                  type="text"
+                                  className="inline bg-transparent border-b border-purple-300 dark:border-purple-600 font-medium px-0.5 py-0 text-xs w-auto focus:outline-none focus:border-purple-500"
+                                  value={getProviderContent(provider)}
+                                  onChange={(e) => updateProviderOverride(provider.id, { content: e.target.value })}
+                                  style={{ width: `${Math.max(getProviderContent(provider).length, 10)}ch` }}
+                                />
+                              </span>
+                            </div>
+                          )}
                         </div>
                       )}
 
