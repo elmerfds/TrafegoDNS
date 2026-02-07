@@ -2795,6 +2795,22 @@ function CreateRecordModal({ isOpen, onClose, providers: allProviders }: CreateR
     return null;
   }, [hostname, providers]);
 
+  // Detect which zone the content value belongs to (for hostname-based types like CNAME)
+  // This is independent of baseZone so it works even for short hostnames like "*"
+  const contentSourceZone = useMemo(() => {
+    if (!content || !isHostnameContentType(recordType)) return null;
+    for (const p of providers) {
+      const zone = getProviderZone(p.settings);
+      if (zone) {
+        const lower = content.toLowerCase();
+        if (lower === zone.toLowerCase() || lower.endsWith(`.${zone.toLowerCase()}`)) {
+          return zone;
+        }
+      }
+    }
+    return null;
+  }, [content, recordType, providers]);
+
   // Get the resolved hostname for a provider (with zone conversion)
   const getProviderHostname = useCallback((provider: ProviderWithFeatures): string => {
     const override = providerOverrides[provider.id]?.hostname;
@@ -2815,11 +2831,11 @@ function CreateRecordModal({ isOpen, onClose, providers: allProviders }: CreateR
 
     if (!content) return '';
     const providerZone = getProviderZone(provider.settings);
-    if (!providerZone || !baseZone) return content;
-    if (providerZone.toLowerCase() === baseZone.toLowerCase()) return content;
+    if (!providerZone || !contentSourceZone) return content;
+    if (providerZone.toLowerCase() === contentSourceZone.toLowerCase()) return content;
 
-    return convertContent(recordType, content, baseZone, providerZone);
-  }, [content, recordType, baseZone, providerOverrides]);
+    return convertContent(recordType, content, contentSourceZone, providerZone);
+  }, [content, recordType, contentSourceZone, providerOverrides]);
 
   const toggleProvider = (providerId: string) => {
     const next = new Set(selectedProviderIds);
@@ -3104,42 +3120,44 @@ function CreateRecordModal({ isOpen, onClose, providers: allProviders }: CreateR
                   {/* Per-provider config (expanded when selected) */}
                   {isSelected && (
                     <div className="px-3 pb-3 pt-0 space-y-3 border-t border-gray-200 dark:border-gray-700 mt-0">
-                      {/* Zone conversion notices */}
+                      {/* Hostname zone conversion notice */}
                       {needsConversion && hostname && (
-                        <div className="space-y-2 mt-3">
-                          {/* Hostname conversion */}
-                          <div className="flex items-center gap-2 p-2 rounded bg-blue-50 dark:bg-blue-900/20 text-xs text-blue-700 dark:text-blue-300">
-                            <Globe className="w-3.5 h-3.5 flex-shrink-0" />
+                        <div className="flex items-center gap-2 mt-3 p-2 rounded bg-blue-50 dark:bg-blue-900/20 text-xs text-blue-700 dark:text-blue-300">
+                          <Globe className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span className="truncate">
+                            {hostname} <span className="opacity-60">&rarr;</span>{' '}
+                            <input
+                              type="text"
+                              className="inline bg-transparent border-b border-blue-300 dark:border-blue-600 font-medium px-0.5 py-0 text-xs w-auto focus:outline-none focus:border-blue-500"
+                              value={resolvedHostname}
+                              onChange={(e) => updateProviderOverride(provider.id, { hostname: e.target.value })}
+                              style={{ width: `${Math.max(resolvedHostname.length, 10)}ch` }}
+                            />
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Content zone conversion (independent of hostname conversion) */}
+                      {(() => {
+                        const provZone = getProviderZone(provider.settings);
+                        const needsContentConversion = isHostnameContentType(recordType) && content && contentSourceZone && provZone && provZone.toLowerCase() !== contentSourceZone.toLowerCase();
+                        if (!needsContentConversion) return null;
+                        return (
+                          <div className="flex items-center gap-2 mt-2 p-2 rounded bg-purple-50 dark:bg-purple-900/20 text-xs text-purple-700 dark:text-purple-300">
+                            <FileText className="w-3.5 h-3.5 flex-shrink-0" />
                             <span className="truncate">
-                              {hostname} <span className="opacity-60">&rarr;</span>{' '}
+                              {content} <span className="opacity-60">&rarr;</span>{' '}
                               <input
                                 type="text"
-                                className="inline bg-transparent border-b border-blue-300 dark:border-blue-600 font-medium px-0.5 py-0 text-xs w-auto focus:outline-none focus:border-blue-500"
-                                value={resolvedHostname}
-                                onChange={(e) => updateProviderOverride(provider.id, { hostname: e.target.value })}
-                                style={{ width: `${Math.max(resolvedHostname.length, 10)}ch` }}
+                                className="inline bg-transparent border-b border-purple-300 dark:border-purple-600 font-medium px-0.5 py-0 text-xs w-auto focus:outline-none focus:border-purple-500"
+                                value={getProviderContent(provider)}
+                                onChange={(e) => updateProviderOverride(provider.id, { content: e.target.value })}
+                                style={{ width: `${Math.max(getProviderContent(provider).length, 10)}ch` }}
                               />
                             </span>
                           </div>
-
-                          {/* Content conversion (hostname-based types only) */}
-                          {isHostnameContentType(recordType) && content && (
-                            <div className="flex items-center gap-2 p-2 rounded bg-purple-50 dark:bg-purple-900/20 text-xs text-purple-700 dark:text-purple-300">
-                              <FileText className="w-3.5 h-3.5 flex-shrink-0" />
-                              <span className="truncate">
-                                {content} <span className="opacity-60">&rarr;</span>{' '}
-                                <input
-                                  type="text"
-                                  className="inline bg-transparent border-b border-purple-300 dark:border-purple-600 font-medium px-0.5 py-0 text-xs w-auto focus:outline-none focus:border-purple-500"
-                                  value={getProviderContent(provider)}
-                                  onChange={(e) => updateProviderOverride(provider.id, { content: e.target.value })}
-                                  style={{ width: `${Math.max(getProviderContent(provider).length, 10)}ch` }}
-                                />
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                        );
+                      })()}
 
                       <div className="grid grid-cols-2 gap-3 mt-3">
                         {/* TTL */}
