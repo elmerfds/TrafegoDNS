@@ -258,7 +258,17 @@ export const updateProvider = asyncHandler(async (req: Request, res: Response) =
   // Build update object
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
   if (input.name !== undefined) updateData.name = input.name;
-  if (input.credentials !== undefined) updateData.credentials = JSON.stringify(input.credentials);
+  if (input.credentials !== undefined) {
+    // Merge new credentials into existing ones — only non-empty values overwrite
+    const existingCredentials = JSON.parse(existing.credentials) as Record<string, string>;
+    const mergedCredentials = { ...existingCredentials };
+    for (const [key, value] of Object.entries(input.credentials)) {
+      if (value !== undefined && value !== '') {
+        mergedCredentials[key] = value;
+      }
+    }
+    updateData.credentials = JSON.stringify(mergedCredentials);
+  }
   if (input.settings !== undefined) updateData.settings = JSON.stringify(input.settings);
   if (input.isDefault !== undefined) updateData.isDefault = input.isDefault;
   if (input.enabled !== undefined) updateData.enabled = input.enabled;
