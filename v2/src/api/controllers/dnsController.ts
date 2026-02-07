@@ -4,7 +4,7 @@
 import type { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabase } from '../../database/connection.js';
-import { dnsRecords } from '../../database/schema/index.js';
+import { dnsRecords, preservedHostnames } from '../../database/schema/index.js';
 import { eq, and, like, or, sql } from 'drizzle-orm';
 import { container, ServiceTokens } from '../../core/ServiceContainer.js';
 import { ApiError, asyncHandler, setAuditContext } from '../middleware/index.js';
@@ -194,11 +194,31 @@ export const createRecord = asyncHandler(async (req: Request, res: Response) => 
     updatedAt: now,
   });
 
+  // Add to preserved hostnames if requested
+  if (input.preserved) {
+    const hostname = input.name.toLowerCase();
+    const [existing] = await db
+      .select()
+      .from(preservedHostnames)
+      .where(eq(preservedHostnames.hostname, hostname))
+      .limit(1);
+
+    if (!existing) {
+      await db.insert(preservedHostnames).values({
+        id: uuidv4(),
+        hostname,
+        reason: 'Added via DNS record creation',
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  }
+
   setAuditContext(req, {
     action: 'create',
     resourceType: 'dnsRecord',
     resourceId: id,
-    details: { name: input.name, type: input.type },
+    details: { name: input.name, type: input.type, preserved: input.preserved ?? false },
   });
 
   const [record] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);

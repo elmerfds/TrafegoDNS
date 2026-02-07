@@ -32,6 +32,7 @@ export interface CreateDNSRecordInput {
   priority?: number;
   proxied?: boolean;
   providerId: string;
+  preserved?: boolean;
 }
 
 export interface UpdateDNSRecordInput {

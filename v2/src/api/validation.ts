@@ -89,6 +89,7 @@ export const createDnsRecordSchema = z.object({
   tag: z.string().optional(),
   comment: z.string().max(500).optional(),
   providerId: z.string().uuid().optional(), // Optional: uses default provider if not specified
+  preserved: z.boolean().optional(), // Also add hostname to preserved list (protects from cleanup)
 });
 
 export const updateDnsRecordSchema = createDnsRecordSchema.partial().refine(

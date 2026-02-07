@@ -2933,13 +2933,13 @@ function CreateRecordModal({ isOpen, onClose, providers }: CreateRecordModalProp
           </div>
         </div>
 
-        {/* Options - only for Cloudflare and compatible types */}
-        {supportsProxied && ['A', 'AAAA', 'CNAME'].includes(formData.type ?? '') && (
-          <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
-            <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-              <Sliders className="w-4 h-4 text-primary-500" />
-              Options
-            </div>
+        {/* Options */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <Sliders className="w-4 h-4 text-primary-500" />
+            Options
+          </div>
+          {supportsProxied && ['A', 'AAAA', 'CNAME'].includes(formData.type ?? '') && (
             <div className="flex items-center">
               <input
                 type="checkbox"
@@ -2952,8 +2952,24 @@ function CreateRecordModal({ isOpen, onClose, providers }: CreateRecordModalProp
                 Proxied through Cloudflare
               </label>
             </div>
+          )}
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="create-preserved"
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              checked={(formData as Record<string, unknown>).preserved as boolean ?? false}
+              onChange={(e) => setFormData({ ...formData, preserved: e.target.checked } as Partial<CreateDNSRecordInput>)}
+            />
+            <label htmlFor="create-preserved" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+              <span className="inline-flex items-center gap-1">
+                <Shield className="w-3.5 h-3.5 text-emerald-500" />
+                Preserve hostname
+              </span>
+            </label>
+            <span className="ml-1 text-xs text-gray-400">(protect from automatic cleanup)</span>
           </div>
-        )}
+        </div>
 
         <ModalFooter>
           <Button variant="secondary" onClick={onClose} type="button">
