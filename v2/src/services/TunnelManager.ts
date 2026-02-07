@@ -205,7 +205,7 @@ export class TunnelManager {
   }
 
   /**
-   * Sync ingress rules for a tunnel
+   * Sync ingress rules for a tunnel — merges CF state with local metadata (source, orphanedAt)
    */
   private async syncIngressRules(tunnelExternalId: string): Promise<void> {
     if (!this.tunnelsClient) return;
@@ -225,19 +225,49 @@ export class TunnelManager {
       const config = await this.tunnelsClient.getTunnelConfiguration(tunnelExternalId);
       if (!config) return;
 
-      // Delete existing rules
-      await db.delete(tunnelIngressRules).where(eq(tunnelIngressRules.tunnelId, tunnelRecord.id));
+      // Get existing local rules to preserve source and orphanedAt
+      const existingRules = await db
+        .select()
+        .from(tunnelIngressRules)
+        .where(eq(tunnelIngressRules.tunnelId, tunnelRecord.id));
 
-      // Insert new rules
+      const existingByHostname = new Map(
+        existingRules.map((r) => [r.hostname, r])
+      );
+
+      const remoteHostnames = new Set<string>();
+
+      // Upsert rules from CF config
       for (const rule of config.ingress) {
-        await db.insert(tunnelIngressRules).values({
-          id: uuidv4(),
-          tunnelId: tunnelRecord.id,
-          hostname: rule.hostname,
-          service: rule.service,
-          path: rule.path ?? null,
-          createdAt: new Date(),
-        });
+        remoteHostnames.add(rule.hostname);
+        const existing = existingByHostname.get(rule.hostname);
+
+        if (existing) {
+          // Update service/path if changed, but preserve source and orphanedAt
+          if (existing.service !== rule.service || (existing.path ?? null) !== (rule.path ?? null)) {
+            await db.update(tunnelIngressRules)
+              .set({ service: rule.service, path: rule.path ?? null })
+              .where(eq(tunnelIngressRules.id, existing.id));
+          }
+        } else {
+          // New rule from CF that we don't have locally — mark as 'api' (manually created on CF)
+          await db.insert(tunnelIngressRules).values({
+            id: uuidv4(),
+            tunnelId: tunnelRecord.id,
+            hostname: rule.hostname,
+            service: rule.service,
+            path: rule.path ?? null,
+            source: 'api',
+            createdAt: new Date(),
+          });
+        }
+      }
+
+      // Remove local rules that no longer exist on CF
+      for (const existing of existingRules) {
+        if (!remoteHostnames.has(existing.hostname)) {
+          await db.delete(tunnelIngressRules).where(eq(tunnelIngressRules.id, existing.id));
+        }
       }
     } catch (error) {
       this.logger.warn({ error, tunnelId: tunnelExternalId }, 'Failed to sync ingress rules');
