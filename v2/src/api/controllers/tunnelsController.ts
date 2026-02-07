@@ -61,11 +61,19 @@ export const listTunnels = asyncHandler(async (req: Request, res: Response) => {
     return;
   }
 
-  const tunnels = await result.manager.listTunnels();
+  const tunnelList = await result.manager.listTunnels();
+
+  // Include ingress rules for each tunnel so the UI can show route counts
+  const tunnelsWithRules = await Promise.all(
+    tunnelList.map(async (tunnel) => {
+      const ingressRules = await result.manager!.getIngressRules(tunnel.id);
+      return { ...tunnel, ingressRules };
+    })
+  );
 
   res.json({
     success: true,
-    data: tunnels,
+    data: tunnelsWithRules,
     meta: {
       tunnelSupportAvailable: true,
     },

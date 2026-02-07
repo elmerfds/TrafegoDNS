@@ -753,7 +753,9 @@ export class DNSManager {
       await this.cleanupOrphanedRecords(processedHostnames);
 
       // Also cleanup orphaned tunnel ingress rules
-      if (tunnelManager && tunnelManagedHostnames.size > 0) {
+      // Always run when tunnel manager exists — even with 0 active tunnel hostnames,
+      // we need to mark/remove previously auto-managed rules that are now orphaned
+      if (tunnelManager) {
         const gracePeriodMinutes = getSettingsService().get<number>('cleanup_grace_period');
         await tunnelManager.cleanupOrphanedIngressRules(tunnelManagedHostnames, gracePeriodMinutes);
       }
