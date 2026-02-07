@@ -4,7 +4,7 @@
 import type { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabase } from '../../database/connection.js';
-import { dnsRecords, preservedHostnames } from '../../database/schema/index.js';
+import { dnsRecords, preservedHostnames, providers as providersTable } from '../../database/schema/index.js';
 import { eq, and, like, or, sql } from 'drizzle-orm';
 import { container, ServiceTokens } from '../../core/ServiceContainer.js';
 import { ApiError, asyncHandler, setAuditContext } from '../middleware/index.js';
@@ -250,12 +250,17 @@ export const multiCreateRecord = asyncHandler(async (req: Request, res: Response
   for (const providerTarget of input.providers) {
     const provider = dnsManager.getProvider(providerTarget.providerId);
     if (!provider) {
+      // Look up provider name from DB for better error message
+      const [dbProvider] = await db.select({ name: providersTable.name, enabled: providersTable.enabled })
+        .from(providersTable).where(eq(providersTable.id, providerTarget.providerId)).limit(1);
+      const name = dbProvider?.name ?? 'Unknown';
+      const reason = dbProvider ? (dbProvider.enabled ? 'failed to initialize' : 'is disabled') : 'does not exist';
       results.push({
         providerId: providerTarget.providerId,
-        providerName: 'Unknown',
+        providerName: name,
         hostname: providerTarget.hostname || input.baseHostname,
         status: 'error',
-        error: `Provider not found: ${providerTarget.providerId}`,
+        error: `Provider "${name}" ${reason}`,
       });
       continue;
     }

@@ -2710,6 +2710,7 @@ interface ProviderWithFeatures {
   id: string;
   name: string;
   type: string;
+  enabled?: boolean;
   settings?: Record<string, unknown>;
   features?: {
     proxied: boolean;
@@ -2732,7 +2733,9 @@ interface ProviderOverrides {
   proxied?: boolean;
 }
 
-function CreateRecordModal({ isOpen, onClose, providers }: CreateRecordModalProps) {
+function CreateRecordModal({ isOpen, onClose, providers: allProviders }: CreateRecordModalProps) {
+  // Only show enabled providers (disabled ones aren't loaded by DNSManager)
+  const providers = useMemo(() => allProviders.filter(p => p.enabled !== false), [allProviders]);
   const queryClient = useQueryClient();
   const [hostname, setHostname] = useState('');
   const [recordType, setRecordType] = useState<CreateDNSRecordInput['type']>('A');
