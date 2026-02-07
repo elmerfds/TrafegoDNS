@@ -1,7 +1,7 @@
 /**
  * Profile Page - User's own settings + API Key management
  */
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   User,
@@ -401,6 +401,11 @@ export function ProfilePage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync email when user loads (e.g. after page refresh when checkAuth completes)
+  useEffect(() => {
+    if (user?.email) setEmail(user.email);
+  }, [user?.email]);
 
   const updateMutation = useMutation({
     mutationFn: (data: { email?: string; password?: string; avatar?: string | null }) => authApi.updateProfile(data),
