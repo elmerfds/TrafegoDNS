@@ -8,6 +8,7 @@ import { container, ServiceTokens } from './ServiceContainer.js';
 import { ConfigManager, getConfig } from '../config/ConfigManager.js';
 import { initDatabase, closeDatabase } from '../database/connection.js';
 import { DNSManager, WebhookService, TunnelManager, getSettingsService, auditService } from '../services/index.js';
+import { OIDCService } from '../services/OIDCService.js';
 import { DockerMonitor, TraefikMonitor, DirectMonitor } from '../monitors/index.js';
 import { createApp, startServer } from '../app.js';
 import { V1Migrator } from '../migration/V1Migrator.js';
@@ -26,6 +27,7 @@ export class Application {
   private dnsManager: DNSManager | null = null;
   private webhookService: WebhookService | null = null;
   private tunnelManager: TunnelManager | null = null;
+  private oidcService: OIDCService | null = null;
   private dockerMonitor: DockerMonitor | null = null;
   private traefikMonitor: TraefikMonitor | null = null;
   private directMonitor: DirectMonitor | null = null;
@@ -140,6 +142,10 @@ export class Application {
       logger.debug('Auth disabled — skipping admin user creation');
       return;
     }
+    if (this.config.security.authMode === 'oidc' && !this.config.oidc?.allowLocalLogin) {
+      logger.debug('OIDC-only mode — skipping local admin user creation');
+      return;
+    }
     const { defaultAdminUsername, defaultAdminPassword, defaultAdminEmail } = this.config.auth;
     await ensureAdminUser(defaultAdminUsername, defaultAdminPassword, defaultAdminEmail);
     logger.debug('Admin user check completed');
@@ -156,6 +162,14 @@ export class Application {
 
     // Initialize Audit Service (listens for events and logs them)
     await auditService.init();
+
+    // Initialize OIDC Service if configured
+    if (this.config.security.authMode === 'oidc' && this.config.oidc) {
+      this.oidcService = new OIDCService(this.config.oidc);
+      await this.oidcService.init();
+      container.registerInstance(ServiceTokens.OIDC_SERVICE, this.oidcService);
+      logger.info('OIDC service initialized');
+    }
 
     // Start IP refresh
     this.config.startIPRefresh();
@@ -280,6 +294,9 @@ export class Application {
       }
 
       // Dispose services
+      if (this.oidcService) {
+        this.oidcService.dispose();
+      }
       if (this.tunnelManager) {
         await this.tunnelManager.dispose();
       }

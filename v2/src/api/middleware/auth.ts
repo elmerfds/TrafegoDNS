@@ -33,7 +33,7 @@ declare global {
     interface Request {
       user?: AuthenticatedUser;
       apiKey?: ApiKeyInfo;
-      authMethod?: 'jwt' | 'apikey' | 'global_apikey' | 'anonymous';
+      authMethod?: 'jwt' | 'apikey' | 'global_apikey' | 'anonymous' | 'oidc';
     }
   }
 }

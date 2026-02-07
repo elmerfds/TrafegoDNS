@@ -30,10 +30,17 @@ export interface CreateApiKeyResponse extends ApiKey {
   key: string; // Only returned on creation
 }
 
-export type AuthMode = 'local' | 'none'; // Future: 'oidc'
+export type AuthMode = 'local' | 'none' | 'oidc';
+
+export interface OIDCAuthConfig {
+  loginUrl: string;
+  allowLocalLogin: boolean;
+  logoutUrl: string | null;
+}
 
 export interface AuthConfig {
   mode: AuthMode;
+  oidc?: OIDCAuthConfig;
 }
 
 export const authApi = {

@@ -135,6 +135,11 @@ import {
   deletePreference,
 } from '../controllers/preferencesController.js';
 
+import {
+  oidcLogin,
+  oidcCallback,
+} from '../controllers/oidcController.js';
+
 const router = Router();
 
 // Apply standard rate limiting to all routes
@@ -151,11 +156,22 @@ router.get('/logs', authenticate, getApplicationLogs);
 // Public auth config (no auth required — used by frontend to determine auth mode)
 router.get('/auth/config', (_req, res) => {
   const config = getConfig();
-  res.json({
-    success: true,
-    data: { mode: config.security.authMode },
-  });
+  const data: Record<string, unknown> = { mode: config.security.authMode };
+
+  if (config.security.authMode === 'oidc' && config.oidc) {
+    data.oidc = {
+      loginUrl: '/api/v1/auth/oidc/login',
+      allowLocalLogin: config.oidc.allowLocalLogin,
+      logoutUrl: config.oidc.logoutUrl ?? null,
+    };
+  }
+
+  res.json({ success: true, data });
 });
+
+// OIDC routes (public, rate-limited)
+router.get('/auth/oidc/login', authRateLimit, oidcLogin);
+router.get('/auth/oidc/callback', authRateLimit, oidcCallback);
 
 // Auth routes
 const authRouter = Router();

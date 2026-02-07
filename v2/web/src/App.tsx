@@ -51,6 +51,13 @@ const requireGuest = () => {
   if (authMode === 'none') {
     throw redirect({ to: '/' }); // No login page when auth disabled
   }
+  // In OIDC mode, allow login page (user needs to click SSO button)
+  if (authMode === 'oidc') {
+    if (isAuthenticated) {
+      throw redirect({ to: '/' });
+    }
+    return; // Allow access to login page
+  }
   if (isAuthenticated) {
     throw redirect({ to: '/' });
   }
@@ -184,8 +191,13 @@ function AuthListener() {
   }, [checkAuthMode]);
 
   useEffect(() => {
-    // Only verify JWT auth when mode is loaded and is 'local'
-    if (authModeLoaded && authMode !== 'none' && isAuthenticated) {
+    if (!authModeLoaded) return;
+
+    if (authMode === 'oidc') {
+      // OIDC: always try checkAuth — cookie may have been set by callback redirect
+      checkAuth();
+    } else if (authMode !== 'none' && isAuthenticated) {
+      // Local: verify JWT if we think we're authenticated
       checkAuth();
     }
   }, [checkAuth, isAuthenticated, authMode, authModeLoaded]);

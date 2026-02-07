@@ -211,9 +211,12 @@ function createTablesDirectly(): void {
       id TEXT PRIMARY KEY,
       username TEXT NOT NULL UNIQUE,
       email TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL,
+      password_hash TEXT,
       role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin', 'user', 'readonly')),
       avatar TEXT,
+      auth_provider TEXT NOT NULL DEFAULT 'local' CHECK(auth_provider IN ('local', 'oidc')),
+      oidc_subject TEXT,
+      oidc_issuer TEXT,
       last_login_at INTEGER,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()),
       updated_at INTEGER NOT NULL DEFAULT (unixepoch())
@@ -410,6 +413,9 @@ function runSchemaMigrations(sqliteDb: Database.Database): void {
   } catch {
     // Column already exists, ignore
   }
+
+  // Migrate users table for OIDC support (nullable password_hash, new columns)
+  migrateUsersForOIDC(sqliteDb);
 }
 
 /**
@@ -661,6 +667,72 @@ function migrateProviderTypeConstraint(sqliteDb: Database.Database): void {
   } catch (error) {
     sqliteDb.exec('ROLLBACK');
     logger.error({ error }, 'Failed to migrate providers table');
+    throw error;
+  }
+}
+
+/**
+ * Migrate users table for OIDC support:
+ * - Make password_hash nullable (OIDC users have no password)
+ * - Add auth_provider, oidc_subject, oidc_issuer columns
+ * SQLite requires table recreation to change NOT NULL → nullable
+ */
+function migrateUsersForOIDC(sqliteDb: Database.Database): void {
+  const tableExists = sqliteDb
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+    .get();
+  if (!tableExists) {
+    return;
+  }
+
+  // Check if already migrated by looking for auth_provider column
+  const tableInfo = sqliteDb.prepare('PRAGMA table_info(users)').all() as Array<{ name: string }>;
+  const hasAuthProvider = tableInfo.some((col) => col.name === 'auth_provider');
+  if (hasAuthProvider) {
+    return; // Already migrated
+  }
+
+  logger.info('Migrating users table for OIDC support');
+
+  sqliteDb.exec('BEGIN TRANSACTION');
+  try {
+    sqliteDb.exec(`
+      CREATE TABLE users_new (
+        id TEXT PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT,
+        role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin', 'user', 'readonly')),
+        avatar TEXT,
+        auth_provider TEXT NOT NULL DEFAULT 'local' CHECK(auth_provider IN ('local', 'oidc')),
+        oidc_subject TEXT,
+        oidc_issuer TEXT,
+        last_login_at INTEGER,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )
+    `);
+
+    // Copy existing data — all existing users are 'local' auth
+    sqliteDb.exec(`
+      INSERT INTO users_new (
+        id, username, email, password_hash, role, avatar, auth_provider,
+        last_login_at, created_at, updated_at
+      )
+      SELECT
+        id, username, email, password_hash, role, avatar, 'local',
+        last_login_at, created_at, updated_at
+      FROM users
+    `);
+
+    sqliteDb.exec('DROP TABLE users');
+    sqliteDb.exec('ALTER TABLE users_new RENAME TO users');
+
+    sqliteDb.exec('COMMIT');
+    logger.info('Migration complete: users table updated for OIDC support');
+  } catch (error) {
+    sqliteDb.exec('ROLLBACK');
+    logger.error({ error }, 'Failed to migrate users table for OIDC');
     throw error;
   }
 }

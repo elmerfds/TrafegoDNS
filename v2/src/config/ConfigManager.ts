@@ -93,8 +93,25 @@ interface AuthConfig {
   defaultAdminEmail: string;
 }
 
-/** Authentication mode — extensible for future OIDC support */
-export type AuthMode = 'local' | 'none'; // Future: 'oidc'
+/** Authentication mode */
+export type AuthMode = 'local' | 'none' | 'oidc';
+
+/** OIDC configuration for SSO authentication */
+export interface OIDCConfig {
+  issuerUrl: string;
+  clientId: string;
+  clientSecret: string | undefined;
+  redirectUri: string;
+  scopes: string;
+  allowLocalLogin: boolean;
+  autoCreateUsers: boolean;
+  defaultRole: 'admin' | 'user' | 'readonly';
+  groupClaim: string;
+  adminGroups: string[];
+  userGroups: string[];
+  readonlyGroups: string[];
+  logoutUrl: string | undefined;
+}
 
 interface SecurityConfig {
   authMode: AuthMode;
@@ -108,6 +125,7 @@ export class ConfigManager {
   private _dnsDefaults: DNSDefaults;
   private _auth: AuthConfig;
   private _security: SecurityConfig;
+  private _oidc: OIDCConfig | null;
   private _recordTypeDefaults: Map<DNSRecordType, RecordTypeDefaults>;
   private _ipCache: IPCache;
   private _ipRefreshInterval: number;
@@ -173,6 +191,7 @@ export class ConfigManager {
     };
 
     // Load security config
+    const authModeEnv = getEnv('AUTH_MODE');
     const authDisabled = getEnvBool('AUTH_DISABLED', false);
     const globalApiKeyRaw = getSecret('GLOBAL_API_KEY');
     let globalApiKeyHash: string | null = null;
@@ -186,10 +205,66 @@ export class ConfigManager {
       }
     }
 
+    // Determine auth mode: AUTH_MODE=oidc > AUTH_DISABLED=true > local
+    let authMode: AuthMode = 'local';
+    if (authModeEnv === 'oidc') {
+      authMode = 'oidc';
+    } else if (authModeEnv === 'none' || authDisabled) {
+      authMode = 'none';
+    }
+
     this._security = {
-      authMode: authDisabled ? 'none' : 'local',
+      authMode,
       globalApiKeyHash,
     };
+
+    // Load OIDC config when mode is 'oidc'
+    if (authMode === 'oidc') {
+      const issuerUrl = getEnv('OIDC_ISSUER_URL');
+      const clientId = getEnv('OIDC_CLIENT_ID');
+      const redirectUri = getEnv('OIDC_REDIRECT_URI');
+
+      if (!issuerUrl || !clientId || !redirectUri) {
+        const missing = [
+          !issuerUrl && 'OIDC_ISSUER_URL',
+          !clientId && 'OIDC_CLIENT_ID',
+          !redirectUri && 'OIDC_REDIRECT_URI',
+        ].filter(Boolean);
+        throw new Error(
+          `AUTH_MODE=oidc requires: ${missing.join(', ')}. Set these environment variables.`
+        );
+      }
+
+      const parseGroups = (val: string | undefined): string[] =>
+        val ? val.split(',').map((g) => g.trim()).filter(Boolean) : [];
+
+      this._oidc = {
+        issuerUrl,
+        clientId,
+        clientSecret: getSecret('OIDC_CLIENT_SECRET'),
+        redirectUri,
+        scopes: getEnv('OIDC_SCOPES', 'openid profile email groups') ?? 'openid profile email groups',
+        allowLocalLogin: getEnvBool('OIDC_ALLOW_LOCAL_LOGIN', false),
+        autoCreateUsers: getEnvBool('OIDC_AUTO_CREATE_USERS', true),
+        defaultRole: (getEnv('OIDC_DEFAULT_ROLE', 'user') as 'admin' | 'user' | 'readonly') ?? 'user',
+        groupClaim: getEnv('OIDC_GROUP_CLAIM', 'groups') ?? 'groups',
+        adminGroups: parseGroups(getEnv('OIDC_ADMIN_GROUPS')),
+        userGroups: parseGroups(getEnv('OIDC_USER_GROUPS')),
+        readonlyGroups: parseGroups(getEnv('OIDC_READONLY_GROUPS')),
+        logoutUrl: getEnv('OIDC_LOGOUT_URL'),
+      };
+
+      logger.info({
+        issuerUrl: this._oidc.issuerUrl,
+        clientId: this._oidc.clientId,
+        scopes: this._oidc.scopes,
+        allowLocalLogin: this._oidc.allowLocalLogin,
+        autoCreateUsers: this._oidc.autoCreateUsers,
+        defaultRole: this._oidc.defaultRole,
+      }, 'OIDC authentication configured');
+    } else {
+      this._oidc = null;
+    }
 
     if (this._security.authMode === 'none') {
       logger.warn('╔══════════════════════════════════════════════════════════╗');
@@ -295,6 +370,10 @@ export class ConfigManager {
 
   get security(): Readonly<SecurityConfig> {
     return this._security;
+  }
+
+  get oidc(): Readonly<OIDCConfig> | null {
+    return this._oidc;
   }
 
   /**

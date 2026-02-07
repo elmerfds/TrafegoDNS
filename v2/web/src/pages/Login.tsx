@@ -6,11 +6,11 @@ import { useNavigate } from '@tanstack/react-router';
 import { useAuthStore } from '../stores';
 import { Button } from '../components/common';
 import { Alert } from '../components/common';
-import { Lock } from 'lucide-react';
+import { Lock, ExternalLink } from 'lucide-react';
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const { login, isLoading, error, clearError } = useAuthStore();
+  const { login, loginWithOIDC, isLoading, error, clearError, authMode, oidcConfig } = useAuthStore();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
@@ -23,6 +23,13 @@ export function LoginPage() {
       // Error is handled by the store
     }
   };
+
+  const handleOIDCLogin = () => {
+    loginWithOIDC(window.location.pathname !== '/login' ? window.location.pathname : undefined);
+  };
+
+  const showSSOButton = authMode === 'oidc' && oidcConfig;
+  const showLocalForm = authMode === 'local' || (authMode === 'oidc' && oidcConfig?.allowLocalLogin);
 
   return (
     <div className="min-h-screen flex gradient-bg dark:bg-gray-950">
@@ -77,55 +84,88 @@ export function LoginPage() {
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {error && (
+            {error && (
+              <div className="mb-5">
                 <Alert variant="error" onClose={clearError}>
                   {error}
                 </Alert>
-              )}
-
-              <div>
-                <label htmlFor="username" className="label">
-                  Username
-                </label>
-                <input
-                  id="username"
-                  name="username"
-                  type="text"
-                  required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="input mt-1.5"
-                  placeholder="Enter your username"
-                  autoComplete="username"
-                />
               </div>
+            )}
 
-              <div>
-                <label htmlFor="password" className="label">
-                  Password
-                </label>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="input mt-1.5"
-                  placeholder="Enter your password"
-                  autoComplete="current-password"
-                />
+            {/* SSO Button */}
+            {showSSOButton && (
+              <div className="space-y-4">
+                <Button
+                  type="button"
+                  className="w-full"
+                  onClick={handleOIDCLogin}
+                >
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Sign in with SSO
+                </Button>
+
+                {showLocalForm && (
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-gray-200 dark:border-gray-700" />
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="px-2 bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400">
+                        or sign in with credentials
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
+            )}
 
-              <Button
-                type="submit"
-                className="w-full"
-                isLoading={isLoading}
-              >
-                Sign in
-              </Button>
-            </form>
+            {/* Local Login Form */}
+            {showLocalForm && (
+              <form onSubmit={handleSubmit} className={`space-y-5 ${showSSOButton ? 'mt-4' : ''}`}>
+                <div>
+                  <label htmlFor="username" className="label">
+                    Username
+                  </label>
+                  <input
+                    id="username"
+                    name="username"
+                    type="text"
+                    required
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="input mt-1.5"
+                    placeholder="Enter your username"
+                    autoComplete="username"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="password" className="label">
+                    Password
+                  </label>
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="input mt-1.5"
+                    placeholder="Enter your password"
+                    autoComplete="current-password"
+                  />
+                </div>
+
+                <Button
+                  type="submit"
+                  className="w-full"
+                  variant={showSSOButton ? 'secondary' : 'primary'}
+                  isLoading={isLoading}
+                >
+                  Sign in
+                </Button>
+              </form>
+            )}
           </div>
 
           <p className="text-center text-xs text-gray-400 dark:text-gray-600 mt-6">

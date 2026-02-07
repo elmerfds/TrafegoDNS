@@ -124,9 +124,12 @@ export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
   username: text('username').notNull().unique(),
   email: text('email').notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
+  passwordHash: text('password_hash'), // Nullable for OIDC users
   role: text('role', { enum: ['admin', 'user', 'readonly'] }).notNull().default('user'),
   avatar: text('avatar'), // Base64 data URI or URL
+  authProvider: text('auth_provider', { enum: ['local', 'oidc'] }).notNull().default('local'),
+  oidcSubject: text('oidc_subject'), // OIDC 'sub' claim
+  oidcIssuer: text('oidc_issuer'), // Issuer URL for multi-provider
   lastLoginAt: integer('last_login_at', { mode: 'timestamp' }),
   ...timestamps,
 });

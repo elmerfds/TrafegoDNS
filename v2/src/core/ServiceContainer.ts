@@ -188,6 +188,7 @@ export const ServiceTokens = {
   SETTINGS_SERVICE: Symbol('SettingsService'),
   AUDIT_SERVICE: Symbol('AuditService'),
   AUTH_SERVICE: Symbol('AuthService'),
+  OIDC_SERVICE: Symbol('OIDCService'),
   PROVIDER_FACTORY: Symbol('ProviderFactory'),
   RECORD_REPOSITORY: Symbol('RecordRepository'),
   PROVIDER_REPOSITORY: Symbol('ProviderRepository'),

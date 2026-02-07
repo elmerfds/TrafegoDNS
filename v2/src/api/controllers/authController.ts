@@ -43,6 +43,11 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
     return;
   }
 
+  // Block local login when OIDC-only mode is active
+  if (config.security.authMode === 'oidc' && !config.oidc?.allowLocalLogin) {
+    throw ApiError.badRequest('Local login is disabled. Please sign in with SSO.');
+  }
+
   const { username, password } = loginSchema.parse(req.body);
 
   const db = getDatabase();
@@ -54,6 +59,11 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
 
   if (!user) {
     throw ApiError.unauthorized('Invalid credentials');
+  }
+
+  // OIDC users cannot log in with local credentials
+  if (!user.passwordHash) {
+    throw ApiError.unauthorized('This account uses SSO. Please sign in with your identity provider.');
   }
 
   const passwordMatch = await bcrypt.compare(password, user.passwordHash);
@@ -318,6 +328,10 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response) =>
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
   if (email !== undefined) updateData.email = email;
   if (password !== undefined) {
+    // Block password changes for OIDC users
+    if (existing.authProvider === 'oidc') {
+      throw ApiError.badRequest('Password cannot be changed for SSO accounts. Manage your password through your identity provider.');
+    }
     if (password.length < 8) {
       throw ApiError.badRequest('Password must be at least 8 characters');
     }

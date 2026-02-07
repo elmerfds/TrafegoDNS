@@ -20,7 +20,7 @@ interface HealthStatus {
     tunnels: { status: string; available: boolean };
   };
   auth: {
-    mode: 'local' | 'none';
+    mode: 'local' | 'none' | 'oidc';
     globalApiKeyConfigured: boolean;
   };
 }
