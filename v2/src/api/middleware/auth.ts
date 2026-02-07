@@ -333,6 +333,23 @@ export function requireRole(...roles: Array<'admin' | 'user' | 'readonly'>) {
       return;
     }
 
+    // OWASP A01: When using API keys, also enforce key-level permissions.
+    // Routes that only use requireRole (e.g. admin-only) must still respect
+    // the key's granular permissions — a read-only key cannot perform writes.
+    if (req.authMethod === 'apikey' && req.apiKey) {
+      const mutatingMethods = ['POST', 'PUT', 'PATCH', 'DELETE'];
+      const isMutating = mutatingMethods.includes(req.method.toUpperCase());
+      const requiredPerm = isMutating ? 'write' : 'read';
+      const hasPermission =
+        req.apiKey.permissions.includes('*') ||
+        req.apiKey.permissions.includes(requiredPerm);
+
+      if (!hasPermission) {
+        next(ApiError.forbidden(`API key requires '${requiredPerm}' permission for ${req.method} requests`));
+        return;
+      }
+    }
+
     next();
   };
 }
