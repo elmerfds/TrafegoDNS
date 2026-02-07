@@ -330,6 +330,38 @@ const SETTINGS_ITEMS: SearchableItem[] = [
     elementId: 'setting-dns_label_prefix',
   },
 
+  // Tunnel settings
+  {
+    id: 'setting-tunnel_mode',
+    label: 'Tunnel Mode',
+    description: 'Auto-management mode for tunnel ingress rules (off, all, labeled)',
+    keywords: ['tunnel', 'mode', 'auto', 'ingress', 'routing', 'labeled', 'cloudflare'],
+    category: 'settings',
+    route: '/settings',
+    settingsTab: 'tunnels',
+    elementId: 'setting-tunnel_mode',
+  },
+  {
+    id: 'setting-default_tunnel',
+    label: 'Default Tunnel',
+    description: 'Name of the default tunnel for auto-routing',
+    keywords: ['tunnel', 'default', 'name', 'routing', 'cloudflare'],
+    category: 'settings',
+    route: '/settings',
+    settingsTab: 'tunnels',
+    elementId: 'setting-default_tunnel',
+  },
+  {
+    id: 'setting-default_tunnel_service',
+    label: 'Default Tunnel Service URL',
+    description: 'Default backend service URL for tunnel routing (e.g., http://traefik:80)',
+    keywords: ['tunnel', 'service', 'url', 'backend', 'traefik', 'routing'],
+    category: 'settings',
+    route: '/settings',
+    settingsTab: 'tunnels',
+    elementId: 'setting-default_tunnel_service',
+  },
+
   // Webhook settings
   {
     id: 'setting-webhook_retry_attempts',

@@ -11,6 +11,7 @@ import { ApiError, asyncHandler, setAuditContext } from '../middleware/index.js'
 import {
   createDnsRecordSchema,
   updateDnsRecordSchema,
+  multiCreateDnsRecordSchema,
   dnsRecordFilterSchema,
   toggleManagedSchema,
   extendGraceSchema,
@@ -226,6 +227,167 @@ export const createRecord = asyncHandler(async (req: Request, res: Response) => 
   res.status(201).json({
     success: true,
     data: record,
+  });
+});
+
+/**
+ * Create DNS records across multiple providers
+ */
+export const multiCreateRecord = asyncHandler(async (req: Request, res: Response) => {
+  const input = multiCreateDnsRecordSchema.parse(req.body);
+  const db = getDatabase();
+  const dnsManager = container.resolveSync<DNSManager>(ServiceTokens.DNS_MANAGER);
+
+  const results: Array<{
+    providerId: string;
+    providerName: string;
+    hostname: string;
+    status: 'created' | 'error' | 'duplicate';
+    record?: typeof dnsRecords.$inferSelect;
+    error?: string;
+  }> = [];
+
+  for (const providerTarget of input.providers) {
+    const provider = dnsManager.getProvider(providerTarget.providerId);
+    if (!provider) {
+      results.push({
+        providerId: providerTarget.providerId,
+        providerName: 'Unknown',
+        hostname: providerTarget.hostname || input.baseHostname,
+        status: 'error',
+        error: `Provider not found: ${providerTarget.providerId}`,
+      });
+      continue;
+    }
+
+    const hostname = providerTarget.hostname || input.baseHostname;
+
+    try {
+      // Refresh cache and check for duplicates
+      await provider.getRecordsFromCache(true);
+      const existing = provider.findRecordInCache(input.type, hostname);
+      if (existing) {
+        results.push({
+          providerId: providerTarget.providerId,
+          providerName: provider.getProviderName(),
+          hostname,
+          status: 'duplicate',
+          error: `A ${input.type} record for '${hostname}' already exists with content '${existing.content}'.`,
+        });
+        continue;
+      }
+
+      // Create record at provider
+      const providerRecord = await provider.createRecord({
+        type: input.type,
+        name: hostname,
+        content: providerTarget.content || input.content,
+        ttl: providerTarget.ttl,
+        proxied: providerTarget.proxied,
+        priority: providerTarget.priority,
+        weight: providerTarget.weight,
+        port: providerTarget.port,
+        flags: providerTarget.flags,
+        tag: providerTarget.tag,
+      });
+
+      // Save to database
+      const id = uuidv4();
+      const now = new Date();
+      await db.insert(dnsRecords).values({
+        id,
+        providerId: provider.getProviderId(),
+        externalId: providerRecord.id,
+        type: providerRecord.type,
+        name: providerRecord.name,
+        content: providerRecord.content,
+        ttl: providerRecord.ttl,
+        proxied: providerRecord.proxied,
+        priority: providerRecord.priority,
+        weight: providerRecord.weight,
+        port: providerRecord.port,
+        flags: providerRecord.flags,
+        tag: providerRecord.tag,
+        comment: providerTarget.comment ?? null,
+        source: 'api',
+        lastSyncedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const [record] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+      results.push({
+        providerId: provider.getProviderId(),
+        providerName: provider.getProviderName(),
+        hostname,
+        status: 'created',
+        record,
+      });
+    } catch (error) {
+      results.push({
+        providerId: providerTarget.providerId,
+        providerName: provider.getProviderName(),
+        hostname,
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  // Handle preserved hostnames
+  if (input.preserved && results.some(r => r.status === 'created')) {
+    const now = new Date();
+    const hostnamesToPreserve = new Set<string>();
+    hostnamesToPreserve.add(input.baseHostname.toLowerCase());
+    for (const r of results) {
+      if (r.status === 'created') {
+        hostnamesToPreserve.add(r.hostname.toLowerCase());
+      }
+    }
+
+    for (const hostname of hostnamesToPreserve) {
+      const [existing] = await db
+        .select()
+        .from(preservedHostnames)
+        .where(eq(preservedHostnames.hostname, hostname))
+        .limit(1);
+
+      if (!existing) {
+        await db.insert(preservedHostnames).values({
+          id: uuidv4(),
+          hostname,
+          reason: 'Added via multi-provider DNS record creation',
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    }
+  }
+
+  const created = results.filter(r => r.status === 'created').length;
+  const failed = results.filter(r => r.status === 'error').length;
+  const duplicates = results.filter(r => r.status === 'duplicate').length;
+
+  setAuditContext(req, {
+    action: 'multi_create',
+    resourceType: 'dnsRecords',
+    details: {
+      baseHostname: input.baseHostname,
+      type: input.type,
+      total: input.providers.length,
+      created,
+      failed,
+      duplicates,
+    },
+  });
+
+  res.status(created > 0 ? 201 : 400).json({
+    success: created > 0,
+    data: { total: input.providers.length, created, failed, duplicates, results },
+    message: `Created ${created}/${input.providers.length} records` +
+      (failed > 0 ? `, ${failed} failed` : '') +
+      (duplicates > 0 ? `, ${duplicates} duplicates` : ''),
   });
 });
 

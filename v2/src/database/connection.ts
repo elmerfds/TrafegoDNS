@@ -248,7 +248,7 @@ function createTablesDirectly(): void {
     CREATE TABLE IF NOT EXISTS audit_logs (
       id TEXT PRIMARY KEY,
       user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
-      action TEXT NOT NULL CHECK(action IN ('create', 'update', 'delete', 'bulk_delete', 'login', 'logout', 'sync', 'deploy', 'orphan', 'import', 'export')),
+      action TEXT NOT NULL CHECK(action IN ('create', 'update', 'delete', 'bulk_delete', 'multi_create', 'login', 'logout', 'sync', 'deploy', 'orphan', 'import', 'export')),
       resource_type TEXT NOT NULL,
       resource_id TEXT,
       details TEXT NOT NULL DEFAULT '{}',
@@ -550,11 +550,11 @@ function migrateAuditLogsActionConstraint(sqliteDb: Database.Database): void {
     .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='audit_logs'")
     .get() as { sql: string } | undefined;
 
-  if (tableSchema && tableSchema.sql.includes("'orphan'")) {
-    return; // Constraint already includes new action types
+  if (tableSchema && tableSchema.sql.includes("'multi_create'")) {
+    return; // Constraint already includes all action types
   }
 
-  logger.info('Migrating audit_logs table to support new action types (orphan, bulk_delete, import, export)');
+  logger.info('Migrating audit_logs table to support new action types (multi_create, orphan, bulk_delete, import, export)');
 
   // SQLite doesn't support ALTER TABLE to modify CHECK constraints
   // We need to recreate the table
@@ -565,7 +565,7 @@ function migrateAuditLogsActionConstraint(sqliteDb: Database.Database): void {
       CREATE TABLE audit_logs_new (
         id TEXT PRIMARY KEY,
         user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
-        action TEXT NOT NULL CHECK(action IN ('create', 'update', 'delete', 'bulk_delete', 'login', 'logout', 'sync', 'deploy', 'orphan', 'import', 'export')),
+        action TEXT NOT NULL CHECK(action IN ('create', 'update', 'delete', 'bulk_delete', 'multi_create', 'login', 'logout', 'sync', 'deploy', 'orphan', 'import', 'export')),
         resource_type TEXT NOT NULL,
         resource_id TEXT,
         details TEXT NOT NULL DEFAULT '{}',

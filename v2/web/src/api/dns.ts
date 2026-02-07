@@ -212,6 +212,10 @@ export const dnsApi = {
     const record = await apiClient.patch<ApiDNSRecord>(`/dns/records/${id}/extend-grace`, { minutes });
     return transformRecord(record);
   },
+
+  async multiCreateRecord(data: MultiCreateDNSRecordInput): Promise<MultiCreateResult> {
+    return apiClient.post<MultiCreateResult>('/dns/records/multi-create', data);
+  },
 };
 
 export interface ExportRecordsResponse {
@@ -264,5 +268,42 @@ export interface ImportRecordsResponse {
     content: string;
     action: 'create' | 'skip' | 'error';
     reason?: string;
+  }>;
+}
+
+export interface MultiCreateProviderTarget {
+  providerId: string;
+  hostname?: string;
+  ttl?: number;
+  proxied?: boolean;
+  content?: string;
+  priority?: number;
+  weight?: number;
+  port?: number;
+  flags?: number;
+  tag?: string;
+  comment?: string;
+}
+
+export interface MultiCreateDNSRecordInput {
+  baseHostname: string;
+  type: DNSRecordType;
+  content: string;
+  preserved?: boolean;
+  providers: MultiCreateProviderTarget[];
+}
+
+export interface MultiCreateResult {
+  total: number;
+  created: number;
+  failed: number;
+  duplicates: number;
+  results: Array<{
+    providerId: string;
+    providerName: string;
+    hostname: string;
+    status: 'created' | 'error' | 'duplicate';
+    record?: DNSRecord;
+    error?: string;
   }>;
 }

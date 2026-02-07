@@ -92,6 +92,27 @@ export const createDnsRecordSchema = z.object({
   preserved: z.boolean().optional(), // Also add hostname to preserved list (protects from cleanup)
 });
 
+// Multi-provider record creation schema
+export const multiCreateDnsRecordSchema = z.object({
+  baseHostname: z.string().min(1).max(255),
+  type: dnsRecordTypeSchema,
+  content: z.string().min(1),
+  preserved: z.boolean().optional(),
+  providers: z.array(z.object({
+    providerId: z.string().uuid(),
+    hostname: z.string().min(1).max(255).optional(),
+    ttl: z.number().int().positive().optional(),
+    proxied: z.boolean().optional(),
+    content: z.string().min(1).optional(),
+    priority: z.number().int().nonnegative().optional(),
+    weight: z.number().int().nonnegative().optional(),
+    port: z.number().int().positive().optional(),
+    flags: z.number().int().nonnegative().optional(),
+    tag: z.string().optional(),
+    comment: z.string().max(500).optional(),
+  })).min(1).max(20),
+});
+
 export const updateDnsRecordSchema = createDnsRecordSchema.partial().refine(
   (data) => Object.keys(data).length > 0,
   { message: 'At least one field must be provided' }
@@ -290,6 +311,7 @@ export const bulkSettingsSchema = z.record(z.string());
 // Type exports
 export type CreateDnsRecordInput = z.infer<typeof createDnsRecordSchema>;
 export type UpdateDnsRecordInput = z.infer<typeof updateDnsRecordSchema>;
+export type MultiCreateDnsRecordInput = z.infer<typeof multiCreateDnsRecordSchema>;
 export type DnsRecordFilter = z.infer<typeof dnsRecordFilterSchema>;
 
 export type CreateProviderInput = z.infer<typeof createProviderSchema>;

@@ -3,8 +3,9 @@
  */
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X, Filter, Settings2, Download, Upload, Clock, Timer, ExternalLink, Lock, Unlock, AlertTriangle, FileText, Sliders, MessageSquare } from 'lucide-react';
-import { dnsApi, providersApi, preservedHostnamesApi, settingsApi, overridesApi, type DNSRecord, type CreateDNSRecordInput, type UpdateDNSRecordInput, type PreservedHostname, type HostnameOverride, type CreateOverrideInput, type UpdateOverrideInput, type ImportRecordsInput, type ImportRecordsResponse } from '../api';
+import { Plus, RefreshCw, Trash2, Edit, Shield, Globe, Search, X, Filter, Settings2, Download, Upload, Clock, Timer, ExternalLink, Lock, Unlock, AlertTriangle, FileText, Sliders, MessageSquare, CheckCircle, XCircle, ArrowRight, Server } from 'lucide-react';
+import { dnsApi, providersApi, preservedHostnamesApi, settingsApi, overridesApi, type DNSRecord, type CreateDNSRecordInput, type UpdateDNSRecordInput, type PreservedHostname, type HostnameOverride, type CreateOverrideInput, type UpdateOverrideInput, type ImportRecordsInput, type ImportRecordsResponse, type MultiCreateDNSRecordInput, type MultiCreateResult } from '../api';
+import { getProviderZone, convertHostname } from '../utils/zoneConversion';
 import { preferencesApi, DEFAULT_DNS_TABLE_PREFERENCES, type TableViewPreference } from '../api/preferences';
 import { Button, Pagination, Badge, Modal, ModalFooter, Alert, Select, DataTable, ColumnCustomizer, ProviderCell, type DataTableColumn } from '../components/common';
 
@@ -2709,6 +2710,7 @@ interface ProviderWithFeatures {
   id: string;
   name: string;
   type: string;
+  settings?: Record<string, unknown>;
   features?: {
     proxied: boolean;
     ttlMin: number;
@@ -2724,22 +2726,30 @@ interface CreateRecordModalProps {
   providers: ProviderWithFeatures[];
 }
 
+interface ProviderOverrides {
+  hostname?: string;
+  ttl?: number;
+  proxied?: boolean;
+}
+
 function CreateRecordModal({ isOpen, onClose, providers }: CreateRecordModalProps) {
   const queryClient = useQueryClient();
-  const [formData, setFormData] = useState<Partial<CreateDNSRecordInput>>({
-    type: 'A',
-    ttl: 300,
-  });
+  const [hostname, setHostname] = useState('');
+  const [recordType, setRecordType] = useState<CreateDNSRecordInput['type']>('A');
+  const [content, setContent] = useState('');
+  const [preserved, setPreserved] = useState(false);
+  const [selectedProviderIds, setSelectedProviderIds] = useState<Set<string>>(new Set());
+  const [providerOverrides, setProviderOverrides] = useState<Record<string, ProviderOverrides>>({});
   const [error, setError] = useState<string | null>(null);
+  const [results, setResults] = useState<MultiCreateResult | null>(null);
 
   // Fetch global TTL settings
   const { data: settingsList } = useQuery({
     queryKey: ['settings'],
     queryFn: () => settingsApi.listSettings(),
-    staleTime: 60000, // Cache for 1 minute
+    staleTime: 60000,
   });
 
-  // Extract TTL settings
   const ttlOverrideSetting = settingsList?.find((s) => s.key === 'dns_default_ttl_override');
   const ttlValueSetting = settingsList?.find((s) => s.key === 'dns_default_ttl');
   const isGlobalTtlOverride = ttlOverrideSetting?.value === true || ttlOverrideSetting?.value === 'true';
@@ -2747,69 +2757,17 @@ function CreateRecordModal({ isOpen, onClose, providers }: CreateRecordModalProp
     ? ttlValueSetting.value
     : parseInt(String(ttlValueSetting?.value ?? 300), 10);
 
-  // Get selected provider's features
-  const selectedProvider = providers.find((p) => p.id === formData.providerId);
-  const ttlMin = selectedProvider?.features?.ttlMin ?? 1;
-  const ttlMax = selectedProvider?.features?.ttlMax ?? 86400;
-  const supportsProxied = selectedProvider?.features?.proxied ?? false;
-
-  // Calculate effective TTL default: global (clamped) if override enabled, else provider default
   const getEffectiveTtl = (provider: ProviderWithFeatures | undefined): number => {
     if (!provider?.features) return 300;
     const min = provider.features.ttlMin;
     const max = provider.features.ttlMax;
     const providerDefault = provider.features.ttlDefault;
-
     if (isGlobalTtlOverride) {
-      // Clamp global TTL to provider limits
       return Math.min(Math.max(globalTtl, min), max);
     }
     return providerDefault;
   };
 
-  const effectiveTtlDefault = getEffectiveTtl(selectedProvider);
-
-  // Update TTL to effective default when provider changes
-  const handleProviderChange = (providerId: string) => {
-    const provider = providers.find((p) => p.id === providerId);
-    const newTtlDefault = getEffectiveTtl(provider);
-    setFormData({
-      ...formData,
-      providerId,
-      ttl: newTtlDefault,
-      // Reset proxied if new provider doesn't support it
-      proxied: provider?.features?.proxied ? formData.proxied : undefined,
-    });
-  };
-
-  const createMutation = useMutation({
-    mutationFn: (data: CreateDNSRecordInput) => dnsApi.createRecord(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['dns-records'] });
-      onClose();
-      setFormData({ type: 'A', ttl: 300 });
-    },
-    onError: (err) => {
-      setError(err instanceof Error ? err.message : 'Failed to create record');
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.hostname || !formData.content || !formData.providerId) {
-      setError('Please fill in all required fields');
-      return;
-    }
-    // Validate TTL against provider limits
-    const ttl = formData.ttl ?? effectiveTtlDefault;
-    if (ttl < ttlMin || ttl > ttlMax) {
-      setError(`TTL must be between ${ttlMin} and ${ttlMax} for this provider`);
-      return;
-    }
-    createMutation.mutate(formData as CreateDNSRecordInput);
-  };
-
-  // Format TTL for display
   const formatTTL = (seconds: number): string => {
     if (seconds === 1) return '1 (Auto)';
     if (seconds < 60) return `${seconds}s`;
@@ -2818,29 +2776,206 @@ function CreateRecordModal({ isOpen, onClose, providers }: CreateRecordModalProp
     return `${Math.floor(seconds / 86400)}d`;
   };
 
+  // Detect which zone the base hostname belongs to (first matching provider)
+  const baseZone = useMemo(() => {
+    if (!hostname) return null;
+    for (const p of providers) {
+      const zone = getProviderZone(p.settings);
+      if (zone) {
+        const lower = hostname.toLowerCase();
+        if (lower === zone.toLowerCase() || lower.endsWith(`.${zone.toLowerCase()}`)) {
+          return zone;
+        }
+      }
+    }
+    return null;
+  }, [hostname, providers]);
+
+  // Get the resolved hostname for a provider (with zone conversion)
+  const getProviderHostname = useCallback((provider: ProviderWithFeatures): string => {
+    const override = providerOverrides[provider.id]?.hostname;
+    if (override !== undefined) return override;
+
+    if (!hostname) return '';
+    const providerZone = getProviderZone(provider.settings);
+    if (!providerZone || !baseZone) return hostname;
+    if (providerZone.toLowerCase() === baseZone.toLowerCase()) return hostname;
+
+    return convertHostname(hostname, baseZone, providerZone);
+  }, [hostname, baseZone, providerOverrides]);
+
+  const toggleProvider = (providerId: string) => {
+    const next = new Set(selectedProviderIds);
+    if (next.has(providerId)) {
+      next.delete(providerId);
+      // Clean up overrides
+      const nextOverrides = { ...providerOverrides };
+      delete nextOverrides[providerId];
+      setProviderOverrides(nextOverrides);
+    } else {
+      next.add(providerId);
+      // Initialize TTL override with effective default
+      const provider = providers.find(p => p.id === providerId);
+      const defaultTtl = getEffectiveTtl(provider);
+      setProviderOverrides(prev => ({
+        ...prev,
+        [providerId]: { ttl: defaultTtl },
+      }));
+    }
+    setSelectedProviderIds(next);
+  };
+
+  const updateProviderOverride = (providerId: string, update: Partial<ProviderOverrides>) => {
+    setProviderOverrides(prev => ({
+      ...prev,
+      [providerId]: { ...prev[providerId], ...update },
+    }));
+  };
+
+  const multiCreateMutation = useMutation({
+    mutationFn: (data: MultiCreateDNSRecordInput) => dnsApi.multiCreateRecord(data),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['dns-records'] });
+      setResults(data);
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Failed to create records');
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!hostname || !content) {
+      setError('Please fill in hostname and content');
+      return;
+    }
+    if (selectedProviderIds.size === 0) {
+      setError('Please select at least one provider');
+      return;
+    }
+
+    // Validate per-provider
+    for (const providerId of selectedProviderIds) {
+      const provider = providers.find(p => p.id === providerId);
+      if (!provider?.features) continue;
+
+      const ttl = providerOverrides[providerId]?.ttl ?? getEffectiveTtl(provider);
+      if (ttl < provider.features.ttlMin || ttl > provider.features.ttlMax) {
+        setError(`TTL for ${provider.name} must be between ${provider.features.ttlMin} and ${provider.features.ttlMax}`);
+        return;
+      }
+
+      if (!provider.features.supportedTypes.includes(recordType)) {
+        setError(`${provider.name} does not support ${recordType} records`);
+        return;
+      }
+    }
+
+    const providerTargets = Array.from(selectedProviderIds).map(providerId => {
+      const provider = providers.find(p => p.id === providerId);
+      const resolvedHostname = provider ? getProviderHostname(provider) : hostname;
+      const overrides = providerOverrides[providerId] || {};
+
+      return {
+        providerId,
+        hostname: resolvedHostname !== hostname ? resolvedHostname : undefined,
+        ttl: overrides.ttl,
+        proxied: overrides.proxied,
+      };
+    });
+
+    multiCreateMutation.mutate({
+      baseHostname: hostname,
+      type: recordType,
+      content,
+      preserved: preserved || undefined,
+      providers: providerTargets,
+    });
+  };
+
+  const handleClose = () => {
+    setHostname('');
+    setRecordType('A');
+    setContent('');
+    setPreserved(false);
+    setSelectedProviderIds(new Set());
+    setProviderOverrides({});
+    setError(null);
+    setResults(null);
+    onClose();
+  };
+
+  // Results view after submission
+  if (results) {
+    return (
+      <Modal isOpen={isOpen} onClose={handleClose} title="Creation Results" size="lg">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+            <div className="text-sm text-gray-600 dark:text-gray-300">
+              Created <span className="font-semibold text-emerald-600 dark:text-emerald-400">{results.created}</span>
+              {results.failed > 0 && <> / Failed <span className="font-semibold text-red-600 dark:text-red-400">{results.failed}</span></>}
+              {results.duplicates > 0 && <> / Duplicates <span className="font-semibold text-amber-600 dark:text-amber-400">{results.duplicates}</span></>}
+              {' '}of {results.total} records
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {results.results.map((r, i) => (
+              <div
+                key={i}
+                className={`flex items-center gap-3 p-3 rounded-lg border ${
+                  r.status === 'created'
+                    ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20'
+                    : r.status === 'duplicate'
+                    ? 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20'
+                    : 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20'
+                }`}
+              >
+                {r.status === 'created' ? (
+                  <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                ) : r.status === 'duplicate' ? (
+                  <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+                ) : (
+                  <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                    {r.hostname}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    {r.providerName}
+                    {r.error && <span className="text-red-600 dark:text-red-400 ml-2">{r.error}</span>}
+                  </div>
+                </div>
+                <Badge variant={r.status === 'created' ? 'success' : r.status === 'duplicate' ? 'warning' : 'error'}>
+                  {r.status}
+                </Badge>
+              </div>
+            ))}
+          </div>
+
+          <ModalFooter>
+            <Button variant="primary" onClick={handleClose}>
+              Close
+            </Button>
+          </ModalFooter>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Add DNS Record" size="lg">
+    <Modal isOpen={isOpen} onClose={handleClose} title="Add DNS Record" size="lg">
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
 
-        {/* Provider & Hostname */}
+        {/* Record Details */}
         <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
           <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
             <Globe className="w-4 h-4 text-primary-500" />
-            Provider & Hostname
-          </div>
-          <div>
-            <label className="label">Provider *</label>
-            <Select
-              className="mt-1"
-              value={formData.providerId ?? ''}
-              onChange={handleProviderChange}
-              placeholder="Select a provider"
-              options={providers.map((provider) => ({
-                value: provider.id,
-                label: provider.name,
-              }))}
-            />
+            Record Details
           </div>
           <div>
             <label className="label">Hostname *</label>
@@ -2849,27 +2984,19 @@ function CreateRecordModal({ isOpen, onClose, providers }: CreateRecordModalProp
               <input
                 type="text"
                 className="input mt-1 pl-10"
-                value={formData.hostname ?? ''}
-                onChange={(e) => setFormData({ ...formData, hostname: e.target.value })}
-                placeholder="example.com"
+                value={hostname}
+                onChange={(e) => setHostname(e.target.value)}
+                placeholder="app.example.com"
               />
             </div>
-          </div>
-        </div>
-
-        {/* Record Configuration */}
-        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-4">
-          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-            <Settings2 className="w-4 h-4 text-primary-500" />
-            Record Configuration
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="label">Type *</label>
               <Select
                 className="mt-1"
-                value={formData.type}
-                onChange={(value) => setFormData({ ...formData, type: value as CreateDNSRecordInput['type'] })}
+                value={recordType}
+                onChange={(value) => setRecordType(value as CreateDNSRecordInput['type'])}
                 options={[
                   { value: 'A', label: 'A', description: 'IPv4 address' },
                   { value: 'AAAA', label: 'AAAA', description: 'IPv6 address' },
@@ -2883,53 +3010,139 @@ function CreateRecordModal({ isOpen, onClose, providers }: CreateRecordModalProp
               />
             </div>
             <div>
-              <label className="label">
-                TTL
-                {selectedProvider && (
-                  <span className="ml-2 text-xs text-gray-400 font-normal">
-                    ({ttlMin === 1 ? 'auto' : formatTTL(ttlMin)} - {formatTTL(ttlMax)})
-                  </span>
-                )}
-              </label>
+              <label className="label">Content *</label>
               <div className="relative">
-                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                 <input
-                  type="number"
+                  type="text"
                   className="input mt-1 pl-10"
-                  value={formData.ttl ?? effectiveTtlDefault}
-                  onChange={(e) => setFormData({ ...formData, ttl: parseInt(e.target.value) || effectiveTtlDefault })}
-                  min={ttlMin}
-                  max={ttlMax}
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder={recordType === 'A' ? '192.168.1.1' : 'target.example.com'}
                 />
               </div>
-              {selectedProvider && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  {ttlMin === 1 && 'Use 1 for automatic TTL. '}
-                  Current: {formatTTL(formData.ttl ?? effectiveTtlDefault)}
-                  {isGlobalTtlOverride && globalTtl !== effectiveTtlDefault && (
-                    <span className="text-amber-500 dark:text-amber-400">
-                      {' '}(global {formatTTL(globalTtl)} clamped)
-                    </span>
-                  )}
-                  {isGlobalTtlOverride && globalTtl === effectiveTtlDefault && (
-                    <span className="text-blue-500 dark:text-blue-400"> (global override)</span>
-                  )}
-                </p>
-              )}
             </div>
           </div>
-          <div>
-            <label className="label">Content *</label>
-            <div className="relative">
-              <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              <input
-                type="text"
-                className="input mt-1 pl-10"
-                value={formData.content ?? ''}
-                onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                placeholder={formData.type === 'A' ? '192.168.1.1' : 'target.example.com'}
-              />
-            </div>
+        </div>
+
+        {/* Target Providers */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <Server className="w-4 h-4 text-primary-500" />
+            Target Providers
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Select which providers should receive this record. Different zones will be auto-converted.
+          </p>
+
+          <div className="space-y-2">
+            {providers.map((provider) => {
+              const isSelected = selectedProviderIds.has(provider.id);
+              const providerZone = getProviderZone(provider.settings);
+              const resolvedHostname = getProviderHostname(provider);
+              const needsConversion = providerZone && baseZone && providerZone.toLowerCase() !== baseZone.toLowerCase();
+              const ttlMin = provider.features?.ttlMin ?? 1;
+              const ttlMax = provider.features?.ttlMax ?? 86400;
+              const supportsProxied = provider.features?.proxied ?? false;
+              const supportsType = provider.features?.supportedTypes?.includes(recordType) ?? true;
+              const currentTtl = providerOverrides[provider.id]?.ttl ?? getEffectiveTtl(provider);
+
+              return (
+                <div
+                  key={provider.id}
+                  className={`rounded-lg border transition-colors ${
+                    isSelected
+                      ? 'border-primary-300 bg-primary-50/50 dark:border-primary-700 dark:bg-primary-900/20'
+                      : 'border-gray-200 dark:border-gray-700'
+                  }`}
+                >
+                  {/* Provider header row */}
+                  <label className="flex items-center gap-3 p-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      checked={isSelected}
+                      onChange={() => toggleProvider(provider.id)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">
+                        {provider.name}
+                      </span>
+                      {providerZone && (
+                        <Badge variant="default" className="ml-2 text-xs">
+                          {providerZone}
+                        </Badge>
+                      )}
+                    </div>
+                    {!supportsType && (
+                      <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" />
+                        No {recordType} support
+                      </span>
+                    )}
+                  </label>
+
+                  {/* Per-provider config (expanded when selected) */}
+                  {isSelected && (
+                    <div className="px-3 pb-3 pt-0 space-y-3 border-t border-gray-200 dark:border-gray-700 mt-0">
+                      {/* Zone conversion notice */}
+                      {needsConversion && hostname && (
+                        <div className="flex items-center gap-2 mt-3 p-2 rounded bg-blue-50 dark:bg-blue-900/20 text-xs text-blue-700 dark:text-blue-300">
+                          <ArrowRight className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span className="truncate">
+                            {hostname} <span className="opacity-60">&rarr;</span>{' '}
+                            <input
+                              type="text"
+                              className="inline bg-transparent border-b border-blue-300 dark:border-blue-600 font-medium px-0.5 py-0 text-xs w-auto focus:outline-none focus:border-blue-500"
+                              value={resolvedHostname}
+                              onChange={(e) => updateProviderOverride(provider.id, { hostname: e.target.value })}
+                              style={{ width: `${Math.max(resolvedHostname.length, 10)}ch` }}
+                            />
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        {/* TTL */}
+                        <div>
+                          <label className="text-xs text-gray-500 dark:text-gray-400">
+                            TTL
+                            <span className="ml-1 text-gray-400">
+                              ({ttlMin === 1 ? 'auto' : formatTTL(ttlMin)} - {formatTTL(ttlMax)})
+                            </span>
+                          </label>
+                          <input
+                            type="number"
+                            className="input mt-1 text-sm"
+                            value={currentTtl}
+                            onChange={(e) => updateProviderOverride(provider.id, { ttl: parseInt(e.target.value) || ttlMin })}
+                            min={ttlMin}
+                            max={ttlMax}
+                          />
+                          <p className="text-xs text-gray-400 mt-0.5">{formatTTL(currentTtl)}</p>
+                        </div>
+
+                        {/* Proxied toggle (CF only) */}
+                        {supportsProxied && ['A', 'AAAA', 'CNAME'].includes(recordType) && (
+                          <div className="flex items-center pt-5">
+                            <input
+                              type="checkbox"
+                              id={`proxied-${provider.id}`}
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              checked={providerOverrides[provider.id]?.proxied ?? false}
+                              onChange={(e) => updateProviderOverride(provider.id, { proxied: e.target.checked })}
+                            />
+                            <label htmlFor={`proxied-${provider.id}`} className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                              Proxied
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -2939,44 +3152,40 @@ function CreateRecordModal({ isOpen, onClose, providers }: CreateRecordModalProp
             <Sliders className="w-4 h-4 text-primary-500" />
             Options
           </div>
-          {supportsProxied && ['A', 'AAAA', 'CNAME'].includes(formData.type ?? '') && (
+          <div>
             <div className="flex items-center">
               <input
                 type="checkbox"
-                id="create-proxied"
+                id="create-preserved"
                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                checked={formData.proxied ?? false}
-                onChange={(e) => setFormData({ ...formData, proxied: e.target.checked })}
+                checked={preserved}
+                onChange={(e) => setPreserved(e.target.checked)}
               />
-              <label htmlFor="create-proxied" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
-                Proxied through Cloudflare
+              <label htmlFor="create-preserved" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                <span className="inline-flex items-center gap-1">
+                  <Shield className="w-3.5 h-3.5 text-emerald-500" />
+                  Preserve hostname
+                </span>
               </label>
             </div>
-          )}
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="create-preserved"
-              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              checked={(formData as Record<string, unknown>).preserved as boolean ?? false}
-              onChange={(e) => setFormData({ ...formData, preserved: e.target.checked } as Partial<CreateDNSRecordInput>)}
-            />
-            <label htmlFor="create-preserved" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
-              <span className="inline-flex items-center gap-1">
-                <Shield className="w-3.5 h-3.5 text-emerald-500" />
-                Preserve hostname
-              </span>
-            </label>
-            <span className="ml-1 text-xs text-gray-400">(protect from automatic cleanup)</span>
+            <p className="mt-1 ml-6 text-xs text-gray-400">
+              Adds this hostname to the preserved list, protecting it from automatic cleanup.
+              Useful when Traefik also discovers this hostname and you want to keep it even if the container stops.
+              Manually created records are not cleaned up by default.
+            </p>
           </div>
         </div>
 
         <ModalFooter>
-          <Button variant="secondary" onClick={onClose} type="button">
+          <Button variant="secondary" onClick={handleClose} type="button">
             Cancel
           </Button>
-          <Button type="submit" isLoading={createMutation.isPending}>
-            Create Record
+          <Button type="submit" isLoading={multiCreateMutation.isPending} disabled={selectedProviderIds.size === 0}>
+            {selectedProviderIds.size === 0
+              ? 'Select Providers'
+              : selectedProviderIds.size === 1
+              ? 'Create Record'
+              : `Create on ${selectedProviderIds.size} Providers`}
           </Button>
         </ModalFooter>
       </form>

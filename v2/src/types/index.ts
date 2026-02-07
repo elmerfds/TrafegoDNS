@@ -211,6 +211,7 @@ export type AuditAction =
   | 'update'
   | 'delete'
   | 'bulk_delete'
+  | 'multi_create'
   | 'login'
   | 'logout'
   | 'sync'

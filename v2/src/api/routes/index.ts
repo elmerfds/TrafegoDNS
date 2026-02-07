@@ -35,6 +35,7 @@ import {
   listRecords,
   getRecord,
   createRecord,
+  multiCreateRecord,
   updateRecord,
   deleteRecord,
   bulkDeleteRecords,
@@ -165,6 +166,7 @@ dnsRouter.get('/records', requirePermission('read'), listRecords);
 dnsRouter.get('/records/export', requirePermission('read'), exportRecords);
 dnsRouter.get('/records/:id', requirePermission('read'), getRecord);
 dnsRouter.post('/records', requirePermission('write'), createRecord);
+dnsRouter.post('/records/multi-create', requirePermission('write'), multiCreateRecord);
 dnsRouter.post('/records/import', requirePermission('write'), importRecords);
 dnsRouter.put('/records/:id', requirePermission('write'), updateRecord);
 dnsRouter.delete('/records/:id', requirePermission('write'), deleteRecord);

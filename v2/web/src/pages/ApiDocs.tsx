@@ -57,6 +57,7 @@ const apiGroups: EndpointGroup[] = [
       { method: 'GET', path: '/records/export', description: 'Export records as JSON or CSV', auth: 'required', permission: 'read' },
       { method: 'GET', path: '/records/:id', description: 'Get single DNS record', auth: 'required', permission: 'read' },
       { method: 'POST', path: '/records', description: 'Create new DNS record', auth: 'required', permission: 'write', body: { providerId: 'string', type: 'string', name: 'string', content: 'string', ttl: 'number?' } },
+      { method: 'POST', path: '/records/multi-create', description: 'Create record across multiple providers with zone conversion', auth: 'required', permission: 'write', body: { baseHostname: 'string', type: 'string', content: 'string', preserved: 'boolean?', providers: '{ providerId, hostname?, ttl?, proxied?, content? }[]' } },
       { method: 'POST', path: '/records/import', description: 'Import records from JSON', auth: 'required', permission: 'write' },
       { method: 'PUT', path: '/records/:id', description: 'Update DNS record', auth: 'required', permission: 'write' },
       { method: 'DELETE', path: '/records/:id', description: 'Delete DNS record', auth: 'required', permission: 'write' },
