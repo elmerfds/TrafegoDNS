@@ -5,6 +5,10 @@
 export interface ProviderTypeInfo {
   type: string;
   name: string;
+  capabilities: {
+    dns: boolean;
+    tunnel: boolean;
+  };
   features: {
     proxied: boolean;
     ttlMin: number;
@@ -31,6 +35,7 @@ export const PROVIDER_TYPES: Record<string, ProviderTypeInfo> = {
   cloudflare: {
     type: 'cloudflare',
     name: 'Cloudflare',
+    capabilities: { dns: true, tunnel: true },
     features: {
       proxied: true,
       ttlMin: 1, // 1 = auto in Cloudflare
@@ -43,11 +48,13 @@ export const PROVIDER_TYPES: Record<string, ProviderTypeInfo> = {
       { key: 'apiToken', label: 'API Token', type: 'password', required: true, placeholder: 'Cloudflare API token' },
       { key: 'zoneId', label: 'Zone ID', type: 'text', required: true, placeholder: 'e.g., abc123...' },
       { key: 'zoneName', label: 'Zone Name (Domain)', type: 'text', required: true, placeholder: 'e.g., example.com' },
+      { key: 'accountId', label: 'Account ID', type: 'text', required: false, placeholder: 'Required for tunnel support' },
     ],
   },
   digitalocean: {
     type: 'digitalocean',
     name: 'DigitalOcean',
+    capabilities: { dns: true, tunnel: false },
     features: {
       proxied: false,
       ttlMin: 30,
@@ -64,6 +71,7 @@ export const PROVIDER_TYPES: Record<string, ProviderTypeInfo> = {
   technitium: {
     type: 'technitium',
     name: 'Technitium DNS',
+    capabilities: { dns: true, tunnel: false },
     features: {
       proxied: false,
       ttlMin: 1,
@@ -93,6 +101,7 @@ export const PROVIDER_TYPES: Record<string, ProviderTypeInfo> = {
   adguard: {
     type: 'adguard',
     name: 'AdGuard Home',
+    capabilities: { dns: true, tunnel: false },
     features: {
       proxied: false,
       ttlMin: 0,
@@ -111,6 +120,7 @@ export const PROVIDER_TYPES: Record<string, ProviderTypeInfo> = {
   pihole: {
     type: 'pihole',
     name: 'Pi-hole',
+    capabilities: { dns: true, tunnel: false },
     features: {
       proxied: false,
       ttlMin: 0,
@@ -128,6 +138,7 @@ export const PROVIDER_TYPES: Record<string, ProviderTypeInfo> = {
   rfc2136: {
     type: 'rfc2136',
     name: 'RFC 2136',
+    capabilities: { dns: true, tunnel: false },
     features: {
       proxied: false,
       ttlMin: 1,
@@ -159,6 +170,7 @@ export const PROVIDER_TYPES: Record<string, ProviderTypeInfo> = {
   route53: {
     type: 'route53',
     name: 'AWS Route 53',
+    capabilities: { dns: true, tunnel: false },
     features: {
       proxied: false,
       ttlMin: 0,

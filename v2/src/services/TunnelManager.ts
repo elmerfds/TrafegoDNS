@@ -1,20 +1,15 @@
 /**
  * Tunnel Manager Service
- * Orchestrates Cloudflare Tunnel management with database persistence
+ * Orchestrates tunnel management with database persistence.
+ * Provider-agnostic — delegates to BaseTunnelProvider implementations.
  */
 import { v4 as uuidv4 } from 'uuid';
 import { createChildLogger } from '../core/Logger.js';
-import { eventBus, EventTypes } from '../core/EventBus.js';
 import { getDatabase } from '../database/connection.js';
 import { tunnels, tunnelIngressRules, providers } from '../database/schema/index.js';
 import { eq, and } from 'drizzle-orm';
-import {
-  CloudflareTunnels,
-  type TunnelConfig,
-  type TunnelIngressRule,
-  type TunnelInfo,
-  type TunnelConfiguration,
-} from '../providers/cloudflare/index.js';
+import type { BaseTunnelProvider, TunnelRouteConfig, ConnectorInfo } from '../providers/base/index.js';
+import { createTunnelProvider } from '../providers/TunnelProviderFactory.js';
 import type { ConfigManager } from '../config/ConfigManager.js';
 import type { Logger } from 'pino';
 
@@ -25,7 +20,7 @@ export interface TunnelManagerConfig {
 
 export interface ManagedTunnel {
   id: string;
-  externalTunnelId: string; // Cloudflare's tunnel UUID
+  externalTunnelId: string; // Provider's tunnel UUID
   providerId: string;
   name: string;
   token?: string;
@@ -45,10 +40,19 @@ export interface ManagedIngressRule {
   createdAt: Date;
 }
 
+/** Provider-agnostic ingress rule input */
+export interface IngressRuleInput {
+  hostname: string;
+  service: string;
+  path?: string;
+  /** Provider-specific route options (e.g., originRequest for Cloudflare) */
+  options?: Record<string, unknown>;
+}
+
 export class TunnelManager {
   private logger: Logger;
   private config: ConfigManager;
-  private tunnelsClient: CloudflareTunnels | null = null;
+  private tunnelProvider: BaseTunnelProvider | null = null;
   private providerId: string | null = null;
   private initialized: boolean = false;
 
@@ -59,6 +63,7 @@ export class TunnelManager {
 
   /**
    * Initialize the Tunnel Manager
+   * Scans enabled providers for tunnel capability using TunnelProviderFactory
    */
   async init(): Promise<void> {
     if (this.initialized) {
@@ -69,53 +74,41 @@ export class TunnelManager {
     this.logger.debug('Initializing Tunnel Manager');
 
     try {
-      // Find the default Cloudflare provider with tunnel support
       const db = getDatabase();
-      const cloudflareProviders = await db
+      const enabledProviders = await db
         .select()
         .from(providers)
-        .where(and(eq(providers.type, 'cloudflare'), eq(providers.enabled, true)));
+        .where(eq(providers.enabled, true));
 
-      if (cloudflareProviders.length === 0) {
-        this.logger.info('No Cloudflare provider configured, tunnel management disabled');
+      if (enabledProviders.length === 0) {
+        this.logger.info('No providers configured, tunnel management disabled');
         this.initialized = true;
         return;
       }
 
-      // Use the first (or default) Cloudflare provider
-      const provider = cloudflareProviders.find((p) => p.isDefault) ?? cloudflareProviders[0];
-      if (!provider) {
-        this.logger.warn('No Cloudflare provider available for tunnels');
+      // Prefer the default provider, then try all others
+      const sorted = [...enabledProviders].sort((a, b) => {
+        if (a.isDefault && !b.isDefault) return -1;
+        if (!a.isDefault && b.isDefault) return 1;
+        return 0;
+      });
+
+      for (const provider of sorted) {
+        const tunnelProv = createTunnelProvider(provider);
+        if (tunnelProv) {
+          this.tunnelProvider = tunnelProv;
+          this.providerId = provider.id;
+          break;
+        }
+      }
+
+      if (!this.tunnelProvider) {
+        this.logger.info('No tunnel-capable provider found, tunnel management disabled');
         this.initialized = true;
         return;
       }
 
-      this.providerId = provider.id;
-
-      // Parse credentials
-      const credentials = JSON.parse(provider.credentials) as {
-        apiToken: string;
-        accountId?: string;
-        zoneId?: string;
-        zoneName?: string;
-      };
-
-      if (!credentials.accountId) {
-        this.logger.warn('Cloudflare provider missing accountId, tunnel management disabled');
-        this.initialized = true;
-        return;
-      }
-
-      // Initialize CloudflareTunnels client
-      this.tunnelsClient = new CloudflareTunnels(
-        provider.id,
-        credentials.apiToken,
-        credentials.accountId,
-        credentials.zoneName ?? '',
-        credentials.zoneId
-      );
-
-      await this.tunnelsClient.init();
+      await this.tunnelProvider.init();
 
       // Sync existing tunnels
       await this.syncTunnels();
@@ -125,25 +118,25 @@ export class TunnelManager {
     } catch (error) {
       this.logger.error({ error }, 'Failed to initialize Tunnel Manager');
       // Degrade gracefully — tunnel support will be unavailable but the app continues
-      this.tunnelsClient = null;
+      this.tunnelProvider = null;
       this.providerId = null;
       this.initialized = true;
     }
   }
 
   /**
-   * Sync tunnels from Cloudflare to database
+   * Sync tunnels from provider to database
    */
   async syncTunnels(): Promise<void> {
-    if (!this.tunnelsClient || !this.providerId) {
-      this.logger.debug('Tunnel client not available, skipping sync');
+    if (!this.tunnelProvider || !this.providerId) {
+      this.logger.debug('Tunnel provider not available, skipping sync');
       return;
     }
 
-    this.logger.debug('Syncing tunnels from Cloudflare');
+    this.logger.debug('Syncing tunnels from provider');
 
     try {
-      const remoteTunnels = await this.tunnelsClient.listTunnels();
+      const remoteTunnels = await this.tunnelProvider.listTunnels();
       const db = getDatabase();
 
       // Get existing tunnels from database
@@ -155,7 +148,7 @@ export class TunnelManager {
       const existingByExternalId = new Map(existingTunnels.map((t) => [t.tunnelId, t]));
 
       for (const remoteTunnel of remoteTunnels) {
-        const existing = existingByExternalId.get(remoteTunnel.id);
+        const existing = existingByExternalId.get(remoteTunnel.externalId);
 
         if (existing) {
           // Update existing tunnel
@@ -168,13 +161,13 @@ export class TunnelManager {
             })
             .where(eq(tunnels.id, existing.id));
 
-          existingByExternalId.delete(remoteTunnel.id);
+          existingByExternalId.delete(remoteTunnel.externalId);
         } else {
           // Create new tunnel record
           await db.insert(tunnels).values({
             id: uuidv4(),
             providerId: this.providerId,
-            tunnelId: remoteTunnel.id,
+            tunnelId: remoteTunnel.externalId,
             name: remoteTunnel.name,
             status: remoteTunnel.status,
             createdAt: remoteTunnel.createdAt,
@@ -183,7 +176,7 @@ export class TunnelManager {
         }
 
         // Sync ingress rules for this tunnel
-        await this.syncIngressRules(remoteTunnel.id);
+        await this.syncIngressRules(remoteTunnel.externalId);
       }
 
       // Mark tunnels that no longer exist remotely
@@ -205,10 +198,10 @@ export class TunnelManager {
   }
 
   /**
-   * Sync ingress rules for a tunnel — merges CF state with local metadata (source, orphanedAt)
+   * Sync ingress rules for a tunnel — merges provider state with local metadata (source, orphanedAt)
    */
   private async syncIngressRules(tunnelExternalId: string): Promise<void> {
-    if (!this.tunnelsClient) return;
+    if (!this.tunnelProvider) return;
 
     const db = getDatabase();
 
@@ -222,8 +215,8 @@ export class TunnelManager {
     if (!tunnelRecord) return;
 
     try {
-      const config = await this.tunnelsClient.getTunnelConfiguration(tunnelExternalId);
-      if (!config) return;
+      const routeConfig = await this.tunnelProvider.getRouteConfig(tunnelExternalId);
+      if (!routeConfig) return;
 
       // Get existing local rules to preserve source and orphanedAt
       const existingRules = await db
@@ -237,33 +230,33 @@ export class TunnelManager {
 
       const remoteHostnames = new Set<string>();
 
-      // Upsert rules from CF config
-      for (const rule of config.ingress) {
-        remoteHostnames.add(rule.hostname);
-        const existing = existingByHostname.get(rule.hostname);
+      // Upsert rules from provider config
+      for (const route of routeConfig.routes) {
+        remoteHostnames.add(route.hostname);
+        const existing = existingByHostname.get(route.hostname);
 
         if (existing) {
           // Update service/path if changed, but preserve source and orphanedAt
-          if (existing.service !== rule.service || (existing.path ?? null) !== (rule.path ?? null)) {
+          if (existing.service !== route.service || (existing.path ?? null) !== (route.path ?? null)) {
             await db.update(tunnelIngressRules)
-              .set({ service: rule.service, path: rule.path ?? null })
+              .set({ service: route.service, path: route.path ?? null })
               .where(eq(tunnelIngressRules.id, existing.id));
           }
         } else {
-          // New rule from CF that we don't have locally — mark as 'api' (manually created on CF)
+          // New route from provider that we don't have locally — mark as 'api' (manually created)
           await db.insert(tunnelIngressRules).values({
             id: uuidv4(),
             tunnelId: tunnelRecord.id,
-            hostname: rule.hostname,
-            service: rule.service,
-            path: rule.path ?? null,
+            hostname: route.hostname,
+            service: route.service,
+            path: route.path ?? null,
             source: 'api',
             createdAt: new Date(),
           });
         }
       }
 
-      // Remove local rules that no longer exist on CF
+      // Remove local rules that no longer exist on provider
       for (const existing of existingRules) {
         if (!remoteHostnames.has(existing.hostname)) {
           await db.delete(tunnelIngressRules).where(eq(tunnelIngressRules.id, existing.id));
@@ -277,18 +270,16 @@ export class TunnelManager {
   /**
    * Create a new tunnel
    */
-  async createTunnel(config: TunnelConfig): Promise<ManagedTunnel> {
-    if (!this.tunnelsClient || !this.providerId) {
-      throw new Error('Tunnel client not initialized');
+  async createTunnel(config: { name: string; providerOptions?: Record<string, unknown> }): Promise<ManagedTunnel> {
+    if (!this.tunnelProvider || !this.providerId) {
+      throw new Error('Tunnel provider not initialized');
     }
 
     this.logger.info({ name: config.name }, 'Creating tunnel');
 
     try {
-      // Create in Cloudflare
-      const tunnelInfo = await this.tunnelsClient.createTunnel(config);
+      const tunnelInfo = await this.tunnelProvider.createTunnel(config);
 
-      // Save to database
       const db = getDatabase();
       const id = uuidv4();
       const now = new Date();
@@ -296,18 +287,18 @@ export class TunnelManager {
       await db.insert(tunnels).values({
         id,
         providerId: this.providerId,
-        tunnelId: tunnelInfo.id,
+        tunnelId: tunnelInfo.externalId,
         name: tunnelInfo.name,
         status: tunnelInfo.status,
         createdAt: now,
         updatedAt: now,
       });
 
-      this.logger.info({ id, externalTunnelId: tunnelInfo.id }, 'Tunnel created');
+      this.logger.info({ id, externalTunnelId: tunnelInfo.externalId }, 'Tunnel created');
 
       return {
         id,
-        externalTunnelId: tunnelInfo.id,
+        externalTunnelId: tunnelInfo.externalId,
         providerId: this.providerId,
         name: tunnelInfo.name,
         status: tunnelInfo.status,
@@ -324,8 +315,8 @@ export class TunnelManager {
    * Delete a tunnel
    */
   async deleteTunnel(tunnelId: string): Promise<boolean> {
-    if (!this.tunnelsClient) {
-      throw new Error('Tunnel client not initialized');
+    if (!this.tunnelProvider) {
+      throw new Error('Tunnel provider not initialized');
     }
 
     this.logger.info({ tunnelId }, 'Deleting tunnel');
@@ -345,8 +336,7 @@ export class TunnelManager {
     }
 
     try {
-      // Delete from Cloudflare
-      await this.tunnelsClient.deleteTunnel(tunnelRecord.tunnelId);
+      await this.tunnelProvider.deleteTunnel(tunnelRecord.tunnelId);
 
       // Delete ingress rules from database
       await db.delete(tunnelIngressRules).where(eq(tunnelIngressRules.tunnelId, tunnelId));
@@ -406,9 +396,9 @@ export class TunnelManager {
   /**
    * Add an ingress rule to a tunnel
    */
-  async addIngressRule(tunnelId: string, rule: TunnelIngressRule): Promise<ManagedIngressRule> {
-    if (!this.tunnelsClient) {
-      throw new Error('Tunnel client not initialized');
+  async addIngressRule(tunnelId: string, rule: IngressRuleInput): Promise<ManagedIngressRule> {
+    if (!this.tunnelProvider) {
+      throw new Error('Tunnel provider not initialized');
     }
 
     this.logger.info({ tunnelId, hostname: rule.hostname }, 'Adding ingress rule');
@@ -427,8 +417,13 @@ export class TunnelManager {
     }
 
     try {
-      // Add rule in Cloudflare
-      await this.tunnelsClient.addIngressRule(tunnelRecord.tunnelId, rule);
+      // Add route via provider
+      await this.tunnelProvider.addRoute(tunnelRecord.tunnelId, {
+        hostname: rule.hostname,
+        service: rule.service,
+        path: rule.path,
+        options: rule.options,
+      });
 
       // Save to database
       const id = uuidv4();
@@ -465,8 +460,8 @@ export class TunnelManager {
    * Remove an ingress rule from a tunnel
    */
   async removeIngressRule(tunnelId: string, hostname: string): Promise<boolean> {
-    if (!this.tunnelsClient) {
-      throw new Error('Tunnel client not initialized');
+    if (!this.tunnelProvider) {
+      throw new Error('Tunnel provider not initialized');
     }
 
     this.logger.info({ tunnelId, hostname }, 'Removing ingress rule');
@@ -485,8 +480,8 @@ export class TunnelManager {
     }
 
     try {
-      // Remove rule in Cloudflare
-      await this.tunnelsClient.removeIngressRule(tunnelRecord.tunnelId, hostname);
+      // Remove route via provider
+      await this.tunnelProvider.removeRoute(tunnelRecord.tunnelId, hostname);
 
       // Remove from database
       await db
@@ -526,17 +521,17 @@ export class TunnelManager {
   }
 
   /**
-   * Update tunnel configuration with all ingress rules
+   * Deploy tunnel route configuration (all ingress rules at once)
    */
-  async updateTunnelConfiguration(
+  async deployRouteConfig(
     tunnelId: string,
-    configuration: TunnelConfiguration
+    config: TunnelRouteConfig
   ): Promise<void> {
-    if (!this.tunnelsClient) {
-      throw new Error('Tunnel client not initialized');
+    if (!this.tunnelProvider) {
+      throw new Error('Tunnel provider not initialized');
     }
 
-    this.logger.info({ tunnelId, ingressCount: configuration.ingress.length }, 'Updating tunnel configuration');
+    this.logger.info({ tunnelId, routeCount: config.routes.length }, 'Deploying tunnel route configuration');
 
     const db = getDatabase();
 
@@ -552,19 +547,19 @@ export class TunnelManager {
     }
 
     try {
-      // Update in Cloudflare
-      await this.tunnelsClient.updateTunnelConfiguration(tunnelRecord.tunnelId, configuration);
+      // Deploy via provider
+      await this.tunnelProvider.deployRouteConfig(tunnelRecord.tunnelId, config);
 
       // Update database - remove all existing rules and insert new ones
       await db.delete(tunnelIngressRules).where(eq(tunnelIngressRules.tunnelId, tunnelId));
 
-      for (const rule of configuration.ingress) {
+      for (const route of config.routes) {
         await db.insert(tunnelIngressRules).values({
           id: uuidv4(),
           tunnelId,
-          hostname: rule.hostname,
-          service: rule.service,
-          path: rule.path ?? null,
+          hostname: route.hostname,
+          service: route.service,
+          path: route.path ?? null,
           createdAt: new Date(),
         });
       }
@@ -575,20 +570,20 @@ export class TunnelManager {
         .set({ updatedAt: new Date() })
         .where(eq(tunnels.id, tunnelId));
 
-      this.logger.info({ tunnelId }, 'Tunnel configuration updated');
+      this.logger.info({ tunnelId }, 'Tunnel route configuration deployed');
     } catch (error) {
-      this.logger.error({ error, tunnelId }, 'Failed to update tunnel configuration');
+      this.logger.error({ error, tunnelId }, 'Failed to deploy tunnel route configuration');
       throw error;
     }
   }
 
   /**
-   * Get tunnel connector token
-   * Fetches from Cloudflare API and caches in database
+   * Get tunnel connector info (token + setup instructions)
+   * Fetches from provider and caches token in database
    */
-  async getToken(tunnelId: string): Promise<string> {
-    if (!this.tunnelsClient) {
-      throw new Error('Tunnel client not initialized');
+  async getConnectorInfo(tunnelId: string): Promise<ConnectorInfo> {
+    if (!this.tunnelProvider) {
+      throw new Error('Tunnel provider not initialized');
     }
 
     const db = getDatabase();
@@ -598,13 +593,12 @@ export class TunnelManager {
       throw new Error(`Tunnel not found: ${tunnelId}`);
     }
 
-    // Fetch fresh token from Cloudflare API
-    const token = await this.tunnelsClient.getToken(tunnelRecord.tunnelId);
+    const connectorInfo = await this.tunnelProvider.getConnectorInfo(tunnelRecord.tunnelId);
 
-    // Cache in database
-    await db.update(tunnels).set({ token, updatedAt: new Date() }).where(eq(tunnels.id, tunnelId));
+    // Cache token in database
+    await db.update(tunnels).set({ token: connectorInfo.token, updatedAt: new Date() }).where(eq(tunnels.id, tunnelId));
 
-    return token;
+    return connectorInfo;
   }
 
   /**
@@ -621,8 +615,8 @@ export class TunnelManager {
       httpHostHeader?: string;
     }
   ): Promise<void> {
-    if (!this.tunnelsClient) {
-      throw new Error('Tunnel client not initialized');
+    if (!this.tunnelProvider) {
+      throw new Error('Tunnel provider not initialized');
     }
 
     const db = getDatabase();
@@ -658,19 +652,16 @@ export class TunnelManager {
 
       // Update service if changed
       if (existingRule.service !== service) {
-        const rule: TunnelIngressRule = {
+        const routeOptions: Record<string, unknown> = {};
+        if (options?.noTLSVerify) routeOptions.noTLSVerify = options.noTLSVerify;
+        if (options?.httpHostHeader) routeOptions.httpHostHeader = options.httpHostHeader;
+
+        await this.tunnelProvider.addRoute(tunnelRecord.tunnelId, {
           hostname,
           service,
           path: options?.path,
-          originRequest:
-            options?.noTLSVerify || options?.httpHostHeader
-              ? {
-                  noTLSVerify: options.noTLSVerify,
-                  httpHostHeader: options.httpHostHeader,
-                }
-              : undefined,
-        };
-        await this.tunnelsClient.addIngressRule(tunnelRecord.tunnelId, rule);
+          options: Object.keys(routeOptions).length > 0 ? routeOptions : undefined,
+        });
         await db
           .update(tunnelIngressRules)
           .set({ service, path: options?.path ?? null, updatedAt: new Date() })
@@ -680,21 +671,17 @@ export class TunnelManager {
       return;
     }
 
-    // Create new ingress rule
-    const rule: TunnelIngressRule = {
+    // Create new ingress rule via provider
+    const routeOptions: Record<string, unknown> = {};
+    if (options?.noTLSVerify) routeOptions.noTLSVerify = options.noTLSVerify;
+    if (options?.httpHostHeader) routeOptions.httpHostHeader = options.httpHostHeader;
+
+    await this.tunnelProvider.addRoute(tunnelRecord.tunnelId, {
       hostname,
       service,
       path: options?.path,
-      originRequest:
-        options?.noTLSVerify || options?.httpHostHeader
-          ? {
-              noTLSVerify: options.noTLSVerify,
-              httpHostHeader: options.httpHostHeader,
-            }
-          : undefined,
-    };
-
-    await this.tunnelsClient.addIngressRule(tunnelRecord.tunnelId, rule);
+      options: Object.keys(routeOptions).length > 0 ? routeOptions : undefined,
+    });
 
     await db.insert(tunnelIngressRules).values({
       id: uuidv4(),
@@ -717,7 +704,7 @@ export class TunnelManager {
     activeHostnames: Set<string>,
     gracePeriodMinutes: number
   ): Promise<void> {
-    if (!this.tunnelsClient) return;
+    if (!this.tunnelProvider) return;
 
     const db = getDatabase();
     const now = new Date();
@@ -748,7 +735,7 @@ export class TunnelManager {
           .where(eq(tunnelIngressRules.id, rule.id));
         this.logger.info({ hostname: rule.hostname }, 'Ingress rule marked orphaned');
       } else if (new Date(rule.orphanedAt) < cutoffTime) {
-        // Grace period elapsed — remove from Cloudflare and database
+        // Grace period elapsed — remove from provider and database
         const [tunnelRecord] = await db
           .select()
           .from(tunnels)
@@ -757,24 +744,17 @@ export class TunnelManager {
 
         if (tunnelRecord) {
           try {
-            await this.tunnelsClient.removeIngressRule(tunnelRecord.tunnelId, rule.hostname);
-            await this.tunnelsClient.removeTunnelCNAME(rule.hostname);
-            this.logger.info({ hostname: rule.hostname }, 'Orphaned ingress rule + CNAME removed');
+            await this.tunnelProvider.removeRoute(tunnelRecord.tunnelId, rule.hostname);
+            await this.tunnelProvider.cleanupRouteDns(rule.hostname);
+            this.logger.info({ hostname: rule.hostname }, 'Orphaned ingress rule removed');
           } catch (error) {
-            this.logger.error({ error, hostname: rule.hostname }, 'Failed to remove orphaned ingress rule from Cloudflare');
+            this.logger.error({ error, hostname: rule.hostname }, 'Failed to remove orphaned ingress rule');
           }
         }
 
         await db.delete(tunnelIngressRules).where(eq(tunnelIngressRules.id, rule.id));
       }
     }
-  }
-
-  /**
-   * Get the underlying CloudflareTunnels client
-   */
-  getTunnelsClient(): CloudflareTunnels | null {
-    return this.tunnelsClient;
   }
 
   /**
@@ -788,16 +768,16 @@ export class TunnelManager {
    * Check if tunnel support is available
    */
   isTunnelSupportAvailable(): boolean {
-    return this.tunnelsClient !== null;
+    return this.tunnelProvider !== null;
   }
 
   /**
    * Dispose resources
    */
   async dispose(): Promise<void> {
-    if (this.tunnelsClient) {
-      await this.tunnelsClient.dispose();
-      this.tunnelsClient = null;
+    if (this.tunnelProvider) {
+      await this.tunnelProvider.dispose();
+      this.tunnelProvider = null;
     }
     this.initialized = false;
     this.logger.debug('Tunnel Manager disposed');

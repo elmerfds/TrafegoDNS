@@ -22,7 +22,7 @@ function isTunnelSupportAvailable(): { available: boolean; reason?: string; mana
   const tunnelManager = container.resolveSync<TunnelManager>(ServiceTokens.TUNNEL_MANAGER);
 
   if (!tunnelManager.isTunnelSupportAvailable()) {
-    return { available: false, reason: 'Tunnel support not configured. Ensure Cloudflare provider has accountId.' };
+    return { available: false, reason: 'No tunnel-capable provider configured' };
   }
 
   return { available: true, manager: tunnelManager };
@@ -114,7 +114,7 @@ export const createTunnel = asyncHandler(async (req: Request, res: Response) => 
 
   const tunnel = await tunnelManager.createTunnel({
     name: input.name,
-    secret: input.secret,
+    providerOptions: input.secret ? { secret: input.secret } : undefined,
   });
 
   setAuditContext(req, {
@@ -194,7 +194,7 @@ export const addIngressRule = asyncHandler(async (req: Request, res: Response) =
     hostname: input.hostname,
     service: input.service,
     path: input.path,
-    originRequest: input.originRequest,
+    options: input.originRequest as Record<string, unknown> | undefined,
   });
 
   setAuditContext(req, {
@@ -250,12 +250,12 @@ export const updateTunnelConfig = asyncHandler(async (req: Request, res: Respons
     throw ApiError.notFound('Tunnel');
   }
 
-  await tunnelManager.updateTunnelConfiguration(id, {
-    ingress: input.ingress.map((rule) => ({
+  await tunnelManager.deployRouteConfig(id, {
+    routes: input.ingress.map((rule) => ({
       hostname: rule.hostname,
       service: rule.service,
       path: rule.path,
-      originRequest: rule.originRequest,
+      options: rule.originRequest as Record<string, unknown> | undefined,
     })),
   });
 
@@ -291,25 +291,16 @@ export const getTunnelToken = asyncHandler(async (req: Request, res: Response) =
     throw ApiError.notFound('Tunnel');
   }
 
-  const token = await tunnelManager.getToken(id);
-
-  const dockerRunCommand = `docker run -d cloudflare/cloudflared:latest tunnel --no-autoupdate run --token ${token}`;
-  const dockerComposeSnippet = `services:
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    command: tunnel --no-autoupdate run --token \${TUNNEL_TOKEN}
-    environment:
-      - TUNNEL_TOKEN=${token}
-    restart: unless-stopped`;
+  const connectorInfo = await tunnelManager.getConnectorInfo(id);
 
   res.json({
     success: true,
     data: {
-      token,
+      token: connectorInfo.token,
       tunnelId: tunnel.externalTunnelId,
       tunnelName: tunnel.name,
-      dockerRunCommand,
-      dockerComposeSnippet,
+      dockerRunCommand: connectorInfo.instructions.dockerRun,
+      dockerComposeSnippet: connectorInfo.instructions.dockerCompose,
     },
   });
 });
@@ -334,7 +325,7 @@ export const updateIngressRule = asyncHandler(async (req: Request, res: Response
     hostname: input.hostname,
     service: input.service,
     path: input.path,
-    originRequest: input.originRequest,
+    options: input.originRequest as Record<string, unknown> | undefined,
   });
 
   setAuditContext(req, {
@@ -369,8 +360,8 @@ export const deployTunnel = asyncHandler(async (req: Request, res: Response) => 
     throw ApiError.badRequest('Tunnel has no ingress rules to deploy');
   }
 
-  await tunnelManager.updateTunnelConfiguration(id, {
-    ingress: rules.map((rule) => ({
+  await tunnelManager.deployRouteConfig(id, {
+    routes: rules.map((rule) => ({
       hostname: rule.hostname,
       service: rule.service,
       path: rule.path,

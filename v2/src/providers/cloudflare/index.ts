@@ -9,3 +9,4 @@ export {
   type TunnelInfo,
   type TunnelConfiguration,
 } from './CloudflareTunnels.js';
+export { CloudflareTunnelProvider } from './CloudflareTunnelProvider.js';

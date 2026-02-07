@@ -17,6 +17,10 @@ export interface ProviderFeatures {
 export interface ProviderTypeInfo {
   type: string;
   name: string;
+  capabilities: {
+    dns: boolean;
+    tunnel: boolean;
+  };
   features: ProviderFeatures;
   requiredCredentials: Array<{
     key: string;
