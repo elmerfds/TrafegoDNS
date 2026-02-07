@@ -282,14 +282,22 @@ curl -X POST http://localhost:3000/api/v1/dns/records \
 
 ## Authentication
 
-TrafegoDNS uses JWT-based authentication:
+TrafegoDNS supports three authentication modes controlled by the `AUTH_MODE` environment variable:
+
+| Mode | Description |
+|------|-------------|
+| `local` (default) | Username/password login with JWT tokens |
+| `oidc` | Single Sign-On via OpenID Connect (Authelia, Keycloak, Authentik, etc.) |
+| `none` | Authentication disabled — all users get full admin access |
+
+### Local Authentication
 
 - **Login**: `POST /api/v1/auth/login` with `username` and `password`
 - **Token**: Include in requests as `Authorization: Bearer <token>`
 - **API Keys**: Create long-lived API keys via the Web UI or API for automation
 - **Roles**: `admin` (full access), `user` (manage DNS), `readonly` (view only)
 
-### Default Credentials
+#### Default Credentials
 
 | Setting | Default | Environment Variable |
 |---------|---------|---------------------|
@@ -298,6 +306,89 @@ TrafegoDNS uses JWT-based authentication:
 | Email | `admin@localhost` | `DEFAULT_ADMIN_EMAIL` |
 
 > **Important**: Change the default admin password after first login, or set it via environment variable before first start.
+
+### OpenID Connect (OIDC) / Single Sign-On
+
+TrafegoDNS supports SSO via any standard OpenID Connect provider using the **Backend-for-Frontend (BFF) pattern** — all OIDC logic runs server-side with PKCE for security. No browser-side OIDC library is needed.
+
+**Supported providers**: Authelia, Keycloak, Authentik, Dex, Auth0, Okta, Azure AD/Entra ID, and any OIDC-compliant provider.
+
+#### Quick Setup
+
+1. Register TrafegoDNS as a client/application in your OIDC provider
+2. Set the redirect URI to: `https://your-trafegodns-host/api/v1/auth/oidc/callback`
+3. Configure the environment variables below
+
+#### Docker Compose Example
+
+```yaml
+services:
+  trafegodns:
+    image: ghcr.io/elmerfds/trafegodns:latest
+    environment:
+      AUTH_MODE: oidc
+      OIDC_ISSUER_URL: https://auth.example.com   # Your OIDC provider
+      OIDC_CLIENT_ID: trafegodns
+      OIDC_CLIENT_SECRET: your-client-secret       # Or use Docker secrets
+      OIDC_REDIRECT_URI: https://dns.example.com/api/v1/auth/oidc/callback
+      OIDC_ADMIN_GROUPS: admins,dns-admins          # Groups that get admin role
+      OIDC_USER_GROUPS: users                       # Groups that get user role
+      # OIDC_ALLOW_LOCAL_LOGIN: true                # Show local login alongside SSO
+    volumes:
+      - ./data:/config/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+```
+
+#### Authelia Example
+
+In your Authelia `configuration.yml`:
+
+```yaml
+identity_providers:
+  oidc:
+    clients:
+      - client_id: trafegodns
+        client_name: TrafegoDNS
+        client_secret: '$pbkdf2-sha512$...'  # Generate with authelia crypto hash generate pbkdf2
+        redirect_uris:
+          - https://dns.example.com/api/v1/auth/oidc/callback
+        scopes:
+          - openid
+          - profile
+          - email
+          - groups
+        authorization_policy: two_factor
+```
+
+#### How It Works
+
+1. User clicks **"Sign in with SSO"** on the login page
+2. Backend generates a PKCE challenge and redirects to the OIDC provider
+3. User authenticates at the provider (Authelia, Keycloak, etc.)
+4. Provider redirects back to `/api/v1/auth/oidc/callback`
+5. Backend exchanges the code for tokens, fetches user info
+6. Backend maps group claims to app roles (admin/user/readonly)
+7. Backend issues a TrafegoDNS JWT cookie and redirects to the dashboard
+
+#### Group-to-Role Mapping
+
+Configure which OIDC groups map to which TrafegoDNS roles:
+
+| Variable | Role | Priority |
+|----------|------|----------|
+| `OIDC_ADMIN_GROUPS` | `admin` | Highest |
+| `OIDC_USER_GROUPS` | `user` | Medium |
+| `OIDC_READONLY_GROUPS` | `readonly` | Low |
+| `OIDC_DEFAULT_ROLE` | Fallback | If no groups match |
+
+Roles are updated on every login to reflect current group membership. If a user belongs to multiple groups, the highest-priority role wins.
+
+#### User Management
+
+- **Auto-creation**: New OIDC users are automatically created in the database on first login (disable with `OIDC_AUTO_CREATE_USERS=false`)
+- **Email linking**: If an existing local user has the same email as the OIDC user, the accounts are automatically linked
+- **Password**: OIDC users cannot set or change local passwords — they authenticate exclusively through the identity provider
+- **Mixed mode**: Set `OIDC_ALLOW_LOCAL_LOGIN=true` to show both SSO and local credential forms on the login page
 
 ## Container Labels
 
@@ -355,12 +446,33 @@ Provider-specific labels follow the pattern `dns.<provider>.<setting>`, e.g., `d
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `AUTH_MODE` | Authentication mode: `local`, `oidc`, or `none` | `local` |
+| `AUTH_DISABLED` | Disable authentication (same as `AUTH_MODE=none`) | `false` |
 | `JWT_SECRET` | JWT signing secret | Auto-generated |
 | `JWT_EXPIRES_IN` | JWT token expiry | `24h` |
 | `ENCRYPTION_KEY` | Credential encryption key | Auto-generated |
 | `DEFAULT_ADMIN_USERNAME` | Initial admin username | `admin` |
 | `DEFAULT_ADMIN_PASSWORD` | Initial admin password | `admin` |
 | `DEFAULT_ADMIN_EMAIL` | Initial admin email | `admin@localhost` |
+| `GLOBAL_API_KEY` | Master API key for programmatic access (min 32 chars) | - |
+
+### OIDC / SSO (when `AUTH_MODE=oidc`)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OIDC_ISSUER_URL` | **Required.** OIDC provider's issuer URL | - |
+| `OIDC_CLIENT_ID` | **Required.** OAuth2 client ID | - |
+| `OIDC_CLIENT_SECRET` | OAuth2 client secret (supports Docker secrets) | - |
+| `OIDC_REDIRECT_URI` | **Required.** Callback URL (`https://host/api/v1/auth/oidc/callback`) | - |
+| `OIDC_SCOPES` | Space-separated OIDC scopes | `openid profile email groups` |
+| `OIDC_ALLOW_LOCAL_LOGIN` | Show local login form alongside SSO | `false` |
+| `OIDC_AUTO_CREATE_USERS` | Create user in DB on first OIDC login | `true` |
+| `OIDC_DEFAULT_ROLE` | Default role when no group mapping matches | `user` |
+| `OIDC_GROUP_CLAIM` | Claim name for group membership | `groups` |
+| `OIDC_ADMIN_GROUPS` | Comma-separated groups → admin role | - |
+| `OIDC_USER_GROUPS` | Comma-separated groups → user role | - |
+| `OIDC_READONLY_GROUPS` | Comma-separated groups → readonly role | - |
+| `OIDC_LOGOUT_URL` | RP-initiated logout URL | - |
 
 ### Docker
 
