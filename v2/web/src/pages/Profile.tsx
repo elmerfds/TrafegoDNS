@@ -1,16 +1,398 @@
 /**
- * Profile Page - User's own settings
+ * Profile Page - User's own settings + API Key management
  */
 import { useState, useRef } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { User, Mail, Lock, Shield, Camera, X } from 'lucide-react';
-import { authApi } from '../api/auth';
-import { Button, Alert, Badge } from '../components/common';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  User,
+  Mail,
+  Lock,
+  Shield,
+  Camera,
+  X,
+  Key,
+  Plus,
+  Trash2,
+  Copy,
+  Check,
+  AlertTriangle,
+  Clock,
+} from 'lucide-react';
+import { authApi, type ApiKey } from '../api/auth';
+import { Button, Alert, Badge, Modal, ModalFooter } from '../components/common';
 import { useAuthStore } from '../stores';
+
+/** Permissions available per role (mirrors backend ROLE_ALLOWED_PERMISSIONS) */
+const ROLE_PERMISSIONS: Record<string, { value: string; label: string; description: string }[]> = {
+  admin: [
+    { value: '*', label: 'Full Access', description: 'All operations (read, write, delete, admin)' },
+    { value: 'read', label: 'Read', description: 'View records, providers, settings' },
+    { value: 'write', label: 'Write', description: 'Create, update, and delete resources' },
+  ],
+  user: [
+    { value: 'read', label: 'Read', description: 'View records, providers, settings' },
+    { value: 'write', label: 'Write', description: 'Create, update, and delete resources' },
+  ],
+  readonly: [
+    { value: 'read', label: 'Read', description: 'View records, providers, settings' },
+  ],
+};
+
+function formatDate(date: string | undefined | null): string {
+  if (!date) return 'Never';
+  return new Date(date).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function isExpired(expiresAt: string | undefined | null): boolean {
+  if (!expiresAt) return false;
+  return new Date(expiresAt) < new Date();
+}
+
+// ─── API Keys Section ────────────────────────────────────────────────────────
+
+function ApiKeysSection() {
+  const { user } = useAuthStore();
+  const queryClient = useQueryClient();
+  const [showCreate, setShowCreate] = useState(false);
+  const [showRevoke, setShowRevoke] = useState<ApiKey | null>(null);
+  const [newKey, setNewKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // Create form state
+  const [keyName, setKeyName] = useState('');
+  const [selectedPerms, setSelectedPerms] = useState<string[]>(['read']);
+  const [expiresIn, setExpiresIn] = useState<string>('never');
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const userRole = user?.role ?? 'readonly';
+  const availablePerms = ROLE_PERMISSIONS[userRole] ?? ROLE_PERMISSIONS.readonly;
+
+  // Fetch API keys
+  const { data: apiKeys = [], isLoading } = useQuery({
+    queryKey: ['api-keys'],
+    queryFn: () => authApi.listApiKeys(),
+  });
+
+  // Create mutation
+  const createMutation = useMutation({
+    mutationFn: (data: { name: string; permissions: string[]; expiresAt?: string }) =>
+      authApi.createApiKey(data),
+    onSuccess: (result) => {
+      setNewKey(result.key);
+      setKeyName('');
+      setSelectedPerms(['read']);
+      setExpiresIn('never');
+      setCreateError(null);
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] });
+    },
+    onError: (error: Error) => {
+      setCreateError(error.message);
+    },
+  });
+
+  // Revoke mutation
+  const revokeMutation = useMutation({
+    mutationFn: (id: string) => authApi.deleteApiKey(id),
+    onSuccess: () => {
+      setShowRevoke(null);
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] });
+    },
+  });
+
+  const handleCreate = () => {
+    if (!keyName.trim()) {
+      setCreateError('Name is required');
+      return;
+    }
+    if (selectedPerms.length === 0) {
+      setCreateError('Select at least one permission');
+      return;
+    }
+
+    let expiresAt: string | undefined;
+    if (expiresIn !== 'never') {
+      const now = new Date();
+      const days = parseInt(expiresIn, 10);
+      now.setDate(now.getDate() + days);
+      expiresAt = now.toISOString();
+    }
+
+    createMutation.mutate({ name: keyName.trim(), permissions: selectedPerms, expiresAt });
+  };
+
+  const handleCopy = async (text: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCloseCreate = () => {
+    setShowCreate(false);
+    setNewKey(null);
+    setCreateError(null);
+    setKeyName('');
+    setSelectedPerms(['read']);
+    setExpiresIn('never');
+    setCopied(false);
+  };
+
+  const togglePerm = (perm: string) => {
+    if (perm === '*') {
+      // Full access is exclusive
+      setSelectedPerms(selectedPerms.includes('*') ? ['read'] : ['*']);
+      return;
+    }
+    // If selecting a granular perm, remove wildcard
+    let next = selectedPerms.filter(p => p !== '*');
+    if (next.includes(perm)) {
+      next = next.filter(p => p !== perm);
+    } else {
+      next.push(perm);
+    }
+    if (next.length === 0) next = ['read'];
+    setSelectedPerms(next);
+  };
+
+  return (
+    <div className="card p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
+            <Key className="w-4 h-4" />
+            API Keys
+          </h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Create API keys for programmatic access. Keys inherit your role's permissions.
+          </p>
+        </div>
+        <Button size="sm" onClick={() => setShowCreate(true)}>
+          <Plus className="w-4 h-4 mr-1" />
+          Create Key
+        </Button>
+      </div>
+
+      {/* API Keys List */}
+      {isLoading ? (
+        <div className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">Loading...</div>
+      ) : apiKeys.length === 0 ? (
+        <div className="text-sm text-gray-500 dark:text-gray-400 py-8 text-center border border-dashed border-gray-300 dark:border-gray-700 rounded-lg">
+          No API keys yet. Create one for programmatic access.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {apiKeys.map((apiKey) => {
+            const expired = isExpired(apiKey.expiresAt);
+            return (
+              <div
+                key={apiKey.id}
+                className={`flex items-center justify-between p-3 rounded-lg border ${
+                  expired
+                    ? 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-900/10'
+                    : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                      {apiKey.name}
+                    </span>
+                    {expired && (
+                      <Badge variant="error" className="text-xs">Expired</Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    <code className="bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded font-mono">
+                      {apiKey.prefix}...
+                    </code>
+                    <span className="flex items-center gap-1">
+                      <Shield className="w-3 h-3" />
+                      {(typeof apiKey.permissions === 'string'
+                        ? JSON.parse(apiKey.permissions)
+                        : apiKey.permissions
+                      ).join(', ')}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      Used {formatDate(apiKey.lastUsedAt)}
+                    </span>
+                    {apiKey.expiresAt && (
+                      <span className={`flex items-center gap-1 ${expired ? 'text-red-500' : ''}`}>
+                        Expires {formatDate(apiKey.expiresAt)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowRevoke(apiKey)}
+                  className="ml-3 p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  title="Revoke key"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Create Modal */}
+      <Modal isOpen={showCreate} onClose={handleCloseCreate} title={newKey ? 'API Key Created' : 'Create API Key'}>
+        {newKey ? (
+          /* Key created — show once */
+          <div className="space-y-4">
+            <Alert variant="warning">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <span>Copy this key now. It will not be shown again.</span>
+              </div>
+            </Alert>
+
+            <div className="flex items-center gap-2">
+              <code className="flex-1 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm font-mono break-all border border-gray-200 dark:border-gray-700">
+                {newKey}
+              </code>
+              <button
+                onClick={() => handleCopy(newKey)}
+                className={`p-2 rounded-lg transition-colors ${
+                  copied
+                    ? 'bg-green-100 dark:bg-green-900/30 text-green-600'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+                }`}
+                title={copied ? 'Copied!' : 'Copy to clipboard'}
+              >
+                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Use this key in the <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">X-API-Key</code> header for API requests.
+            </p>
+
+            <ModalFooter>
+              <Button onClick={handleCloseCreate}>Done</Button>
+            </ModalFooter>
+          </div>
+        ) : (
+          /* Create form */
+          <div className="space-y-4">
+            {createError && <Alert variant="error">{createError}</Alert>}
+
+            {/* Name */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Key Name
+              </label>
+              <input
+                type="text"
+                value={keyName}
+                onChange={(e) => setKeyName(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
+                placeholder="e.g., CI/CD Pipeline, Monitoring Script"
+                maxLength={100}
+                autoFocus
+              />
+            </div>
+
+            {/* Permissions */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Permissions
+              </label>
+              <div className="space-y-2">
+                {availablePerms.map((perm) => (
+                  <label
+                    key={perm.value}
+                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      selectedPerms.includes(perm.value)
+                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                        : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedPerms.includes(perm.value)}
+                      onChange={() => togglePerm(perm.value)}
+                      className="mt-0.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    />
+                    <div>
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">
+                        {perm.label}
+                      </span>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{perm.description}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              {userRole !== 'admin' && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                  Permissions are limited to your role ({userRole}).
+                </p>
+              )}
+            </div>
+
+            {/* Expiration */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Expiration
+              </label>
+              <select
+                value={expiresIn}
+                onChange={(e) => setExpiresIn(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
+              >
+                <option value="never">Never expires</option>
+                <option value="7">7 days</option>
+                <option value="30">30 days</option>
+                <option value="90">90 days</option>
+                <option value="180">180 days</option>
+                <option value="365">1 year</option>
+              </select>
+            </div>
+
+            <ModalFooter>
+              <Button variant="secondary" onClick={handleCloseCreate}>Cancel</Button>
+              <Button onClick={handleCreate} isLoading={createMutation.isPending}>
+                Create API Key
+              </Button>
+            </ModalFooter>
+          </div>
+        )}
+      </Modal>
+
+      {/* Revoke Confirmation Modal */}
+      <Modal isOpen={!!showRevoke} onClose={() => setShowRevoke(null)} title="Revoke API Key">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Are you sure you want to revoke <strong className="text-gray-900 dark:text-white">{showRevoke?.name}</strong>?
+            This action cannot be undone and any systems using this key will lose access immediately.
+          </p>
+          <ModalFooter>
+            <Button variant="secondary" onClick={() => setShowRevoke(null)}>Cancel</Button>
+            <Button
+              variant="danger"
+              onClick={() => showRevoke && revokeMutation.mutate(showRevoke.id)}
+              isLoading={revokeMutation.isPending}
+            >
+              Revoke Key
+            </Button>
+          </ModalFooter>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ─── Profile Page ────────────────────────────────────────────────────────────
 
 export function ProfilePage() {
   const queryClient = useQueryClient();
-  const { user, updateUser } = useAuthStore();
+  const { user, updateUser, authMode } = useAuthStore();
   const [email, setEmail] = useState(user?.email ?? '');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -129,7 +511,7 @@ export function ProfilePage() {
       <div>
         <h2 className="text-lg font-medium text-gray-900 dark:text-white">Profile Settings</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Manage your account settings and password
+          Manage your account settings and API keys
         </p>
       </div>
 
@@ -281,6 +663,9 @@ export function ProfilePage() {
           </div>
         </form>
       </div>
+
+      {/* API Keys Section — only show when auth is enabled */}
+      {authMode !== 'none' && <ApiKeysSection />}
 
       {/* Role Info Card */}
       <div className="card p-6">

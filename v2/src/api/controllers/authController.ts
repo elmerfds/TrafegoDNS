@@ -157,11 +157,31 @@ export const getCurrentUser = asyncHandler(async (req: Request, res: Response) =
 });
 
 /**
+ * Maximum allowed permissions per role (OWASP A01: Broken Access Control)
+ * Users cannot create API keys with more permissions than their role allows.
+ */
+const ROLE_ALLOWED_PERMISSIONS: Record<string, string[]> = {
+  admin: ['*', 'read', 'write'],
+  user: ['read', 'write'],
+  readonly: ['read'],
+};
+
+/**
  * Create API key
  */
 export const createApiKeyHandler = asyncHandler(async (req: Request, res: Response) => {
   const input = createApiKeySchema.parse(req.body);
   const db = getDatabase();
+
+  // OWASP A01: Validate requested permissions don't exceed user's role
+  const userRole = req.user?.role ?? 'readonly';
+  const allowedPerms = ROLE_ALLOWED_PERMISSIONS[userRole] ?? ['read'];
+  const invalidPerms = input.permissions.filter(p => !allowedPerms.includes(p));
+  if (invalidPerms.length > 0) {
+    throw ApiError.forbidden(
+      `Your role (${userRole}) cannot grant these permissions: ${invalidPerms.join(', ')}`
+    );
+  }
 
   // Generate API key
   const { key, prefix, hash } = generateApiKey();
