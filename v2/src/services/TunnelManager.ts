@@ -40,6 +40,8 @@ export interface ManagedIngressRule {
   hostname: string;
   service: string;
   path?: string;
+  source?: 'auto' | 'api';
+  orphanedAt?: Date | null;
   createdAt: Date;
 }
 
@@ -408,6 +410,7 @@ export class TunnelManager {
         hostname: rule.hostname,
         service: rule.service,
         path: rule.path ?? null,
+        source: 'api',
         createdAt: now,
       });
 
@@ -419,6 +422,7 @@ export class TunnelManager {
         hostname: rule.hostname,
         service: rule.service,
         path: rule.path,
+        source: 'api' as const,
         createdAt: now,
       };
     } catch (error) {
@@ -485,6 +489,8 @@ export class TunnelManager {
       hostname: record.hostname,
       service: record.service,
       path: record.path ?? undefined,
+      source: (record.source as 'auto' | 'api') ?? 'api',
+      orphanedAt: record.orphanedAt ? new Date(record.orphanedAt) : null,
       createdAt: new Date(record.createdAt),
     }));
   }
