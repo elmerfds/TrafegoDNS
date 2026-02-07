@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Trash2, Rocket, AlertTriangle, Key, Tag, Globe,
-  Copy, Check, Terminal, Info, Edit, X, Route, Server, Link2
+  Copy, Check, Terminal, Info, Edit, X, Route, Server, Link2, Loader2
 } from 'lucide-react';
 import { tunnelsApi, type Tunnel, type CreateTunnelInput, type TunnelTokenResponse, type AddIngressRuleInput, type IngressRule } from '../api';
 import { Button, Table, Badge, Modal, ModalFooter, Alert } from '../components/common';
@@ -68,6 +68,8 @@ export function TunnelsPage() {
   const [createdTunnel, setCreatedTunnel] = useState<Tunnel | null>(null);
   const [deleteTunnel, setDeleteTunnel] = useState<Tunnel | null>(null);
   const [selectedTunnel, setSelectedTunnel] = useState<Tunnel | null>(null);
+  const [deployedId, setDeployedId] = useState<string | null>(null);
+  const [deployError, setDeployError] = useState<string | null>(null);
 
   const { data: tunnels, isLoading } = useQuery({
     queryKey: ['tunnels'],
@@ -84,8 +86,16 @@ export function TunnelsPage() {
 
   const deployMutation = useMutation({
     mutationFn: (id: string) => tunnelsApi.deployTunnel(id),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: ['tunnels'] });
+      setDeployError(null);
+      setDeployedId(id);
+      setTimeout(() => setDeployedId(null), 2000);
+    },
+    onError: (_err: Error, id) => {
+      setDeployedId(null);
+      setDeployError(id);
+      setTimeout(() => setDeployError(null), 3000);
     },
   });
 
@@ -146,11 +156,27 @@ export function TunnelsPage() {
       render: (row: Tunnel) => (
         <div className="flex items-center space-x-2">
           <button
-            className="p-1 text-gray-400 hover:text-green-600"
+            className={`p-1 ${
+              deployedId === row.id ? 'text-green-500' :
+              deployError === row.id ? 'text-red-500' :
+              deployMutation.isPending && deployMutation.variables === row.id ? 'text-blue-500' :
+              'text-gray-400 hover:text-green-600'
+            }`}
             onClick={() => deployMutation.mutate(row.id)}
-            title="Deploy tunnel"
+            disabled={deployMutation.isPending}
+            title={
+              deployedId === row.id ? 'Deployed!' :
+              deployError === row.id ? 'Deploy failed — no routes to deploy' :
+              'Deploy tunnel configuration to Cloudflare'
+            }
           >
-            <Rocket className="w-4 h-4" />
+            {deployMutation.isPending && deployMutation.variables === row.id ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : deployedId === row.id ? (
+              <Check className="w-4 h-4" />
+            ) : (
+              <Rocket className="w-4 h-4" />
+            )}
           </button>
           <button
             className="p-1 text-gray-400 hover:text-red-600"
