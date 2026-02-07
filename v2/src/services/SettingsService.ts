@@ -17,7 +17,7 @@ export interface SettingDefinition {
   type: SettingType;
   default: string | number | boolean;
   options?: string[]; // For select type
-  category: 'general' | 'dns' | 'cleanup' | 'traefik' | 'docker' | 'webhooks' | 'security';
+  category: 'general' | 'dns' | 'cleanup' | 'traefik' | 'docker' | 'webhooks' | 'security' | 'tunnels';
   restartRequired: boolean; // Whether changing this requires restart
   envVar?: string; // Environment variable name (if different from key)
 }
@@ -270,6 +270,35 @@ export const SETTINGS_SCHEMA: SettingDefinition[] = [
     category: 'general',
     restartRequired: false,
     envVar: 'IP_REFRESH_INTERVAL',
+  },
+  // Tunnel settings
+  {
+    key: 'tunnel_mode',
+    label: 'Tunnel Mode',
+    description: 'Auto-management mode for tunnel ingress rules. "off" = disabled, "all" = route all hostnames through tunnel, "labeled" = only containers with dns.tunnel label',
+    type: 'select',
+    options: ['off', 'all', 'labeled'],
+    default: 'off',
+    category: 'tunnels',
+    restartRequired: false,
+  },
+  {
+    key: 'default_tunnel',
+    label: 'Default Tunnel',
+    description: 'Name of the default tunnel for auto-routing (must match an existing tunnel)',
+    type: 'string',
+    default: '',
+    category: 'tunnels',
+    restartRequired: false,
+  },
+  {
+    key: 'default_tunnel_service',
+    label: 'Default Service URL',
+    description: 'Default backend service URL for tunnel routing (e.g., http://traefik:80)',
+    type: 'string',
+    default: '',
+    category: 'tunnels',
+    restartRequired: false,
   },
 ];
 

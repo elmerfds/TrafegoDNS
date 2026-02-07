@@ -4,7 +4,7 @@
  */
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, RotateCcw, AlertTriangle, Settings as SettingsIcon, Globe, Trash2, Server, Webhook, Shield, Search, X } from 'lucide-react';
+import { Save, RotateCcw, AlertTriangle, Settings as SettingsIcon, Globe, Trash2, Server, Webhook, Shield, Search, X, Network } from 'lucide-react';
 import { settingsApi, providersApi } from '../api';
 import { Button, Alert, Badge, Select } from '../components/common';
 import { useSpotlightContext } from '../contexts/SpotlightContext';
@@ -35,6 +35,7 @@ const TABS: TabConfig[] = [
   { id: 'dns', label: 'DNS', icon: Globe, categories: ['dns'], description: 'Default DNS record configuration' },
   { id: 'cleanup', label: 'Cleanup', icon: Trash2, categories: ['cleanup'], description: 'Orphaned record management' },
   { id: 'integrations', label: 'Integrations', icon: Server, categories: ['traefik', 'docker'], description: 'Traefik and Docker settings' },
+  { id: 'tunnels', label: 'Tunnels', icon: Network, categories: ['tunnels'], description: 'Cloudflare Tunnel auto-management' },
   { id: 'webhooks', label: 'Webhooks', icon: Webhook, categories: ['webhooks'], description: 'Webhook notification settings' },
   { id: 'security', label: 'Security', icon: Shield, categories: ['security'], description: 'Authentication and security' },
 ];
@@ -45,6 +46,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   cleanup: 'Cleanup',
   traefik: 'Traefik',
   docker: 'Docker',
+  tunnels: 'Tunnels',
   webhooks: 'Webhooks',
   security: 'Security',
 };

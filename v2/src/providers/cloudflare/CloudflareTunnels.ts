@@ -41,6 +41,7 @@ export interface TunnelInfo {
   accountId: string;
   name: string;
   status: 'active' | 'inactive' | 'degraded';
+  token?: string;
   createdAt: Date;
   connections?: Array<{
     id: string;
@@ -451,6 +452,54 @@ export class CloudflareTunnels {
         return 'degraded';
       default:
         return 'inactive';
+    }
+  }
+
+  /**
+   * Get tunnel connector token from Cloudflare API
+   */
+  async getToken(tunnelId: string): Promise<string> {
+    this.logger.debug({ tunnelId }, 'Getting tunnel token');
+
+    try {
+      const token = await this.client.zeroTrust.tunnels.cloudflared.token.get(tunnelId, {
+        account_id: this.accountId,
+      });
+      return token as unknown as string;
+    } catch (error) {
+      this.logger.error({ error, tunnelId }, 'Failed to get tunnel token');
+      throw error;
+    }
+  }
+
+  /**
+   * Remove CNAME record pointing to a tunnel
+   * Only removes records whose content ends with .cfargotunnel.com
+   */
+  async removeTunnelCNAME(hostname: string): Promise<void> {
+    if (!this.zoneId) {
+      this.logger.warn({ hostname }, 'Zone ID not available, skipping CNAME removal');
+      return;
+    }
+
+    try {
+      const existingRecords = await this.client.dns.records.list({
+        zone_id: this.zoneId,
+        name: { exact: hostname },
+        type: 'CNAME',
+      });
+
+      if (existingRecords.result && existingRecords.result.length > 0) {
+        for (const record of existingRecords.result) {
+          if (record.id && record.content?.endsWith('.cfargotunnel.com')) {
+            await this.client.dns.records.delete(record.id, { zone_id: this.zoneId });
+            this.logger.info({ hostname, recordId: record.id }, 'Tunnel CNAME removed');
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.error({ error, hostname }, 'Failed to remove tunnel CNAME');
+      throw error;
     }
   }
 

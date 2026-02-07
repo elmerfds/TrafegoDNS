@@ -28,6 +28,7 @@ export interface ManagedTunnel {
   externalTunnelId: string; // Cloudflare's tunnel UUID
   providerId: string;
   name: string;
+  token?: string;
   status: string;
   createdAt: Date;
   updatedAt: Date;
@@ -542,6 +543,194 @@ export class TunnelManager {
     } catch (error) {
       this.logger.error({ error, tunnelId }, 'Failed to update tunnel configuration');
       throw error;
+    }
+  }
+
+  /**
+   * Get tunnel connector token
+   * Fetches from Cloudflare API and caches in database
+   */
+  async getToken(tunnelId: string): Promise<string> {
+    if (!this.tunnelsClient) {
+      throw new Error('Tunnel client not initialized');
+    }
+
+    const db = getDatabase();
+    const [tunnelRecord] = await db.select().from(tunnels).where(eq(tunnels.id, tunnelId)).limit(1);
+
+    if (!tunnelRecord) {
+      throw new Error(`Tunnel not found: ${tunnelId}`);
+    }
+
+    // Fetch fresh token from Cloudflare API
+    const token = await this.tunnelsClient.getToken(tunnelRecord.tunnelId);
+
+    // Cache in database
+    await db.update(tunnels).set({ token, updatedAt: new Date() }).where(eq(tunnels.id, tunnelId));
+
+    return token;
+  }
+
+  /**
+   * Ensure an ingress rule exists for a hostname (auto-management)
+   * Creates or reactivates the rule as needed
+   */
+  async ensureIngressRule(
+    tunnelName: string,
+    hostname: string,
+    service: string,
+    options?: {
+      path?: string;
+      noTLSVerify?: boolean;
+      httpHostHeader?: string;
+    }
+  ): Promise<void> {
+    if (!this.tunnelsClient) {
+      throw new Error('Tunnel client not initialized');
+    }
+
+    const db = getDatabase();
+
+    // Find tunnel by name
+    const [tunnelRecord] = await db
+      .select()
+      .from(tunnels)
+      .where(eq(tunnels.name, tunnelName))
+      .limit(1);
+
+    if (!tunnelRecord) {
+      this.logger.warn({ tunnelName, hostname }, 'Tunnel not found for auto-management, skipping');
+      return;
+    }
+
+    // Check if rule already exists
+    const [existingRule] = await db
+      .select()
+      .from(tunnelIngressRules)
+      .where(and(eq(tunnelIngressRules.tunnelId, tunnelRecord.id), eq(tunnelIngressRules.hostname, hostname)))
+      .limit(1);
+
+    if (existingRule) {
+      // Reactivate if orphaned
+      if (existingRule.orphanedAt) {
+        await db
+          .update(tunnelIngressRules)
+          .set({ orphanedAt: null, updatedAt: new Date() })
+          .where(eq(tunnelIngressRules.id, existingRule.id));
+        this.logger.info({ tunnelName, hostname }, 'Ingress rule reactivated');
+      }
+
+      // Update service if changed
+      if (existingRule.service !== service) {
+        const rule: TunnelIngressRule = {
+          hostname,
+          service,
+          path: options?.path,
+          originRequest:
+            options?.noTLSVerify || options?.httpHostHeader
+              ? {
+                  noTLSVerify: options.noTLSVerify,
+                  httpHostHeader: options.httpHostHeader,
+                }
+              : undefined,
+        };
+        await this.tunnelsClient.addIngressRule(tunnelRecord.tunnelId, rule);
+        await db
+          .update(tunnelIngressRules)
+          .set({ service, path: options?.path ?? null, updatedAt: new Date() })
+          .where(eq(tunnelIngressRules.id, existingRule.id));
+        this.logger.info({ tunnelName, hostname, service }, 'Ingress rule service updated');
+      }
+      return;
+    }
+
+    // Create new ingress rule
+    const rule: TunnelIngressRule = {
+      hostname,
+      service,
+      path: options?.path,
+      originRequest:
+        options?.noTLSVerify || options?.httpHostHeader
+          ? {
+              noTLSVerify: options.noTLSVerify,
+              httpHostHeader: options.httpHostHeader,
+            }
+          : undefined,
+    };
+
+    await this.tunnelsClient.addIngressRule(tunnelRecord.tunnelId, rule);
+
+    await db.insert(tunnelIngressRules).values({
+      id: uuidv4(),
+      tunnelId: tunnelRecord.id,
+      hostname,
+      service,
+      path: options?.path ?? null,
+      source: 'auto',
+      createdAt: new Date(),
+    });
+
+    this.logger.info({ tunnelName, hostname, service }, 'Auto-created ingress rule');
+  }
+
+  /**
+   * Cleanup orphaned auto-managed ingress rules
+   * Mirrors the DNS record orphan cleanup pattern with grace period
+   */
+  async cleanupOrphanedIngressRules(
+    activeHostnames: Set<string>,
+    gracePeriodMinutes: number
+  ): Promise<void> {
+    if (!this.tunnelsClient) return;
+
+    const db = getDatabase();
+    const now = new Date();
+    const cutoffTime = new Date(now.getTime() - gracePeriodMinutes * 60 * 1000);
+
+    // Get all auto-managed ingress rules
+    const autoRules = await db
+      .select()
+      .from(tunnelIngressRules)
+      .where(eq(tunnelIngressRules.source, 'auto'));
+
+    for (const rule of autoRules) {
+      const isActive = activeHostnames.has(rule.hostname.toLowerCase());
+
+      if (isActive) {
+        // Clear orphaned status if active
+        if (rule.orphanedAt) {
+          await db
+            .update(tunnelIngressRules)
+            .set({ orphanedAt: null })
+            .where(eq(tunnelIngressRules.id, rule.id));
+        }
+      } else if (!rule.orphanedAt) {
+        // Mark as orphaned
+        await db
+          .update(tunnelIngressRules)
+          .set({ orphanedAt: now })
+          .where(eq(tunnelIngressRules.id, rule.id));
+        this.logger.info({ hostname: rule.hostname }, 'Ingress rule marked orphaned');
+      } else if (new Date(rule.orphanedAt) < cutoffTime) {
+        // Grace period elapsed — remove from Cloudflare and database
+        const [tunnelRecord] = await db
+          .select()
+          .from(tunnels)
+          .where(eq(tunnels.id, rule.tunnelId))
+          .limit(1);
+
+        if (tunnelRecord) {
+          try {
+            await this.tunnelsClient.removeIngressRule(tunnelRecord.tunnelId, rule.hostname);
+            await this.tunnelsClient.removeTunnelCNAME(rule.hostname);
+            this.logger.info({ hostname: rule.hostname }, 'Orphaned ingress rule + CNAME removed');
+          } catch (error) {
+            this.logger.error({ error, hostname: rule.hostname }, 'Failed to remove orphaned ingress rule from Cloudflare');
+          }
+        }
+
+        await db.delete(tunnelIngressRules).where(eq(tunnelIngressRules.id, rule.id));
+      }
     }
   }
 

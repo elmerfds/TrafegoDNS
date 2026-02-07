@@ -148,6 +148,7 @@ function createTablesDirectly(): void {
       tunnel_id TEXT NOT NULL,
       name TEXT NOT NULL,
       secret TEXT,
+      token TEXT,
       status TEXT NOT NULL DEFAULT 'inactive' CHECK(status IN ('active', 'inactive', 'degraded')),
       connector_id TEXT,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()),
@@ -166,6 +167,8 @@ function createTablesDirectly(): void {
       origin_request TEXT,
       "order" INTEGER NOT NULL DEFAULT 0,
       enabled INTEGER NOT NULL DEFAULT 1,
+      source TEXT NOT NULL DEFAULT 'api',
+      orphaned_at INTEGER,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()),
       updated_at INTEGER NOT NULL DEFAULT (unixepoch())
     )
@@ -388,6 +391,25 @@ function runSchemaMigrations(sqliteDb: Database.Database): void {
 
   // Add new provider types (adguard, pihole) to providers table CHECK constraint
   migrateProviderTypeConstraint(sqliteDb);
+
+  // Add token column to tunnels table if it doesn't exist
+  try {
+    sqliteDb.exec('ALTER TABLE tunnels ADD COLUMN token TEXT');
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Add source and orphaned_at columns to tunnel_ingress_rules table if they don't exist
+  try {
+    sqliteDb.exec("ALTER TABLE tunnel_ingress_rules ADD COLUMN source TEXT NOT NULL DEFAULT 'api'");
+  } catch {
+    // Column already exists, ignore
+  }
+  try {
+    sqliteDb.exec('ALTER TABLE tunnel_ingress_rules ADD COLUMN orphaned_at INTEGER');
+  } catch {
+    // Column already exists, ignore
+  }
 }
 
 /**

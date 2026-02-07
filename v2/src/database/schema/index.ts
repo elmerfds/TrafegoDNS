@@ -64,6 +64,7 @@ export const tunnels = sqliteTable('tunnels', {
   tunnelId: text('tunnel_id').notNull(), // Cloudflare tunnel ID
   name: text('name').notNull(),
   secret: text('secret'), // Encrypted tunnel secret
+  token: text('token'), // Cloudflare tunnel token for cloudflared connector
   status: text('status', { enum: ['active', 'inactive', 'degraded', 'deleted'] }).notNull().default('inactive'),
   connectorId: text('connector_id'),
   ...timestamps,
@@ -81,6 +82,8 @@ export const tunnelIngressRules = sqliteTable('tunnel_ingress_rules', {
   originRequest: text('origin_request'), // JSON
   order: integer('order').notNull().default(0),
   enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  source: text('source', { enum: ['auto', 'api'] }).notNull().default('api'),
+  orphanedAt: integer('orphaned_at', { mode: 'timestamp' }),
   ...timestamps,
 });
 

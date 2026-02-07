@@ -66,8 +66,10 @@ import {
   listIngressRules,
   addIngressRule,
   removeIngressRule,
+  updateIngressRule,
   updateTunnelConfig,
   deployTunnel,
+  getTunnelToken,
 } from '../controllers/tunnelsController.js';
 
 import {
@@ -196,10 +198,12 @@ tunnelsRouter.use(authenticate);
 tunnelsRouter.use(auditMiddleware);
 tunnelsRouter.get('/', requirePermission('read'), listTunnels);
 tunnelsRouter.get('/:id', requirePermission('read'), getTunnel);
+tunnelsRouter.get('/:id/token', requireRole('admin'), getTunnelToken);
 tunnelsRouter.post('/', requirePermission('write'), createTunnel);
 tunnelsRouter.delete('/:id', requirePermission('write'), deleteTunnel);
 tunnelsRouter.get('/:id/ingress', requirePermission('read'), listIngressRules);
 tunnelsRouter.post('/:id/ingress', requirePermission('write'), addIngressRule);
+tunnelsRouter.put('/:id/ingress/:hostname', requirePermission('write'), updateIngressRule);
 tunnelsRouter.delete('/:id/ingress/:hostname', requirePermission('write'), removeIngressRule);
 tunnelsRouter.put('/:id/config', requirePermission('write'), updateTunnelConfig);
 tunnelsRouter.post('/:id/deploy', requirePermission('write'), deployTunnel);

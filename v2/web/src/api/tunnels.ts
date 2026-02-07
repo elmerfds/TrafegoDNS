@@ -19,12 +19,22 @@ export interface IngressRule {
   hostname: string;
   service: string;
   path?: string;
+  source?: 'auto' | 'api';
+  orphanedAt?: string | null;
   originRequest?: {
     noTLSVerify?: boolean;
     connectTimeout?: string;
     tlsTimeout?: string;
     httpHostHeader?: string;
   };
+}
+
+export interface TunnelTokenResponse {
+  token: string;
+  tunnelId: string;
+  tunnelName: string;
+  dockerRunCommand: string;
+  dockerComposeSnippet: string;
 }
 
 export interface CreateTunnelInput {
@@ -76,7 +86,15 @@ export const tunnelsApi = {
     return apiClient.put<Tunnel>(`/tunnels/${tunnelId}/config`, data);
   },
 
+  async updateIngressRule(tunnelId: string, hostname: string, data: AddIngressRuleInput): Promise<IngressRule> {
+    return apiClient.put<IngressRule>(`/tunnels/${tunnelId}/ingress/${encodeURIComponent(hostname)}`, data);
+  },
+
   async deployTunnel(tunnelId: string): Promise<{ message: string }> {
     return apiClient.post<{ message: string }>(`/tunnels/${tunnelId}/deploy`);
+  },
+
+  async getTunnelToken(tunnelId: string): Promise<TunnelTokenResponse> {
+    return apiClient.get<TunnelTokenResponse>(`/tunnels/${tunnelId}/token`);
   },
 };

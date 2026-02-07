@@ -272,6 +272,77 @@ export const updateTunnelConfig = asyncHandler(async (req: Request, res: Respons
 });
 
 /**
+ * Get tunnel connector token
+ */
+export const getTunnelToken = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const tunnelManager = getTunnelManager();
+
+  const tunnel = await tunnelManager.getTunnel(id);
+  if (!tunnel) {
+    throw ApiError.notFound('Tunnel');
+  }
+
+  const token = await tunnelManager.getToken(id);
+
+  const dockerRunCommand = `docker run -d cloudflare/cloudflared:latest tunnel --no-autoupdate run --token ${token}`;
+  const dockerComposeSnippet = `services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token \${TUNNEL_TOKEN}
+    environment:
+      - TUNNEL_TOKEN=${token}
+    restart: unless-stopped`;
+
+  res.json({
+    success: true,
+    data: {
+      token,
+      tunnelId: tunnel.externalTunnelId,
+      tunnelName: tunnel.name,
+      dockerRunCommand,
+      dockerComposeSnippet,
+    },
+  });
+});
+
+/**
+ * Update an ingress rule
+ */
+export const updateIngressRule = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const hostname = req.params.hostname as string;
+  const input = tunnelIngressRuleSchema.parse(req.body);
+  const tunnelManager = getTunnelManager();
+
+  const tunnel = await tunnelManager.getTunnel(id);
+  if (!tunnel) {
+    throw ApiError.notFound('Tunnel');
+  }
+
+  // Remove old rule and add updated one
+  await tunnelManager.removeIngressRule(id, hostname);
+  const rule = await tunnelManager.addIngressRule(id, {
+    hostname: input.hostname,
+    service: input.service,
+    path: input.path,
+    originRequest: input.originRequest,
+  });
+
+  setAuditContext(req, {
+    action: 'update',
+    resourceType: 'tunnelIngressRule',
+    resourceId: rule.id,
+    details: { tunnelId: id, hostname: input.hostname },
+  });
+
+  res.json({
+    success: true,
+    data: rule,
+  });
+});
+
+/**
  * Deploy tunnel (alias for update config)
  */
 export const deployTunnel = asyncHandler(async (req: Request, res: Response) => {

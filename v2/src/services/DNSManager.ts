@@ -13,6 +13,8 @@ import type { ConfigManager } from '../config/ConfigManager.js';
 import type { DNSRecord, DNSRecordCreateInput, DNSRecordType, ProviderType, ProviderDefaults, SettingSource } from '../types/index.js';
 import type { Logger } from 'pino';
 import { getSettingsService } from './SettingsService.js';
+import type { TunnelManager } from './TunnelManager.js';
+import { container, ServiceTokens } from '../core/ServiceContainer.js';
 
 /**
  * Resolved defaults for creating a DNS record
@@ -64,6 +66,17 @@ interface CachedHostnameOverride {
   recordType?: DNSRecordType | null;
   content?: string | null;
   providerId?: string | null;
+}
+
+/**
+ * Resolved tunnel configuration for a hostname
+ */
+interface ResolvedTunnelConfig {
+  tunnelName: string;
+  service: string;
+  path?: string;
+  noTLSVerify?: boolean;
+  httpHostHeader?: string;
 }
 
 export class DNSManager {
@@ -613,6 +626,8 @@ export class DNSManager {
 
     // Group records by provider
     const providerGroups = new Map<string, ProviderRecordGroup>();
+    const tunnelManagedHostnames = new Set<string>();
+    const tunnelManager = this.getTunnelManager();
 
     for (const hostname of hostnames) {
       try {
@@ -625,6 +640,31 @@ export class DNSManager {
         if (!this.shouldManageHostname(hostname, labels, labelPrefix)) {
           this.stats.skipped++;
           continue;
+        }
+
+        // Check for tunnel configuration before normal DNS processing
+        if (tunnelManager) {
+          const tunnelConfig = this.resolveTunnelConfig(hostname, labels, labelPrefix);
+          if (tunnelConfig) {
+            try {
+              await tunnelManager.ensureIngressRule(
+                tunnelConfig.tunnelName,
+                hostname,
+                tunnelConfig.service,
+                {
+                  path: tunnelConfig.path,
+                  noTLSVerify: tunnelConfig.noTLSVerify,
+                  httpHostHeader: tunnelConfig.httpHostHeader,
+                }
+              );
+              tunnelManagedHostnames.add(hostname.toLowerCase());
+              this.logger.debug({ hostname, tunnel: tunnelConfig.tunnelName }, 'Hostname routed through tunnel');
+            } catch (error) {
+              this.logger.error({ error, hostname, tunnel: tunnelConfig.tunnelName }, 'Failed to ensure tunnel ingress rule');
+              this.stats.errors++;
+            }
+            continue; // Skip normal DNS processing
+          }
         }
 
         // Determine which providers should handle this hostname
@@ -709,8 +749,14 @@ export class DNSManager {
     // Cleanup orphaned records if enabled (check all providers)
     // Read from SettingsService (database-persisted) rather than ConfigManager (env-only)
     const cleanupEnabled = getSettingsService().get<boolean>('cleanup_orphaned');
-    if (cleanupEnabled && processedHostnames.length > 0) {
+    if (cleanupEnabled && (processedHostnames.length > 0 || tunnelManagedHostnames.size > 0)) {
       await this.cleanupOrphanedRecords(processedHostnames);
+
+      // Also cleanup orphaned tunnel ingress rules
+      if (tunnelManager && tunnelManagedHostnames.size > 0) {
+        const gracePeriodMinutes = getSettingsService().get<number>('cleanup_grace_period');
+        await tunnelManager.cleanupOrphanedIngressRules(tunnelManagedHostnames, gracePeriodMinutes);
+      }
     }
 
     // Publish event
@@ -720,6 +766,107 @@ export class DNSManager {
     });
 
     return { stats: this.stats, processedHostnames };
+  }
+
+  /**
+   * Get TunnelManager from ServiceContainer (lazy resolution)
+   * Returns null if TunnelManager is not available or not initialized
+   */
+  private getTunnelManager(): TunnelManager | null {
+    try {
+      if (!container.isInstantiated(ServiceTokens.TUNNEL_MANAGER)) {
+        return null;
+      }
+      const tm = container.resolveSync<TunnelManager>(ServiceTokens.TUNNEL_MANAGER);
+      return tm.isTunnelSupportAvailable() ? tm : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Resolve tunnel configuration for a hostname based on settings and labels
+   * Returns null if the hostname should use normal DNS processing
+   */
+  private resolveTunnelConfig(
+    hostname: string,
+    labels: Record<string, string>,
+    labelPrefix: string
+  ): ResolvedTunnelConfig | null {
+    const settingsService = getSettingsService();
+    const tunnelMode = settingsService.get<string>('tunnel_mode');
+
+    // Step 1: If mode is off, always return null (normal DNS)
+    if (tunnelMode === 'off') {
+      return null;
+    }
+
+    const tunnelLabel = labels[`${labelPrefix}tunnel`];
+    const tunnelServiceLabel = labels[`${labelPrefix}tunnel.service`];
+    const tunnelPathLabel = labels[`${labelPrefix}tunnel.path`];
+    const tunnelNoTLSVerifyLabel = labels[`${labelPrefix}tunnel.notlsverify`];
+    const tunnelHttpHostHeaderLabel = labels[`${labelPrefix}tunnel.httphostheader`];
+
+    let tunnelName: string | undefined;
+    let service: string | undefined;
+
+    if (tunnelMode === 'all') {
+      // Step 3: mode=all — all hostnames go through tunnel unless opted out
+      if (tunnelLabel?.toLowerCase() === 'false') {
+        return null; // Opt-out
+      }
+
+      // tunnelName from label (if not "true"/"false") or default setting
+      if (tunnelLabel && tunnelLabel.toLowerCase() !== 'true' && tunnelLabel.toLowerCase() !== 'false') {
+        tunnelName = tunnelLabel;
+      } else {
+        tunnelName = settingsService.get<string>('default_tunnel') || undefined;
+      }
+
+      // service from label or default setting
+      service = tunnelServiceLabel || settingsService.get<string>('default_tunnel_service') || undefined;
+    } else if (tunnelMode === 'labeled') {
+      // Step 4: mode=labeled — only containers with dns.tunnel label
+      if (!tunnelLabel) {
+        return null; // No label, normal DNS
+      }
+
+      // tunnelName from label (if not "true") or default setting
+      if (tunnelLabel.toLowerCase() !== 'true') {
+        tunnelName = tunnelLabel;
+      } else {
+        tunnelName = settingsService.get<string>('default_tunnel') || undefined;
+      }
+
+      // service from label or default setting
+      service = tunnelServiceLabel || settingsService.get<string>('default_tunnel_service') || undefined;
+    }
+
+    // Step 5: If tunnelName or service missing, warn and fall through to normal DNS
+    if (!tunnelName || !service) {
+      if (tunnelMode === 'labeled' && tunnelLabel) {
+        // Only warn if the user explicitly labeled for tunnel but config is incomplete
+        this.logger.warn(
+          { hostname, tunnelName, service, tunnelMode },
+          'Tunnel config incomplete (missing tunnel name or service), falling through to normal DNS'
+        );
+      }
+      return null;
+    }
+
+    // Step 6: Return config object
+    const config: ResolvedTunnelConfig = { tunnelName, service };
+    if (tunnelPathLabel) {
+      config.path = tunnelPathLabel;
+    }
+    if (tunnelNoTLSVerifyLabel?.toLowerCase() === 'true') {
+      config.noTLSVerify = true;
+    }
+    if (tunnelHttpHostHeaderLabel) {
+      config.httpHostHeader = tunnelHttpHostHeaderLabel;
+    }
+
+    return config;
   }
 
   /**
