@@ -2,7 +2,7 @@
  * API exports
  */
 export { apiClient } from './client';
-export { authApi, type User, type LoginResponse, type ApiKey } from './auth';
+export { authApi, type User, type LoginResponse, type ApiKey, type AuthMode, type AuthConfig } from './auth';
 export { dnsApi, type DNSRecord, type DNSRecordType, type DNSRecordsResponse, type CreateDNSRecordInput, type UpdateDNSRecordInput, type ExportRecordsResponse, type ImportRecordsInput, type ImportRecordsResponse, type MultiCreateDNSRecordInput, type MultiCreateResult } from './dns';
 export { providersApi, type Provider, type ProviderType, type CreateProviderInput, type UpdateProviderInput, type DiscoverRecordsResult } from './providers';
 export { tunnelsApi, type Tunnel, type IngressRule, type CreateTunnelInput, type TunnelTokenResponse, type AddIngressRuleInput } from './tunnels';

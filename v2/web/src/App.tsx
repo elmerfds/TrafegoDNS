@@ -39,21 +39,26 @@ const queryClient = new QueryClient({
 
 // Auth check helper
 const requireAuth = () => {
-  const { isAuthenticated } = useAuthStore.getState();
+  const { isAuthenticated, authMode } = useAuthStore.getState();
+  if (authMode === 'none') return; // Auth disabled — allow all
   if (!isAuthenticated) {
     throw redirect({ to: '/login' });
   }
 };
 
 const requireGuest = () => {
-  const { isAuthenticated } = useAuthStore.getState();
+  const { isAuthenticated, authMode } = useAuthStore.getState();
+  if (authMode === 'none') {
+    throw redirect({ to: '/' }); // No login page when auth disabled
+  }
   if (isAuthenticated) {
     throw redirect({ to: '/' });
   }
 };
 
 const requireAdmin = () => {
-  const { isAuthenticated, user } = useAuthStore.getState();
+  const { isAuthenticated, user, authMode } = useAuthStore.getState();
+  if (authMode === 'none') return; // Auth disabled — all are admin
   if (!isAuthenticated) {
     throw redirect({ to: '/login' });
   }
@@ -171,22 +176,32 @@ declare module '@tanstack/react-router' {
 
 // Auth listener component
 function AuthListener() {
-  const { checkAuth, isAuthenticated } = useAuthStore();
+  const { checkAuth, checkAuthMode, isAuthenticated, authMode, authModeLoaded } = useAuthStore();
 
   useEffect(() => {
-    // Check auth on mount
-    if (isAuthenticated) {
+    // Always check auth mode first
+    checkAuthMode();
+  }, [checkAuthMode]);
+
+  useEffect(() => {
+    // Only verify JWT auth when mode is loaded and is 'local'
+    if (authModeLoaded && authMode !== 'none' && isAuthenticated) {
       checkAuth();
     }
+  }, [checkAuth, isAuthenticated, authMode, authModeLoaded]);
 
+  useEffect(() => {
     // Listen for logout events
     const handleLogout = () => {
-      router.navigate({ to: '/login' });
+      const { authMode } = useAuthStore.getState();
+      if (authMode !== 'none') {
+        router.navigate({ to: '/login' });
+      }
     };
 
     window.addEventListener('auth:logout', handleLogout);
     return () => window.removeEventListener('auth:logout', handleLogout);
-  }, [checkAuth, isAuthenticated]);
+  }, []);
 
   return null;
 }

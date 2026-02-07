@@ -47,13 +47,19 @@ export async function logAudit(
   try {
     const db = getDatabase();
 
+    // Include authMethod in details for traceability
+    const details = { ...context.details };
+    if (req.authMethod) {
+      details.authMethod = req.authMethod;
+    }
+
     await db.insert(auditLogs).values({
       id: uuidv4(),
       userId: req.user?.id ?? null,
       action: context.action,
       resourceType: context.resourceType,
       resourceId: context.resourceId ?? null,
-      details: JSON.stringify(context.details ?? {}),
+      details: JSON.stringify(details),
       ipAddress: getClientIp(req),
       userAgent: req.headers['user-agent'] ?? null,
       createdAt: new Date(),

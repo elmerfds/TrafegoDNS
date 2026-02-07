@@ -30,7 +30,17 @@ export interface CreateApiKeyResponse extends ApiKey {
   key: string; // Only returned on creation
 }
 
+export type AuthMode = 'local' | 'none'; // Future: 'oidc'
+
+export interface AuthConfig {
+  mode: AuthMode;
+}
+
 export const authApi = {
+  async getAuthConfig(): Promise<AuthConfig> {
+    return apiClient.get<AuthConfig>('/auth/config');
+  },
+
   async login(username: string, password: string): Promise<LoginResponse> {
     const result = await apiClient.post<LoginResponse>('/auth/login', {
       username,

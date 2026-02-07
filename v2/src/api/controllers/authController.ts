@@ -16,6 +16,7 @@ import {
   setAuditContext,
 } from '../middleware/index.js';
 import { loginSchema, createApiKeySchema } from '../validation.js';
+import { getConfig } from '../../config/ConfigManager.js';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -23,6 +24,25 @@ const BCRYPT_ROUNDS = 12;
  * Login with username/password
  */
 export const login = asyncHandler(async (req: Request, res: Response) => {
+  // When auth is disabled, return synthetic anonymous credentials
+  const config = getConfig();
+  if (config.security.authMode === 'none') {
+    res.json({
+      success: true,
+      data: {
+        token: 'auth-disabled',
+        user: {
+          id: 'anonymous',
+          username: 'anonymous',
+          email: 'anonymous@trafegodns.local',
+          role: 'admin',
+          avatar: null,
+        },
+      },
+    });
+    return;
+  }
+
   const { username, password } = loginSchema.parse(req.body);
 
   const db = getDatabase();

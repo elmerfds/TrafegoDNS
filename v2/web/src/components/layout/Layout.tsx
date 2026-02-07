@@ -7,6 +7,7 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { CommandPalette } from '../common';
 import { SpotlightProvider } from '../../contexts/SpotlightContext';
+import { AuthDisabledBanner } from './AuthDisabledBanner';
 
 // Map route paths to page titles
 const routeTitles: Record<string, string> = {
@@ -43,6 +44,7 @@ export function Layout() {
 
   return (
     <SpotlightProvider>
+      <AuthDisabledBanner />
       <div className="flex h-screen overflow-hidden gradient-bg">
         {/* Mobile sidebar overlay */}
         {sidebarOpen && (

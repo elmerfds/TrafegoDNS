@@ -28,6 +28,7 @@ export interface PaginatedResponse<T> {
 class ApiClient {
   private client: AxiosInstance;
   private token: string | null = null;
+  private _authDisabled: boolean = false;
 
   constructor() {
     this.client = axios.create({
@@ -50,7 +51,7 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error: AxiosError<ApiResponse<unknown>>) => {
-        if (error.response?.status === 401) {
+        if (error.response?.status === 401 && !this._authDisabled) {
           this.token = null;
           localStorage.removeItem('token');
           window.dispatchEvent(new CustomEvent('auth:logout'));
@@ -64,6 +65,10 @@ class ApiClient {
     if (storedToken) {
       this.token = storedToken;
     }
+  }
+
+  setAuthDisabled(disabled: boolean) {
+    this._authDisabled = disabled;
   }
 
   setToken(token: string | null) {

@@ -39,6 +39,7 @@ const apiGroups: EndpointGroup[] = [
     description: 'User authentication and API key management',
     basePath: '/api/v1/auth',
     endpoints: [
+      { method: 'GET', path: '/config', description: 'Get auth mode configuration (local or none)', auth: 'none' },
       { method: 'POST', path: '/login', description: 'Login with username/password', auth: 'none', body: { username: 'string', password: 'string' } },
       { method: 'POST', path: '/logout', description: 'Logout current session', auth: 'required' },
       { method: 'GET', path: '/me', description: 'Get current user info', auth: 'required' },

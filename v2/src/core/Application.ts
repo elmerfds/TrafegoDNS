@@ -136,6 +136,10 @@ export class Application {
    * Ensure admin user exists (creates from env vars if not)
    */
   private async ensureAdminUser(): Promise<void> {
+    if (this.config.security.authMode === 'none') {
+      logger.debug('Auth disabled — skipping admin user creation');
+      return;
+    }
     const { defaultAdminUsername, defaultAdminPassword, defaultAdminEmail } = this.config.auth;
     await ensureAdminUser(defaultAdminUsername, defaultAdminPassword, defaultAdminEmail);
     logger.debug('Admin user check completed');

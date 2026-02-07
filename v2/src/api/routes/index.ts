@@ -12,6 +12,7 @@ import {
   authRateLimit,
   auditMiddleware,
 } from '../middleware/index.js';
+import { getConfig } from '../../config/ConfigManager.js';
 
 // Controllers
 import {
@@ -146,6 +147,15 @@ router.get('/health/live', livenessCheck);
 
 // Application logs (requires auth)
 router.get('/logs', authenticate, getApplicationLogs);
+
+// Public auth config (no auth required — used by frontend to determine auth mode)
+router.get('/auth/config', (_req, res) => {
+  const config = getConfig();
+  res.json({
+    success: true,
+    data: { mode: config.security.authMode },
+  });
+});
 
 // Auth routes
 const authRouter = Router();

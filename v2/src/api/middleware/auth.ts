@@ -10,6 +10,7 @@ import { apiKeys, users } from '../../database/schema/index.js';
 import { eq } from 'drizzle-orm';
 import { ApiError } from './errorHandler.js';
 import { createChildLogger } from '../../core/Logger.js';
+import { getConfig, type AuthMode } from '../../config/ConfigManager.js';
 
 const logger = createChildLogger({ service: 'Auth' });
 
@@ -32,10 +33,26 @@ declare global {
     interface Request {
       user?: AuthenticatedUser;
       apiKey?: ApiKeyInfo;
-      authMethod?: 'jwt' | 'apikey';
+      authMethod?: 'jwt' | 'apikey' | 'global_apikey' | 'anonymous';
     }
   }
 }
+
+/** Synthetic user for auth-disabled mode */
+const ANONYMOUS_USER: AuthenticatedUser = {
+  id: 'anonymous',
+  username: 'anonymous',
+  email: 'anonymous@trafegodns.local',
+  role: 'admin',
+};
+
+/** Synthetic user for global API key access */
+const GLOBAL_API_KEY_USER: AuthenticatedUser = {
+  id: 'global-api-key',
+  username: 'global_api_key',
+  email: 'system@trafegodns.local',
+  role: 'admin',
+};
 
 // JWT secret MUST be set via environment variable for security
 // Generate a secure random secret if not set (logs warning)
@@ -67,6 +84,21 @@ const JWT_EXPIRES_IN_SECONDS = parseInt(process.env.JWT_EXPIRES_IN_SECONDS ?? '8
  */
 export function hashApiKey(key: string): string {
   return createHash('sha256').update(key).digest('hex');
+}
+
+/**
+ * Verify a key against the global API key hash using timing-safe comparison
+ */
+function verifyGlobalApiKey(key: string): boolean {
+  const config = getConfig();
+  const expectedHash = config.security.globalApiKeyHash;
+  if (!expectedHash) return false;
+
+  const inputHash = Buffer.from(hashApiKey(key), 'hex');
+  const storedHash = Buffer.from(expectedHash, 'hex');
+
+  if (inputHash.length !== storedHash.length) return false;
+  return timingSafeEqual(inputHash, storedHash);
 }
 
 /**
@@ -165,9 +197,27 @@ export function authenticate(
   res: Response,
   next: NextFunction
 ): void {
+  // Auth disabled bypass — grant anonymous admin access
+  const config = getConfig();
+  if (config.security.authMode === 'none') {
+    req.user = ANONYMOUS_USER;
+    req.authMethod = 'anonymous';
+    next();
+    return;
+  }
+
   // Check for API key in header
   const apiKeyHeader = req.headers['x-api-key'] as string | undefined;
   if (apiKeyHeader) {
+    // Check global API key first (env-var master key)
+    if (verifyGlobalApiKey(apiKeyHeader)) {
+      req.user = GLOBAL_API_KEY_USER;
+      req.authMethod = 'global_apikey';
+      next();
+      return;
+    }
+
+    // Fall through to user API key verification
     verifyApiKey(apiKeyHeader)
       .then((apiKeyInfo) => {
         if (!apiKeyInfo) {
@@ -267,6 +317,12 @@ export function optionalAuthenticate(
  */
 export function requireRole(...roles: Array<'admin' | 'user' | 'readonly'>) {
   return (req: Request, res: Response, next: NextFunction): void => {
+    // Global API key and anonymous (auth disabled) are always admin-level
+    if (req.authMethod === 'global_apikey' || req.authMethod === 'anonymous') {
+      next();
+      return;
+    }
+
     if (!req.user) {
       next(ApiError.unauthorized('Authentication required'));
       return;
@@ -286,6 +342,12 @@ export function requireRole(...roles: Array<'admin' | 'user' | 'readonly'>) {
  */
 export function requirePermission(...permissions: string[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
+    // Global API key and anonymous (auth disabled) have full access
+    if (req.authMethod === 'global_apikey' || req.authMethod === 'anonymous') {
+      next();
+      return;
+    }
+
     // If using JWT auth with admin role, allow all
     if (req.authMethod === 'jwt' && req.user?.role === 'admin') {
       next();

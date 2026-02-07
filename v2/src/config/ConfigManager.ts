@@ -4,7 +4,7 @@
  */
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
-import { randomBytes } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
 import { logger, setLogLevel, type LogLevel } from '../core/Logger.js';
 import {
   appConfigSchema,
@@ -93,12 +93,21 @@ interface AuthConfig {
   defaultAdminEmail: string;
 }
 
+/** Authentication mode — extensible for future OIDC support */
+export type AuthMode = 'local' | 'none'; // Future: 'oidc'
+
+interface SecurityConfig {
+  authMode: AuthMode;
+  globalApiKeyHash: string | null; // SHA-256 hash; raw key is never stored
+}
+
 export class ConfigManager {
   private _app: AppConfig;
   private _traefik: TraefikConfig;
   private _docker: DockerConfig;
   private _dnsDefaults: DNSDefaults;
   private _auth: AuthConfig;
+  private _security: SecurityConfig;
   private _recordTypeDefaults: Map<DNSRecordType, RecordTypeDefaults>;
   private _ipCache: IPCache;
   private _ipRefreshInterval: number;
@@ -162,6 +171,33 @@ export class ConfigManager {
       defaultAdminPassword: getEnv('DEFAULT_ADMIN_PASSWORD', 'admin') ?? 'admin',
       defaultAdminEmail: getEnv('DEFAULT_ADMIN_EMAIL', 'admin@localhost') ?? 'admin@localhost',
     };
+
+    // Load security config
+    const authDisabled = getEnvBool('AUTH_DISABLED', false);
+    const globalApiKeyRaw = getSecret('GLOBAL_API_KEY');
+    let globalApiKeyHash: string | null = null;
+
+    if (globalApiKeyRaw) {
+      if (globalApiKeyRaw.length < 32) {
+        logger.error('GLOBAL_API_KEY must be at least 32 characters. Ignoring insecure key.');
+      } else {
+        globalApiKeyHash = createHash('sha256').update(globalApiKeyRaw).digest('hex');
+        logger.info('Global API key configured');
+      }
+    }
+
+    this._security = {
+      authMode: authDisabled ? 'none' : 'local',
+      globalApiKeyHash,
+    };
+
+    if (this._security.authMode === 'none') {
+      logger.warn('╔══════════════════════════════════════════════════════════╗');
+      logger.warn('║  ⚠  AUTHENTICATION IS DISABLED (AUTH_DISABLED=true)     ║');
+      logger.warn('║  All users have full admin access without credentials.  ║');
+      logger.warn('║  Do NOT use this in production or public networks.      ║');
+      logger.warn('╚══════════════════════════════════════════════════════════╝');
+    }
 
     // Initialize IP cache
     this._ipCache = {
@@ -255,6 +291,10 @@ export class ConfigManager {
 
   get auth(): Readonly<AuthConfig> {
     return this._auth;
+  }
+
+  get security(): Readonly<SecurityConfig> {
+    return this._security;
   }
 
   /**

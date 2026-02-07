@@ -7,6 +7,7 @@ import { container, ServiceTokens } from '../../core/ServiceContainer.js';
 import type { DNSManager } from '../../services/DNSManager.js';
 import type { TunnelManager } from '../../services/TunnelManager.js';
 import { logBuffer, levelNumbers } from '../../core/LogBuffer.js';
+import { getConfig } from '../../config/ConfigManager.js';
 
 interface HealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
@@ -18,12 +19,17 @@ interface HealthStatus {
     providers: { status: string; count: number };
     tunnels: { status: string; available: boolean };
   };
+  auth: {
+    mode: 'local' | 'none';
+    globalApiKeyConfigured: boolean;
+  };
 }
 
 /**
  * Health check endpoint
  */
 export async function healthCheck(req: Request, res: Response): Promise<void> {
+  const config = getConfig();
   const health: HealthStatus = {
     status: 'healthy',
     version: '2.0.0',
@@ -33,6 +39,10 @@ export async function healthCheck(req: Request, res: Response): Promise<void> {
       database: { status: 'unknown' },
       providers: { status: 'unknown', count: 0 },
       tunnels: { status: 'unknown', available: false },
+    },
+    auth: {
+      mode: config.security.authMode,
+      globalApiKeyConfigured: config.security.globalApiKeyHash !== null,
     },
   };
 
