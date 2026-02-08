@@ -107,7 +107,8 @@ export async function oidcCallback(req: Request, res: Response): Promise<void> {
     const message = error instanceof Error ? error.message : String(error);
     const code = (error as any)?.code;
     const cause = (error as any)?.cause;
-    logger.error(`OIDC callback failed: ${message}${code ? ` [code=${code}]` : ''}${cause ? ` [cause=${cause}]` : ''}`);
+    const causeStr = cause ? JSON.stringify(cause, null, 2) : undefined;
+    logger.error(`OIDC callback failed: ${message}${code ? ` [code=${code}]` : ''}${causeStr ? ` [cause=${causeStr}]` : ''}`);
     if (error instanceof Error && error.stack) {
       logger.error(`OIDC stack: ${error.stack}`);
     }

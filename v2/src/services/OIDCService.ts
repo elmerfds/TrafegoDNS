@@ -53,7 +53,7 @@ export class OIDCService {
       issuer,
       this.config.clientId,
       this.config.clientSecret,
-      undefined,
+      oidcClient.ClientSecretBasic(this.config.clientSecret),
       {
         execute: [oidcClient.allowInsecureRequests],
       }
