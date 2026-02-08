@@ -7,9 +7,30 @@ import { container, ServiceTokens } from '../../core/ServiceContainer.js';
 import { OIDCService } from '../../services/OIDCService.js';
 import { generateToken } from '../middleware/auth.js';
 import { setAuditContext } from '../middleware/index.js';
+import { getConfig } from '../../config/ConfigManager.js';
 import { createChildLogger } from '../../core/Logger.js';
 
 const logger = createChildLogger({ service: 'OIDCController' });
+
+/**
+ * Determine whether cookies should use the Secure flag.
+ * Uses the configured OIDC redirect URI as the source of truth —
+ * if the app is served over HTTPS, cookies must be Secure.
+ */
+let _secureFlag: boolean | null = null;
+
+function isSecureContext(): boolean {
+  if (_secureFlag !== null) return _secureFlag;
+  try {
+    const config = getConfig();
+    if (config.oidc?.redirectUri) {
+      _secureFlag = new URL(config.oidc.redirectUri).protocol === 'https:';
+      return _secureFlag;
+    }
+  } catch { /* fallback */ }
+  _secureFlag = process.env.NODE_ENV === 'production';
+  return _secureFlag;
+}
 
 /**
  * GET /auth/oidc/login
@@ -18,15 +39,14 @@ const logger = createChildLogger({ service: 'OIDCController' });
 export async function oidcLogin(req: Request, res: Response): Promise<void> {
   try {
     const oidcService = container.resolveSync<OIDCService>(ServiceTokens.OIDC_SERVICE);
-    const returnTo = req.query.returnTo as string | undefined;
 
-    const { url, state } = await oidcService.generateAuthorizationUrl(returnTo);
+    const { url, state } = await oidcService.generateAuthorizationUrl();
 
     // Store state in httpOnly cookie for CSRF protection
     // SameSite=lax is required for cross-origin OIDC redirects
     res.cookie('oidc_state', state, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isSecureContext(),
       sameSite: 'lax',
       maxAge: 5 * 60 * 1000, // 5 minutes
       path: '/api/v1/auth/oidc',
@@ -35,7 +55,7 @@ export async function oidcLogin(req: Request, res: Response): Promise<void> {
     res.redirect(302, url);
   } catch (error) {
     logger.error({ error }, 'Failed to initiate OIDC login');
-    res.redirect(`/login?error=oidc_init_failed`);
+    res.redirect('/login?error=oidc_init_failed');
   }
 }
 
@@ -61,8 +81,7 @@ export async function oidcCallback(req: Request, res: Response): Promise<void> {
 
     // Build the callback URL using the configured redirect URI as the base
     // This avoids protocol/host mismatches behind reverse proxies
-    const config = (await import('../../config/ConfigManager.js')).getConfig();
-    const redirectUri = config.oidc!.redirectUri;
+    const redirectUri = getConfig().oidc!.redirectUri;
     const callbackUrl = new URL(redirectUri);
     // Append the query params from the actual request (code, state, etc.)
     const reqUrl = new URL(`http://localhost${req.originalUrl}`);
@@ -86,7 +105,7 @@ export async function oidcCallback(req: Request, res: Response): Promise<void> {
     // Set JWT cookie (same as local login)
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isSecureContext(),
       sameSite: 'strict',
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
     });
@@ -104,6 +123,7 @@ export async function oidcCallback(req: Request, res: Response): Promise<void> {
     // Redirect to frontend
     res.redirect('/');
   } catch (error) {
+    // Log full details server-side for debugging
     const message = error instanceof Error ? error.message : String(error);
     const code = (error as any)?.code;
     const cause = (error as any)?.cause;
@@ -112,6 +132,7 @@ export async function oidcCallback(req: Request, res: Response): Promise<void> {
     if (error instanceof Error && error.stack) {
       logger.error(`OIDC stack: ${error.stack}`);
     }
-    res.redirect(`/login?error=${encodeURIComponent(message)}`);
+    // Send generic error to frontend — never leak internal details
+    res.redirect('/login?error=oidc_auth_failed');
   }
 }

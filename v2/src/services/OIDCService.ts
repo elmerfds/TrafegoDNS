@@ -18,7 +18,6 @@ const logger = createChildLogger({ service: 'OIDCService' });
 interface PendingState {
   codeVerifier: string;
   nonce: string;
-  returnTo?: string;
   createdAt: number;
 }
 
@@ -49,13 +48,21 @@ export class OIDCService {
 
     const issuer = new URL(this.config.issuerUrl);
 
+    // Only allow insecure (HTTP) requests if the issuer URL is explicitly HTTP.
+    // HTTPS issuers enforce TLS for discovery, token exchange, and userinfo.
+    const execute: Array<(config: oidcClient.Configuration) => void> = [];
+    if (issuer.protocol === 'http:') {
+      logger.warn('OIDC issuer uses HTTP — TLS is not enforced. Do NOT use this in production.');
+      execute.push(oidcClient.allowInsecureRequests);
+    }
+
     this.oidcConfig = await oidcClient.discovery(
       issuer,
       this.config.clientId,
       this.config.clientSecret,
       oidcClient.ClientSecretBasic(this.config.clientSecret),
       {
-        execute: [oidcClient.allowInsecureRequests],
+        execute,
       }
     );
 
@@ -73,7 +80,7 @@ export class OIDCService {
   /**
    * Generate an authorization URL for redirecting the user to the OIDC provider
    */
-  async generateAuthorizationUrl(returnTo?: string): Promise<{ url: string; state: string }> {
+  async generateAuthorizationUrl(): Promise<{ url: string; state: string }> {
     if (!this.oidcConfig) throw new Error('OIDCService not initialized');
 
     const codeVerifier = oidcClient.randomPKCECodeVerifier();
@@ -85,7 +92,6 @@ export class OIDCService {
     this.pendingStates.set(state, {
       codeVerifier,
       nonce,
-      returnTo,
       createdAt: Date.now(),
     });
 
