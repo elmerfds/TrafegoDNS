@@ -13,7 +13,6 @@ import {
   auditMiddleware,
 } from '../middleware/index.js';
 import { getConfig } from '../../config/ConfigManager.js';
-import { getSettingsService } from '../../services/index.js';
 
 // Controllers
 import {
@@ -160,11 +159,9 @@ router.get('/auth/config', (_req, res) => {
   const data: Record<string, unknown> = { mode: config.security.authMode };
 
   if (config.security.authMode === 'oidc' && config.oidc) {
-    // Read allowLocalLogin from SettingsService (runtime-configurable via UI)
-    const allowLocalLogin = getSettingsService().get<boolean>('allow_local_login');
     data.oidc = {
       loginUrl: '/api/v1/auth/oidc/login',
-      allowLocalLogin,
+      allowLocalLogin: config.oidc.allowLocalLogin,
       logoutUrl: config.oidc.logoutUrl ?? null,
     };
   }

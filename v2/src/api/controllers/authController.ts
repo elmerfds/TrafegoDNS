@@ -17,7 +17,6 @@ import {
 } from '../middleware/index.js';
 import { loginSchema, createApiKeySchema } from '../validation.js';
 import { getConfig } from '../../config/ConfigManager.js';
-import { getSettingsService } from '../../services/index.js';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -45,8 +44,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   }
 
   // Block local login when OIDC-only mode is active
-  const allowLocalLogin = getSettingsService().get<boolean>('allow_local_login');
-  if (config.security.authMode === 'oidc' && !allowLocalLogin) {
+  if (config.security.authMode === 'oidc' && !config.oidc?.allowLocalLogin) {
     throw ApiError.badRequest('Local login is disabled. Please sign in with SSO.');
   }
 
