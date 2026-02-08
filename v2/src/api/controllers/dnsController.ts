@@ -1,0 +1,1033 @@
+/**
+ * DNS Records Controller
+ */
+import type { Request, Response } from 'express';
+import { v4 as uuidv4 } from 'uuid';
+import { getDatabase } from '../../database/connection.js';
+import { dnsRecords, preservedHostnames, providers as providersTable } from '../../database/schema/index.js';
+import { eq, and, like, or, sql, asc, desc } from 'drizzle-orm';
+import { container, ServiceTokens } from '../../core/ServiceContainer.js';
+import { ApiError, asyncHandler, setAuditContext } from '../middleware/index.js';
+import {
+  createDnsRecordSchema,
+  updateDnsRecordSchema,
+  multiCreateDnsRecordSchema,
+  dnsRecordFilterSchema,
+  toggleManagedSchema,
+  extendGraceSchema,
+} from '../validation.js';
+import type { DNSManager } from '../../services/DNSManager.js';
+
+/**
+ * List DNS records with filtering and pagination
+ */
+export const listRecords = asyncHandler(async (req: Request, res: Response) => {
+  const filter = dnsRecordFilterSchema.parse(req.query);
+  const db = getDatabase();
+
+  // Build where conditions
+  const conditions = [];
+  if (filter.type) {
+    conditions.push(eq(dnsRecords.type, filter.type));
+  }
+  if (filter.name) {
+    conditions.push(like(dnsRecords.name, `%${filter.name}%`));
+  }
+  if (filter.content) {
+    conditions.push(like(dnsRecords.content, `%${filter.content}%`));
+  }
+  if (filter.providerId) {
+    conditions.push(eq(dnsRecords.providerId, filter.providerId));
+  }
+  if (filter.source) {
+    conditions.push(eq(dnsRecords.source, filter.source));
+  }
+  // Filter by managed status
+  if (filter.managed !== undefined) {
+    conditions.push(eq(dnsRecords.managed, filter.managed));
+  }
+  // General search - searches across name and content
+  if (filter.search && filter.search.trim()) {
+    const searchTerm = `%${filter.search.trim()}%`;
+    conditions.push(
+      sql`(${dnsRecords.name} LIKE ${searchTerm} OR ${dnsRecords.content} LIKE ${searchTerm})`
+    );
+  }
+  // Filter by zone/domain - matches records ending with the zone
+  if (filter.zone && filter.zone.trim()) {
+    const zone = filter.zone.trim().toLowerCase();
+    // Match exact zone or subdomains (e.g., "example.com" matches "app.example.com" and "example.com")
+    conditions.push(
+      sql`(LOWER(${dnsRecords.name}) = ${zone} OR LOWER(${dnsRecords.name}) LIKE ${`%.${zone}`})`
+    );
+  }
+  // Filter by status (active = no orphanedAt, orphaned = has orphanedAt)
+  if (filter.status) {
+    if (filter.status === 'orphaned') {
+      conditions.push(sql`${dnsRecords.orphanedAt} IS NOT NULL`);
+    } else if (filter.status === 'active') {
+      conditions.push(sql`${dnsRecords.orphanedAt} IS NULL`);
+    }
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  // Get total count
+  const countResult = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(dnsRecords)
+    .where(whereClause);
+  const count = countResult[0]?.count ?? 0;
+
+  // Get paginated records
+  const offset = (filter.page - 1) * filter.limit;
+
+  // Dynamic sort column mapping
+  const sortColumnMap = {
+    name: dnsRecords.name,
+    type: dnsRecords.type,
+    content: dnsRecords.content,
+    ttl: dnsRecords.ttl,
+    source: dnsRecords.source,
+    created_at: dnsRecords.createdAt,
+    updated_at: dnsRecords.updatedAt,
+    last_synced_at: dnsRecords.lastSyncedAt,
+  } as const;
+  const orderColumn = sortColumnMap[filter.orderBy as keyof typeof sortColumnMap] ?? dnsRecords.name;
+  const orderFn = filter.direction === 'desc' ? desc : asc;
+
+  const records = await db
+    .select()
+    .from(dnsRecords)
+    .where(whereClause)
+    .limit(filter.limit)
+    .offset(offset)
+    .orderBy(orderFn(orderColumn));
+
+  res.json({
+    success: true,
+    data: {
+      records,
+      pagination: {
+        page: filter.page,
+        limit: filter.limit,
+        total: count,
+        totalPages: Math.ceil(count / filter.limit),
+      },
+    },
+  });
+});
+
+/**
+ * Get a single DNS record
+ */
+export const getRecord = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const db = getDatabase();
+
+  const [record] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+  if (!record) {
+    throw ApiError.notFound('DNS record');
+  }
+
+  res.json({
+    success: true,
+    data: record,
+  });
+});
+
+/**
+ * Create a new DNS record
+ */
+export const createRecord = asyncHandler(async (req: Request, res: Response) => {
+  const input = createDnsRecordSchema.parse(req.body);
+  const db = getDatabase();
+
+  // Get DNS manager
+  const dnsManager = container.resolveSync<DNSManager>(ServiceTokens.DNS_MANAGER);
+
+  // Use specified provider or fall back to default
+  let provider;
+  if (input.providerId) {
+    provider = dnsManager.getProvider(input.providerId);
+    if (!provider) {
+      throw ApiError.badRequest(`Provider not found: ${input.providerId}`);
+    }
+  } else {
+    provider = dnsManager.getDefaultProvider();
+    if (!provider) {
+      throw ApiError.badRequest('No default DNS provider configured');
+    }
+  }
+
+  // Refresh provider cache and check if record already exists
+  await provider.getRecordsFromCache(true); // Force refresh
+  const existingRecord = provider.findRecordInCache(input.type, input.name);
+  if (existingRecord) {
+    throw ApiError.badRequest(
+      `A ${input.type} record for '${input.name}' already exists with content '${existingRecord.content}'. ` +
+      `Use the edit function to modify existing records.`
+    );
+  }
+
+  // Create record in provider
+  const providerRecord = await provider.createRecord({
+    type: input.type,
+    name: input.name,
+    content: input.content,
+    ttl: input.ttl,
+    proxied: input.proxied,
+    priority: input.priority,
+    weight: input.weight,
+    port: input.port,
+    flags: input.flags,
+    tag: input.tag,
+  });
+
+  // Save to database
+  const id = uuidv4();
+  const now = new Date();
+
+  await db.insert(dnsRecords).values({
+    id,
+    providerId: provider.getProviderId(),
+    externalId: providerRecord.id,
+    type: providerRecord.type,
+    name: providerRecord.name,
+    content: providerRecord.content,
+    ttl: providerRecord.ttl,
+    proxied: providerRecord.proxied,
+    priority: providerRecord.priority,
+    weight: providerRecord.weight,
+    port: providerRecord.port,
+    flags: providerRecord.flags,
+    tag: providerRecord.tag,
+    comment: input.comment ?? null,
+    source: 'api',
+    lastSyncedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  // Add to preserved hostnames if requested
+  if (input.preserved) {
+    const hostname = input.name.toLowerCase();
+    const [existing] = await db
+      .select()
+      .from(preservedHostnames)
+      .where(eq(preservedHostnames.hostname, hostname))
+      .limit(1);
+
+    if (!existing) {
+      await db.insert(preservedHostnames).values({
+        id: uuidv4(),
+        hostname,
+        reason: 'Added via DNS record creation',
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  }
+
+  setAuditContext(req, {
+    action: 'create',
+    resourceType: 'dnsRecord',
+    resourceId: id,
+    details: { name: input.name, type: input.type, preserved: input.preserved ?? false },
+  });
+
+  const [record] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+  res.status(201).json({
+    success: true,
+    data: record,
+  });
+});
+
+/**
+ * Create DNS records across multiple providers
+ */
+export const multiCreateRecord = asyncHandler(async (req: Request, res: Response) => {
+  const input = multiCreateDnsRecordSchema.parse(req.body);
+  const db = getDatabase();
+  const dnsManager = container.resolveSync<DNSManager>(ServiceTokens.DNS_MANAGER);
+
+  const results: Array<{
+    providerId: string;
+    providerName: string;
+    hostname: string;
+    status: 'created' | 'error' | 'duplicate';
+    record?: typeof dnsRecords.$inferSelect;
+    error?: string;
+  }> = [];
+
+  for (const providerTarget of input.providers) {
+    const provider = dnsManager.getProvider(providerTarget.providerId);
+    if (!provider) {
+      // Look up provider name from DB for better error message
+      const [dbProvider] = await db.select({ name: providersTable.name, enabled: providersTable.enabled })
+        .from(providersTable).where(eq(providersTable.id, providerTarget.providerId)).limit(1);
+      const name = dbProvider?.name ?? 'Unknown';
+      const reason = dbProvider ? (dbProvider.enabled ? 'failed to initialize' : 'is disabled') : 'does not exist';
+      results.push({
+        providerId: providerTarget.providerId,
+        providerName: name,
+        hostname: providerTarget.hostname || input.baseHostname,
+        status: 'error',
+        error: `Provider "${name}" ${reason}`,
+      });
+      continue;
+    }
+
+    const hostname = providerTarget.hostname || input.baseHostname;
+
+    try {
+      // Refresh cache and check for duplicates
+      await provider.getRecordsFromCache(true);
+      const existing = provider.findRecordInCache(input.type, hostname);
+      if (existing) {
+        results.push({
+          providerId: providerTarget.providerId,
+          providerName: provider.getProviderName(),
+          hostname,
+          status: 'duplicate',
+          error: `A ${input.type} record for '${hostname}' already exists with content '${existing.content}'.`,
+        });
+        continue;
+      }
+
+      // Create record at provider
+      const providerRecord = await provider.createRecord({
+        type: input.type,
+        name: hostname,
+        content: providerTarget.content || input.content,
+        ttl: providerTarget.ttl,
+        proxied: providerTarget.proxied,
+        priority: providerTarget.priority,
+        weight: providerTarget.weight,
+        port: providerTarget.port,
+        flags: providerTarget.flags,
+        tag: providerTarget.tag,
+      });
+
+      // Save to database
+      const id = uuidv4();
+      const now = new Date();
+      await db.insert(dnsRecords).values({
+        id,
+        providerId: provider.getProviderId(),
+        externalId: providerRecord.id,
+        type: providerRecord.type,
+        name: providerRecord.name,
+        content: providerRecord.content,
+        ttl: providerRecord.ttl,
+        proxied: providerRecord.proxied,
+        priority: providerRecord.priority,
+        weight: providerRecord.weight,
+        port: providerRecord.port,
+        flags: providerRecord.flags,
+        tag: providerRecord.tag,
+        comment: providerTarget.comment ?? null,
+        source: 'api',
+        lastSyncedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const [record] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+      results.push({
+        providerId: provider.getProviderId(),
+        providerName: provider.getProviderName(),
+        hostname,
+        status: 'created',
+        record,
+      });
+    } catch (error) {
+      results.push({
+        providerId: providerTarget.providerId,
+        providerName: provider.getProviderName(),
+        hostname,
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  // Handle preserved hostnames
+  if (input.preserved && results.some(r => r.status === 'created')) {
+    const now = new Date();
+    const hostnamesToPreserve = new Set<string>();
+    hostnamesToPreserve.add(input.baseHostname.toLowerCase());
+    for (const r of results) {
+      if (r.status === 'created') {
+        hostnamesToPreserve.add(r.hostname.toLowerCase());
+      }
+    }
+
+    for (const hostname of hostnamesToPreserve) {
+      const [existing] = await db
+        .select()
+        .from(preservedHostnames)
+        .where(eq(preservedHostnames.hostname, hostname))
+        .limit(1);
+
+      if (!existing) {
+        await db.insert(preservedHostnames).values({
+          id: uuidv4(),
+          hostname,
+          reason: 'Added via multi-provider DNS record creation',
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    }
+  }
+
+  const created = results.filter(r => r.status === 'created').length;
+  const failed = results.filter(r => r.status === 'error').length;
+  const duplicates = results.filter(r => r.status === 'duplicate').length;
+
+  setAuditContext(req, {
+    action: 'multi_create',
+    resourceType: 'dnsRecords',
+    details: {
+      baseHostname: input.baseHostname,
+      type: input.type,
+      total: input.providers.length,
+      created,
+      failed,
+      duplicates,
+    },
+  });
+
+  res.status(created > 0 ? 201 : 400).json({
+    success: created > 0,
+    data: { total: input.providers.length, created, failed, duplicates, results },
+    message: `Created ${created}/${input.providers.length} records` +
+      (failed > 0 ? `, ${failed} failed` : '') +
+      (duplicates > 0 ? `, ${duplicates} duplicates` : ''),
+  });
+});
+
+/**
+ * Update a DNS record
+ */
+export const updateRecord = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const input = updateDnsRecordSchema.parse(req.body);
+  const db = getDatabase();
+
+  // Get existing record
+  const [existing] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+  if (!existing) {
+    throw ApiError.notFound('DNS record');
+  }
+
+  // Get provider
+  const dnsManager = container.resolveSync<DNSManager>(ServiceTokens.DNS_MANAGER);
+  const provider = dnsManager.getProvider(existing.providerId);
+
+  if (!provider) {
+    throw ApiError.badRequest('Provider not found');
+  }
+
+  if (!existing.externalId) {
+    throw ApiError.badRequest('Record has no external ID');
+  }
+
+  // Update in provider - capture returned record for updated externalId
+  const updatedProviderRecord = await provider.updateRecord(existing.externalId, {
+    type: input.type ?? existing.type,
+    name: input.name ?? existing.name,
+    content: input.content ?? existing.content,
+    ttl: input.ttl ?? existing.ttl,
+    proxied: input.proxied ?? existing.proxied ?? undefined,
+    priority: input.priority ?? existing.priority ?? undefined,
+    weight: input.weight ?? existing.weight ?? undefined,
+    port: input.port ?? existing.port ?? undefined,
+    flags: input.flags ?? existing.flags ?? undefined,
+    tag: input.tag ?? existing.tag ?? undefined,
+  });
+
+  // Update database - include new externalId from provider (may change when content changes)
+  await db
+    .update(dnsRecords)
+    .set({
+      externalId: updatedProviderRecord.id,
+      type: input.type ?? existing.type,
+      name: input.name ?? existing.name,
+      content: input.content ?? existing.content,
+      ttl: input.ttl ?? existing.ttl,
+      proxied: input.proxied ?? existing.proxied,
+      priority: input.priority ?? existing.priority,
+      weight: input.weight ?? existing.weight,
+      port: input.port ?? existing.port,
+      flags: input.flags ?? existing.flags,
+      tag: input.tag ?? existing.tag,
+      comment: input.comment ?? existing.comment,
+      lastSyncedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(dnsRecords.id, id));
+
+  setAuditContext(req, {
+    action: 'update',
+    resourceType: 'dnsRecord',
+    resourceId: id,
+  });
+
+  const [record] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+  res.json({
+    success: true,
+    data: record,
+  });
+});
+
+/**
+ * Delete a DNS record
+ */
+export const deleteRecord = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const db = getDatabase();
+
+  // Get existing record
+  const [existing] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+  if (!existing) {
+    throw ApiError.notFound('DNS record');
+  }
+
+  // Get provider and delete from it
+  if (existing.externalId) {
+    const dnsManager = container.resolveSync<DNSManager>(ServiceTokens.DNS_MANAGER);
+    const provider = dnsManager.getProvider(existing.providerId);
+
+    if (provider) {
+      await provider.deleteRecord(existing.externalId);
+    }
+  }
+
+  // Delete from database
+  await db.delete(dnsRecords).where(eq(dnsRecords.id, id));
+
+  setAuditContext(req, {
+    action: 'delete',
+    resourceType: 'dnsRecord',
+    resourceId: id,
+    details: { name: existing.name, type: existing.type },
+  });
+
+  res.json({
+    success: true,
+    message: 'DNS record deleted',
+  });
+});
+
+/**
+ * Bulk delete DNS records
+ */
+export const bulkDeleteRecords = asyncHandler(async (req: Request, res: Response) => {
+  const { ids } = req.body as { ids: string[] };
+
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    throw ApiError.badRequest('No record IDs provided');
+  }
+
+  if (ids.length > 100) {
+    throw ApiError.badRequest('Cannot delete more than 100 records at once');
+  }
+
+  const db = getDatabase();
+  const dnsManager = container.resolveSync<DNSManager>(ServiceTokens.DNS_MANAGER);
+
+  let deleted = 0;
+  let failed = 0;
+  const errors: Array<{ id: string; error: string }> = [];
+
+  for (const id of ids) {
+    try {
+      // Get existing record
+      const [existing] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+      if (!existing) {
+        failed++;
+        errors.push({ id, error: 'Record not found' });
+        continue;
+      }
+
+      // Delete from provider if has external ID
+      if (existing.externalId) {
+        const provider = dnsManager.getProvider(existing.providerId);
+        if (provider) {
+          try {
+            await provider.deleteRecord(existing.externalId);
+          } catch (providerError) {
+            // Log but continue - the record might already be deleted at provider
+            console.warn(`Failed to delete record ${id} from provider:`, providerError);
+          }
+        }
+      }
+
+      // Delete from database
+      await db.delete(dnsRecords).where(eq(dnsRecords.id, id));
+      deleted++;
+    } catch (error) {
+      failed++;
+      errors.push({ id, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  }
+
+  setAuditContext(req, {
+    action: 'bulk_delete',
+    resourceType: 'dnsRecords',
+    details: { requested: ids.length, deleted, failed },
+  });
+
+  res.json({
+    success: true,
+    data: {
+      deleted,
+      failed,
+      errors: errors.length > 0 ? errors : undefined,
+    },
+    message: `Deleted ${deleted} records${failed > 0 ? `, ${failed} failed` : ''}`,
+  });
+});
+
+/**
+ * Force sync DNS records - re-applies current provider defaults to all managed records
+ */
+export const syncRecords = asyncHandler(async (req: Request, res: Response) => {
+  const { providerId } = req.query as { providerId?: string };
+
+  // Get DNS manager
+  const dnsManager = container.resolveSync<DNSManager>(ServiceTokens.DNS_MANAGER);
+
+  // Force re-sync records with current defaults
+  const result = await dnsManager.forceResyncRecords(providerId);
+
+  setAuditContext(req, {
+    action: 'sync',
+    resourceType: 'dnsRecords',
+    details: {
+      providerId: providerId ?? 'all',
+      total: result.total,
+      updated: result.updated,
+      errors: result.errors,
+    },
+  });
+
+  res.json({
+    success: true,
+    data: {
+      total: result.total,
+      updated: result.updated,
+      unchanged: result.unchanged,
+      errors: result.errors,
+      details: result.details,
+    },
+    message: result.updated > 0
+      ? `Synced ${result.updated} records with current defaults`
+      : 'All records are already up to date',
+  });
+});
+
+/**
+ * Toggle managed status of a DNS record
+ * Allows claiming ownership of pre-existing records or releasing TrafegoDNS management
+ */
+export const toggleManaged = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const input = toggleManagedSchema.parse(req.body);
+  const db = getDatabase();
+
+  // Get existing record
+  const [existing] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+  if (!existing) {
+    throw ApiError.notFound('DNS record');
+  }
+
+  // Update managed status
+  await db
+    .update(dnsRecords)
+    .set({
+      managed: input.managed,
+      source: input.managed ? 'managed' : 'discovered',
+      updatedAt: new Date(),
+    })
+    .where(eq(dnsRecords.id, id));
+
+  // If claiming the record, we could optionally update the comment at the provider
+  // to add the ownership marker. For now, we just update our database.
+  // This can be enhanced later to update provider comments.
+
+  setAuditContext(req, {
+    action: 'update',
+    resourceType: 'dnsRecord',
+    resourceId: id,
+    details: { managed: input.managed, action: input.managed ? 'claim' : 'unclaim' },
+  });
+
+  const [record] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+  res.json({
+    success: true,
+    data: record,
+    message: input.managed ? 'Record claimed by TrafegoDNS' : 'Record released from TrafegoDNS management',
+  });
+});
+
+/**
+ * Export DNS records
+ * Supports JSON and CSV formats
+ */
+export const exportRecords = asyncHandler(async (req: Request, res: Response) => {
+  const { format = 'json', providerId, type, managed } = req.query as {
+    format?: 'json' | 'csv';
+    providerId?: string;
+    type?: string;
+    managed?: string;
+  };
+  const db = getDatabase();
+
+  // Build where conditions
+  const conditions = [];
+  if (providerId) {
+    conditions.push(eq(dnsRecords.providerId, providerId));
+  }
+  if (type) {
+    conditions.push(eq(dnsRecords.type, type as typeof dnsRecords.type.enumValues[number]));
+  }
+  if (managed !== undefined) {
+    conditions.push(eq(dnsRecords.managed, managed === 'true'));
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const records = await db
+    .select()
+    .from(dnsRecords)
+    .where(whereClause)
+    .orderBy(dnsRecords.name);
+
+  // Map to export format
+  const exportData = records.map((r) => ({
+    hostname: r.name,
+    type: r.type,
+    content: r.content,
+    ttl: r.ttl,
+    proxied: r.proxied,
+    priority: r.priority,
+    weight: r.weight,
+    port: r.port,
+    flags: r.flags,
+    tag: r.tag,
+    managed: r.managed,
+    source: r.source,
+    providerId: r.providerId,
+  }));
+
+  if (format === 'csv') {
+    // Generate CSV
+    const headers = ['hostname', 'type', 'content', 'ttl', 'proxied', 'priority', 'weight', 'port', 'flags', 'tag', 'managed', 'source', 'providerId'];
+    const csvRows = [headers.join(',')];
+
+    for (const record of exportData) {
+      const row = headers.map((h) => {
+        const value = record[h as keyof typeof record];
+        if (value === null || value === undefined) return '';
+        if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
+          return `"${value.replace(/"/g, '""')}"`;
+        }
+        return String(value);
+      });
+      csvRows.push(row.join(','));
+    }
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="dns-records-${new Date().toISOString().split('T')[0]}.csv"`);
+    res.send(csvRows.join('\n'));
+    return;
+  }
+
+  // JSON format
+  res.setHeader('Content-Disposition', `attachment; filename="dns-records-${new Date().toISOString().split('T')[0]}.json"`);
+  res.json({
+    success: true,
+    data: {
+      exportedAt: new Date().toISOString(),
+      count: exportData.length,
+      records: exportData,
+    },
+  });
+});
+
+/**
+ * Import DNS records
+ * Accepts JSON array of records and creates them in the specified provider
+ */
+export const importRecords = asyncHandler(async (req: Request, res: Response) => {
+  const { records: inputRecords, providerId, skipDuplicates = true, dryRun = false } = req.body as {
+    records: Array<{
+      hostname: string;
+      type: string;
+      content: string;
+      ttl?: number;
+      proxied?: boolean;
+      priority?: number;
+      weight?: number;
+      port?: number;
+      flags?: number;
+      tag?: string;
+    }>;
+    providerId: string;
+    skipDuplicates?: boolean;
+    dryRun?: boolean;
+  };
+
+  if (!inputRecords || !Array.isArray(inputRecords)) {
+    throw ApiError.badRequest('Records array is required');
+  }
+
+  if (!providerId) {
+    throw ApiError.badRequest('Provider ID is required');
+  }
+
+  if (inputRecords.length > 500) {
+    throw ApiError.badRequest('Cannot import more than 500 records at once');
+  }
+
+  // Get DNS manager and provider
+  const dnsManager = container.resolveSync<DNSManager>(ServiceTokens.DNS_MANAGER);
+  const provider = dnsManager.getProvider(providerId);
+
+  if (!provider) {
+    throw ApiError.badRequest(`Provider not found: ${providerId}`);
+  }
+
+  const db = getDatabase();
+  const results = {
+    total: inputRecords.length,
+    created: 0,
+    skipped: 0,
+    failed: 0,
+    errors: [] as Array<{ hostname: string; error: string }>,
+    preview: [] as Array<{ hostname: string; type: string; content: string; action: 'create' | 'skip' | 'error'; reason?: string }>,
+  };
+
+  // Refresh provider cache
+  await provider.getRecordsFromCache(true);
+
+  for (const record of inputRecords) {
+    // Validate required fields
+    if (!record.hostname || !record.type || !record.content) {
+      results.failed++;
+      results.errors.push({ hostname: record.hostname ?? 'unknown', error: 'Missing required fields (hostname, type, content)' });
+      results.preview.push({
+        hostname: record.hostname ?? 'unknown',
+        type: record.type ?? 'unknown',
+        content: record.content ?? 'unknown',
+        action: 'error',
+        reason: 'Missing required fields',
+      });
+      continue;
+    }
+
+    // Check if record already exists
+    const existing = provider.findRecordInCache(record.type as any, record.hostname);
+    if (existing) {
+      if (skipDuplicates) {
+        results.skipped++;
+        results.preview.push({
+          hostname: record.hostname,
+          type: record.type,
+          content: record.content,
+          action: 'skip',
+          reason: `Existing record: ${existing.content}`,
+        });
+        continue;
+      } else {
+        results.failed++;
+        results.errors.push({ hostname: record.hostname, error: `Record already exists with content: ${existing.content}` });
+        results.preview.push({
+          hostname: record.hostname,
+          type: record.type,
+          content: record.content,
+          action: 'error',
+          reason: `Duplicate: ${existing.content}`,
+        });
+        continue;
+      }
+    }
+
+    // Preview mode - don't actually create
+    if (dryRun) {
+      results.created++;
+      results.preview.push({
+        hostname: record.hostname,
+        type: record.type,
+        content: record.content,
+        action: 'create',
+      });
+      continue;
+    }
+
+    // Create the record
+    try {
+      const providerRecord = await provider.createRecord({
+        type: record.type as any,
+        name: record.hostname,
+        content: record.content,
+        ttl: record.ttl,
+        proxied: record.proxied,
+        priority: record.priority,
+        weight: record.weight,
+        port: record.port,
+        flags: record.flags,
+        tag: record.tag,
+      });
+
+      // Save to database
+      const id = uuidv4();
+      const now = new Date();
+
+      await db.insert(dnsRecords).values({
+        id,
+        providerId: provider.getProviderId(),
+        externalId: providerRecord.id,
+        type: providerRecord.type,
+        name: providerRecord.name,
+        content: providerRecord.content,
+        ttl: providerRecord.ttl,
+        proxied: providerRecord.proxied,
+        priority: providerRecord.priority,
+        weight: providerRecord.weight,
+        port: providerRecord.port,
+        flags: providerRecord.flags,
+        tag: providerRecord.tag,
+        source: 'api',
+        managed: true,
+        lastSyncedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      results.created++;
+      results.preview.push({
+        hostname: record.hostname,
+        type: record.type,
+        content: record.content,
+        action: 'create',
+      });
+    } catch (error) {
+      results.failed++;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      results.errors.push({ hostname: record.hostname, error: errorMessage });
+      results.preview.push({
+        hostname: record.hostname,
+        type: record.type,
+        content: record.content,
+        action: 'error',
+        reason: errorMessage,
+      });
+    }
+  }
+
+  if (!dryRun) {
+    setAuditContext(req, {
+      action: 'import',
+      resourceType: 'dnsRecords',
+      details: {
+        providerId,
+        total: results.total,
+        created: results.created,
+        skipped: results.skipped,
+        failed: results.failed,
+      },
+    });
+  }
+
+  res.json({
+    success: true,
+    data: results,
+    message: dryRun
+      ? `Preview: ${results.created} to create, ${results.skipped} to skip, ${results.failed} errors`
+      : `Imported ${results.created} records, skipped ${results.skipped}, failed ${results.failed}`,
+  });
+});
+
+/**
+ * Extend orphan grace period for a DNS record
+ * Pushes the orphanedAt timestamp forward by the specified minutes
+ * This is useful for temporary maintenance where a container may be down longer than expected
+ */
+export const extendGracePeriod = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const input = extendGraceSchema.parse(req.body);
+  const db = getDatabase();
+
+  // Get existing record
+  const [existing] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+  if (!existing) {
+    throw ApiError.notFound('DNS record');
+  }
+
+  if (!existing.orphanedAt) {
+    throw ApiError.badRequest('Record is not orphaned');
+  }
+
+  // Extend the orphanedAt timestamp by the specified minutes
+  // This effectively delays the deletion countdown
+  const newOrphanedAt = new Date(Date.now() - (input.minutes * 60 * 1000));
+  // The grace period is measured from orphanedAt, so to add more time before deletion,
+  // we set orphanedAt to be more recent (closer to now), effectively giving more time
+  // Actually, let's think about this more carefully:
+  // - orphanedAt marks when the record became orphaned
+  // - The record gets deleted when: now - orphanedAt > gracePeriodMs
+  // - To extend the countdown, we want to make orphanedAt more recent (closer to now)
+  // - So if user wants +15 minutes, we set orphanedAt = now, giving them a full grace period again
+  // - Or we could set it to: now - (elapsed time) + (extension minutes)
+  //
+  // Actually the simplest approach: just reset orphanedAt to now, which gives them
+  // the full grace period again. Or we can add minutes to the existing orphanedAt.
+  //
+  // User's request: "extend countdown to x number" - this means add MORE time
+  // So if grace period is 15min and they've been orphaned for 10min (5min left),
+  // and they extend by 15min, they should now have 20min left total.
+  //
+  // Current time remaining = gracePeriod - (now - orphanedAt)
+  // After extension = gracePeriod - (now - newOrphanedAt) = timeRemaining + extensionMinutes
+  // So: newOrphanedAt = orphanedAt + extensionMinutes
+
+  const extensionMs = input.minutes * 60 * 1000;
+  const extendedOrphanedAt = new Date(new Date(existing.orphanedAt).getTime() + extensionMs);
+
+  await db
+    .update(dnsRecords)
+    .set({
+      orphanedAt: extendedOrphanedAt,
+      updatedAt: new Date(),
+    })
+    .where(eq(dnsRecords.id, id));
+
+  setAuditContext(req, {
+    action: 'update',
+    resourceType: 'dnsRecord',
+    resourceId: id,
+    details: { action: 'extend_grace', minutes: input.minutes, name: existing.name },
+  });
+
+  const [record] = await db.select().from(dnsRecords).where(eq(dnsRecords.id, id)).limit(1);
+
+  res.json({
+    success: true,
+    data: record,
+    message: `Grace period extended by ${input.minutes} minutes`,
+  });
+});

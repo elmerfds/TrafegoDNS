@@ -132,9 +132,17 @@ class DNSManager {
           if (!shouldManage) {
             continue;
           }
-          
+
+          // Skip hostnames that don't match the configured zone
+          const providerDomain = this.config.getProviderDomain();
+          if (!this.hostnameMatchesZone(hostname, providerDomain)) {
+            this.stats.skipped = (this.stats.skipped || 0) + 1;
+            logger.debug(`Skipping ${hostname} - doesn't match configured zone ${providerDomain}`);
+            continue;
+          }
+
           // Create fully qualified domain name
-          const fqdn = this.ensureFqdn(hostname, this.config.getProviderDomain());
+          const fqdn = this.ensureFqdn(hostname, providerDomain);
           processedHostnames.push(fqdn);
           
           // Extract DNS configuration
@@ -215,6 +223,7 @@ class DNSManager {
       updated: 0,
       upToDate: 0,
       errors: 0,
+      skipped: 0,
       total: 0
     };
   }
@@ -267,9 +276,13 @@ class DNSManager {
       if (this.stats.errors > 0) {
         logger.warn(`Encountered ${this.stats.errors} errors processing DNS records`);
       }
+
+      if (this.stats.skipped > 0) {
+        logger.debug(`Skipped ${this.stats.skipped} hostnames (zone mismatch)`);
+      }
     }
   }
-  
+
   /**
    * Ensure a hostname is a fully qualified domain name
    */
@@ -537,6 +550,31 @@ class DNSManager {
         logger.error(`Error batch processing managed hostnames: ${error.message}`);
       }
     }
+  }
+
+  /**
+   * Check if a hostname matches the configured zone
+   * @param {string} hostname - The hostname to check
+   * @param {string} zone - The configured zone/domain
+   * @returns {boolean} - True if hostname belongs to the zone
+   */
+  hostnameMatchesZone(hostname, zone) {
+    if (!hostname || !zone) return false;
+
+    const normalizedHostname = hostname.toLowerCase();
+    const normalizedZone = zone.toLowerCase();
+
+    // Exact match (hostname is the zone itself)
+    if (normalizedHostname === normalizedZone) {
+      return true;
+    }
+
+    // Subdomain match (hostname ends with .zone)
+    if (normalizedHostname.endsWith(`.${normalizedZone}`)) {
+      return true;
+    }
+
+    return false;
   }
 }
 

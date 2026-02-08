@@ -1,0 +1,819 @@
+/**
+ * Database connection management
+ */
+import Database from 'better-sqlite3';
+import { drizzle, BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { existsSync, mkdirSync } from 'fs';
+import { dirname, join } from 'path';
+import { logger } from '../core/Logger.js';
+import * as schema from './schema/index.js';
+
+let db: BetterSQLite3Database<typeof schema> | null = null;
+let sqliteDb: Database.Database | null = null;
+
+export interface DatabaseOptions {
+  path: string;
+  runMigrations?: boolean;
+  verbose?: boolean;
+}
+
+/**
+ * Initialize the database connection
+ */
+export function initDatabase(options: DatabaseOptions): BetterSQLite3Database<typeof schema> {
+  const { path, runMigrations = true, verbose = false } = options;
+
+  if (db) {
+    logger.warn('Database already initialized');
+    return db;
+  }
+
+  // Ensure directory exists
+  const dir = dirname(path);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+    logger.info({ dir }, 'Created database directory');
+  }
+
+  // Create SQLite connection
+  sqliteDb = new Database(path, {
+    verbose: verbose ? (sql: unknown) => logger.trace({ sql }, 'SQL') : undefined,
+  });
+
+  // Enable WAL mode for better concurrency
+  sqliteDb.pragma('journal_mode = WAL');
+  sqliteDb.pragma('foreign_keys = ON');
+  sqliteDb.pragma('synchronous = NORMAL');
+  sqliteDb.pragma('cache_size = -64000'); // 64MB cache
+
+  // Create Drizzle ORM instance
+  db = drizzle(sqliteDb, { schema });
+
+  logger.info({ path }, 'Database connection established');
+
+  // Run migrations if requested
+  if (runMigrations) {
+    try {
+      runDatabaseMigrations();
+    } catch (error) {
+      logger.warn({ error }, 'Migration folder not found, creating tables directly');
+      try {
+        createTablesDirectly();
+      } catch (tableError) {
+        logger.error({ error: tableError }, 'Failed to create database tables');
+        throw tableError;
+      }
+    }
+  }
+
+  return db;
+}
+
+/**
+ * Run database migrations
+ */
+function runDatabaseMigrations(): void {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+
+  const migrationsFolder = join(import.meta.dirname ?? '.', 'migrations');
+
+  if (!existsSync(migrationsFolder)) {
+    throw new Error(`Migrations folder not found: ${migrationsFolder}`);
+  }
+
+  migrate(db, { migrationsFolder });
+  logger.info('Database migrations completed');
+}
+
+/**
+ * Create tables directly (for initial setup without migrations)
+ * Uses CREATE TABLE IF NOT EXISTS to preserve existing data
+ */
+function createTablesDirectly(): void {
+  if (!sqliteDb) {
+    throw new Error('SQLite database not initialized');
+  }
+
+  logger.info('Creating database tables (preserving existing data)');
+
+  // Create providers table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS providers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      type TEXT NOT NULL CHECK(type IN ('cloudflare', 'digitalocean', 'route53', 'technitium', 'adguard', 'pihole', 'rfc2136')),
+      is_default INTEGER NOT NULL DEFAULT 0,
+      credentials TEXT NOT NULL,
+      settings TEXT NOT NULL DEFAULT '{}',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // Create dns_records table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS dns_records (
+      id TEXT PRIMARY KEY,
+      provider_id TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+      external_id TEXT,
+      type TEXT NOT NULL CHECK(type IN ('A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA', 'NS')),
+      name TEXT NOT NULL,
+      content TEXT NOT NULL,
+      ttl INTEGER NOT NULL DEFAULT 1,
+      proxied INTEGER,
+      priority INTEGER,
+      weight INTEGER,
+      port INTEGER,
+      flags INTEGER,
+      tag TEXT,
+      comment TEXT,
+      source TEXT NOT NULL DEFAULT 'traefik' CHECK(source IN ('traefik', 'direct', 'api', 'managed', 'discovered')),
+      managed INTEGER NOT NULL DEFAULT 1,
+      orphaned_at INTEGER,
+      last_synced_at INTEGER,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // Create tunnels table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS tunnels (
+      id TEXT PRIMARY KEY,
+      provider_id TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+      tunnel_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      secret TEXT,
+      token TEXT,
+      status TEXT NOT NULL DEFAULT 'inactive' CHECK(status IN ('active', 'inactive', 'degraded')),
+      connector_id TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // Create tunnel_ingress_rules table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS tunnel_ingress_rules (
+      id TEXT PRIMARY KEY,
+      tunnel_id TEXT NOT NULL REFERENCES tunnels(id) ON DELETE CASCADE,
+      hostname TEXT NOT NULL,
+      service TEXT NOT NULL,
+      path TEXT,
+      origin_request TEXT,
+      "order" INTEGER NOT NULL DEFAULT 0,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      source TEXT NOT NULL DEFAULT 'api',
+      orphaned_at INTEGER,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // Create webhooks table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS webhooks (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      secret TEXT,
+      events TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // Create webhook_deliveries table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS webhook_deliveries (
+      id TEXT PRIMARY KEY,
+      webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
+      event TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      status_code INTEGER,
+      response TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_retry_at INTEGER,
+      delivered_at INTEGER,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // Create users table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT,
+      role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin', 'user', 'readonly')),
+      avatar TEXT,
+      auth_provider TEXT NOT NULL DEFAULT 'local' CHECK(auth_provider IN ('local', 'oidc')),
+      oidc_subject TEXT,
+      oidc_issuer TEXT,
+      last_login_at INTEGER,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // Migration: Add avatar column to users table if it doesn't exist
+  try {
+    sqliteDb.exec(`ALTER TABLE users ADD COLUMN avatar TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Create api_keys table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id TEXT PRIMARY KEY,
+      user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      key_hash TEXT NOT NULL,
+      key_prefix TEXT NOT NULL,
+      permissions TEXT NOT NULL DEFAULT '["read"]',
+      expires_at INTEGER,
+      last_used_at INTEGER,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // Create audit_logs table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      action TEXT NOT NULL CHECK(action IN ('create', 'update', 'delete', 'bulk_delete', 'multi_create', 'login', 'logout', 'sync', 'deploy', 'orphan', 'import', 'export')),
+      resource_type TEXT NOT NULL,
+      resource_id TEXT,
+      details TEXT NOT NULL DEFAULT '{}',
+      ip_address TEXT,
+      user_agent TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // Create settings table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      description TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // Create container_labels table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS container_labels (
+      container_id TEXT PRIMARY KEY,
+      container_name TEXT NOT NULL,
+      labels TEXT NOT NULL DEFAULT '{}',
+      state TEXT NOT NULL DEFAULT 'running' CHECK(state IN ('running', 'stopped', 'paused')),
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // Create managed_hostnames table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS managed_hostnames (
+      id TEXT PRIMARY KEY,
+      hostname TEXT NOT NULL UNIQUE,
+      provider_id TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+      record_type TEXT NOT NULL CHECK(record_type IN ('A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA', 'NS')),
+      content TEXT NOT NULL,
+      ttl INTEGER NOT NULL DEFAULT 1,
+      proxied INTEGER,
+      priority INTEGER,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // Create preserved_hostnames table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS preserved_hostnames (
+      id TEXT PRIMARY KEY,
+      hostname TEXT NOT NULL UNIQUE,
+      reason TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // Create hostname_overrides table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS hostname_overrides (
+      id TEXT PRIMARY KEY,
+      hostname TEXT NOT NULL UNIQUE,
+      proxied INTEGER,
+      ttl INTEGER,
+      record_type TEXT CHECK(record_type IN ('A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA', 'NS')),
+      content TEXT,
+      provider_id TEXT REFERENCES providers(id) ON DELETE CASCADE,
+      reason TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // Create user_preferences table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      preference_key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      UNIQUE(user_id, preference_key)
+    )
+  `);
+
+  // Create sessions table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      auth_method TEXT NOT NULL,
+      ip_address TEXT NOT NULL,
+      user_agent TEXT,
+      device_info TEXT,
+      expires_at INTEGER NOT NULL,
+      revoked_at INTEGER,
+      last_activity_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // Create security_logs table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS security_logs (
+      id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      session_id TEXT,
+      ip_address TEXT NOT NULL,
+      user_agent TEXT,
+      auth_method TEXT,
+      success INTEGER NOT NULL,
+      failure_reason TEXT,
+      details TEXT NOT NULL DEFAULT '{}',
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // Run schema migrations for existing databases BEFORE creating indexes
+  // This ensures new columns exist before we try to create indexes on them
+  runSchemaMigrations(sqliteDb);
+
+  // Create indexes
+  sqliteDb.exec(`
+    CREATE INDEX IF NOT EXISTS idx_dns_records_provider ON dns_records(provider_id);
+    CREATE INDEX IF NOT EXISTS idx_dns_records_name ON dns_records(name);
+    CREATE INDEX IF NOT EXISTS idx_dns_records_type ON dns_records(type);
+    CREATE INDEX IF NOT EXISTS idx_dns_records_orphaned ON dns_records(orphaned_at);
+    CREATE INDEX IF NOT EXISTS idx_dns_records_managed ON dns_records(managed);
+    CREATE INDEX IF NOT EXISTS idx_tunnels_provider ON tunnels(provider_id);
+    CREATE INDEX IF NOT EXISTS idx_tunnel_ingress_rules_tunnel ON tunnel_ingress_rules(tunnel_id);
+    CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook ON webhook_deliveries(webhook_id);
+    CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_retry ON webhook_deliveries(next_retry_at);
+    CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
+    CREATE INDEX IF NOT EXISTS idx_managed_hostnames_provider ON managed_hostnames(provider_id);
+    CREATE INDEX IF NOT EXISTS idx_hostname_overrides_hostname ON hostname_overrides(hostname);
+    CREATE INDEX IF NOT EXISTS idx_user_preferences_user ON user_preferences(user_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash);
+    CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_security_logs_user ON security_logs(user_id);
+    CREATE INDEX IF NOT EXISTS idx_security_logs_event_type ON security_logs(event_type);
+    CREATE INDEX IF NOT EXISTS idx_security_logs_created ON security_logs(created_at);
+  `);
+
+  logger.info('Database tables created directly');
+}
+
+/**
+ * Run schema migrations for existing databases
+ * Adds new columns to existing tables if they don't exist
+ */
+function runSchemaMigrations(sqliteDb: Database.Database): void {
+  // Check if 'managed' column exists in dns_records
+  const tableInfo = sqliteDb.prepare('PRAGMA table_info(dns_records)').all() as Array<{ name: string }>;
+  const hasManaged = tableInfo.some((col) => col.name === 'managed');
+
+  if (!hasManaged) {
+    logger.info('Adding managed column to dns_records table');
+    sqliteDb.exec('ALTER TABLE dns_records ADD COLUMN managed INTEGER NOT NULL DEFAULT 1');
+    sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_dns_records_managed ON dns_records(managed)');
+    logger.info('Migration complete: added managed column');
+  }
+
+  // Fix CHECK constraint for source column (add 'discovered' if missing)
+  // SQLite doesn't allow modifying CHECK constraints, so we need to recreate the table
+  migrateSourceConstraint(sqliteDb);
+
+  // Fix CHECK constraint for audit_logs action column (add new action types)
+  migrateAuditLogsActionConstraint(sqliteDb);
+
+  // Add new provider types (adguard, pihole) to providers table CHECK constraint
+  migrateProviderTypeConstraint(sqliteDb);
+
+  // Add token column to tunnels table if it doesn't exist
+  try {
+    sqliteDb.exec('ALTER TABLE tunnels ADD COLUMN token TEXT');
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Add source and orphaned_at columns to tunnel_ingress_rules table if they don't exist
+  try {
+    sqliteDb.exec("ALTER TABLE tunnel_ingress_rules ADD COLUMN source TEXT NOT NULL DEFAULT 'api'");
+  } catch {
+    // Column already exists, ignore
+  }
+  try {
+    sqliteDb.exec('ALTER TABLE tunnel_ingress_rules ADD COLUMN orphaned_at INTEGER');
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migrate users table for OIDC support (nullable password_hash, new columns)
+  migrateUsersForOIDC(sqliteDb);
+}
+
+/**
+ * Migrate dns_records table to include 'discovered' in source CHECK constraint
+ * This is needed because the original table was created without 'discovered'
+ */
+function migrateSourceConstraint(sqliteDb: Database.Database): void {
+  // Check if dns_records table exists
+  const tableExists = sqliteDb
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='dns_records'")
+    .get();
+  if (!tableExists) {
+    return; // Table doesn't exist yet, will be created with correct constraint
+  }
+
+  // Check current columns in the table
+  const tableInfo = sqliteDb.prepare('PRAGMA table_info(dns_records)').all() as Array<{
+    name: string;
+    type: string;
+    notnull: number;
+    dflt_value: string | null;
+  }>;
+  const columnNames = tableInfo.map((col) => col.name);
+  const hasManaged = columnNames.includes('managed');
+
+  // Check if 'discovered' source works by checking the table's SQL definition
+  const tableSchema = sqliteDb
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='dns_records'")
+    .get() as { sql: string } | undefined;
+
+  if (tableSchema && tableSchema.sql.includes("'discovered'")) {
+    return; // Constraint already includes 'discovered'
+  }
+
+  logger.info('Migrating dns_records table to support discovered source');
+
+  // SQLite doesn't support ALTER TABLE to modify CHECK constraints
+  // We need to recreate the table
+  sqliteDb.exec('BEGIN TRANSACTION');
+  try {
+    // Create new table with correct constraint
+    sqliteDb.exec(`
+      CREATE TABLE dns_records_new (
+        id TEXT PRIMARY KEY,
+        provider_id TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+        external_id TEXT,
+        type TEXT NOT NULL CHECK(type IN ('A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA', 'NS')),
+        name TEXT NOT NULL,
+        content TEXT NOT NULL,
+        ttl INTEGER NOT NULL DEFAULT 1,
+        proxied INTEGER,
+        priority INTEGER,
+        weight INTEGER,
+        port INTEGER,
+        flags INTEGER,
+        tag TEXT,
+        comment TEXT,
+        source TEXT NOT NULL DEFAULT 'traefik' CHECK(source IN ('traefik', 'direct', 'api', 'managed', 'discovered')),
+        managed INTEGER NOT NULL DEFAULT 1,
+        orphaned_at INTEGER,
+        last_synced_at INTEGER,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )
+    `);
+
+    // Copy data from old table - explicitly list columns to handle schema differences
+    // Only copy columns that exist in both old and new tables
+    if (hasManaged) {
+      sqliteDb.exec(`
+        INSERT INTO dns_records_new (
+          id, provider_id, external_id, type, name, content, ttl, proxied, priority,
+          weight, port, flags, tag, comment, source, managed, orphaned_at, last_synced_at,
+          created_at, updated_at
+        )
+        SELECT
+          id, provider_id, external_id, type, name, content, ttl, proxied, priority,
+          weight, port, flags, tag, comment, source, managed, orphaned_at, last_synced_at,
+          created_at, updated_at
+        FROM dns_records
+      `);
+    } else {
+      // Old table doesn't have 'managed' column - use default value
+      sqliteDb.exec(`
+        INSERT INTO dns_records_new (
+          id, provider_id, external_id, type, name, content, ttl, proxied, priority,
+          weight, port, flags, tag, comment, source, orphaned_at, last_synced_at,
+          created_at, updated_at
+        )
+        SELECT
+          id, provider_id, external_id, type, name, content, ttl, proxied, priority,
+          weight, port, flags, tag, comment, source, orphaned_at, last_synced_at,
+          created_at, updated_at
+        FROM dns_records
+      `);
+    }
+
+    // Drop old table
+    sqliteDb.exec('DROP TABLE dns_records');
+
+    // Rename new table
+    sqliteDb.exec('ALTER TABLE dns_records_new RENAME TO dns_records');
+
+    // Recreate indexes
+    sqliteDb.exec(`
+      CREATE INDEX IF NOT EXISTS idx_dns_records_provider ON dns_records(provider_id);
+      CREATE INDEX IF NOT EXISTS idx_dns_records_name ON dns_records(name);
+      CREATE INDEX IF NOT EXISTS idx_dns_records_type ON dns_records(type);
+      CREATE INDEX IF NOT EXISTS idx_dns_records_orphaned ON dns_records(orphaned_at);
+      CREATE INDEX IF NOT EXISTS idx_dns_records_managed ON dns_records(managed);
+    `);
+
+    sqliteDb.exec('COMMIT');
+    logger.info('Migration complete: dns_records table updated with discovered source support');
+  } catch (error) {
+    sqliteDb.exec('ROLLBACK');
+    logger.error({ error }, 'Failed to migrate dns_records table');
+    throw error;
+  }
+}
+
+/**
+ * Migrate audit_logs table to include all action types in CHECK constraint
+ * Original constraint only had: 'create', 'update', 'delete', 'login', 'logout', 'sync', 'deploy'
+ * New constraint adds: 'bulk_delete', 'orphan', 'import', 'export'
+ */
+function migrateAuditLogsActionConstraint(sqliteDb: Database.Database): void {
+  // Check if audit_logs table exists
+  const tableExists = sqliteDb
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='audit_logs'")
+    .get();
+  if (!tableExists) {
+    return; // Table doesn't exist yet, will be created with correct constraint
+  }
+
+  // Check if the constraint already includes new action types by examining the table schema
+  const tableSchema = sqliteDb
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='audit_logs'")
+    .get() as { sql: string } | undefined;
+
+  if (tableSchema && tableSchema.sql.includes("'multi_create'")) {
+    return; // Constraint already includes all action types
+  }
+
+  logger.info('Migrating audit_logs table to support new action types (multi_create, orphan, bulk_delete, import, export)');
+
+  // SQLite doesn't support ALTER TABLE to modify CHECK constraints
+  // We need to recreate the table
+  sqliteDb.exec('BEGIN TRANSACTION');
+  try {
+    // Create new table with correct constraint
+    sqliteDb.exec(`
+      CREATE TABLE audit_logs_new (
+        id TEXT PRIMARY KEY,
+        user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        action TEXT NOT NULL CHECK(action IN ('create', 'update', 'delete', 'bulk_delete', 'multi_create', 'login', 'logout', 'sync', 'deploy', 'orphan', 'import', 'export')),
+        resource_type TEXT NOT NULL,
+        resource_id TEXT,
+        details TEXT NOT NULL DEFAULT '{}',
+        ip_address TEXT,
+        user_agent TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )
+    `);
+
+    // Copy data from old table
+    sqliteDb.exec(`
+      INSERT INTO audit_logs_new (
+        id, user_id, action, resource_type, resource_id, details, ip_address, user_agent,
+        created_at, updated_at
+      )
+      SELECT
+        id, user_id, action, resource_type, resource_id, details, ip_address, user_agent,
+        created_at, updated_at
+      FROM audit_logs
+    `);
+
+    // Drop old table
+    sqliteDb.exec('DROP TABLE audit_logs');
+
+    // Rename new table
+    sqliteDb.exec('ALTER TABLE audit_logs_new RENAME TO audit_logs');
+
+    // Recreate indexes
+    sqliteDb.exec(`
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
+    `);
+
+    sqliteDb.exec('COMMIT');
+    logger.info('Migration complete: audit_logs table updated with new action types');
+  } catch (error) {
+    sqliteDb.exec('ROLLBACK');
+    logger.error({ error }, 'Failed to migrate audit_logs table');
+    throw error;
+  }
+}
+
+/**
+ * Migrate providers table to include all provider types in CHECK constraint
+ * Originally added adguard/pihole, now also includes rfc2136
+ */
+function migrateProviderTypeConstraint(sqliteDb: Database.Database): void {
+  const tableExists = sqliteDb
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='providers'")
+    .get();
+  if (!tableExists) {
+    return;
+  }
+
+  const tableSchema = sqliteDb
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='providers'")
+    .get() as { sql: string } | undefined;
+
+  if (tableSchema && tableSchema.sql.includes("'rfc2136'")) {
+    return; // Already migrated to latest
+  }
+
+  logger.info('Migrating providers table to support all provider types');
+
+  sqliteDb.exec('BEGIN TRANSACTION');
+  try {
+    sqliteDb.exec(`
+      CREATE TABLE providers_new (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL CHECK(type IN ('cloudflare', 'digitalocean', 'route53', 'technitium', 'adguard', 'pihole', 'rfc2136')),
+        is_default INTEGER NOT NULL DEFAULT 0,
+        credentials TEXT NOT NULL,
+        settings TEXT NOT NULL DEFAULT '{}',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )
+    `);
+
+    sqliteDb.exec(`
+      INSERT INTO providers_new (id, name, type, is_default, credentials, settings, enabled, created_at, updated_at)
+      SELECT id, name, type, is_default, credentials, settings, enabled, created_at, updated_at
+      FROM providers
+    `);
+
+    sqliteDb.exec('DROP TABLE providers');
+    sqliteDb.exec('ALTER TABLE providers_new RENAME TO providers');
+
+    sqliteDb.exec('COMMIT');
+    logger.info('Migration complete: providers table updated with all provider types');
+  } catch (error) {
+    sqliteDb.exec('ROLLBACK');
+    logger.error({ error }, 'Failed to migrate providers table');
+    throw error;
+  }
+}
+
+/**
+ * Migrate users table for OIDC support:
+ * - Make password_hash nullable (OIDC users have no password)
+ * - Add auth_provider, oidc_subject, oidc_issuer columns
+ * SQLite requires table recreation to change NOT NULL → nullable
+ */
+function migrateUsersForOIDC(sqliteDb: Database.Database): void {
+  const tableExists = sqliteDb
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+    .get();
+  if (!tableExists) {
+    return;
+  }
+
+  // Check if already migrated by looking for auth_provider column
+  const tableInfo = sqliteDb.prepare('PRAGMA table_info(users)').all() as Array<{ name: string }>;
+  const hasAuthProvider = tableInfo.some((col) => col.name === 'auth_provider');
+  if (hasAuthProvider) {
+    return; // Already migrated
+  }
+
+  logger.info('Migrating users table for OIDC support');
+
+  sqliteDb.exec('BEGIN TRANSACTION');
+  try {
+    sqliteDb.exec(`
+      CREATE TABLE users_new (
+        id TEXT PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT,
+        role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin', 'user', 'readonly')),
+        avatar TEXT,
+        auth_provider TEXT NOT NULL DEFAULT 'local' CHECK(auth_provider IN ('local', 'oidc')),
+        oidc_subject TEXT,
+        oidc_issuer TEXT,
+        last_login_at INTEGER,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )
+    `);
+
+    // Copy existing data — all existing users are 'local' auth
+    sqliteDb.exec(`
+      INSERT INTO users_new (
+        id, username, email, password_hash, role, avatar, auth_provider,
+        last_login_at, created_at, updated_at
+      )
+      SELECT
+        id, username, email, password_hash, role, avatar, 'local',
+        last_login_at, created_at, updated_at
+      FROM users
+    `);
+
+    sqliteDb.exec('DROP TABLE users');
+    sqliteDb.exec('ALTER TABLE users_new RENAME TO users');
+
+    sqliteDb.exec('COMMIT');
+    logger.info('Migration complete: users table updated for OIDC support');
+  } catch (error) {
+    sqliteDb.exec('ROLLBACK');
+    logger.error({ error }, 'Failed to migrate users table for OIDC');
+    throw error;
+  }
+}
+
+/**
+ * Get the database instance
+ */
+export function getDatabase(): BetterSQLite3Database<typeof schema> {
+  if (!db) {
+    throw new Error('Database not initialized. Call initDatabase() first.');
+  }
+  return db;
+}
+
+/**
+ * Get the raw SQLite database instance
+ */
+export function getSqliteDatabase(): Database.Database {
+  if (!sqliteDb) {
+    throw new Error('Database not initialized. Call initDatabase() first.');
+  }
+  return sqliteDb;
+}
+
+/**
+ * Close the database connection
+ */
+export function closeDatabase(): void {
+  if (sqliteDb) {
+    sqliteDb.close();
+    sqliteDb = null;
+    db = null;
+    logger.info('Database connection closed');
+  }
+}
+
+/**
+ * Check if database is initialized
+ */
+export function isDatabaseInitialized(): boolean {
+  return db !== null;
+}

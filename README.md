@@ -2,71 +2,157 @@
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/elmerfds/TrafegoDNS/main/logo/logo.png" alt="TrafegoDNS Logo" width="200" height="200">
+
+  **Automatic DNS record management for Docker containers**
+
+  [![Docker Pulls](https://img.shields.io/docker/pulls/eafxx/trafegodns)](https://hub.docker.com/r/eafxx/trafegodns)
+  [![GitHub Release](https://img.shields.io/github/v/release/elmerfds/TrafegoDNS)](https://github.com/elmerfds/TrafegoDNS/releases)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 </div>
 
-A service that automatically manages DNS records based on container configuration. Supports both Traefik integration and direct Docker container label mode, making it compatible with any web server or reverse proxy solution.
+TrafegoDNS automatically manages DNS records based on your Docker container configuration. It monitors containers via Traefik integration or direct Docker labels and keeps your DNS providers in sync — with a full Web UI, REST API, and support for 7 DNS providers.
 
 ## Table of Contents
 
+- [What's New in v2](#whats-new-in-v2)
 - [Features](#features)
+- [Quick Start](#quick-start)
+- [Web UI](#web-ui)
 - [Operation Modes](#operation-modes)
 - [Supported DNS Providers](#supported-dns-providers)
+- [REST API](#rest-api)
+- [Authentication](#authentication)
+- [Container Labels](#container-labels)
+- [Environment Variables](#environment-variables)
+- [Orphaned Record Cleanup](#orphaned-record-cleanup)
+- [Cloudflare Tunnels](#cloudflare-tunnels)
+- [RFC 2136 (Dynamic DNS) Setup](#rfc-2136-dynamic-dns-setup)
+- [Webhooks](#webhooks)
+- [Migration from v1](#migration-from-v1)
 - [Supported Architectures](#supported-architectures)
 - [Container Registries](#container-registries)
-- [Quick Start](#quick-start)
-- [DNS Provider Configuration](#dns-provider-configuration)
-  - [Cloudflare](#cloudflare)
-  - [DigitalOcean](#digitalocean)
-  - [Route53](#route53)
-- [User/Group Permissions](#usergroup-permissions)
-- [Service Labels](#service-labels)
-  - [Basic Labels](#basic-labels-provider-agnostic)
-  - [Provider-Specific Labels](#provider-specific-labels-override-provider-agnostic-labels)
-  - [Type-Specific Labels](#type-specific-labels)
-- [Label Precedence](#label-precedence)
-- [Provider-Specific TTL Requirements](#provider-specific-ttl-requirements)
-- [Usage Examples](#usage-examples)
-- [Environment Variables](#environment-variables)
-- [Automated Cleanup of Orphaned Records](#automated-cleanup-of-orphaned-records)
-  - [Preserving Specific DNS Records](#preserving-specific-dns-records)
-- [Manual Hostname Management](#manual-hostname-management)
-- [DNS Record Tracking](#dns-record-tracking)
-- [Configuration Storage](#configuration-storage)
-- [DNS Management Modes](#dns-management-modes)
-- [Logging System](#logging-system)
-- [Performance Optimisation](#performance-optimisation)
-- [Automatic Apex Domain Handling](#automatic-apex-domain-handling)
-- [Using Docker Secrets](#using-docker-secrets)
+- [Docker Secrets](#docker-secrets)
 - [Building from Source](#building-from-source)
 - [Development](#development)
 - [Licence](#licence)
 
+## What's New in v2
+
+TrafegoDNS v2 is a complete rewrite in TypeScript with significant new capabilities:
+
+- **Web UI** — Full-featured React dashboard for managing DNS records, providers, tunnels, webhooks, and settings
+- **REST API** — Comprehensive API with 80+ endpoints for complete programmatic control
+- **SQLite Database** — Persistent storage replacing the JSON file tracking system
+- **Multi-Provider** — Support for 7 DNS providers simultaneously (up from 3), including self-hosted options
+- **Authentication** — JWT-based auth with user management, roles, and API keys
+- **Cloudflare Tunnels** — Create and manage Zero Trust tunnels directly from the UI
+- **Webhooks** — Event-driven notifications for DNS changes, sync events, and errors
+- **Audit Logging** — Full audit trail of all mutations with user tracking
+- **Hostname Overrides** — Override DNS settings per hostname via the UI
+- **Preserved Hostnames** — Manage protected hostnames via the UI instead of environment variables
+
 ## Features
 
-- 🔄 Automatic DNS record management based on container configuration
-- 🔀 Support for both Traefik integration and direct container label mode (works with NGINX, Apache, etc.)
-- 👀 Real-time monitoring of Docker container events
-- 🏷️ Support for multiple DNS record types (A, AAAA, CNAME, MX, TXT, SRV, CAA)
-- 🌐 Automatic public IP detection for apex domains
-- 🎛️ Fine-grained control with service-specific labels
-- 💪 Fault-tolerant design with retry mechanisms
-- 🧹 Optional cleanup of orphaned DNS records with preservation capabilities
-- 📊 Optimised performance with DNS caching and batch processing
-- 🖨️ Configurable logging levels for better troubleshooting
-- 🔌 Multi-provider support with provider-agnostic label system
-- 🔒 Preserves manually created DNS records using smart tracking system
-- 🛡️ Support for explicitly preserving specific hostnames from cleanup
-- 📝 Manual creation and management of hostnames independent of containers
-- 🔐 PUID/PGID support for proper file permissions
-- 💾 Persistent configuration storage in mounted volumes
+- Automatic DNS record management based on container configuration
+- Support for Traefik integration and direct container label mode (works with any reverse proxy)
+- Real-time monitoring of Docker container events
+- Support for multiple DNS record types (A, AAAA, CNAME, MX, TXT, SRV, CAA, NS)
+- 7 DNS providers: Cloudflare, DigitalOcean, Route 53, Technitium, AdGuard Home, Pi-hole, RFC 2136 (BIND9, PowerDNS, Knot, etc.)
+- Full Web UI with dark mode for managing all aspects of DNS
+- REST API with JWT authentication and API key support
+- Cloudflare Tunnel management (Zero Trust)
+- Webhook notifications with configurable events and retry logic
+- Automatic public IP detection for apex domains
+- Orphaned record cleanup with configurable grace period
+- Audit logging for all changes
+- Multi-architecture Docker images (amd64, arm64, armv7)
+- PUID/PGID support for proper file permissions
+- Docker Secrets support for sensitive credentials
+
+## Quick Start
+
+### Docker Compose
+
+```yaml
+services:
+  trafegodns:
+    image: ghcr.io/elmerfds/trafegodns:latest
+    container_name: trafegodns
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Operation mode
+      - OPERATION_MODE=traefik        # Options: traefik, direct
+
+      # Traefik API (for traefik mode)
+      - TRAEFIK_API_URL=http://traefik:8080/api
+
+      # Authentication
+      - DEFAULT_ADMIN_USERNAME=admin
+      - DEFAULT_ADMIN_PASSWORD=changeme
+      - JWT_SECRET=your-secret-key    # Auto-generated if not set
+
+      # Application settings
+      - LOG_LEVEL=info
+      - CLEANUP_ORPHANED=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config:/config
+```
+
+After starting, open `http://localhost:3000` to access the Web UI. Login with your admin credentials, then add DNS providers via the **Providers** page.
+
+> **Note**: In v2, DNS providers are configured through the Web UI or REST API — not environment variables. The Quick Start above only sets the operation mode and auth; you'll add your Cloudflare/DigitalOcean/Route53/etc. credentials through the Providers page.
+
+### Direct Mode Example
+
+```yaml
+services:
+  trafegodns:
+    image: ghcr.io/elmerfds/trafegodns:latest
+    container_name: trafegodns
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - OPERATION_MODE=direct
+      - DEFAULT_ADMIN_PASSWORD=changeme
+      - LOG_LEVEL=info
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config:/config
+
+  example-app:
+    image: nginx
+    labels:
+      - "dns.hostname=app.example.com"
+      - "dns.type=A"
+      - "dns.content=203.0.113.10"
+```
+
+## Web UI
+
+TrafegoDNS v2 includes a full-featured web interface at `http://<host>:3000`:
+
+| Page | Description |
+|------|-------------|
+| **Dashboard** | Overview of DNS records, providers, and system status |
+| **DNS Records** | View, search, filter, create, edit, and delete DNS records |
+| **Providers** | Add and manage DNS providers, test connections |
+| **Tunnels** | Create and manage Cloudflare Zero Trust tunnels |
+| **Webhooks** | Configure webhook endpoints for event notifications |
+| **Users** | Manage users, roles, and permissions (admin only) |
+| **Settings** | Configure application settings (polling, cleanup, defaults) |
+| **Logs** | Real-time application log viewer |
+| **API Docs** | Interactive API reference documentation |
+| **Profile** | Update your password and preferences |
 
 ## Operation Modes
 
-TrafegoDNS supports two operation modes:
-
 ### Traefik Mode (Default)
 
-In this mode, TrafegoDNS monitors the Traefik API to detect hostnames from router rules.
+Monitors the Traefik API to detect hostnames from router rules:
 
 ```yaml
 environment:
@@ -74,7 +160,7 @@ environment:
   - TRAEFIK_API_URL=http://traefik:8080/api
 ```
 
-With Traefik mode, you define hostnames using standard Traefik Host rules:
+Hostnames are defined using standard Traefik Host rules:
 
 ```yaml
 services:
@@ -83,88 +169,694 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.my-app.rule=Host(`app.example.com`)"
-      - "dns.proxied=false"  # Configure DNS settings
+      - "dns.proxied=false"
 ```
 
 ### Direct Mode
 
-In this mode, TrafegoDNS operates independently of Traefik, directly reading hostnames from container labels. This allows it to run completely independently of any web server or reverse proxy, making it compatible with NGINX, Apache, HAProxy, or any other solution - or even with containers that don't use a reverse proxy at all. The only requirement is that services are deployed as Docker containers.
+Reads hostnames directly from container labels. Works with any reverse proxy (NGINX, Apache, HAProxy, Caddy) or no reverse proxy at all:
 
 ```yaml
 environment:
   - OPERATION_MODE=direct
 ```
 
-When using direct mode, you can specify hostnames using any of the following label formats:
+Hostname formats supported:
 
-1. Comma-separated hostnames:
-   ```yaml
-   services:
-     my-app:
-       image: my-image
-       labels:
-         - "dns.hostname=app.example.com,api.example.com"
-         - "dns.proxied=false"  # Configure DNS settings
-   ```
+**Comma-separated hostnames:**
+```yaml
+labels:
+  - "dns.hostname=app.example.com,api.example.com"
+```
 
-2. Domain and subdomain combination:
-   ```yaml
-   services:
-     my-app:
-       image: my-image
-       labels:
-         - "dns.domain=example.com"
-         - "dns.subdomain=app,api,admin"
-         - "dns.proxied=false"  # Configure DNS settings
-   ```
+**Domain + subdomain combination:**
+```yaml
+labels:
+  - "dns.domain=example.com"
+  - "dns.subdomain=app,api,admin"
+```
 
-3. Use apex domain:
-   ```yaml
-   services:
-     my-app:
-       image: my-image
-       labels:
-         - "dns.domain=example.com"
-         - "dns.use_apex=true"
-         - "dns.proxied=false"  # Configure DNS settings
-   ```
+**Apex domain:**
+```yaml
+labels:
+  - "dns.domain=example.com"
+  - "dns.use_apex=true"
+```
 
-4. Individual host labels:
-   ```yaml
-   services:
-     my-app:
-       image: my-image
-       labels:
-         - "dns.host.1=app.example.com"
-         - "dns.host.2=api.example.com"
-         - "dns.proxied=false"  # Configure DNS settings
-   ```
-
-All other DNS configuration labels work the same way as in Traefik mode.
+**Individual host labels:**
+```yaml
+labels:
+  - "dns.host.1=app.example.com"
+  - "dns.host.2=api.example.com"
+```
 
 ## Supported DNS Providers
 
-| Provider | Status | Implementation Details |
-|:--------:|:------:|:----------------------:|
-| ![Cloudflare](https://img.shields.io/badge/Cloudflare-F38020?style=flat&logo=cloudflare&logoColor=white) | ![Stable](https://img.shields.io/badge/✓-Stable-success) | Full support for all record types and features |
-| ![DigitalOcean](https://img.shields.io/badge/DigitalOcean-0080FF?style=flat&logo=digitalocean&logoColor=white) | ![Stable](https://img.shields.io/badge/✓-Stable-success) | Full support for all record types and features |
-| ![AWS](https://img.shields.io/badge/Route53-FF9900?style=flat&logo=amazonaws&logoColor=white) | ![Stable](https://img.shields.io/badge/✓-Stable-success) | Full support for all record types and features |
+Providers are added and managed via the Web UI or REST API.
+
+| Provider | Record Types | Features |
+|----------|-------------|----------|
+| **Cloudflare** | A, AAAA, CNAME, MX, TXT, SRV, CAA, NS | Proxy (orange cloud), tunnels, batch operations |
+| **DigitalOcean** | A, AAAA, CNAME, MX, TXT, SRV, CAA, NS | Full DNS management |
+| **AWS Route 53** | A, AAAA, CNAME, MX, TXT, SRV, CAA, NS | Batch operations, hosted zones |
+| **Technitium DNS** | A, AAAA, CNAME, MX, TXT, SRV, CAA, NS | Self-hosted, token or username/password auth |
+| **AdGuard Home** | A, AAAA, CNAME | Self-hosted, DNS rewrites |
+| **Pi-hole** | A, AAAA, CNAME | Self-hosted, local DNS records |
+| **RFC 2136** | A, AAAA, CNAME, MX, TXT, SRV, CAA, NS | Dynamic DNS updates, TSIG auth, works with BIND9/PowerDNS/Knot/Windows DNS |
+
+### Provider Credentials
+
+Each provider requires specific credentials when adding via the UI:
+
+| Provider | Required Fields |
+|----------|----------------|
+| **Cloudflare** | API Token, Zone Name |
+| **DigitalOcean** | API Token, Domain |
+| **Route 53** | Access Key ID, Secret Access Key, Hosted Zone ID, Region |
+| **Technitium** | Server URL, Zone, Token *or* Username + Password |
+| **AdGuard Home** | Server URL, Username, Password |
+| **Pi-hole** | Server URL, Web Password |
+| **RFC 2136** | DNS Server, Zone, TSIG Key Name + Algorithm + Secret (optional) |
+
+## REST API
+
+TrafegoDNS exposes a comprehensive REST API at `/api/v1/`. Full interactive documentation is available in the Web UI at the **API Docs** page.
+
+### Endpoint Groups
+
+| Group | Base Path | Description |
+|-------|-----------|-------------|
+| **Auth** | `/api/v1/auth` | Login, logout, API keys, profile |
+| **DNS Records** | `/api/v1/dns/records` | CRUD, bulk operations, sync, import/export |
+| **Providers** | `/api/v1/providers` | Provider management, connection testing, record discovery |
+| **Tunnels** | `/api/v1/tunnels` | Cloudflare Tunnel management and deployment |
+| **Webhooks** | `/api/v1/webhooks` | Webhook configuration, testing, delivery history |
+| **Users** | `/api/v1/users` | User management (admin only) |
+| **Settings** | `/api/v1/settings` | Application settings |
+| **Audit** | `/api/v1/audit` | Audit log access (admin only) |
+| **Health** | `/api/v1/health` | Health, readiness, and liveness probes |
+| **Preserved Hostnames** | `/api/v1/preserved-hostnames` | Hostnames protected from cleanup |
+| **Overrides** | `/api/v1/overrides` | Per-hostname DNS setting overrides |
+| **Preferences** | `/api/v1/preferences` | User UI preferences |
+
+### Example: Create a DNS Record
+
+```bash
+# Login
+TOKEN=$(curl -s http://localhost:3000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"changeme"}' | jq -r '.token')
+
+# Create an A record
+curl -X POST http://localhost:3000/api/v1/dns/records \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "A",
+    "name": "app.example.com",
+    "content": "203.0.113.10",
+    "ttl": 3600,
+    "providerId": "your-provider-uuid"
+  }'
+```
+
+## Authentication
+
+TrafegoDNS supports three authentication modes controlled by the `AUTH_MODE` environment variable:
+
+| Mode | Description |
+|------|-------------|
+| `local` (default) | Username/password login with JWT tokens |
+| `oidc` | Single Sign-On via OpenID Connect (Authelia, Keycloak, Authentik, etc.) |
+| `none` | Authentication disabled — all users get full admin access |
+
+### Local Authentication
+
+- **Login**: `POST /api/v1/auth/login` with `username` and `password`
+- **Token**: Include in requests as `Authorization: Bearer <token>`
+- **API Keys**: Create long-lived API keys via the Web UI or API for automation
+- **Roles**: `admin` (full access), `user` (manage DNS), `readonly` (view only)
+
+#### Default Credentials
+
+| Setting | Default | Environment Variable |
+|---------|---------|---------------------|
+| Username | `admin` | `DEFAULT_ADMIN_USERNAME` |
+| Password | `admin` | `DEFAULT_ADMIN_PASSWORD` |
+| Email | `admin@localhost` | `DEFAULT_ADMIN_EMAIL` |
+
+> **Important**: Change the default admin password after first login, or set it via environment variable before first start.
+
+### OpenID Connect (OIDC) / Single Sign-On
+
+TrafegoDNS supports SSO via any standard OpenID Connect provider using the **Backend-for-Frontend (BFF) pattern** — all OIDC logic runs server-side with PKCE for security. No browser-side OIDC library is needed.
+
+**Supported providers**: Authelia, Keycloak, Authentik, Dex, Auth0, Okta, Azure AD/Entra ID, and any OIDC-compliant provider.
+
+#### Quick Setup
+
+1. Register TrafegoDNS as a client/application in your OIDC provider
+2. Set the redirect URI to: `https://your-trafegodns-host/api/v1/auth/oidc/callback`
+3. Configure the environment variables below
+
+#### Docker Compose Example
+
+```yaml
+services:
+  trafegodns:
+    image: ghcr.io/elmerfds/trafegodns:latest
+    environment:
+      AUTH_MODE: oidc
+      OIDC_ISSUER_URL: https://auth.example.com   # Your OIDC provider
+      OIDC_CLIENT_ID: trafegodns
+      OIDC_CLIENT_SECRET: your-client-secret       # Or use Docker secrets
+      OIDC_REDIRECT_URI: https://dns.example.com/api/v1/auth/oidc/callback
+      OIDC_ADMIN_GROUPS: admins,dns-admins          # Groups that get admin role
+      OIDC_USER_GROUPS: users                       # Groups that get user role
+      # OIDC_ALLOW_LOCAL_LOGIN: true                # Show local login alongside SSO
+    volumes:
+      - ./data:/config/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+```
+
+#### Authelia Example
+
+In your Authelia `configuration.yml`:
+
+```yaml
+identity_providers:
+  oidc:
+    clients:
+      - client_id: trafegodns
+        client_name: TrafegoDNS
+        client_secret: '$pbkdf2-sha512$...'  # Generate with authelia crypto hash generate pbkdf2
+        redirect_uris:
+          - https://dns.example.com/api/v1/auth/oidc/callback
+        scopes:
+          - openid
+          - profile
+          - email
+          - groups
+        authorization_policy: two_factor
+```
+
+#### How It Works
+
+1. User clicks **"Sign in with SSO"** on the login page
+2. Backend generates a PKCE challenge and redirects to the OIDC provider
+3. User authenticates at the provider (Authelia, Keycloak, etc.)
+4. Provider redirects back to `/api/v1/auth/oidc/callback`
+5. Backend exchanges the code for tokens, fetches user info
+6. Backend maps group claims to app roles (admin/user/readonly)
+7. Backend issues a TrafegoDNS JWT cookie and redirects to the dashboard
+
+#### Group-to-Role Mapping
+
+Configure which OIDC groups map to which TrafegoDNS roles:
+
+| Variable | Role | Priority |
+|----------|------|----------|
+| `OIDC_ADMIN_GROUPS` | `admin` | Highest |
+| `OIDC_USER_GROUPS` | `user` | Medium |
+| `OIDC_READONLY_GROUPS` | `readonly` | Low |
+| `OIDC_DEFAULT_ROLE` | Fallback | If no groups match |
+
+Roles are updated on every login to reflect current group membership. If a user belongs to multiple groups, the highest-priority role wins.
+
+#### User Management
+
+- **Auto-creation**: New OIDC users are automatically created in the database on first login (disable with `OIDC_AUTO_CREATE_USERS=false`)
+- **Email linking**: If an existing local user has the same email as the OIDC user, the accounts are automatically linked
+- **Password**: OIDC users cannot set or change local passwords — they authenticate exclusively through the identity provider
+- **Mixed mode**: Set `OIDC_ALLOW_LOCAL_LOGIN=true` to show both SSO and local credential forms on the login page
+
+## Container Labels
+
+Container labels control how TrafegoDNS creates DNS records. These work in both Traefik and Direct modes.
+
+### Basic Labels
+
+| Label | Description | Default |
+|-------|-------------|---------|
+| `dns.skip` | Skip DNS management for this container | `false` |
+| `dns.manage` | Explicitly enable DNS management | Depends on `DNS_DEFAULT_MANAGE` |
+| `dns.type` | Record type (A, AAAA, CNAME, MX, TXT, SRV, CAA) | `CNAME` (or `A` for apex) |
+| `dns.content` | Record value (IP, hostname, etc.) | Auto-detected |
+| `dns.ttl` | TTL in seconds | Provider default |
+| `dns.proxied` | Cloudflare proxy (orange cloud) | `true` |
+| `dns.priority` | Priority (MX, SRV) | - |
+| `dns.weight` | Weight (SRV) | - |
+| `dns.port` | Port (SRV) | - |
+| `dns.flags` | Flags (CAA) | - |
+| `dns.tag` | Tag (CAA) | - |
+
+### Direct Mode Labels
+
+| Label | Description |
+|-------|-------------|
+| `dns.hostname` | Comma-separated hostnames |
+| `dns.domain` | Base domain |
+| `dns.subdomain` | Comma-separated subdomains |
+| `dns.use_apex` | Use apex domain (`true`/`false`) |
+| `dns.host.N` | Individual hostnames (1, 2, 3...) |
+
+### Label Precedence
+
+1. Provider-specific labels (e.g., `dns.cloudflare.type`)
+2. Generic DNS labels (e.g., `dns.type`)
+3. Default values from settings
+
+Provider-specific labels follow the pattern `dns.<provider>.<setting>`, e.g., `dns.cloudflare.proxied=false` or `dns.route53.ttl=300`.
+
+## Environment Variables
+
+### Core Settings
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OPERATION_MODE` | `traefik` or `direct` | `traefik` |
+| `LOG_LEVEL` | `error`, `warn`, `info`, `debug`, `trace` | `info` |
+| `API_PORT` | Web UI and API port | `3000` |
+| `API_HOST` | Bind address | `0.0.0.0` |
+| `DATA_DIR` | Data directory path | `/config/data` |
+| `DATABASE_PATH` | SQLite database path | `{DATA_DIR}/trafegodns.db` |
+| `POLL_INTERVAL` | Monitor poll interval (ms) | `60000` |
+
+### Authentication
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AUTH_MODE` | Authentication mode: `local`, `oidc`, or `none` | `local` |
+| `AUTH_DISABLED` | Disable authentication (same as `AUTH_MODE=none`) | `false` |
+| `JWT_SECRET` | JWT signing secret | Auto-generated |
+| `JWT_EXPIRES_IN` | JWT token expiry | `24h` |
+| `ENCRYPTION_KEY` | Credential encryption key | Auto-generated |
+| `DEFAULT_ADMIN_USERNAME` | Initial admin username | `admin` |
+| `DEFAULT_ADMIN_PASSWORD` | Initial admin password | `admin` |
+| `DEFAULT_ADMIN_EMAIL` | Initial admin email | `admin@localhost` |
+| `GLOBAL_API_KEY` | Master API key for programmatic access (min 32 chars) | - |
+
+### OIDC / SSO (when `AUTH_MODE=oidc`)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OIDC_ISSUER_URL` | **Required.** OIDC provider's issuer URL | - |
+| `OIDC_CLIENT_ID` | **Required.** OAuth2 client ID | - |
+| `OIDC_CLIENT_SECRET` | OAuth2 client secret (supports Docker secrets) | - |
+| `OIDC_REDIRECT_URI` | **Required.** Callback URL (`https://host/api/v1/auth/oidc/callback`) | - |
+| `OIDC_SCOPES` | Space-separated OIDC scopes | `openid profile email groups` |
+| `OIDC_ALLOW_LOCAL_LOGIN` | Show local login form alongside SSO | `false` |
+| `OIDC_AUTO_CREATE_USERS` | Create user in DB on first OIDC login | `true` |
+| `OIDC_DEFAULT_ROLE` | Default role when no group mapping matches | `user` |
+| `OIDC_GROUP_CLAIM` | Claim name for group membership | `groups` |
+| `OIDC_ADMIN_GROUPS` | Comma-separated groups → admin role | - |
+| `OIDC_USER_GROUPS` | Comma-separated groups → user role | - |
+| `OIDC_READONLY_GROUPS` | Comma-separated groups → readonly role | - |
+| `OIDC_LOGOUT_URL` | RP-initiated logout URL | - |
+
+### Docker
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DOCKER_SOCKET` | Docker socket path | `/var/run/docker.sock` |
+| `WATCH_DOCKER_EVENTS` | Watch container events | `true` |
+| `DNS_LABEL_PREFIX` | Label prefix for DNS config | `dns.` |
+
+### Traefik
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `TRAEFIK_API_URL` | Traefik API endpoint | `http://traefik:8080/api` |
+| `TRAEFIK_API_USERNAME` | Basic auth username | - |
+| `TRAEFIK_API_PASSWORD` | Basic auth password | - |
+
+### DNS Defaults
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DNS_DEFAULT_TYPE` | Default record type | `CNAME` |
+| `DNS_DEFAULT_TTL` | Default TTL (seconds) | `1` |
+| `DNS_DEFAULT_PROXIED` | Cloudflare proxy default | `true` |
+| `DNS_DEFAULT_MANAGE` | Auto-manage containers | `true` |
+
+### IP Address
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PUBLIC_IP` | Manual public IPv4 | Auto-detected |
+| `PUBLIC_IPV6` | Manual public IPv6 | Auto-detected |
+| `IP_REFRESH_INTERVAL` | IP refresh interval (ms) | `3600000` |
+
+### Cleanup
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CLEANUP_ORPHANED` | Auto-remove orphaned records | `false` |
+| `CLEANUP_GRACE_PERIOD` | Grace period (minutes) | `15` |
+
+### DNS Routing
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DNS_ROUTING_MODE` | `auto-with-fallback`, `primary-only`, `round-robin` | `auto-with-fallback` |
+| `DNS_MULTI_PROVIDER_SAME_ZONE` | Allow multiple providers per zone | `true` |
+
+### Webhooks
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `WEBHOOK_RETRY_ATTEMPTS` | Retry count on failure | `3` |
+| `WEBHOOK_RETRY_DELAY` | Delay between retries (ms) | `5000` |
+
+### User/Group Permissions
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PUID` | User ID to run as | `1001` |
+| `PGID` | Group ID to run as | `1001` |
+
+## Orphaned Record Cleanup
+
+When containers are removed, their DNS records can be automatically cleaned up:
+
+```yaml
+environment:
+  - CLEANUP_ORPHANED=true
+  - CLEANUP_GRACE_PERIOD=15  # Minutes before deletion
+```
+
+### How It Works
+
+1. When a hostname is no longer associated with an active container, it's **marked as orphaned** but not immediately removed
+2. After the grace period elapses, the record is deleted from both the DNS provider and the database
+3. If the container comes back within the grace period, the record is automatically restored to active
+
+### Managing via Web UI
+
+In v2, you can also:
+- View orphaned records with their remaining grace period on the **DNS Records** page (filter by status: "orphaned")
+- Extend the grace period for specific records
+- Manage **Preserved Hostnames** — hostnames protected from cleanup — via the dedicated UI page instead of environment variables
+
+## Cloudflare Tunnels
+
+TrafegoDNS v2 includes full Cloudflare Zero Trust tunnel management — create tunnels, manage ingress routes, and optionally auto-manage tunnel routes from your container lifecycle, just like DNS records.
+
+### Requirements
+
+- A **Cloudflare provider** configured in TrafegoDNS
+- The API token must have the **Cloudflare Tunnel** permission (and **Account ID** set in the provider config)
+
+### Manual Tunnel Management
+
+From the **Tunnels** page in the Web UI:
+
+1. **Create a tunnel** — after creation, the connector token and `docker run` / `docker-compose` commands are displayed for running `cloudflared`
+2. **Add ingress rules** — route hostnames to backend services (e.g., `app.example.com` → `http://traefik:80`)
+3. **Edit / delete rules** — modify or remove routes as needed
+4. **Deploy** — push the current configuration to Cloudflare
+
+You can also retrieve the connector token at any time from the tunnel detail view.
+
+### Tunnel Auto-Management
+
+TrafegoDNS can automatically create and remove tunnel ingress rules based on your running containers — the same lifecycle as DNS records. When a container starts, its hostname gets a tunnel route; when it stops, the route is removed after the grace period.
+
+#### Global Settings
+
+Configure auto-management from the **Settings** page under the **Tunnels** tab:
+
+| Setting | Options | Description |
+|---------|---------|-------------|
+| **Tunnel Mode** | `off`, `all`, `labeled` | Controls auto-management behavior |
+| **Default Tunnel** | *(tunnel name)* | Which tunnel to route hostnames through |
+| **Default Service URL** | *(URL)* | Backend service for tunnel routes (e.g., `http://traefik:80`) |
+
+#### Tunnel Modes
+
+**`off`** (default) — No auto-management. Tunnels and routes are manual only.
+
+**`all`** — Every hostname discovered by TrafegoDNS is automatically routed through the tunnel. This is the easiest setup for a typical Traefik configuration — set the three settings and every container gets a tunnel route with zero labels:
+
+```yaml
+# Settings page configuration:
+# Tunnel Mode: all
+# Default Tunnel: my-tunnel
+# Default Service URL: http://traefik:80
+#
+# That's it — every Traefik-discovered hostname gets a tunnel route automatically.
+```
+
+To **opt out** a specific container from tunnel routing in `all` mode:
+
+```yaml
+labels:
+  - "dns.tunnel=false"
+```
+
+**`labeled`** — Only containers with the `dns.tunnel` label are routed through the tunnel. All other containers use normal DNS:
+
+```yaml
+# Only this container gets a tunnel route:
+labels:
+  - "dns.tunnel=true"
+```
+
+#### Per-Container Label Overrides
+
+These labels override the global settings for individual containers:
+
+| Label | Description | Example |
+|-------|-------------|---------|
+| `dns.tunnel=false` | Opt out of tunnel routing (in `all` mode) | Skip this container |
+| `dns.tunnel=true` | Opt in to tunnel routing (in `labeled` mode) | Use default tunnel |
+| `dns.tunnel=<name>` | Use a specific tunnel instead of the default | `dns.tunnel=staging-tunnel` |
+| `dns.tunnel.service=<url>` | Override the backend service URL | `dns.tunnel.service=http://app:8080` |
+| `dns.tunnel.path=<path>` | Route only a specific path | `dns.tunnel.path=/api` |
+| `dns.tunnel.notlsverify=true` | Skip TLS verification to origin | For self-signed certs |
+| `dns.tunnel.httphostheader=<host>` | Override the Host header | Custom host routing |
+
+#### How Auto-Management Works
+
+1. On each sync cycle, TrafegoDNS checks the `tunnel_mode` setting
+2. For each hostname, it resolves the tunnel config from global settings + container labels
+3. If a tunnel route should exist, `ensureIngressRule()` creates it (with `source: auto`) or reactivates it if orphaned
+4. If a hostname is no longer active, its rule is marked as **orphaned**
+5. After the **cleanup grace period** (same setting as DNS records), the orphaned rule and its CNAME record are removed from Cloudflare
+6. If the container restarts within the grace period, the route is automatically restored
+
+Auto-managed rules are shown with an **Auto** badge in the UI. Manual rules (`source: api`) are never automatically removed.
+
+#### Example: Full Traefik + Tunnel Setup
+
+```yaml
+services:
+  trafegodns:
+    image: ghcr.io/elmerfds/trafegodns:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - OPERATION_MODE=traefik
+      - TRAEFIK_API_URL=http://traefik:8080/api
+      - CLEANUP_ORPHANED=true
+      - DEFAULT_ADMIN_PASSWORD=changeme
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config:/config
+
+  # After starting:
+  # 1. Add your Cloudflare provider (with Account ID) via the Providers page
+  # 2. Create a tunnel via the Tunnels page
+  # 3. Start cloudflared using the connector token shown after creation
+  # 4. Go to Settings > Tunnels and set:
+  #    - Tunnel Mode: all
+  #    - Default Tunnel: <your-tunnel-name>
+  #    - Default Service URL: http://traefik:80
+  #
+  # Every container with a Traefik Host rule will now automatically get
+  # both a DNS record AND a tunnel ingress route.
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    restart: unless-stopped
+```
+
+### Tunnel API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/tunnels` | List all tunnels |
+| `POST` | `/api/v1/tunnels` | Create a tunnel |
+| `GET` | `/api/v1/tunnels/:id` | Get tunnel detail with ingress rules |
+| `DELETE` | `/api/v1/tunnels/:id` | Delete a tunnel |
+| `GET` | `/api/v1/tunnels/:id/token` | Get connector token (admin only) |
+| `GET` | `/api/v1/tunnels/:id/ingress` | List ingress rules |
+| `POST` | `/api/v1/tunnels/:id/ingress` | Add an ingress rule |
+| `PUT` | `/api/v1/tunnels/:id/ingress/:hostname` | Update an ingress rule |
+| `DELETE` | `/api/v1/tunnels/:id/ingress/:hostname` | Remove an ingress rule |
+| `PUT` | `/api/v1/tunnels/:id/config` | Update full tunnel config |
+| `POST` | `/api/v1/tunnels/:id/deploy` | Deploy tunnel to Cloudflare |
+
+## RFC 2136 (Dynamic DNS) Setup
+
+TrafegoDNS supports [RFC 2136](https://datatracker.ietf.org/doc/html/rfc2136) dynamic DNS updates, allowing it to manage records on any compliant authoritative DNS server — including **BIND9**, **PowerDNS**, **Knot DNS**, and **Windows DNS Server**.
+
+### How It Works
+
+RFC 2136 defines a standard protocol for dynamically updating DNS zones. TrafegoDNS uses the `nsupdate` and `dig` utilities (bundled in the Docker image) to send signed update commands to your DNS server. Authentication is handled via **TSIG** (Transaction Signature) — a shared-secret mechanism built into the DNS protocol.
+
+### BIND9 Setup Example
+
+**1. Generate a TSIG key** on your BIND9 server:
+
+```bash
+tsig-keygen -a hmac-sha256 trafegodns-key
+```
+
+This outputs a key block like:
+
+```
+key "trafegodns-key" {
+    algorithm hmac-sha256;
+    secret "BASE64_SECRET_HERE";
+};
+```
+
+**2. Configure BIND9** — add the key and allow dynamic updates for your zone in `named.conf`:
+
+```
+key "trafegodns-key" {
+    algorithm hmac-sha256;
+    secret "BASE64_SECRET_HERE";
+};
+
+zone "example.com" {
+    type primary;
+    file "/var/lib/bind/example.com.zone";
+    allow-update { key "trafegodns-key"; };
+};
+```
+
+**3. Restart BIND9** to apply the configuration:
+
+```bash
+sudo systemctl restart named
+# or
+sudo rndc reconfig
+```
+
+**4. Add the provider in TrafegoDNS** — go to the **Providers** page in the Web UI and click **Add Provider**, then select **RFC 2136** and fill in:
+
+| Field | Value | Description |
+|-------|-------|-------------|
+| **DNS Server** | `192.168.1.10` | Hostname or IP of your BIND9 server |
+| **Port** | `53` | DNS port (default: 53) |
+| **Zone** | `example.com` | The zone to manage |
+| **TSIG Key Name** | `trafegodns-key` | Must match the key name in `named.conf` |
+| **TSIG Algorithm** | `hmac-sha256` | Must match the algorithm in `named.conf` |
+| **TSIG Secret** | `BASE64_SECRET_HERE` | The base64-encoded secret from `tsig-keygen` |
+
+> **Note**: TSIG authentication is optional but strongly recommended. Without it, you would need to allow updates by IP address (`allow-update { 172.18.0.0/16; };`), which is less secure.
+
+### Docker Compose Example (BIND9 + TrafegoDNS)
+
+```yaml
+services:
+  bind9:
+    image: ubuntu/bind9:9.18-22.04_beta
+    restart: unless-stopped
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+    volumes:
+      - bind-data:/var/lib/bind
+      - ./named.conf:/etc/bind/named.conf:ro
+      - ./example.com.zone:/var/lib/bind/example.com.zone
+
+  trafegodns:
+    image: ghcr.io/elmerfds/trafegodns:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - trafegodns-data:/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - OPERATION_MODE=direct
+
+volumes:
+  bind-data:
+  trafegodns-data:
+```
+
+After deploying, open the TrafegoDNS Web UI and add your BIND9 server as an RFC 2136 provider using the credentials above.
+
+### Other DNS Servers
+
+RFC 2136 is a standard protocol, so TrafegoDNS works with any compliant server:
+
+- **PowerDNS**: Enable the `dnsupdate` feature and configure TSIG keys via the API or `pdnsutil`
+- **Knot DNS**: Configure `acl` with TSIG in `knot.conf` and set `update: on` for the zone
+- **Windows DNS Server**: Enable dynamic updates on the zone and configure TSIG keys via `dnscmd`
+
+### Supported Record Types
+
+RFC 2136 supports the full range of record types: **A**, **AAAA**, **CNAME**, **MX**, **TXT**, **SRV**, **CAA**, and **NS**.
+
+## Webhooks
+
+Configure webhooks to receive notifications when DNS events occur:
+
+### Supported Events
+
+| Event | Description |
+|-------|-------------|
+| `dns.record.created` | A new DNS record was created |
+| `dns.record.updated` | An existing record was modified |
+| `dns.record.deleted` | A record was removed |
+| `dns.record.orphaned` | A record was marked as orphaned |
+| `tunnel.created` | A Cloudflare tunnel was created |
+| `tunnel.deployed` | A tunnel configuration was deployed |
+| `tunnel.deleted` | A tunnel was removed |
+| `system.sync.completed` | A DNS sync cycle completed |
+| `system.error` | A system error occurred |
+
+Webhooks include a configurable secret for payload verification and automatic retry on delivery failure.
+
+## Migration from v1
+
+TrafegoDNS v2 automatically migrates data from v1:
+
+- **DNS record tracking** (`dns-records.json`) is imported into the SQLite database on first start
+- **Container labels** are fully backwards-compatible — no changes needed
+- **Operation modes** (traefik/direct) work the same way
+
+### Breaking Changes
+
+| Change | v1 | v2 |
+|--------|----|----|
+| **Port** | Not fixed (user-configured) | `3000` (configurable via `API_PORT`) |
+| **Provider config** | Environment variables (`DNS_PROVIDER`, `CLOUDFLARE_TOKEN`, etc.) | Web UI / REST API |
+| **Data storage** | JSON file (`dns-records.json`) | SQLite database |
+| **Configuration** | Environment variables only | Web UI Settings page + environment variables |
+
+> **Note**: While v1 environment variables for providers (like `CLOUDFLARE_TOKEN`) are no longer used for provider configuration, the application settings (like `OPERATION_MODE`, `LOG_LEVEL`, `CLEANUP_ORPHANED`) still work as environment variables.
 
 ## Supported Architectures
 
-TrafegoDNS supports multiple architectures with multi-arch Docker images:
+Multi-arch Docker images are published for:
 
-- **amd64**: Standard 64-bit PCs and servers
-- **arm64**: 64-bit ARM devices (Raspberry Pi 4/5, newer ARM servers)
-- **armv7**: 32-bit ARM devices (Raspberry Pi 3 and older)
+- **amd64** — Standard 64-bit PCs and servers
+- **arm64** — 64-bit ARM (Raspberry Pi 4/5, ARM servers)
+- **armv7** — 32-bit ARM (Raspberry Pi 3 and older)
 
-Docker will automatically select the appropriate architecture when you pull the image.
+Docker automatically selects the correct architecture when pulling.
 
 ## Container Registries
 
-TrafegoDNS images are available from both Docker Hub and GitHub Container Registry.
-
-Both registries receive simultaneous updates and are functionally identical. The GitHub Container Registry offers an alternative if you experience rate limiting or availability issues with Docker Hub.
+Images are available from both Docker Hub and GitHub Container Registry:
 
 ### Docker Hub
 ```yaml
@@ -176,744 +868,25 @@ image: eafxx/trafegodns:latest
 image: ghcr.io/elmerfds/trafegodns:latest
 ```
 
-## Quick Start
+Both registries receive simultaneous updates and are functionally identical.
 
-### Docker Compose
+## Docker Secrets
 
-```yaml
-version: '3'
-
-services:
-  trafegodns:
-    image: eafxx/trafegodns:latest
-    container_name: trafegodns
-    restart: unless-stopped
-    environment:
-      # User/Group Permissions (optional)
-      - PUID=1000                # User ID to run as
-      - PGID=1000                # Group ID to run as
-      
-      # Operation mode
-      - OPERATION_MODE=traefik  # Options: traefik, direct
-      
-      # DNS Provider (choose one)
-      - DNS_PROVIDER=cloudflare  # Options: cloudflare, digitalocean, route53
-      
-      # Cloudflare settings (if using Cloudflare)
-      - CLOUDFLARE_TOKEN=your_cloudflare_api_token
-      - CLOUDFLARE_ZONE=example.com
-      
-      # DigitalOcean settings (if using DigitalOcean)
-      - DO_TOKEN=your_digitalocean_api_token
-      - DO_DOMAIN=example.com
-      
-      # Route53 settings (if using Route53)
-      - ROUTE53_ACCESS_KEY=your_aws_access_key
-      - ROUTE53_SECRET_KEY=your_aws_secret_key
-      - ROUTE53_ZONE=example.com
-      # - ROUTE53_ZONE_ID=Z1234567890ABC  # Alternative to ROUTE53_ZONE
-      # - ROUTE53_REGION=eu-west-2  # Optional, defaults to eu-west-2 (London)
-      
-      # Traefik API settings (for traefik mode)
-      - TRAEFIK_API_URL=http://traefik:8080/api
-      - LOG_LEVEL=INFO
-      
-      # DNS record management
-      - CLEANUP_ORPHANED=true  # Set to true to automatically remove DNS records when containers are removed
-      - PRESERVED_HOSTNAMES=static.example.com,api.example.com,*.admin.example.com  # Hostnames to preserve (even when orphaned)
-      - MANAGED_HOSTNAMES=blog.example.com:A:192.168.1.10:3600:false,mail.example.com:MX:mail.example.com:3600:false  # Manually managed hostnames
-      
-      # API and network timeout settings
-      - API_TIMEOUT=60000  # API request timeout in milliseconds (60 seconds)
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./config:/config   # Persistent configuration storage
-    networks:
-      - traefik-network
-```
-
-### Using Direct Mode Example
+Environment variables containing sensitive values (those ending in `_TOKEN`, `_KEY`, or `_PASSWORD`) support Docker Secrets. Append `_FILE` to the variable name and point to the secret file:
 
 ```yaml
-version: '3'
-
-services:
-  trafegodns:
-    image: eafxx/trafegodns:latest
-    container_name: trafegodns
-    restart: unless-stopped
-    environment:
-      # User/Group Permissions (optional)
-      - PUID=1000                # User ID to run as
-      - PGID=1000                # Group ID to run as
-      
-      # Operation mode - direct doesn't need Traefik
-      - OPERATION_MODE=direct
-      
-      # DNS Provider
-      - DNS_PROVIDER=cloudflare
-      - CLOUDFLARE_TOKEN=your_cloudflare_api_token
-      - CLOUDFLARE_ZONE=example.com
-      
-      # Application settings
-      - LOG_LEVEL=INFO
-      - CLEANUP_ORPHANED=true
-      
-      # API and network timeout settings
-      - API_TIMEOUT=60000  # API request timeout in milliseconds (60 seconds)
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./config:/config   # Persistent configuration storage
-
-  example-app:
-    image: nginx
-    labels:
-      # Direct mode hostname definition
-      - "dns.hostname=app.example.com"
-      # DNS configuration
-      - "dns.type=A"  # A record instead of default CNAME
-      - "dns.proxied=false"  # Disable Cloudflare proxy
-```
-
-## DNS Provider Configuration
-
-### Cloudflare
-
-Cloudflare requires an API token with DNS edit permissions for your zone:
-
-```yaml
-environment:
-  - DNS_PROVIDER=cloudflare
-  - CLOUDFLARE_TOKEN=your_cloudflare_api_token
-  - CLOUDFLARE_ZONE=example.com
-```
-
-Cloudflare-specific features:
-- Proxying (orange cloud) through `dns.proxied` or `dns.cloudflare.proxied` labels
-- Ultra-low TTL support (as low as 1 second)
-- Automatic handling of apex domains
-
-### DigitalOcean
-
-DigitalOcean requires an API token with write access to your domain:
-
-```yaml
-environment:
-  - DNS_PROVIDER=digitalocean
-  - DO_TOKEN=your_digitalocean_api_token
-  - DO_DOMAIN=example.com
-```
-
-DigitalOcean-specific notes:
-- Minimum TTL of 30 seconds (enforced by provider)
-- No proxying support (all `proxied` labels are ignored)
-- Automatically adds trailing dots for domain names as required by DigitalOcean
-
-### Route53
-
-AWS Route53 requires IAM credentials with permissions to modify DNS records:
-
-```yaml
-environment:
-  - DNS_PROVIDER=route53
-  - ROUTE53_ACCESS_KEY=your_aws_access_key
-  - ROUTE53_SECRET_KEY=your_aws_secret_key
-  - ROUTE53_ZONE=example.com
-  # - ROUTE53_ZONE_ID=Z1234567890ABC  # Alternative to ROUTE53_ZONE
-  # - ROUTE53_REGION=eu-west-2  # Optional, defaults to eu-west-2 (London)
-```
-
-Route53-specific notes:
-- Minimum TTL of 60 seconds (enforced by provider)
-- No proxying support (all `proxied` labels are ignored)
-- Automatically adds trailing dots for domain names as required by Route53
-- Supports batch processing for efficient API usage
-
-Required AWS IAM permissions:
-```json
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "route53:ListHostedZones",
-                "route53:ListHostedZonesByName",
-                "route53:GetHostedZone",
-                "route53:ListResourceRecordSets",
-                "route53:ChangeResourceRecordSets"
-            ],
-            "Resource": "*"
-        }
-    ]
-}
-```
-
-## User/Group Permissions
-
-TrafegoDNS supports running as a specific user and group using the PUID and PGID environment variables:
-
-```yaml
-environment:
-  - PUID=1000  # User ID to run as
-  - PGID=1000  # Group ID to run as
-```
-
-This is useful for ensuring that files created by the container (like the DNS record tracking file) have the correct ownership. If not specified, the container will run as the default `abc` user (UID 1001, GID 1001).
-
-To access the Docker socket, you'll need to ensure the user has the appropriate permissions. There are several ways to do this:
-
-1. Run the container as root:
-   ```yaml
-   user: "0:0"  # Run as root
-   ```
-
-2. Add the container's user to the Docker group (done automatically by the container):
-   ```yaml
-   volumes:
-     - /var/run/docker.sock:/var/run/docker.sock:ro
-   ```
-
-3. Set appropriate permissions on the Docker socket host-side.
-
-## Service Labels
-
-The DNS Manager supports the following labels for customising DNS record creation:
-
-### Basic Labels (Provider-Agnostic)
-
-| Label | Description | Default |
-|-------|-------------|---------|
-| `dns.skip` | Skip DNS management for this service | `false` |
-| `dns.manage` | Enable DNS management for this service | Depends on `DNS_DEFAULT_MANAGE` |
-| `dns.type` | DNS record type (A, AAAA, CNAME, etc.) | `CNAME` or `A` for apex domains |
-| `dns.content` | Record content/value | Domain for CNAME, Public IP for A |
-| `dns.ttl` | Record TTL in seconds | `1` (Auto) for Cloudflare, `30` for DigitalOcean, `60` for Route53 |
-| `dns.hostname` | Comma-separated list of hostnames (direct mode) | None |
-| `dns.domain` | Domain name (direct mode) | None |
-| `dns.subdomain` | Comma-separated list of subdomains (direct mode) | None |
-| `dns.use_apex` | Whether to use the apex domain (direct mode) | `false` |
-| `dns.host.X` | Individual hostnames (direct mode) | None |
-
-### Provider-Specific Labels (Override Provider-Agnostic Labels)
-
-| Label | Description | Default | Supported Providers |
-|-------|-------------|---------|---------------------|
-| `dns.cloudflare.skip` | Skip Cloudflare DNS management for this service | `false` | Cloudflare |
-| `dns.cloudflare.manage` | Enable Cloudflare DNS management for this service | Depends on `DNS_DEFAULT_MANAGE` | Cloudflare |
-| `dns.cloudflare.type` | DNS record type for Cloudflare | `CNAME` or `A` for apex domains | Cloudflare |
-| `dns.cloudflare.content` | Record content for Cloudflare | Domain for CNAME, Public IP for A | Cloudflare |
-| `dns.cloudflare.proxied` | Enable Cloudflare proxy (orange cloud) | `true` | Cloudflare |
-| `dns.cloudflare.ttl` | Record TTL for Cloudflare in seconds | `1` (Auto) | Cloudflare |
-| `dns.digitalocean.skip` | Skip DigitalOcean DNS management for this service | `false` | DigitalOcean |
-| `dns.digitalocean.manage` | Enable DigitalOcean DNS management for this service | Depends on `DNS_DEFAULT_MANAGE` | DigitalOcean |
-| `dns.digitalocean.type` | DNS record type for DigitalOcean | `CNAME` or `A` for apex domains | DigitalOcean |
-| `dns.digitalocean.content` | Record content for DigitalOcean | Domain for CNAME, Public IP for A | DigitalOcean |
-| `dns.digitalocean.ttl` | Record TTL for DigitalOcean in seconds | `30` (Minimum) | DigitalOcean |
-| `dns.route53.skip` | Skip Route53 DNS management for this service | `false` | Route53 |
-| `dns.route53.manage` | Enable Route53 DNS management for this service | Depends on `DNS_DEFAULT_MANAGE` | Route53 |
-| `dns.route53.type` | DNS record type for Route53 | `CNAME` or `A` for apex domains | Route53 |
-| `dns.route53.content` | Record content for Route53 | Domain for CNAME, Public IP for A | Route53 |
-| `dns.route53.ttl` | Record TTL for Route53 in seconds | `60` (Minimum) | Route53 |
-
-### Type-Specific Labels
-
-| Label | Applicable Types | Description |
-|-------|------------------|-------------|
-| `dns.priority` or `dns.<provider>.priority` | MX, SRV | Priority value |
-| `dns.weight` or `dns.<provider>.weight` | SRV | Weight value |
-| `dns.port` or `dns.<provider>.port` | SRV | Port value |
-| `dns.flags` or `dns.<provider>.flags` | CAA | Flags value |
-| `dns.tag` or `dns.<provider>.tag` | CAA | Tag value |
-
-## Label Precedence
-
-The system uses the following precedence order when reading labels:
-
-1. Provider-specific labels (e.g., `dns.cloudflare.type`)
-2. Generic DNS labels (e.g., `dns.type`)
-3. Default values from configuration
-
-This allows you to set global defaults, override them with generic DNS settings, and further override with provider-specific settings when needed.
-
-## Provider-Specific TTL Requirements
-
-Different DNS providers have different requirements for TTL values:
-
-| Provider | Minimum TTL | Default TTL | Notes |
-|----------|-------------|-------------|-------|
-| Cloudflare | 1 second | 1 second (Auto) | TTL is ignored for proxied records (always Auto) |
-| DigitalOcean | 30 seconds | 30 seconds | Values below 30 are automatically adjusted to 30 |
-| Route53 | 60 seconds | 60 seconds | Values below 60 are automatically adjusted to 60 |
-
-The application automatically applies the appropriate minimum TTL value for each provider. If you set `DNS_DEFAULT_TTL` in your environment, it will be used only if it's equal to or higher than the provider-specific minimum.
-
-## Usage Examples
-
-### Basic Service with Default Settings
-
-Just use standard Traefik labels (in Traefik mode) or DNS labels (in Direct mode):
-
-#### Traefik Mode
-```yaml
-services:
-  my-app:
-    image: my-image
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.my-app.rule=Host(`app.example.com`)"
-      - "traefik.http.routers.my-app.entrypoints=https"
-```
-
-#### Direct Mode
-```yaml
-services:
-  my-app:
-    image: my-image
-    labels:
-      - "dns.hostname=app.example.com"
-```
-
-### Disable Cloudflare Proxy for Media Servers
-
-```yaml
-services:
-  my-service:
-    image: my-image
-    labels:
-      # For Traefik mode
-      - "traefik.enable=true"
-      - "traefik.http.routers.my-service.rule=Host(`service.example.com`)"
-      # For Direct mode
-      - "dns.hostname=service.example.com"
-      
-      # DNS configuration (works in both modes)
-      - "dns.proxied=false"  # Use generic label
-      # OR "dns.cloudflare.proxied=false"  # Use provider-specific label
-```
-
-### Use A Record with Custom IP
-
-```yaml
-services:
-  my-app:
-    image: my-image
-    labels:
-      # For Traefik mode
-      - "traefik.enable=true"
-      - "traefik.http.routers.my-app.rule=Host(`app.example.com`)"
-      # For Direct mode
-      - "dns.hostname=app.example.com"
-      
-      # DNS configuration (works in both modes)
-      - "dns.type=A"
-      - "dns.content=203.0.113.10"  # Custom IP address
-```
-
-### Set Custom TTL for Route53 DNS
-
-```yaml
-services:
-  my-app:
-    image: my-image
-    labels:
-      # For Traefik mode
-      - "traefik.enable=true"
-      - "traefik.http.routers.my-app.rule=Host(`app.example.com`)"
-      # For Direct mode
-      - "dns.hostname=app.example.com"
-      
-      # DNS configuration (works in both modes)
-      - "dns.route53.ttl=3600"  # Set TTL to 1 hour (3600 seconds)
-```
-
-### Skip DNS Management for a Service
-
-```yaml
-services:
-  internal-app:
-    image: internal-image
-    labels:
-      # For Traefik mode
-      - "traefik.enable=true"
-      - "traefik.http.routers.internal.rule=Host(`internal.example.com`)"
-      # For Direct mode
-      - "dns.hostname=internal.example.com"
-      
-      # DNS configuration (works in both modes)
-      - "dns.skip=true"  # Skip DNS management for all providers
-      # OR "dns.route53.skip=true"  # Skip just Route53 DNS management
-```
-
-### Opt-in DNS Management (when DNS_DEFAULT_MANAGE=false)
-
-```yaml
-services:
-  public-app:
-    image: public-image
-    labels:
-      # For Traefik mode
-      - "traefik.enable=true"
-      - "traefik.http.routers.public.rule=Host(`public.example.com`)"
-      # For Direct mode
-      - "dns.hostname=public.example.com"
-      
-      # DNS configuration (works in both modes)
-      - "dns.manage=true"  # Explicitly enable DNS management for all providers
-      # OR "dns.route53.manage=true"  # Enable just for Route53
-```
-
-### Create MX Record
-
-```yaml
-services:
-  mail-service:
-    image: mail-image
-    labels:
-      # For Traefik mode
-      - "traefik.enable=true"
-      - "traefik.http.routers.mail.rule=Host(`example.com`)"
-      # For Direct mode
-      - "dns.hostname=example.com"
-      
-      # DNS configuration (works in both modes)
-      - "dns.type=MX"
-      - "dns.content=mail.example.com"
-      - "dns.priority=10"
-```
-
-## Environment Variables
-
-### User/Group Settings
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `PUID` | User ID to run as | `1001` | No |
-| `PGID` | Group ID to run as | `1001` | No |
-
-### Application Mode
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `OPERATION_MODE` | Operation mode (`traefik` or `direct`) | `traefik` | No |
-
-### DNS Provider Selection
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `DNS_PROVIDER` | DNS provider to use | `cloudflare` | No |
-
-### Cloudflare Settings
-| Variable | Description | Default | Required if using Cloudflare |
-|----------|-------------|---------|----------|
-| `CLOUDFLARE_TOKEN` | Cloudflare API token with DNS edit permissions | - | Yes |
-| `CLOUDFLARE_ZONE` | Your domain name (e.g., example.com) | - | Yes |
-
-### DigitalOcean Settings
-| Variable | Description | Default | Required if using DigitalOcean |
-|----------|-------------|---------|----------|
-| `DO_TOKEN` | DigitalOcean API token with write access | - | Yes |
-| `DO_DOMAIN` | Your domain name (e.g., example.com) | - | Yes |
-
-### Route53 Settings
-| Variable | Description | Default | Required if using Route53 |
-|----------|-------------|---------|----------|
-| `ROUTE53_ACCESS_KEY` | AWS IAM access key with Route53 permissions | - | Yes |
-| `ROUTE53_SECRET_KEY` | AWS IAM secret key | - | Yes |
-| `ROUTE53_ZONE` | Your domain name (e.g., example.com) | - | Yes* |
-| `ROUTE53_ZONE_ID` | Your Route53 hosted zone ID | - | Yes* |
-| `ROUTE53_REGION` | AWS region for API calls | `eu-west-2` | No |
-
-*Either `ROUTE53_ZONE` or `ROUTE53_ZONE_ID` must be provided.
-
-### Traefik API Settings
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `TRAEFIK_API_URL` | URL to Traefik API | `http://traefik:8080/api` | No |
-| `TRAEFIK_API_USERNAME` | Username for Traefik API basic auth | - | No |
-| `TRAEFIK_API_PASSWORD` | Password for Traefik API basic auth | - | No |
-
-### DNS Default Settings
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `DNS_LABEL_PREFIX` | Base prefix for DNS labels | `dns.` | No |
-| `DNS_DEFAULT_TYPE` | Default DNS record type | `CNAME` | No |
-| `DNS_DEFAULT_CONTENT` | Default record content | Value of `CLOUDFLARE_ZONE` or `DO_DOMAIN` or `ROUTE53_ZONE` | No |
-| `DNS_DEFAULT_PROXIED` | Default Cloudflare proxy status | `true` | No |
-| `DNS_DEFAULT_TTL` | Default TTL in seconds | Provider-specific: Cloudflare=1 (Auto), DigitalOcean=30, Route53=60 | No |
-| `DNS_DEFAULT_MANAGE` | Global DNS management mode | `true` | No |
-
-### IP Address Settings
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `PUBLIC_IP` | Manual override for public IPv4 | Auto-detected | No |
-| `PUBLIC_IPV6` | Manual override for public IPv6 | Auto-detected | No |
-| `IP_REFRESH_INTERVAL` | How often to refresh IP (ms) | `3600000` (1 hour) | No |
-
-### Application Behaviour
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `POLL_INTERVAL` | How often to poll for changes (ms) | `60000` (1 min) | No |
-| `WATCH_DOCKER_EVENTS` | Whether to watch Docker events | `true` | No |
-| `CLEANUP_ORPHANED` | Whether to remove orphaned DNS records | `false` | No |
-| `PRESERVED_HOSTNAMES` | Comma-separated list of hostnames to exclude from cleanup | - | No |
-| `MANAGED_HOSTNAMES` | Comma-separated list of hostnames to create and maintain | - | No |
-| `DOCKER_SOCKET` | Path to Docker socket | `/var/run/docker.sock` | No |
-| `LOG_LEVEL` | Logging verbosity (ERROR, WARN, INFO, DEBUG, TRACE) | `INFO` | No |
-| `DNS_CACHE_REFRESH_INTERVAL` | How often to refresh DNS cache (ms) | `3600000` (1 hour) | No |
-| `API_TIMEOUT` | API request timeout (ms) | `60000` (1 minute) | No |
-
-## Automated Cleanup of Orphaned Records
-
-When containers are removed, their DNS records can be automatically cleaned up by enabling the `CLEANUP_ORPHANED` setting:
-
-```yaml
-environment:
-  - CLEANUP_ORPHANED=true
-  - CLEANUP_GRACE_PERIOD=15  # Minutes before deletion (default: 15)
-```
-
-This process includes a grace period to prevent premature deletion during container updates or service maintenance:
-
-1. When a hostname is first detected as orphaned (no longer associated with an active container), it's **marked for deletion** but not immediately removed.
-2. Only after the configurable grace period has elapsed (default: 15 minutes) will the record actually be deleted.
-3. If the container/service comes back online within the grace period, the record is automatically "unmarked" and preserved.
-
-### Preserving Specific DNS Records
-
-You can specify hostnames that should never be deleted, even if they become orphaned:
-
-```yaml
-environment:
-  - PRESERVED_HOSTNAMES=static.example.com,api.example.com,*.admin.example.com
-```
-
-This supports:
-- Exact hostnames (e.g., `api.example.com`)
-- Wildcard subdomains (e.g., `*.admin.example.com`) which will preserve all subdomains that match the pattern
-
-Preserved hostnames will be logged during startup and skipped during any cleanup operations.
-
-### How the Grace Period Works
-
-The grace period feature provides several benefits:
-
-- **Prevents data loss during container updates**: Services that temporarily go offline during rolling updates won't lose their DNS records.
-- **Accommodates maintenance windows**: Planned maintenance that takes services offline won't trigger DNS record deletion.
-- **Provides recovery window**: If a container is accidentally stopped, you have time to restart it before DNS records are removed.
-- **Clear logging**: The system clearly logs when records are marked for deletion and when they're actually deleted.
-
-### Configuration
-
-- `CLEANUP_ORPHANED`: Set to `true` to enable the orphaned record detection and cleanup.
-- `CLEANUP_GRACE_PERIOD`: Time in minutes to wait before deleting orphaned records (default: 15 minutes).
-- `PRESERVED_HOSTNAMES`: List of hostnames to never delete, even if orphaned.
-
-### Logs During Operation
-
-When using the grace period feature, you'll see these log entries:
-
-1. When a record is first marked as orphaned:
-   ```
-   🕒 Marking DNS record as orphaned (will be deleted after 15 minutes): app.example.com (A)
-   ```
-
-2. If the service comes back online within the grace period:
-   ```
-   ✅ DNS record is active again, removing orphaned mark: app.example.com (A)
-   ```
-
-3. When the grace period elapses and the record is deleted:
-   ```
-   🗑️ Grace period elapsed (16 minutes), removing orphaned DNS record: app.example.com (A)
-   ```
-
-4. Summary logs after each cleanup cycle:
-   ```
-   Orphaned records: 3 newly marked, 2 deleted after grace period, 1 reactivated
-   ```
-
-This mechanism ensures your DNS records remain stable during normal operational changes while still cleaning up truly abandoned records after a reasonable waiting period.
-
-### Preserving Specific DNS Records
-
-You can specify hostnames that should never be deleted, even if they become orphaned:
-
-```yaml
-environment:
-  - PRESERVED_HOSTNAMES=static.example.com,api.example.com,*.admin.example.com
-```
-
-This supports:
-- Exact hostnames (e.g., `api.example.com`)
-- Wildcard subdomains (e.g., `*.admin.example.com`) which will preserve all subdomains that match the pattern
-
-Preserved hostnames will be logged during startup and skipped during any cleanup operations.
-
-## Manual Hostname Management
-
-TrafegoDNS allows you to manually specify hostnames that should be created and maintained regardless of container lifecycle:
-
-```yaml
-environment:
-  - MANAGED_HOSTNAMES=blog.example.com:A:192.168.1.10:3600:false,mail.example.com:MX:mail.example.com:3600:false
-```
-
-The format for each managed hostname is:
-```
-hostname:type:content:ttl:proxied
-```
-
-Where:
-- `hostname`: The full hostname to create (e.g., blog.example.com)
-- `type`: DNS record type (A, AAAA, CNAME, MX, TXT, etc.)
-- `content`: Record content/value (IP address for A records, target domain for CNAME, etc.)
-- `ttl`: Time-to-live in seconds
-- `proxied`: Whether to enable Cloudflare proxying (true/false, only applicable for Cloudflare)
-
-These hostnames will be:
-- Created during initialization and kept in sync during runtime
-- Maintained independently of container lifecycle
-- Never deleted by the cleanup process
-- Preserved even if containers using the same hostname are created and then removed
-
-This is useful for maintaining static DNS records for services that don't run in containers, legacy systems, or external endpoints.
-
-## DNS Record Tracking
-
-The application maintains a persistent record of all DNS entries it creates in a tracking file. This enables:
-
-1. **Provider Independence**: Consistent tracking across different DNS providers (Cloudflare, DigitalOcean, Route53)
-2. **Safety**: Only records created by the tool are ever deleted during cleanup
-3. **Persistence**: Record history is maintained between application restarts
-
-## Configuration Storage
-
-TrafegoDNS stores its configuration and data files in the `/config` directory within the container, which should be mounted as a volume for persistence:
-
-```yaml
-volumes:
-  - /var/run/docker.sock:/var/run/docker.sock:ro
-  - ./config:/config
-```
-
-The main configuration files include:
-
-- `/config/data/dns-records.json` - Tracking information for all DNS records managed by the application
-
-This approach provides several benefits:
-
-1. **Data Persistence**: All data is stored in a mounted volume that persists across container restarts and updates
-2. **Backup Capability**: The config directory can be easily backed up
-3. **Migration Support**: Moving to a new server is as simple as copying the config directory
-
-The application will automatically migrate any existing data from legacy locations into the new structure.
-
-## DNS Management Modes
-
-TrafegoDNS supports two operational modes for DNS management:
-
-### Opt-out Mode (Default)
-- Set `DNS_DEFAULT_MANAGE=true` or leave it unset
-- All services automatically get DNS records created
-- Services can opt-out with `dns.skip=true` or `dns.<provider>.skip=true` label
-
-### Opt-in Mode
-- Set `DNS_DEFAULT_MANAGE=false`
-- Services need to explicitly opt-in with `dns.manage=true` or `dns.<provider>.manage=true` label
-- Services can still use skip labels to ensure no DNS management
-
-## Logging System
-
-The application includes a configurable logging system to help with monitoring and troubleshooting:
-
-### Log Levels
-
-- `ERROR` - Only critical errors that break functionality
-- `WARN` - Important warnings that don't break functionality
-- `INFO` - Key operational information (default)
-- `DEBUG` - Detailed information for troubleshooting
-- `TRACE` - Extremely detailed information for deep troubleshooting
-
-The default level is `INFO`, which provides a clean, readable output with important operational information. Set the `LOG_LEVEL` environment variable to change the logging verbosity.
-
-### INFO Level Format
-
-```
-✅ Starting TrafegoDNS
-ℹ️ Cloudflare Zone: example.com
-ℹ️ Processing 30 hostnames for DNS management
-✅ Created A record for example.com
-ℹ️ 29 DNS records are up to date
-✅ TrafegoDNS running successfully
-```
-
-## Performance Optimisation
-
-The application includes built-in performance optimisations to reduce API calls and improve efficiency:
-
-### DNS Caching
-
-DNS records from providers are cached in memory to reduce API calls:
-
-- All records are fetched in a single API call
-- The cache is refreshed periodically (default: every hour)
-- The refresh interval can be adjusted with the `DNS_CACHE_REFRESH_INTERVAL` variable
-
-### Batch Processing
-
-DNS record updates are processed in batches:
-
-- All hostname configurations are collected first
-- Records are compared against the cache in memory
-- Only records that need changes receive API calls
-- All other records use cached data
-
-This significantly reduces API calls to DNS providers, especially for deployments with many hostnames.
-
-### Timeout Handling
-
-The application includes robust timeout handling for API operations:
-
-- All API calls have a configurable timeout (default: 60 seconds)
-- This can be adjusted with the `API_TIMEOUT` environment variable
-- Timeouts are particularly important when running on lower-powered devices like Raspberry Pi
-
-## Automatic Apex Domain Handling
-
-The DNS Manager automatically detects apex domains (e.g., `example.com`) and uses A records with your public IP instead of CNAME records, which are not allowed at the apex domain level.
-
-## Using Docker Secrets
-
-Any environment variables supported by TrafegoDNS that contain secrets, i.e. those ending in `_TOKEN`, `_KEY` or `_PASSWORD` support receiving the secret vie Docker [secrets](https://docs.docker.com/compose/how-tos/use-secrets/). 
-
-To provide a value via secret file, append the suffix `_FILE` to the variable name and specify the path to the file that contains the secret.
-
-Example:
-
-```
 secrets:
-  cloudflare_dns_api_token:
-    file: ${APPDATA_LOCATION:-/srv/appdata}/secrets/cloudflare_dns_api_token
+  jwt_secret:
+    file: ./secrets/jwt_secret
 
 services:
   trafegodns:
-    container_name: trafegodns
-    image: eafxx/trafegodns:latest
-    restart: unless-stopped
-    volumes: 
-      - trafegodns:/config
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+    image: ghcr.io/elmerfds/trafegodns:latest
     secrets:
-      - cloudflare_dns_api_token
+      - jwt_secret
     environment:
-      CLOUDFLARE_TOKEN_FILE: /run/secrets/cloudflare_dns_api_token
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
 ```
-
-### Supported Secret Variables
-
-- CLOUDFLARE_TOKEN_FILE
-- ROUTE53_ACCESS_KEY_FILE
-- ROUTE53_SECRET_KEY_FILE
-- DO_TOKEN_FILE
-- TRAEFIK_API_PASSWORD_FILE
 
 ## Building from Source
 
@@ -922,29 +895,35 @@ services:
 git clone https://github.com/elmerfds/TrafegoDNS.git
 cd TrafegoDNS
 
-# Build the Docker image
-docker build -t TrafegoDNS .
+# Install dependencies
+cd v2 && npm install
 
-# Run the container
-docker run -d \
-  --name TrafegoDNS \
-  -e CLOUDFLARE_TOKEN=your_token \
-  -e CLOUDFLARE_ZONE=example.com \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  -v ./config:/config \
-  trafegodns
+# Build TypeScript backend
+npm run build
+
+# Build React frontend
+cd web && npm install && npm run build
+
+# Build Docker image
+cd ../..
+docker build -f v2/Dockerfile -t trafegodns:v2 .
 ```
 
 ## Development
 
-### Technologies
-- **Backend**: Node.js with optimised async processing
-- **DNS Integration**: Native API clients for Cloudflare, DigitalOcean, and AWS Route53
-- **Container Integration**: Docker API via dockerode
-- **Event Architecture**: Custom event bus for decoupled component communication
-- **Configuration**: Environment-based with intelligent defaults
-- **Resilience**: Retry mechanisms and error categorisation
-- **Caching**: Local DNS record caching for improved performance
+### Technology Stack
+
+| Component | Technology |
+|-----------|------------|
+| Backend | Node.js 20+ / TypeScript 5 / Express 5 |
+| Database | SQLite via better-sqlite3 + Drizzle ORM |
+| Validation | Zod |
+| Logging | Pino |
+| Frontend | React 18 + Vite + TailwindCSS |
+| State | Zustand + TanStack Query |
+| Auth | JWT (jsonwebtoken) + bcrypt |
+| Docker | Dockerode |
+| Process Supervisor | s6-overlay |
 
 ### Approach
 - Core concept, architecture, and management by the project author
