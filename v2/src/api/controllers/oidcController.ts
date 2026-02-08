@@ -35,7 +35,7 @@ export async function oidcLogin(req: Request, res: Response): Promise<void> {
     res.redirect(302, url);
   } catch (error) {
     logger.error({ error }, 'Failed to initiate OIDC login');
-    res.redirect(`/?error=oidc_init_failed`);
+    res.redirect(`/login?error=oidc_init_failed`);
   }
 }
 
@@ -57,10 +57,16 @@ export async function oidcCallback(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    // Build the full callback URL from the request
-    const protocol = req.protocol;
-    const host = req.get('host');
-    const callbackUrl = new URL(`${protocol}://${host}${req.originalUrl}`);
+    // Build the callback URL using the configured redirect URI as the base
+    // This avoids protocol/host mismatches behind reverse proxies
+    const config = (await import('../../config/ConfigManager.js')).getConfig();
+    const redirectUri = config.oidc!.redirectUri;
+    const callbackUrl = new URL(redirectUri);
+    // Append the query params from the actual request (code, state, etc.)
+    const reqUrl = new URL(`http://localhost${req.originalUrl}`);
+    reqUrl.searchParams.forEach((value, key) => {
+      callbackUrl.searchParams.set(key, value);
+    });
 
     // Exchange code for tokens and find/create user
     const oidcUser = await oidcService.handleCallback(callbackUrl, expectedState);
@@ -95,7 +101,8 @@ export async function oidcCallback(req: Request, res: Response): Promise<void> {
     res.redirect('/');
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    logger.error({ error: message }, 'OIDC callback failed');
-    res.redirect(`/?error=oidc_callback_failed`);
+    const stack = error instanceof Error ? error.stack : undefined;
+    logger.error({ error: message, stack }, 'OIDC callback failed');
+    res.redirect(`/login?error=${encodeURIComponent(message)}`);
   }
 }
