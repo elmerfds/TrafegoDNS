@@ -96,17 +96,15 @@ export const useAuthStore = create<AuthState>()(
 
       logout: async () => {
         const { oidcConfig } = get();
+        // Clear state immediately so UI redirects to login without flash
+        set({ user: null, isAuthenticated: false });
+        window.dispatchEvent(new CustomEvent('auth:logout'));
         try {
           await authApi.logout();
-        } finally {
-          set({
-            user: null,
-            isAuthenticated: false,
-          });
-          // Redirect to OIDC logout if configured
-          if (oidcConfig?.logoutUrl) {
-            window.location.href = oidcConfig.logoutUrl;
-          }
+        } catch { /* ignore — cookie may already be cleared */ }
+        // Redirect to OIDC logout if configured
+        if (oidcConfig?.logoutUrl) {
+          window.location.href = oidcConfig.logoutUrl;
         }
       },
 
