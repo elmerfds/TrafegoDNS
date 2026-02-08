@@ -163,6 +163,19 @@ export class Application {
     // Initialize Audit Service (listens for events and logs them)
     await auditService.init();
 
+    // Session cleanup (every hour)
+    setInterval(async () => {
+      try {
+        const { sessionService } = await import('../services/SessionService.js');
+        const count = await sessionService.cleanupExpiredSessions();
+        if (count > 0) {
+          logger.info({ count }, 'Expired sessions cleaned up');
+        }
+      } catch (error) {
+        logger.error({ error }, 'Session cleanup failed');
+      }
+    }, 60 * 60 * 1000);
+
     // Initialize OIDC Service if configured
     if (this.config.security.authMode === 'oidc' && this.config.oidc) {
       this.oidcService = new OIDCService(this.config.oidc);

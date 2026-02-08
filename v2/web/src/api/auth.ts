@@ -31,6 +31,19 @@ export interface CreateApiKeyResponse extends ApiKey {
   key: string; // Only returned on creation
 }
 
+export interface Session {
+  id: string;
+  userId: string;
+  authMethod: 'local' | 'oidc';
+  ipAddress: string;
+  userAgent: string | null;
+  deviceInfo: { browser?: string; os?: string; device?: string } | null;
+  createdAt: string;
+  lastActivityAt: string;
+  expiresAt: string;
+  isCurrent: boolean;
+}
+
 export type AuthMode = 'local' | 'none' | 'oidc';
 
 export interface OIDCAuthConfig {
@@ -89,5 +102,17 @@ export const authApi = {
     avatar?: string | null;
   }): Promise<User> {
     return apiClient.put<User>('/auth/profile', data);
+  },
+
+  async listSessions(): Promise<Session[]> {
+    return apiClient.get<Session[]>('/auth/sessions');
+  },
+
+  async revokeSession(id: string): Promise<void> {
+    await apiClient.delete(`/auth/sessions/${id}`);
+  },
+
+  async revokeAllSessions(): Promise<{ count: number }> {
+    return apiClient.post<{ count: number }>('/auth/sessions/revoke-all');
   },
 };

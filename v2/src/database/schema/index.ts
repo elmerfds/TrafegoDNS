@@ -289,3 +289,45 @@ export const userPreferences = sqliteTable('user_preferences', {
 
 export type UserPreference = typeof userPreferences.$inferSelect;
 export type NewUserPreference = typeof userPreferences.$inferInsert;
+
+/**
+ * Sessions table
+ * Tracks active user sessions tied to JWT tokens
+ */
+export const sessions = sqliteTable('sessions', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull().unique(),
+  authMethod: text('auth_method', { enum: ['local', 'oidc'] }).notNull(),
+  ipAddress: text('ip_address').notNull(),
+  userAgent: text('user_agent'),
+  deviceInfo: text('device_info'), // JSON: { browser, os, device }
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+  lastActivityAt: integer('last_activity_at', { mode: 'timestamp' }).notNull(),
+  ...timestamps,
+});
+
+export type Session = typeof sessions.$inferSelect;
+export type NewSession = typeof sessions.$inferInsert;
+
+/**
+ * Security Logs table
+ * Tracks authentication and security events (separate from audit logs)
+ */
+export const securityLogs = sqliteTable('security_logs', {
+  id: text('id').primaryKey(),
+  eventType: text('event_type').notNull(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  sessionId: text('session_id'),
+  ipAddress: text('ip_address').notNull(),
+  userAgent: text('user_agent'),
+  authMethod: text('auth_method'),
+  success: integer('success', { mode: 'boolean' }).notNull(),
+  failureReason: text('failure_reason'),
+  details: text('details').notNull().default('{}'),
+  ...timestamps,
+});
+
+export type SecurityLog = typeof securityLogs.$inferSelect;
+export type NewSecurityLog = typeof securityLogs.$inferInsert;

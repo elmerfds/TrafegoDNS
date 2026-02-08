@@ -17,6 +17,21 @@ import {
 } from '../middleware/index.js';
 import { loginSchema, createApiKeySchema } from '../validation.js';
 import { getConfig } from '../../config/ConfigManager.js';
+import { sessionService, hashToken } from '../../services/SessionService.js';
+import { securityLogService } from '../../services/SecurityLogService.js';
+
+/**
+ * Extract client IP from request (respects X-Forwarded-For behind proxy)
+ */
+function getClientIp(req: Request): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') return forwarded.split(',')[0]!.trim();
+  if (Array.isArray(forwarded)) return forwarded[0]!.trim();
+  return req.ip ?? req.socket.remoteAddress ?? 'unknown';
+}
+
+/** JWT expiration in seconds (mirrors auth.ts constant) */
+const JWT_EXPIRES_IN_SECONDS = parseInt(process.env.JWT_EXPIRES_IN_SECONDS ?? '86400', 10);
 
 const BCRYPT_ROUNDS = 12;
 
@@ -49,6 +64,8 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const { username, password } = loginSchema.parse(req.body);
+  const clientIp = getClientIp(req);
+  const userAgent = req.headers['user-agent'];
 
   const db = getDatabase();
   const [user] = await db
@@ -58,16 +75,43 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
     .limit(1);
 
   if (!user) {
+    void securityLogService.logEvent({
+      eventType: 'login_failure',
+      ipAddress: clientIp,
+      userAgent,
+      authMethod: 'local',
+      success: false,
+      failureReason: 'user_not_found',
+      details: { username },
+    });
     throw ApiError.unauthorized('Invalid credentials');
   }
 
   // OIDC users cannot log in with local credentials
   if (!user.passwordHash) {
+    void securityLogService.logEvent({
+      eventType: 'login_failure',
+      userId: user.id,
+      ipAddress: clientIp,
+      userAgent,
+      authMethod: 'local',
+      success: false,
+      failureReason: 'oidc_user',
+    });
     throw ApiError.unauthorized('This account uses SSO. Please sign in with your identity provider.');
   }
 
   const passwordMatch = await bcrypt.compare(password, user.passwordHash);
   if (!passwordMatch) {
+    void securityLogService.logEvent({
+      eventType: 'login_failure',
+      userId: user.id,
+      ipAddress: clientIp,
+      userAgent,
+      authMethod: 'local',
+      success: false,
+      failureReason: 'invalid_password',
+    });
     throw ApiError.unauthorized('Invalid credentials');
   }
 
@@ -83,6 +127,26 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
     username: user.username,
     email: user.email,
     role: user.role,
+  });
+
+  // Create session
+  await sessionService.createSession({
+    userId: user.id,
+    token,
+    authMethod: 'local',
+    ipAddress: clientIp,
+    userAgent,
+    expiresInSeconds: JWT_EXPIRES_IN_SECONDS,
+  });
+
+  // Log security event
+  void securityLogService.logEvent({
+    eventType: 'login_success',
+    userId: user.id,
+    ipAddress: clientIp,
+    userAgent,
+    authMethod: 'local',
+    success: true,
   });
 
   // Set audit context
@@ -119,6 +183,22 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
  * Logout (clear cookie)
  */
 export const logout = asyncHandler(async (req: Request, res: Response) => {
+  // Revoke session if we have one
+  if (req.sessionId && req.user) {
+    await sessionService.revokeSession(req.sessionId, req.user.id);
+  }
+
+  // Log security event
+  void securityLogService.logEvent({
+    eventType: 'logout',
+    userId: req.user?.id,
+    sessionId: req.sessionId,
+    ipAddress: getClientIp(req),
+    userAgent: req.headers['user-agent'],
+    authMethod: 'local',
+    success: true,
+  });
+
   setAuditContext(req, {
     action: 'logout',
     resourceType: 'user',
@@ -360,6 +440,19 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response) =>
 
   await db.update(users).set(updateData).where(eq(users.id, req.user.id));
 
+  // Log password change as security event
+  if (password !== undefined) {
+    void securityLogService.logEvent({
+      eventType: 'password_change',
+      userId: req.user.id,
+      sessionId: req.sessionId,
+      ipAddress: getClientIp(req),
+      userAgent: req.headers['user-agent'],
+      authMethod: 'local',
+      success: true,
+    });
+  }
+
   setAuditContext(req, {
     action: 'update',
     resourceType: 'user',
@@ -384,6 +477,99 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response) =>
   res.json({
     success: true,
     data: user,
+  });
+});
+
+/**
+ * List active sessions for current user
+ */
+export const listSessions = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw ApiError.unauthorized();
+  }
+
+  // Get current token hash for "isCurrent" flag
+  const authHeader = req.headers.authorization;
+  const tokenCookie = req.cookies?.token as string | undefined;
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : tokenCookie;
+  const currentTokenHash = token ? hashToken(token) : undefined;
+
+  const sessions = await sessionService.listUserSessions(req.user.id, currentTokenHash);
+
+  res.json({
+    success: true,
+    data: sessions,
+  });
+});
+
+/**
+ * Revoke a specific session
+ */
+export const revokeSessionHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw ApiError.unauthorized();
+  }
+
+  const sessionId = req.params.id as string;
+
+  // Prevent revoking current session (use logout instead)
+  if (sessionId === req.sessionId) {
+    throw ApiError.badRequest('Cannot revoke current session. Use logout instead.');
+  }
+
+  const revoked = await sessionService.revokeSession(sessionId, req.user.id);
+  if (!revoked) {
+    throw ApiError.notFound('Session');
+  }
+
+  // Log security event
+  void securityLogService.logEvent({
+    eventType: 'session_revoked',
+    userId: req.user.id,
+    sessionId,
+    ipAddress: getClientIp(req),
+    userAgent: req.headers['user-agent'],
+    success: true,
+    details: { revokedSessionId: sessionId },
+  });
+
+  setAuditContext(req, {
+    action: 'delete',
+    resourceType: 'session',
+    resourceId: sessionId,
+  });
+
+  res.json({
+    success: true,
+    message: 'Session revoked',
+  });
+});
+
+/**
+ * Revoke all sessions except current
+ */
+export const revokeAllSessions = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw ApiError.unauthorized();
+  }
+
+  const count = await sessionService.revokeAllUserSessions(req.user.id, req.sessionId);
+
+  // Log security event
+  void securityLogService.logEvent({
+    eventType: 'session_revoked',
+    userId: req.user.id,
+    sessionId: req.sessionId,
+    ipAddress: getClientIp(req),
+    userAgent: req.headers['user-agent'],
+    success: true,
+    details: { revokedCount: count, exceptCurrent: true },
+  });
+
+  res.json({
+    success: true,
+    data: { count },
+    message: `${count} session(s) revoked`,
   });
 });
 

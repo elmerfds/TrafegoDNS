@@ -343,6 +343,42 @@ function createTablesDirectly(): void {
     )
   `);
 
+  // Create sessions table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      auth_method TEXT NOT NULL,
+      ip_address TEXT NOT NULL,
+      user_agent TEXT,
+      device_info TEXT,
+      expires_at INTEGER NOT NULL,
+      revoked_at INTEGER,
+      last_activity_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // Create security_logs table
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS security_logs (
+      id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      session_id TEXT,
+      ip_address TEXT NOT NULL,
+      user_agent TEXT,
+      auth_method TEXT,
+      success INTEGER NOT NULL,
+      failure_reason TEXT,
+      details TEXT NOT NULL DEFAULT '{}',
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
   // Run schema migrations for existing databases BEFORE creating indexes
   // This ensures new columns exist before we try to create indexes on them
   runSchemaMigrations(sqliteDb);
@@ -364,6 +400,12 @@ function createTablesDirectly(): void {
     CREATE INDEX IF NOT EXISTS idx_managed_hostnames_provider ON managed_hostnames(provider_id);
     CREATE INDEX IF NOT EXISTS idx_hostname_overrides_hostname ON hostname_overrides(hostname);
     CREATE INDEX IF NOT EXISTS idx_user_preferences_user ON user_preferences(user_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash);
+    CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_security_logs_user ON security_logs(user_id);
+    CREATE INDEX IF NOT EXISTS idx_security_logs_event_type ON security_logs(event_type);
+    CREATE INDEX IF NOT EXISTS idx_security_logs_created ON security_logs(created_at);
   `);
 
   logger.info('Database tables created directly');

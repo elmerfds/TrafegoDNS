@@ -47,6 +47,9 @@ const apiGroups: EndpointGroup[] = [
       { method: 'GET', path: '/api-keys', description: 'List API keys for current user', auth: 'required' },
       { method: 'POST', path: '/api-keys', description: 'Create new API key', auth: 'required', body: { name: 'string', permissions: 'string[]', expiresAt: 'string?' } },
       { method: 'DELETE', path: '/api-keys/:id', description: 'Revoke API key', auth: 'required' },
+      { method: 'GET', path: '/sessions', description: 'List active sessions for current user', auth: 'required' },
+      { method: 'DELETE', path: '/sessions/:id', description: 'Revoke a specific session (cannot revoke current)', auth: 'required' },
+      { method: 'POST', path: '/sessions/revoke-all', description: 'Revoke all sessions except current', auth: 'required' },
       { method: 'GET', path: '/oidc/login', description: 'Initiate OIDC SSO login. Redirects to identity provider.', auth: 'none' },
       { method: 'GET', path: '/oidc/callback', description: 'OIDC callback handler. Exchanges code for tokens and sets JWT cookie.', auth: 'none' },
     ],
@@ -152,6 +155,16 @@ const apiGroups: EndpointGroup[] = [
       { method: 'GET', path: '/', description: 'List audit logs (paginated)', auth: 'required', permission: 'admin' },
       { method: 'GET', path: '/stats', description: 'Get audit statistics', auth: 'required', permission: 'admin' },
       { method: 'GET', path: '/:id', description: 'Get single audit log', auth: 'required', permission: 'admin' },
+    ],
+  },
+  {
+    name: 'Security Logs',
+    description: 'Authentication and security event logs (admin only)',
+    basePath: '/api/v1/security',
+    endpoints: [
+      { method: 'GET', path: '/', description: 'List security logs (paginated, filterable by eventType, userId, ipAddress, success)', auth: 'required', permission: 'admin' },
+      { method: 'GET', path: '/stats', description: 'Get security statistics (login counts, top IPs)', auth: 'required', permission: 'admin' },
+      { method: 'GET', path: '/:id', description: 'Get single security log entry', auth: 'required', permission: 'admin' },
     ],
   },
   {

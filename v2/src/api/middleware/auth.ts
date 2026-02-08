@@ -34,6 +34,7 @@ declare global {
       user?: AuthenticatedUser;
       apiKey?: ApiKeyInfo;
       authMethod?: 'jwt' | 'apikey' | 'global_apikey' | 'anonymous' | 'oidc';
+      sessionId?: string;
     }
   }
 }
@@ -126,11 +127,12 @@ export function generateToken(user: AuthenticatedUser): string {
 }
 
 /**
- * Verify a JWT token signature and validate user exists in database.
+ * Verify a JWT token signature, validate user exists in database,
+ * and check the session is active (not revoked/expired).
  * Returns the current user from DB (not the JWT payload) to ensure
  * role changes and deletions are respected immediately.
  */
-export async function verifyToken(token: string): Promise<AuthenticatedUser | null> {
+export async function verifyToken(token: string): Promise<{ user: AuthenticatedUser; sessionId: string } | null> {
   try {
     const payload = jwt.verify(token, getJwtSecret(), { algorithms: [JWT_ALGORITHM] }) as {
       sub: string;
@@ -152,11 +154,22 @@ export async function verifyToken(token: string): Promise<AuthenticatedUser | nu
       return null;
     }
 
+    // Validate session exists and is active
+    const { sessionService } = await import('../../services/SessionService.js');
+    const session = await sessionService.verifySession(token);
+    if (!session) {
+      logger.debug({ userId: user.id }, 'JWT valid but no active session');
+      return null;
+    }
+
     return {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      role: user.role,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+      },
+      sessionId: session.sessionId,
     };
   } catch {
     return null;
@@ -270,12 +283,13 @@ export function authenticate(
 
   if (token) {
     verifyToken(token)
-      .then((user) => {
-        if (!user) {
+      .then((result) => {
+        if (!result) {
           next(ApiError.unauthorized('Invalid or expired token'));
           return;
         }
-        req.user = user;
+        req.user = result.user;
+        req.sessionId = result.sessionId;
         req.authMethod = 'jwt';
         next();
       })

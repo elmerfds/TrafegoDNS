@@ -17,8 +17,13 @@ import {
   Check,
   AlertTriangle,
   Clock,
+  Monitor,
+  Smartphone,
+  Tablet,
+  Globe,
+  LogOut,
 } from 'lucide-react';
-import { authApi, type ApiKey } from '../api/auth';
+import { authApi, type ApiKey, type Session } from '../api/auth';
 import { Button, Alert, Badge, Modal, ModalFooter } from '../components/common';
 import { useAuthStore } from '../stores';
 
@@ -388,6 +393,179 @@ function ApiKeysSection() {
   );
 }
 
+// ─── Sessions Section ─────────────────────────────────────────────────────────
+
+function getDeviceIcon(deviceType?: string) {
+  switch (deviceType) {
+    case 'mobile': return Smartphone;
+    case 'tablet': return Tablet;
+    default: return Monitor;
+  }
+}
+
+function SessionsSection() {
+  const queryClient = useQueryClient();
+  const [showRevokeAll, setShowRevokeAll] = useState(false);
+  const [showRevoke, setShowRevoke] = useState<Session | null>(null);
+
+  const { data: sessions = [], isLoading } = useQuery({
+    queryKey: ['sessions'],
+    queryFn: () => authApi.listSessions(),
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: (id: string) => authApi.revokeSession(id),
+    onSuccess: () => {
+      setShowRevoke(null);
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+    },
+  });
+
+  const revokeAllMutation = useMutation({
+    mutationFn: () => authApi.revokeAllSessions(),
+    onSuccess: () => {
+      setShowRevokeAll(false);
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+    },
+  });
+
+  const otherSessionsCount = sessions.filter(s => !s.isCurrent).length;
+
+  return (
+    <div className="card p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
+            <Monitor className="w-4 h-4" />
+            Active Sessions
+          </h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Manage your active login sessions across devices
+          </p>
+        </div>
+        {otherSessionsCount > 0 && (
+          <Button size="sm" variant="danger" onClick={() => setShowRevokeAll(true)}>
+            <LogOut className="w-4 h-4 mr-1" />
+            Revoke All Others
+          </Button>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">Loading...</div>
+      ) : sessions.length === 0 ? (
+        <div className="text-sm text-gray-500 dark:text-gray-400 py-8 text-center border border-dashed border-gray-300 dark:border-gray-700 rounded-lg">
+          No active sessions
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {sessions.map((session) => {
+            const DeviceIcon = getDeviceIcon(session.deviceInfo?.device);
+            const browserInfo = [session.deviceInfo?.browser, session.deviceInfo?.os]
+              .filter(Boolean)
+              .join(' on ');
+
+            return (
+              <div
+                key={session.id}
+                className={`flex items-center justify-between p-3 rounded-lg border ${
+                  session.isCurrent
+                    ? 'border-primary-200 dark:border-primary-800 bg-primary-50/50 dark:bg-primary-900/10'
+                    : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'
+                }`}
+              >
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <DeviceIcon className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                        {browserInfo || 'Unknown device'}
+                      </span>
+                      {session.isCurrent && (
+                        <Badge variant="success" className="text-xs">Current</Badge>
+                      )}
+                      <Badge variant={session.authMethod === 'oidc' ? 'info' : 'default'} className="text-xs">
+                        {session.authMethod === 'oidc' ? 'SSO' : 'Local'}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      <span className="flex items-center gap-1">
+                        <Globe className="w-3 h-3" />
+                        {session.ipAddress}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        Active {formatDate(session.lastActivityAt)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {!session.isCurrent && (
+                  <button
+                    onClick={() => setShowRevoke(session)}
+                    className="ml-3 p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                    title="Revoke session"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Revoke Single Session Modal */}
+      <Modal isOpen={!!showRevoke} onClose={() => setShowRevoke(null)} title="Revoke Session">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Are you sure you want to revoke this session? The device will be logged out immediately.
+          </p>
+          {showRevoke && (
+            <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg text-sm">
+              <p className="font-medium text-gray-900 dark:text-white">
+                {[showRevoke.deviceInfo?.browser, showRevoke.deviceInfo?.os].filter(Boolean).join(' on ') || 'Unknown device'}
+              </p>
+              <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">
+                IP: {showRevoke.ipAddress} &middot; Last active: {formatDate(showRevoke.lastActivityAt)}
+              </p>
+            </div>
+          )}
+          <ModalFooter>
+            <Button variant="secondary" onClick={() => setShowRevoke(null)}>Cancel</Button>
+            <Button
+              variant="danger"
+              onClick={() => showRevoke && revokeMutation.mutate(showRevoke.id)}
+              isLoading={revokeMutation.isPending}
+            >
+              Revoke Session
+            </Button>
+          </ModalFooter>
+        </div>
+      </Modal>
+
+      {/* Revoke All Modal */}
+      <Modal isOpen={showRevokeAll} onClose={() => setShowRevokeAll(false)} title="Revoke All Other Sessions">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            This will log out all other sessions ({otherSessionsCount} session{otherSessionsCount !== 1 ? 's' : ''}). Your current session will remain active.
+          </p>
+          <ModalFooter>
+            <Button variant="secondary" onClick={() => setShowRevokeAll(false)}>Cancel</Button>
+            <Button
+              variant="danger"
+              onClick={() => revokeAllMutation.mutate()}
+              isLoading={revokeAllMutation.isPending}
+            >
+              Revoke All Others
+            </Button>
+          </ModalFooter>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 // ─── Profile Page ────────────────────────────────────────────────────────────
 
 export function ProfilePage() {
@@ -689,6 +867,9 @@ export function ProfilePage() {
 
       {/* API Keys Section — only show when auth is enabled */}
       {authMode !== 'none' && <ApiKeysSection />}
+
+      {/* Sessions Section — only show when auth is enabled */}
+      {authMode !== 'none' && <SessionsSection />}
 
       {/* Role Info Card */}
       <div className="card p-6">

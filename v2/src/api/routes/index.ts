@@ -30,6 +30,9 @@ import {
   createApiKeyHandler,
   listApiKeys,
   revokeApiKey,
+  listSessions,
+  revokeSessionHandler,
+  revokeAllSessions,
 } from '../controllers/authController.js';
 
 import {
@@ -110,6 +113,12 @@ import {
 } from '../controllers/auditController.js';
 
 import {
+  listSecurityLogs,
+  getSecurityLog,
+  getSecurityStats,
+} from '../controllers/securityController.js';
+
+import {
   listPreservedHostnames,
   getPreservedHostname,
   createPreservedHostname,
@@ -182,6 +191,9 @@ authRouter.put('/profile', authenticate, auditMiddleware, updateProfile);
 authRouter.post('/api-keys', authenticate, createApiKeyHandler);
 authRouter.get('/api-keys', authenticate, listApiKeys);
 authRouter.delete('/api-keys/:id', authenticate, revokeApiKey);
+authRouter.get('/sessions', authenticate, listSessions);
+authRouter.delete('/sessions/:id', authenticate, auditMiddleware, revokeSessionHandler);
+authRouter.post('/sessions/revoke-all', authenticate, auditMiddleware, revokeAllSessions);
 router.use('/auth', authRouter);
 
 // DNS Records routes
@@ -284,6 +296,15 @@ auditRouter.get('/', listAuditLogs);
 auditRouter.get('/stats', getAuditStats);
 auditRouter.get('/:id', getAuditLog);
 router.use('/audit', auditRouter);
+
+// Security logs routes (admin only)
+const securityRouter = Router();
+securityRouter.use(authenticate);
+securityRouter.use(requireRole('admin'));
+securityRouter.get('/', listSecurityLogs);
+securityRouter.get('/stats', getSecurityStats);
+securityRouter.get('/:id', getSecurityLog);
+router.use('/security', securityRouter);
 
 // Preserved Hostnames routes
 const preservedRouter = Router();

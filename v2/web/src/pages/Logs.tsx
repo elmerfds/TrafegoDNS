@@ -5,15 +5,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { healthApi, type AuditLog } from '../api';
+import { securityApi, type SecurityLogEntry } from '../api/security';
 import { Badge, Modal, Button, Select } from '../components/common';
 import { formatDistanceToNow } from 'date-fns';
 import {
   Plus, Edit, Trash2, LogIn, LogOut, RefreshCw, CloudUpload,
   AlertCircle, User, Clock, Globe, Server, Webhook, Settings,
-  ChevronRight, ChevronDown, FileText, Terminal, Pause, Play, Download
+  ChevronRight, ChevronDown, FileText, Terminal, Pause, Play, Download,
+  Shield, Lock
 } from 'lucide-react';
+import { useAuthStore } from '../stores';
 
-type TabType = 'audit' | 'application';
+type TabType = 'audit' | 'application' | 'security';
 
 // ============================================================================
 // Audit Log Tab Components
@@ -702,11 +705,305 @@ function ApplicationLogTab() {
 }
 
 // ============================================================================
+// Security Log Tab Components
+// ============================================================================
+
+const SECURITY_EVENT_CONFIG: Record<string, { icon: React.ElementType; color: string; label: string }> = {
+  login_success: { icon: LogIn, color: 'text-green-500 bg-green-100 dark:bg-green-900/30', label: 'Login Success' },
+  login_failure: { icon: AlertCircle, color: 'text-red-500 bg-red-100 dark:bg-red-900/30', label: 'Login Failed' },
+  logout: { icon: LogOut, color: 'text-gray-500 bg-gray-100 dark:bg-gray-800', label: 'Logout' },
+  session_created: { icon: Plus, color: 'text-blue-500 bg-blue-100 dark:bg-blue-900/30', label: 'Session Created' },
+  session_revoked: { icon: Trash2, color: 'text-orange-500 bg-orange-100 dark:bg-orange-900/30', label: 'Session Revoked' },
+  oidc_success: { icon: LogIn, color: 'text-purple-500 bg-purple-100 dark:bg-purple-900/30', label: 'SSO Login' },
+  oidc_failure: { icon: AlertCircle, color: 'text-red-500 bg-red-100 dark:bg-red-900/30', label: 'SSO Failed' },
+  token_rejected: { icon: Shield, color: 'text-red-500 bg-red-100 dark:bg-red-900/30', label: 'Token Rejected' },
+  password_change: { icon: Lock, color: 'text-blue-500 bg-blue-100 dark:bg-blue-900/30', label: 'Password Changed' },
+};
+
+function getSecurityEventConfig(eventType: string) {
+  return SECURITY_EVENT_CONFIG[eventType] || { icon: AlertCircle, color: 'text-gray-500 bg-gray-100', label: eventType };
+}
+
+interface SecurityLogEntryRowProps {
+  log: SecurityLogEntry;
+  onClick: () => void;
+}
+
+function SecurityLogEntryRow({ log, onClick }: SecurityLogEntryRowProps) {
+  const config = getSecurityEventConfig(log.eventType);
+  const EventIcon = config.icon;
+
+  return (
+    <div
+      onClick={onClick}
+      className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer border-b border-gray-100 dark:border-gray-800 last:border-0 transition-colors"
+    >
+      <div className="flex items-center gap-4">
+        <div className={`p-2 rounded-lg ${config.color}`}>
+          <EventIcon className="w-5 h-5" />
+        </div>
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-gray-900 dark:text-white">{config.label}</span>
+            <Badge variant={log.success ? 'success' : 'error'} size="sm">
+              {log.success ? 'SUCCESS' : 'FAILED'}
+            </Badge>
+            {log.authMethod && (
+              <Badge variant={log.authMethod === 'oidc' ? 'info' : 'default'} size="sm">
+                {log.authMethod === 'oidc' ? 'SSO' : log.authMethod.toUpperCase()}
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 dark:text-gray-400">
+            <span className="flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })}
+            </span>
+            <span className="flex items-center gap-1">
+              <User className="w-3 h-3" />
+              {log.user?.username || (log.userId ? 'User' : 'Anonymous')}
+            </span>
+            <span className="font-mono">{log.ipAddress}</span>
+            {log.failureReason && (
+              <span className="text-red-500">{log.failureReason}</span>
+            )}
+          </div>
+        </div>
+      </div>
+      <ChevronRight className="w-5 h-5 text-gray-400" />
+    </div>
+  );
+}
+
+interface SecurityDetailModalProps {
+  log: SecurityLogEntry | null;
+  onClose: () => void;
+}
+
+function SecurityDetailModal({ log, onClose }: SecurityDetailModalProps) {
+  if (!log) return null;
+
+  const config = getSecurityEventConfig(log.eventType);
+  const EventIcon = config.icon;
+
+  return (
+    <Modal isOpen={!!log} onClose={onClose} title="Security Event Details" size="md">
+      <div className="space-y-6">
+        <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <div className={`p-3 rounded-lg ${config.color}`}>
+            <EventIcon className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {config.label}
+              </h3>
+              <Badge variant={log.success ? 'success' : 'error'} size="sm">
+                {log.success ? 'SUCCESS' : 'FAILED'}
+              </Badge>
+            </div>
+            {log.failureReason && (
+              <p className="text-red-500 text-sm mt-1">{log.failureReason}</p>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Time</label>
+            <p className="mt-1 text-sm text-gray-900 dark:text-white">
+              {new Date(log.createdAt).toLocaleString()}
+            </p>
+            <p className="text-xs text-gray-500">
+              {formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })}
+            </p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Event Type</label>
+            <p className="mt-1 text-sm text-gray-900 dark:text-white">{log.eventType}</p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">IP Address</label>
+            <p className="mt-1 text-sm font-mono text-gray-900 dark:text-white">{log.ipAddress}</p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Auth Method</label>
+            <p className="mt-1">
+              {log.authMethod ? (
+                <Badge variant={log.authMethod === 'oidc' ? 'info' : 'default'}>
+                  {log.authMethod}
+                </Badge>
+              ) : (
+                <span className="text-sm text-gray-500">-</span>
+              )}
+            </p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">User</label>
+            <p className="mt-1 text-sm text-gray-900 dark:text-white">
+              {log.user?.username || log.userId || '-'}
+            </p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Session ID</label>
+            <p className="mt-1 text-sm font-mono text-gray-900 dark:text-white truncate">
+              {log.sessionId || '-'}
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">User Agent</label>
+          <p className="mt-1 text-xs text-gray-600 dark:text-gray-300 break-all">
+            {log.userAgent || '-'}
+          </p>
+        </div>
+
+        {log.details && Object.keys(log.details).length > 0 && (
+          <div>
+            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Details</label>
+            <div className="mt-2 p-3 bg-gray-900 dark:bg-gray-950 rounded-lg overflow-auto max-h-48">
+              <pre className="text-xs text-green-400 font-mono whitespace-pre-wrap">
+                {JSON.stringify(log.details, null, 2)}
+              </pre>
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
+          <Button onClick={onClose}>Close</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function SecurityLogTab() {
+  const [page, setPage] = useState(1);
+  const [selectedLog, setSelectedLog] = useState<SecurityLogEntry | null>(null);
+  const [eventTypeFilter, setEventTypeFilter] = useState<string>('all');
+  const [successFilter, setSuccessFilter] = useState<string>('all');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['security-logs', { page, limit: 50, eventType: eventTypeFilter !== 'all' ? eventTypeFilter : undefined, success: successFilter !== 'all' ? successFilter : undefined }],
+    queryFn: () => securityApi.getSecurityLogs({
+      page,
+      limit: 50,
+      eventType: eventTypeFilter !== 'all' ? eventTypeFilter : undefined,
+      success: successFilter !== 'all' ? successFilter : undefined,
+    }),
+  });
+
+  const eventTypeOptions = [
+    { value: 'all', label: 'All Events' },
+    { value: 'login_success', label: 'Login Success' },
+    { value: 'login_failure', label: 'Login Failure' },
+    { value: 'logout', label: 'Logout' },
+    { value: 'session_revoked', label: 'Session Revoked' },
+    { value: 'oidc_success', label: 'SSO Login' },
+    { value: 'oidc_failure', label: 'SSO Failure' },
+    { value: 'password_change', label: 'Password Change' },
+    { value: 'token_rejected', label: 'Token Rejected' },
+  ];
+
+  const successOptions = [
+    { value: 'all', label: 'All Results' },
+    { value: 'true', label: 'Success' },
+    { value: 'false', label: 'Failed' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Filters */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Authentication and security events
+        </p>
+        <div className="flex gap-3">
+          <div className="w-48">
+            <Select
+              options={eventTypeOptions}
+              value={eventTypeFilter}
+              onChange={(value) => { setEventTypeFilter(value); setPage(1); }}
+              placeholder="Event type"
+            />
+          </div>
+          <div className="w-36">
+            <Select
+              options={successOptions}
+              value={successFilter}
+              onChange={(value) => { setSuccessFilter(value); setPage(1); }}
+              placeholder="Result"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Security Entries */}
+      <div className="card p-0 overflow-hidden">
+        {isLoading ? (
+          <div className="p-8 text-center">
+            <RefreshCw className="w-8 h-8 text-gray-400 mx-auto animate-spin" />
+            <p className="mt-2 text-gray-500">Loading security logs...</p>
+          </div>
+        ) : data?.logs.length === 0 ? (
+          <div className="p-8 text-center">
+            <Shield className="w-12 h-12 text-gray-300 mx-auto" />
+            <p className="mt-2 text-gray-500">No security events found</p>
+          </div>
+        ) : (
+          <>
+            {data?.logs.map((log) => (
+              <SecurityLogEntryRow
+                key={log.id}
+                log={log}
+                onClick={() => setSelectedLog(log)}
+              />
+            ))}
+          </>
+        )}
+      </div>
+
+      {/* Pagination */}
+      {data && data.pagination.totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-500">
+            Showing {((page - 1) * data.pagination.limit) + 1} to {Math.min(page * data.pagination.limit, data.pagination.total)} of {data.pagination.total} entries
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={page === 1}
+              onClick={() => setPage(p => p - 1)}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={page === data.pagination.totalPages}
+              onClick={() => setPage(p => p + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <SecurityDetailModal log={selectedLog} onClose={() => setSelectedLog(null)} />
+    </div>
+  );
+}
+
+// ============================================================================
 // Main Logs Page
 // ============================================================================
 
 export function LogsPage() {
   const [activeTab, setActiveTab] = useState<TabType>('audit');
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'admin';
 
   return (
     <div className="space-y-6">
@@ -714,7 +1011,7 @@ export function LogsPage() {
       <div>
         <h2 className="text-lg font-medium text-gray-900 dark:text-white">Logs</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          View system audit trail and application logs
+          View system audit trail, security events, and application logs
         </p>
       </div>
 
@@ -732,6 +1029,19 @@ export function LogsPage() {
             <FileText className="w-4 h-4" />
             Audit Log
           </button>
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('security')}
+              className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'security'
+                  ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+              }`}
+            >
+              <Shield className="w-4 h-4" />
+              Security Log
+            </button>
+          )}
           <button
             onClick={() => setActiveTab('application')}
             className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
@@ -748,6 +1058,7 @@ export function LogsPage() {
 
       {/* Tab Content */}
       {activeTab === 'audit' && <AuditLogTab />}
+      {activeTab === 'security' && <SecurityLogTab />}
       {activeTab === 'application' && <ApplicationLogTab />}
     </div>
   );

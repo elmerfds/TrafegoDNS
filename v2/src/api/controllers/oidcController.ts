@@ -9,6 +9,21 @@ import { generateToken } from '../middleware/auth.js';
 import { setAuditContext } from '../middleware/index.js';
 import { getConfig } from '../../config/ConfigManager.js';
 import { createChildLogger } from '../../core/Logger.js';
+import { sessionService } from '../../services/SessionService.js';
+import { securityLogService } from '../../services/SecurityLogService.js';
+
+/** JWT expiration in seconds (mirrors auth.ts constant) */
+const JWT_EXPIRES_IN_SECONDS = parseInt(process.env.JWT_EXPIRES_IN_SECONDS ?? '86400', 10);
+
+/**
+ * Extract client IP from request
+ */
+function getClientIp(req: Request): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') return forwarded.split(',')[0]!.trim();
+  if (Array.isArray(forwarded)) return forwarded[0]!.trim();
+  return req.ip ?? req.socket.remoteAddress ?? 'unknown';
+}
 
 const logger = createChildLogger({ service: 'OIDCController' });
 
@@ -102,6 +117,29 @@ export async function oidcCallback(req: Request, res: Response): Promise<void> {
       role: oidcUser.role,
     });
 
+    // Create session
+    const clientIp = getClientIp(req);
+    const userAgent = req.headers['user-agent'];
+    await sessionService.createSession({
+      userId: oidcUser.id,
+      token,
+      authMethod: 'oidc',
+      ipAddress: clientIp,
+      userAgent,
+      expiresInSeconds: JWT_EXPIRES_IN_SECONDS,
+    });
+
+    // Log security event
+    void securityLogService.logEvent({
+      eventType: 'oidc_success',
+      userId: oidcUser.id,
+      ipAddress: clientIp,
+      userAgent,
+      authMethod: 'oidc',
+      success: true,
+      details: { isNewUser: oidcUser.isNewUser },
+    });
+
     // Set JWT cookie (same as local login)
     res.cookie('token', token, {
       httpOnly: true,
@@ -123,6 +161,16 @@ export async function oidcCallback(req: Request, res: Response): Promise<void> {
     // Redirect to frontend
     res.redirect('/');
   } catch (error) {
+    // Log security event
+    void securityLogService.logEvent({
+      eventType: 'oidc_failure',
+      ipAddress: getClientIp(req),
+      userAgent: req.headers['user-agent'],
+      authMethod: 'oidc',
+      success: false,
+      failureReason: error instanceof Error ? error.message : String(error),
+    });
+
     // Log full details server-side for debugging
     const message = error instanceof Error ? error.message : String(error);
     const code = (error as any)?.code;
