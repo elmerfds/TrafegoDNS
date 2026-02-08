@@ -74,6 +74,13 @@ export abstract class DNSProvider {
   }
 
   /**
+   * Update the cache refresh interval at runtime
+   */
+  setCacheRefreshInterval(intervalMs: number): void {
+    this.cacheRefreshInterval = intervalMs;
+  }
+
+  /**
    * Update provider settings
    */
   updateSettings(settings: ProviderSettingsData): void {

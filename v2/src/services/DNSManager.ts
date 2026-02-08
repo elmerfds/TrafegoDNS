@@ -122,6 +122,17 @@ export class DNSManager {
       // Load hostname overrides
       await this.loadHostnameOverrides();
 
+      // Listen for cache refresh interval changes and apply to all active providers
+      getSettingsService().onSettingChange('dns_cache_refresh_interval', (value) => {
+        const intervalMs = parseInt(value, 10);
+        if (!isNaN(intervalMs) && intervalMs > 0) {
+          for (const provider of this.providerInstances.values()) {
+            provider.setCacheRefreshInterval(intervalMs);
+          }
+          this.logger.info({ intervalMs }, 'DNS cache refresh interval updated for all providers');
+        }
+      });
+
       this.initialized = true;
       this.logger.info('DNS Manager initialized successfully');
     } catch (error) {
@@ -203,12 +214,15 @@ export class DNSManager {
         // Parse settings JSON (includes defaults configuration)
         const settings = record.settings ? JSON.parse(record.settings) : {};
 
+        const cacheRefreshInterval = getSettingsService().get<number>('dns_cache_refresh_interval');
+
         const provider = createProvider({
           id: record.id,
           name: record.name,
           type: record.type as ProviderType,
           credentials,
           settings,
+          cacheRefreshInterval,
         });
 
         await provider.init();

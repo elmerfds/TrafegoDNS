@@ -141,6 +141,16 @@ export const SETTINGS_SCHEMA: SettingDefinition[] = [
     restartRequired: false,
     envVar: 'DNS_MULTI_PROVIDER_SAME_ZONE',
   },
+  {
+    key: 'dns_cache_refresh_interval',
+    label: 'Cache Refresh Interval (ms)',
+    description: 'How often to re-fetch all DNS records from providers to sync the local cache (in milliseconds). Lower values detect external changes faster but increase API calls.',
+    type: 'number',
+    default: 3600000,
+    category: 'dns',
+    restartRequired: false,
+    envVar: 'DNS_CACHE_REFRESH_INTERVAL',
+  },
 
   // Cleanup settings
   {
