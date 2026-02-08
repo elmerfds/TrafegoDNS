@@ -9,6 +9,7 @@ export interface User {
   email: string;
   role: 'admin' | 'user' | 'readonly';
   avatar?: string | null;
+  authProvider?: 'local' | 'oidc';
 }
 
 export interface LoginResponse {

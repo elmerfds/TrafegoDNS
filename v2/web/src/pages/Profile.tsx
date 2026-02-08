@@ -393,6 +393,7 @@ function ApiKeysSection() {
 export function ProfilePage() {
   const queryClient = useQueryClient();
   const { user, updateUser, authMode } = useAuthStore();
+  const isOIDCUser = user?.authProvider === 'oidc';
   const [email, setEmail] = useState(user?.email ?? '');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -571,6 +572,11 @@ export function ProfilePage() {
                 <Shield className="w-3 h-3 mr-1" />
                 {user?.role}
               </Badge>
+              {isOIDCUser && (
+                <Badge variant="info" className="inline-flex items-center">
+                  SSO
+                </Badge>
+              )}
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
               Hover over avatar to change
@@ -607,57 +613,69 @@ export function ProfilePage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
+              className={`w-full px-3 py-2 border rounded-lg border-gray-300 dark:border-gray-600 ${
+                isOIDCUser
+                  ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                  : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white'
+              }`}
               autoComplete="email"
+              disabled={isOIDCUser}
             />
+            {isOIDCUser && (
+              <p className="text-xs text-gray-500 mt-1">Email is managed by your SSO provider</p>
+            )}
           </div>
 
-          {/* Change Password Section */}
-          <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={changePassword}
-                onChange={(e) => setChangePassword(e.target.checked)}
-                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-              />
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                <Lock className="w-4 h-4 inline mr-2" />
-                Change password
-              </span>
-            </label>
-          </div>
-
-          {changePassword && (
-            <div className="space-y-4 pl-6 border-l-2 border-primary-500">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  New Password
+          {/* Change Password Section — only for local auth users */}
+          {!isOIDCUser && (
+            <>
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={changePassword}
+                    onChange={(e) => setChangePassword(e.target.checked)}
+                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Lock className="w-4 h-4 inline mr-2" />
+                    Change password
+                  </span>
                 </label>
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
-                  placeholder="Minimum 8 characters"
-                  autoComplete="new-password"
-                />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Confirm New Password
-                </label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
-                  placeholder="Confirm password"
-                  autoComplete="new-password"
-                />
-              </div>
-            </div>
+              {changePassword && (
+                <div className="space-y-4 pl-6 border-l-2 border-primary-500">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      New Password
+                    </label>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
+                      placeholder="Minimum 8 characters"
+                      autoComplete="new-password"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Confirm New Password
+                    </label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
+                      placeholder="Confirm password"
+                      autoComplete="new-password"
+                    />
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {/* Submit */}

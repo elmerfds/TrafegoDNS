@@ -149,6 +149,7 @@ export const getCurrentUser = asyncHandler(async (req: Request, res: Response) =
       email: users.email,
       role: users.role,
       avatar: users.avatar,
+      authProvider: users.authProvider,
       createdAt: users.createdAt,
       lastLoginAt: users.lastLoginAt,
     })
