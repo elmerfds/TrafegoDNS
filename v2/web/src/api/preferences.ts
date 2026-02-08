@@ -40,11 +40,12 @@ export const DEFAULT_DNS_TABLE_PREFERENCES: TableViewPreference = {
     { id: 'source', visible: false },
     { id: 'lastSynced', visible: false },
     { id: 'created', visible: false },
+    { id: 'updated', visible: false },
     { id: 'actions', visible: true },
   ],
   columnOrder: [
     'select', 'hostname', 'type', 'content', 'ttl', 'proxied',
-    'status', 'provider', 'managed', 'source', 'lastSynced', 'created', 'actions'
+    'status', 'provider', 'managed', 'source', 'lastSynced', 'created', 'updated', 'actions'
   ],
   density: 'normal',
   rowsPerPage: 20,

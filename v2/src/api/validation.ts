@@ -138,6 +138,8 @@ export const dnsRecordFilterSchema = z.object({
   status: z.enum(['active', 'orphaned']).optional(), // Filter by status (active = no orphanedAt, orphaned = has orphanedAt)
   search: z.string().optional(), // General search across name and content
   zone: z.string().optional(), // Filter by zone/domain (e.g., "example.com")
+  orderBy: z.enum(['name', 'type', 'content', 'ttl', 'source', 'created_at', 'updated_at', 'last_synced_at']).optional().default('name'),
+  direction: z.enum(['asc', 'desc']).optional().default('asc'),
 }).merge(paginationSchema);
 
 // Schema for toggling managed status

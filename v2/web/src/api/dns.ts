@@ -51,6 +51,8 @@ export interface DNSRecordFilters {
   search?: string;
   zone?: string;
   source?: string;
+  orderBy?: string;
+  direction?: 'asc' | 'desc';
   page?: number;
   limit?: number;
 }

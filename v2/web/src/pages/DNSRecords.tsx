@@ -155,6 +155,22 @@ function DNSRecordsTab() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
 
+  // Sorting state
+  const [sortColumn, setSortColumn] = useState<string>('hostname');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  // Map frontend column IDs to backend API field names
+  const columnToApiField: Record<string, string> = useMemo(() => ({
+    hostname: 'name',
+    type: 'type',
+    content: 'content',
+    ttl: 'ttl',
+    source: 'source',
+    lastSynced: 'last_synced_at',
+    created: 'created_at',
+    updated: 'updated_at',
+  }), []);
+
   // Table view preferences
   const [tablePreferences, setTablePreferences] = useState<TableViewPreference>(DEFAULT_DNS_TABLE_PREFERENCES);
 
@@ -207,6 +223,12 @@ function DNSRecordsTab() {
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
 
+  const handleSort = useCallback((column: string, direction: 'asc' | 'desc') => {
+    setSortColumn(column);
+    setSortDirection(direction);
+    setPage(1);
+  }, []);
+
   // Build filters object
   const filters = useMemo(() => ({
     page,
@@ -218,7 +240,9 @@ function DNSRecordsTab() {
     type: typeFilter === 'all' ? undefined : typeFilter,
     zone: zoneFilter === 'all' ? undefined : zoneFilter,
     source: sourceFilter === 'all' ? undefined : sourceFilter,
-  }), [page, debouncedSearch, managedFilter, statusFilter, providerFilter, typeFilter, zoneFilter, sourceFilter]);
+    orderBy: columnToApiField[sortColumn] ?? 'name',
+    direction: sortDirection,
+  }), [page, debouncedSearch, managedFilter, statusFilter, providerFilter, typeFilter, zoneFilter, sourceFilter, sortColumn, sortDirection, columnToApiField]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['dns-records', filters],
@@ -512,6 +536,18 @@ function DNSRecordsTab() {
       render: (row: DNSRecord) => (
         <span className="text-xs text-gray-500 dark:text-gray-400">
           {row.createdAt ? new Date(row.createdAt).toLocaleString() : '-'}
+        </span>
+      ),
+    },
+    {
+      id: 'updated',
+      header: 'Updated',
+      sortable: true,
+      defaultVisible: false,
+      minWidth: 140,
+      render: (row: DNSRecord) => (
+        <span className="text-xs text-gray-500 dark:text-gray-400">
+          {row.updatedAt ? new Date(row.updatedAt).toLocaleString() : '-'}
         </span>
       ),
     },
@@ -969,6 +1005,9 @@ function DNSRecordsTab() {
         emptyIcon={<Globe className="w-8 h-8 text-gray-400" />}
         preferences={tablePreferences}
         onPreferencesChange={handlePreferencesChange}
+        sortColumn={sortColumn}
+        sortDirection={sortDirection}
+        onSort={handleSort}
         selectable
         selectedIds={selectedIds}
         onSelectionChange={setSelectedIds}
@@ -3379,6 +3418,28 @@ function EditRecordModal({ isOpen, onClose, record }: EditRecordModalProps) {
               </label>
             </div>
           )}
+        </div>
+
+        {/* Timestamps */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 sm:p-4 space-y-2">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+            <Clock className="w-4 h-4 text-primary-500" />
+            Timestamps
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-gray-500 dark:text-gray-400">
+            <div>
+              <span className="font-medium text-gray-600 dark:text-gray-300">Created</span>
+              <div>{new Date(record.createdAt).toLocaleString()}</div>
+            </div>
+            <div>
+              <span className="font-medium text-gray-600 dark:text-gray-300">Updated</span>
+              <div>{new Date(record.updatedAt).toLocaleString()}</div>
+            </div>
+            <div>
+              <span className="font-medium text-gray-600 dark:text-gray-300">Last Synced</span>
+              <div>{record.lastSyncedAt ? new Date(record.lastSyncedAt).toLocaleString() : 'Never'}</div>
+            </div>
+          </div>
         </div>
 
         <ModalFooter>

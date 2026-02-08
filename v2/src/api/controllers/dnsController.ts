@@ -5,7 +5,7 @@ import type { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabase } from '../../database/connection.js';
 import { dnsRecords, preservedHostnames, providers as providersTable } from '../../database/schema/index.js';
-import { eq, and, like, or, sql } from 'drizzle-orm';
+import { eq, and, like, or, sql, asc, desc } from 'drizzle-orm';
 import { container, ServiceTokens } from '../../core/ServiceContainer.js';
 import { ApiError, asyncHandler, setAuditContext } from '../middleware/index.js';
 import {
@@ -81,13 +81,28 @@ export const listRecords = asyncHandler(async (req: Request, res: Response) => {
 
   // Get paginated records
   const offset = (filter.page - 1) * filter.limit;
+
+  // Dynamic sort column mapping
+  const sortColumnMap = {
+    name: dnsRecords.name,
+    type: dnsRecords.type,
+    content: dnsRecords.content,
+    ttl: dnsRecords.ttl,
+    source: dnsRecords.source,
+    created_at: dnsRecords.createdAt,
+    updated_at: dnsRecords.updatedAt,
+    last_synced_at: dnsRecords.lastSyncedAt,
+  } as const;
+  const orderColumn = sortColumnMap[filter.orderBy as keyof typeof sortColumnMap] ?? dnsRecords.name;
+  const orderFn = filter.direction === 'desc' ? desc : asc;
+
   const records = await db
     .select()
     .from(dnsRecords)
     .where(whereClause)
     .limit(filter.limit)
     .offset(offset)
-    .orderBy(dnsRecords.name);
+    .orderBy(orderFn(orderColumn));
 
   res.json({
     success: true,
