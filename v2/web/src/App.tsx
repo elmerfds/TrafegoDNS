@@ -1,7 +1,7 @@
 /**
  * Main Application
  */
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   RouterProvider,
@@ -181,8 +181,8 @@ declare module '@tanstack/react-router' {
   }
 }
 
-// Auth listener component
-function AuthListener() {
+// Auth listener component — blocks rendering until initial auth state is resolved
+function AuthListener({ onReady }: { onReady: () => void }) {
   const { checkAuth, checkAuthMode, isAuthenticated, authMode, authModeLoaded } = useAuthStore();
 
   useEffect(() => {
@@ -195,12 +195,14 @@ function AuthListener() {
 
     if (authMode === 'oidc') {
       // OIDC: always try checkAuth — cookie may have been set by callback redirect
-      checkAuth();
+      checkAuth().finally(onReady);
     } else if (authMode !== 'none' && isAuthenticated) {
       // Local: verify JWT if we think we're authenticated
-      checkAuth();
+      checkAuth().finally(onReady);
+    } else {
+      onReady();
     }
-  }, [checkAuth, isAuthenticated, authMode, authModeLoaded]);
+  }, [checkAuth, authMode, authModeLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     // Listen for logout events
@@ -220,10 +222,12 @@ function AuthListener() {
 
 // Main App component
 export function App() {
+  const [ready, setReady] = useState(false);
+
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthListener />
-      <RouterProvider router={router} />
+      <AuthListener onReady={() => setReady(true)} />
+      {ready ? <RouterProvider router={router} /> : null}
     </QueryClientProvider>
   );
 }
