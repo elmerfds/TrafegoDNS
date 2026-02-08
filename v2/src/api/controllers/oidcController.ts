@@ -51,9 +51,11 @@ export async function oidcCallback(req: Request, res: Response): Promise<void> {
     const expectedState = req.cookies?.oidc_state as string | undefined;
     res.clearCookie('oidc_state', { path: '/api/v1/auth/oidc' });
 
+    logger.info(`OIDC callback received: hasStateCookie=${!!expectedState}, query=${JSON.stringify(req.query)}, cookies=${Object.keys(req.cookies || {}).join(',')}`);
+
     if (!expectedState) {
       logger.warn('OIDC callback: missing state cookie');
-      res.redirect('/?error=oidc_state_missing');
+      res.redirect('/login?error=oidc_state_missing');
       return;
     }
 
@@ -67,6 +69,8 @@ export async function oidcCallback(req: Request, res: Response): Promise<void> {
     reqUrl.searchParams.forEach((value, key) => {
       callbackUrl.searchParams.set(key, value);
     });
+
+    logger.info(`OIDC callback URL: ${callbackUrl.toString().replace(/code=[^&]+/, 'code=REDACTED')}`);
 
     // Exchange code for tokens and find/create user
     const oidcUser = await oidcService.handleCallback(callbackUrl, expectedState);
@@ -100,9 +104,13 @@ export async function oidcCallback(req: Request, res: Response): Promise<void> {
     // Redirect to frontend
     res.redirect('/');
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    const stack = error instanceof Error ? error.stack : undefined;
-    logger.error({ error: message, stack }, 'OIDC callback failed');
+    const message = error instanceof Error ? error.message : String(error);
+    const code = (error as any)?.code;
+    const cause = (error as any)?.cause;
+    logger.error(`OIDC callback failed: ${message}${code ? ` [code=${code}]` : ''}${cause ? ` [cause=${cause}]` : ''}`);
+    if (error instanceof Error && error.stack) {
+      logger.error(`OIDC stack: ${error.stack}`);
+    }
     res.redirect(`/login?error=${encodeURIComponent(message)}`);
   }
 }
