@@ -300,6 +300,17 @@ export const SETTINGS_SCHEMA: SettingDefinition[] = [
     category: 'tunnels',
     restartRequired: false,
   },
+  // Security settings
+  {
+    key: 'allow_local_login',
+    label: 'Allow Local Login',
+    description: 'When OIDC authentication is enabled, allow users to also sign in with local credentials. Only applies when AUTH_MODE=oidc.',
+    type: 'boolean',
+    default: false,
+    category: 'security',
+    restartRequired: false,
+    envVar: 'OIDC_ALLOW_LOCAL_LOGIN',
+  },
 ];
 
 // Group settings by category for UI
