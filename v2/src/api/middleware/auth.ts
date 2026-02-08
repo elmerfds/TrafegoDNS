@@ -54,27 +54,23 @@ const GLOBAL_API_KEY_USER: AuthenticatedUser = {
   role: 'admin',
 };
 
-// JWT secret MUST be set via environment variable for security
-// Generate a secure random secret if not set (logs warning)
-const JWT_SECRET = (() => {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    // Generate a secure random secret - this will change on restart
-    // Log a warning to encourage proper configuration
-    const generatedSecret = randomBytes(64).toString('base64url');
-    console.warn(
-      '\n⚠️  WARNING: JWT_SECRET environment variable not set!\n' +
-      '   A random secret has been generated for this session.\n' +
-      '   This will invalidate all tokens on restart.\n' +
-      '   Please set JWT_SECRET in your environment for production use.\n'
-    );
-    return generatedSecret;
+/**
+ * JWT secret — loaded from ConfigManager which supports Docker Secrets.
+ * Lazy-initialized on first use to ensure ConfigManager is ready.
+ */
+let _jwtSecret: string | undefined;
+function getJwtSecret(): string {
+  if (!_jwtSecret) {
+    _jwtSecret = getConfig().app.jwtSecret;
+    if (!_jwtSecret) {
+      throw new Error('JWT_SECRET is not configured. Set JWT_SECRET environment variable.');
+    }
   }
-  if (secret.length < 32) {
-    console.warn('⚠️  WARNING: JWT_SECRET is shorter than 32 characters. Consider using a longer secret.');
-  }
-  return secret;
-})();
+  return _jwtSecret;
+}
+
+// JWT algorithm — explicit to prevent algorithm confusion attacks
+const JWT_ALGORITHM = 'HS256' as const;
 
 // JWT expiration in seconds (default 24 hours)
 const JWT_EXPIRES_IN_SECONDS = parseInt(process.env.JWT_EXPIRES_IN_SECONDS ?? '86400', 10);
@@ -124,28 +120,43 @@ export function generateToken(user: AuthenticatedUser): string {
       email: user.email,
       role: user.role,
     },
-    JWT_SECRET,
-    { expiresIn: JWT_EXPIRES_IN_SECONDS }
+    getJwtSecret(),
+    { algorithm: JWT_ALGORITHM, expiresIn: JWT_EXPIRES_IN_SECONDS }
   );
 }
 
 /**
- * Verify a JWT token
+ * Verify a JWT token signature and validate user exists in database.
+ * Returns the current user from DB (not the JWT payload) to ensure
+ * role changes and deletions are respected immediately.
  */
-export function verifyToken(token: string): AuthenticatedUser | null {
+export async function verifyToken(token: string): Promise<AuthenticatedUser | null> {
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as {
+    const payload = jwt.verify(token, getJwtSecret(), { algorithms: [JWT_ALGORITHM] }) as {
       sub: string;
       username: string;
       email: string;
       role: 'admin' | 'user' | 'readonly';
     };
 
+    // Validate user still exists in database and use current DB role
+    const db = getDatabase();
+    const [user] = await db
+      .select({ id: users.id, username: users.username, email: users.email, role: users.role })
+      .from(users)
+      .where(eq(users.id, payload.sub))
+      .limit(1);
+
+    if (!user) {
+      logger.warn({ userId: payload.sub }, 'JWT valid but user no longer exists');
+      return null;
+    }
+
     return {
-      id: payload.sub,
-      username: payload.username,
-      email: payload.email,
-      role: payload.role,
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
     };
   } catch {
     return null;
@@ -252,36 +263,23 @@ export function authenticate(
     return;
   }
 
-  // Check for JWT in Authorization header
+  // Check for JWT in Authorization header or cookie
   const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith('Bearer ')) {
-    const token = authHeader.slice(7);
-    const user = verifyToken(token);
-
-    if (!user) {
-      next(ApiError.unauthorized('Invalid or expired token'));
-      return;
-    }
-
-    req.user = user;
-    req.authMethod = 'jwt';
-    next();
-    return;
-  }
-
-  // Check for JWT in cookie
   const tokenCookie = req.cookies?.token as string | undefined;
-  if (tokenCookie) {
-    const user = verifyToken(tokenCookie);
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : tokenCookie;
 
-    if (!user) {
-      next(ApiError.unauthorized('Invalid or expired token'));
-      return;
-    }
-
-    req.user = user;
-    req.authMethod = 'jwt';
-    next();
+  if (token) {
+    verifyToken(token)
+      .then((user) => {
+        if (!user) {
+          next(ApiError.unauthorized('Invalid or expired token'));
+          return;
+        }
+        req.user = user;
+        req.authMethod = 'jwt';
+        next();
+      })
+      .catch(next);
     return;
   }
 
