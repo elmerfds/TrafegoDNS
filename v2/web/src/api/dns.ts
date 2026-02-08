@@ -185,25 +185,33 @@ export const dnsApi = {
       params.managed = String(filters.managed);
     }
 
-    if (filters?.format === 'csv') {
-      // For CSV, we need to get the raw response
-      // Filter out undefined values before creating URLSearchParams
-      const cleanParams: Record<string, string> = {};
-      for (const [key, value] of Object.entries(params)) {
-        if (value !== undefined && value !== null) {
-          cleanParams[key] = String(value);
-        }
+    // Build clean query params for both formats
+    const cleanParams: Record<string, string> = {};
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null) {
+        cleanParams[key] = String(value);
       }
-      const response = await fetch(`/api/v1/dns/records/export?${new URLSearchParams(cleanParams)}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-      if (!response.ok) throw new Error('Export failed');
+    }
+
+    // Build headers with token if available (cookie auth is primary via credentials: include)
+    const headers: Record<string, string> = {};
+    const token = apiClient.getToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`/api/v1/dns/records/export?${new URLSearchParams(cleanParams)}`, {
+      headers,
+      credentials: 'include',
+    });
+    if (!response.ok) throw new Error('Export failed');
+
+    if (filters?.format === 'csv') {
       return response.text();
     }
 
-    return apiClient.get<ExportRecordsResponse>('/dns/records/export', params);
+    const json = await response.json();
+    return json.data as ExportRecordsResponse;
   },
 
   async importRecords(data: ImportRecordsInput): Promise<ImportRecordsResponse> {
