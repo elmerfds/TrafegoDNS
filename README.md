@@ -18,6 +18,7 @@ A service that automatically manages DNS records based on container configuratio
   - [Cloudflare](#cloudflare)
   - [DigitalOcean](#digitalocean)
   - [Route53](#route53)
+  - [UniFi](#unifi)
 - [User/Group Permissions](#usergroup-permissions)
 - [Service Labels](#service-labels)
   - [Basic Labels](#basic-labels-provider-agnostic)
@@ -149,6 +150,7 @@ All other DNS configuration labels work the same way as in Traefik mode.
 | ![Cloudflare](https://img.shields.io/badge/Cloudflare-F38020?style=flat&logo=cloudflare&logoColor=white) | ![Stable](https://img.shields.io/badge/✓-Stable-success) | Full support for all record types and features |
 | ![DigitalOcean](https://img.shields.io/badge/DigitalOcean-0080FF?style=flat&logo=digitalocean&logoColor=white) | ![Stable](https://img.shields.io/badge/✓-Stable-success) | Full support for all record types and features |
 | ![AWS](https://img.shields.io/badge/Route53-FF9900?style=flat&logo=amazonaws&logoColor=white) | ![Stable](https://img.shields.io/badge/✓-Stable-success) | Full support for all record types and features |
+| ![UniFi](https://img.shields.io/badge/UniFi-0559C9?style=flat&logo=ubiquiti&logoColor=white) | ![Stable](https://img.shields.io/badge/✓-Stable-success) | Full support for A, AAAA, CNAME, MX, NS, SRV, TXT records |
 
 ## Supported Architectures
 
@@ -348,6 +350,52 @@ Required AWS IAM permissions:
     ]
 }
 ```
+
+### UniFi
+
+UniFi Network Application requires either an API key (recommended for v9+) or username/password credentials:
+
+**Option A: API Key Authentication (Recommended)**
+
+```yaml
+environment:
+  - DNS_PROVIDER=unifi
+  - UNIFI_HOST=https://unifi.local:8443
+  - UNIFI_API_KEY=your_unifi_api_key
+  # - UNIFI_SITE=default  # Optional, defaults to 'default'
+  # - UNIFI_SKIP_TLS_VERIFY=false  # Set to true for self-signed certificates
+  # - UNIFI_EXTERNAL_CONTROLLER=false  # Set to true for non-UniFi hardware
+```
+
+**Option B: Username/Password (Deprecated)**
+
+```yaml
+environment:
+  - DNS_PROVIDER=unifi
+  - UNIFI_HOST=https://unifi.local:8443
+  - UNIFI_USERNAME=admin
+  - UNIFI_PASSWORD=your_password
+  - UNIFI_SITE=default
+```
+
+UniFi-specific notes:
+- Minimum TTL of 60 seconds (recommended default: 300)
+- No proxying support (all `proxied` labels are ignored)
+- Supports wildcard domains (e.g., `*.example.com`)
+- Multi-site support via `UNIFI_SITE` variable
+- CNAME conflict prevention (automatically removes duplicate CNAMEs)
+- Supports A, AAAA, CNAME, MX, NS, SRV, and TXT record types
+
+**Creating a UniFi API Key:**
+1. Log into UniFi Network Application
+2. Navigate to: **Gear Icon** → **Control Plane** → **Integrations**
+3. Create a new API key with **Site Admin** permissions
+4. Copy the generated key to your configuration
+
+**Required UniFi Controller Version:**
+- UniFi OS 3.x or newer
+- UniFi Network Application 8.2.93 or newer
+- API key support requires UniFi Network v9.0.0+
 
 ## User/Group Permissions
 
@@ -623,6 +671,19 @@ services:
 
 *Either `ROUTE53_ZONE` or `ROUTE53_ZONE_ID` must be provided.
 
+### UniFi Settings
+| Variable | Description | Default | Required if using UniFi |
+|----------|-------------|---------|----------|
+| `UNIFI_HOST` | UniFi Controller URL (including protocol and port) | - | Yes |
+| `UNIFI_API_KEY` | UniFi API key (recommended for v9+) | - | Yes* |
+| `UNIFI_USERNAME` | UniFi admin username (deprecated) | - | Yes* |
+| `UNIFI_PASSWORD` | UniFi admin password (deprecated) | - | Yes* |
+| `UNIFI_SITE` | UniFi site name | `default` | No |
+| `UNIFI_SKIP_TLS_VERIFY` | Skip TLS certificate verification | `false` | No |
+| `UNIFI_EXTERNAL_CONTROLLER` | Use external controller API paths | `false` | No |
+
+*Either `UNIFI_API_KEY` or both `UNIFI_USERNAME` and `UNIFI_PASSWORD` must be provided.
+
 ### Traefik API Settings
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
@@ -635,9 +696,9 @@ services:
 |----------|-------------|---------|----------|
 | `DNS_LABEL_PREFIX` | Base prefix for DNS labels | `dns.` | No |
 | `DNS_DEFAULT_TYPE` | Default DNS record type | `CNAME` | No |
-| `DNS_DEFAULT_CONTENT` | Default record content | Value of `CLOUDFLARE_ZONE` or `DO_DOMAIN` or `ROUTE53_ZONE` | No |
+| `DNS_DEFAULT_CONTENT` | Default record content | Value of `CLOUDFLARE_ZONE` or `DO_DOMAIN` or `ROUTE53_ZONE` or auto-detected | No |
 | `DNS_DEFAULT_PROXIED` | Default Cloudflare proxy status | `true` | No |
-| `DNS_DEFAULT_TTL` | Default TTL in seconds | Provider-specific: Cloudflare=1 (Auto), DigitalOcean=30, Route53=60 | No |
+| `DNS_DEFAULT_TTL` | Default TTL in seconds | Provider-specific: Cloudflare=1 (Auto), DigitalOcean=30, Route53=60, UniFi=300 | No |
 | `DNS_DEFAULT_MANAGE` | Global DNS management mode | `true` | No |
 
 ### IP Address Settings
