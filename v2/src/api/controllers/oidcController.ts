@@ -140,12 +140,13 @@ export async function oidcCallback(req: Request, res: Response): Promise<void> {
       details: { isNewUser: oidcUser.isNewUser },
     });
 
-    // Set JWT cookie (same as local login)
+    // Set JWT cookie — restrict to /api/ path to avoid sending token with static asset requests
     res.cookie('token', token, {
       httpOnly: true,
       secure: isSecureContext(),
       sameSite: 'strict',
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      path: '/api/',
     });
 
     // Audit log

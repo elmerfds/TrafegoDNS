@@ -19,6 +19,14 @@ import {
 import type { DNSManager } from '../../services/DNSManager.js';
 
 /**
+ * Escape SQLite LIKE pattern special characters (%, _, \) to prevent
+ * user-supplied filter values from acting as wildcards.
+ */
+function escapeLike(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
+/**
  * List DNS records with filtering and pagination
  */
 export const listRecords = asyncHandler(async (req: Request, res: Response) => {
@@ -31,10 +39,10 @@ export const listRecords = asyncHandler(async (req: Request, res: Response) => {
     conditions.push(eq(dnsRecords.type, filter.type));
   }
   if (filter.name) {
-    conditions.push(like(dnsRecords.name, `%${filter.name}%`));
+    conditions.push(sql`${dnsRecords.name} LIKE ${`%${escapeLike(filter.name)}%`} ESCAPE '\\'`);
   }
   if (filter.content) {
-    conditions.push(like(dnsRecords.content, `%${filter.content}%`));
+    conditions.push(sql`${dnsRecords.content} LIKE ${`%${escapeLike(filter.content)}%`} ESCAPE '\\'`);
   }
   if (filter.providerId) {
     conditions.push(eq(dnsRecords.providerId, filter.providerId));
@@ -48,17 +56,17 @@ export const listRecords = asyncHandler(async (req: Request, res: Response) => {
   }
   // General search - searches across name and content
   if (filter.search && filter.search.trim()) {
-    const searchTerm = `%${filter.search.trim()}%`;
+    const searchTerm = `%${escapeLike(filter.search.trim())}%`;
     conditions.push(
-      sql`(${dnsRecords.name} LIKE ${searchTerm} OR ${dnsRecords.content} LIKE ${searchTerm})`
+      sql`(${dnsRecords.name} LIKE ${searchTerm} ESCAPE '\\' OR ${dnsRecords.content} LIKE ${searchTerm} ESCAPE '\\')`
     );
   }
   // Filter by zone/domain - matches records ending with the zone
   if (filter.zone && filter.zone.trim()) {
-    const zone = filter.zone.trim().toLowerCase();
+    const zone = escapeLike(filter.zone.trim().toLowerCase());
     // Match exact zone or subdomains (e.g., "example.com" matches "app.example.com" and "example.com")
     conditions.push(
-      sql`(LOWER(${dnsRecords.name}) = ${zone} OR LOWER(${dnsRecords.name}) LIKE ${`%.${zone}`})`
+      sql`(LOWER(${dnsRecords.name}) = ${zone} OR LOWER(${dnsRecords.name}) LIKE ${`%.${zone}`} ESCAPE '\\')`
     );
   }
   // Filter by status (active = no orphanedAt, orphaned = has orphanedAt)

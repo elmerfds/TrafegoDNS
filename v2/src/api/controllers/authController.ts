@@ -15,19 +15,25 @@ import {
   hashApiKey,
   setAuditContext,
 } from '../middleware/index.js';
-import { loginSchema, createApiKeySchema } from '../validation.js';
+import { loginSchema, createApiKeySchema, securePasswordSchema } from '../validation.js';
 import { getConfig } from '../../config/ConfigManager.js';
 import { sessionService, hashToken } from '../../services/SessionService.js';
 import { securityLogService } from '../../services/SecurityLogService.js';
 
 /**
- * Extract client IP from request (respects X-Forwarded-For behind proxy)
+ * Get client IP — uses req.ip which respects Express trust proxy setting.
+ * Avoids reading X-Forwarded-For directly to prevent IP spoofing.
  */
 function getClientIp(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string') return forwarded.split(',')[0]!.trim();
-  if (Array.isArray(forwarded)) return forwarded[0]!.trim();
   return req.ip ?? req.socket.remoteAddress ?? 'unknown';
+}
+
+/**
+ * Determine if the current request is over a secure (HTTPS) connection.
+ * Checks both direct TLS and X-Forwarded-Proto from a trusted proxy.
+ */
+function isRequestSecure(req: Request): boolean {
+  return req.secure || req.headers['x-forwarded-proto'] === 'https';
 }
 
 /** JWT expiration in seconds (mirrors auth.ts constant) */
@@ -156,12 +162,13 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
     resourceId: user.id,
   });
 
-  // Set cookie
+  // Set cookie — restrict to /api/ path to avoid sending token with static asset requests
   res.cookie('token', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isRequestSecure(req),
     sameSite: 'strict',
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    path: '/api/',
   });
 
   res.json({
@@ -205,7 +212,7 @@ export const logout = asyncHandler(async (req: Request, res: Response) => {
     resourceId: req.user?.id,
   });
 
-  res.clearCookie('token');
+  res.clearCookie('token', { path: '/api/' });
 
   res.json({
     success: true,
@@ -328,10 +335,15 @@ export const listApiKeys = asyncHandler(async (req: Request, res: Response) => {
     })
     .from(apiKeys);
 
-  // Filter by user if authenticated
-  const keys = req.user
-    ? await query.where(eq(apiKeys.userId, req.user.id))
-    : await query;
+  // Admins (including global API key and anonymous/auth-disabled) see all keys.
+  // All other authenticated users see only their own keys.
+  const isAdmin =
+    req.user?.role === 'admin' ||
+    req.authMethod === 'global_apikey' ||
+    req.authMethod === 'anonymous';
+  const keys = isAdmin
+    ? await query
+    : await query.where(eq(apiKeys.userId, req.user!.id));
 
   res.json({
     success: true,
@@ -413,9 +425,8 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response) =>
     if (existing.authProvider === 'oidc') {
       throw ApiError.badRequest('Password cannot be changed for SSO accounts. Manage your password through your identity provider.');
     }
-    if (password.length < 8) {
-      throw ApiError.badRequest('Password must be at least 8 characters');
-    }
+    // Enforce same complexity as createUser/updateUser (OWASP A07)
+    securePasswordSchema.parse(password);
     updateData.passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   }
   if (avatar !== undefined) {

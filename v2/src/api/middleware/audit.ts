@@ -81,13 +81,10 @@ export async function logAudit(
 }
 
 /**
- * Get client IP address from request
+ * Get client IP — uses req.ip which respects Express trust proxy setting.
+ * Avoids reading X-Forwarded-For directly to prevent IP spoofing in audit logs.
  */
 function getClientIp(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string') {
-    return forwarded.split(',')[0]?.trim() ?? 'unknown';
-  }
   return req.ip ?? 'unknown';
 }
 

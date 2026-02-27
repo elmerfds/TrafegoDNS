@@ -183,12 +183,22 @@ export class ConfigManager {
       manage: getEnvBool('DNS_DEFAULT_MANAGE', true),
     });
 
-    // Load auth config
+    // Load auth config — use documented AUTH_DEFAULT_ADMIN_* env var names
+    const defaultAdminPassword =
+      getSecret('AUTH_DEFAULT_ADMIN_PASSWORD') ?? getEnv('AUTH_DEFAULT_ADMIN_PASSWORD', 'admin') ?? 'admin';
     this._auth = {
-      defaultAdminUsername: getEnv('DEFAULT_ADMIN_USERNAME', 'admin') ?? 'admin',
-      defaultAdminPassword: getEnv('DEFAULT_ADMIN_PASSWORD', 'admin') ?? 'admin',
-      defaultAdminEmail: getEnv('DEFAULT_ADMIN_EMAIL', 'admin@localhost') ?? 'admin@localhost',
+      defaultAdminUsername: getEnv('AUTH_DEFAULT_ADMIN_USERNAME', 'admin') ?? 'admin',
+      defaultAdminPassword,
+      defaultAdminEmail: getEnv('AUTH_DEFAULT_ADMIN_EMAIL', 'admin@localhost') ?? 'admin@localhost',
     };
+
+    if (defaultAdminPassword === 'admin') {
+      logger.warn('╔════════════════════════════════════════════════════════════════╗');
+      logger.warn('║  ⚠  DEFAULT ADMIN PASSWORD IN USE                             ║');
+      logger.warn('║  Set AUTH_DEFAULT_ADMIN_PASSWORD to a strong password before   ║');
+      logger.warn('║  first startup to secure the initial admin account.            ║');
+      logger.warn('╚════════════════════════════════════════════════════════════════╝');
+    }
 
     // Load security config
     const authModeEnv = getEnv('AUTH_MODE');

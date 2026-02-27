@@ -6,13 +6,23 @@ import { z } from 'zod';
 
 /**
  * Safe URL validator that prevents SSRF attacks
- * Blocks: localhost, private IPs, link-local addresses
+ * Blocks: localhost, private IPs (IPv4 and IPv6), link-local addresses
  */
 export const safeUrlSchema = z.string().url().refine(
   (urlString) => {
     try {
       const url = new URL(urlString);
-      const hostname = url.hostname.toLowerCase();
+
+      // Only allow http and https
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        return false;
+      }
+
+      // Normalise hostname: strip IPv6 brackets if present
+      const rawHostname = url.hostname.toLowerCase();
+      const hostname = rawHostname.startsWith('[') && rawHostname.endsWith(']')
+        ? rawHostname.slice(1, -1)
+        : rawHostname;
 
       // Block localhost variations
       if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
@@ -42,12 +52,19 @@ export const safeUrlSchema = z.string().url().refine(
         if (a === 192 && b === 168) return false;
         // 169.254.0.0/16 (link-local)
         if (a === 169 && b === 254) return false;
+        // 100.64.0.0/10 (CGNAT / shared address space)
+        if (a === 100 && b !== undefined && b >= 64 && b <= 127) return false;
       }
 
-      // Only allow http and https
-      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-        return false;
-      }
+      // Block private IPv6 ranges
+      // fc00::/7 — Unique Local Addresses (fc** and fd**)
+      if (/^f[cd]/i.test(hostname)) return false;
+      // fe80::/10 — link-local
+      if (/^fe[89ab]/i.test(hostname)) return false;
+      // ::ffff:0:0/96 — IPv4-mapped (e.g. ::ffff:10.0.0.1)
+      if (/^::ffff:/i.test(hostname)) return false;
+      // 2001:db8::/32 — documentation range
+      if (/^2001:db8/i.test(hostname)) return false;
 
       return true;
     } catch {
@@ -130,14 +147,14 @@ const queryBooleanSchema = z.preprocess(
 
 export const dnsRecordFilterSchema = z.object({
   type: dnsRecordTypeSchema.optional(),
-  name: z.string().optional(),
-  content: z.string().optional(),
+  name: z.string().max(255).optional(),
+  content: z.string().max(512).optional(),
   providerId: z.string().uuid().optional(),
   source: z.enum(['traefik', 'direct', 'api', 'managed', 'discovered']).optional(),
   managed: queryBooleanSchema, // Filter by managed status
   status: z.enum(['active', 'orphaned']).optional(), // Filter by status (active = no orphanedAt, orphaned = has orphanedAt)
-  search: z.string().optional(), // General search across name and content
-  zone: z.string().optional(), // Filter by zone/domain (e.g., "example.com")
+  search: z.string().max(255).optional(), // General search across name and content
+  zone: z.string().max(255).optional(), // Filter by zone/domain (e.g., "example.com")
   orderBy: z.enum(['name', 'type', 'content', 'ttl', 'source', 'created_at', 'updated_at', 'last_synced_at']).optional().default('name'),
   direction: z.enum(['asc', 'desc']).optional().default('asc'),
 }).merge(paginationSchema);
