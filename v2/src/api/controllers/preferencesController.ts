@@ -9,6 +9,7 @@ import { getDatabase } from '../../database/connection.js';
 import { userPreferences } from '../../database/schema/index.js';
 import { ApiError, asyncHandler } from '../middleware/index.js';
 import { z } from 'zod';
+import { isSyntheticUserId } from '../../core/syntheticUsers.js';
 
 const updatePreferenceSchema = z.object({
   value: z.unknown(), // Accept any JSON-serializable value
@@ -93,6 +94,13 @@ export const updatePreference = asyncHandler(async (req: Request, res: Response)
   const key = req.params.key as string;
   const parsed = updatePreferenceSchema.parse(req.body);
   const valueJson = JSON.stringify(parsed.value);
+
+  // Synthetic principals (auth disabled, global API key) have no user row,
+  // so preferences can't be stored; accept and echo without persisting.
+  if (isSyntheticUserId(req.user.id)) {
+    res.json({ success: true, data: { key, value: parsed.value, persisted: false } });
+    return;
+  }
 
   const db = getDatabase();
   const now = new Date();

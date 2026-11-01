@@ -7,6 +7,7 @@ import { getDatabase } from '../database/connection.js';
 import { securityLogs, users } from '../database/schema/index.js';
 import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
 import { createChildLogger } from '../core/Logger.js';
+import { persistableUserId } from '../core/syntheticUsers.js';
 
 const logger = createChildLogger({ service: 'SecurityLogService' });
 
@@ -70,7 +71,7 @@ export class SecurityLogService {
       await db.insert(securityLogs).values({
         id: uuidv4(),
         eventType: params.eventType,
-        userId: params.userId ?? null,
+        userId: persistableUserId(params.userId),
         sessionId: params.sessionId ?? null,
         ipAddress: params.ipAddress,
         userAgent: params.userAgent ?? null,
