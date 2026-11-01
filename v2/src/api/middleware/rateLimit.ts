@@ -21,21 +21,25 @@ interface RateLimitConfig {
   message?: string; // Custom error message
 }
 
-// In-memory store for rate limit windows
-const rateLimitStore: Map<string, RateLimitWindow> = new Map();
+// One in-memory store per limiter. A shared store would make every limiter
+// increment the same per-IP counter (e.g. a login hit both the standard and
+// auth limits, and general API traffic counted towards the login limit).
+const rateLimitStores: Set<Map<string, RateLimitWindow>> = new Set();
 
 // Cleanup old entries periodically
 setInterval(
   () => {
     const now = Date.now();
-    for (const [key, window] of rateLimitStore.entries()) {
-      if (window.resetAt < now) {
-        rateLimitStore.delete(key);
+    for (const store of rateLimitStores) {
+      for (const [key, window] of store.entries()) {
+        if (window.resetAt < now) {
+          store.delete(key);
+        }
       }
     }
   },
   60 * 1000
-); // Every minute
+).unref(); // Every minute; don't keep the process alive
 
 /**
  * Default key generator - uses req.ip which respects Express trust proxy setting.
@@ -56,6 +60,9 @@ export function rateLimit(config: RateLimitConfig) {
     skip,
     message = 'Too many requests, please try again later',
   } = config;
+
+  const rateLimitStore: Map<string, RateLimitWindow> = new Map();
+  rateLimitStores.add(rateLimitStore);
 
   return (req: Request, res: Response, next: NextFunction): void => {
     // Check if we should skip rate limiting
