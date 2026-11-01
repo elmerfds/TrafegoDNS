@@ -1,6 +1,7 @@
 /**
  * DNS Records Controller
  */
+import { deleteSafely } from '../../providers/base/deleteSafely.js';
 import type { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabase } from '../../database/connection.js';
@@ -510,13 +511,15 @@ export const deleteRecord = asyncHandler(async (req: Request, res: Response) => 
     throw ApiError.notFound('DNS record');
   }
 
-  // Get provider and delete from it
+  // Delete at the provider. "Already gone" is fine (lets stale rows be removed);
+  // any other provider error propagates and the DB row is kept.
+  let providerResult: 'deleted' | 'absent' | 'skipped' = 'skipped';
   if (existing.externalId) {
     const dnsManager = container.resolveSync<DNSManager>(ServiceTokens.DNS_MANAGER);
     const provider = dnsManager.getProvider(existing.providerId);
 
     if (provider) {
-      await provider.deleteRecord(existing.externalId);
+      providerResult = await deleteSafely(provider, existing.externalId);
     }
   }
 
@@ -527,12 +530,12 @@ export const deleteRecord = asyncHandler(async (req: Request, res: Response) => 
     action: 'delete',
     resourceType: 'dnsRecord',
     resourceId: id,
-    details: { name: existing.name, type: existing.type },
+    details: { name: existing.name, type: existing.type, alreadyAbsentAtProvider: providerResult === 'absent' },
   });
 
   res.json({
     success: true,
-    message: 'DNS record deleted',
+    message: providerResult === 'absent' ? 'DNS record removed (it no longer existed at the provider)' : 'DNS record deleted',
   });
 });
 
@@ -572,12 +575,8 @@ export const bulkDeleteRecords = asyncHandler(async (req: Request, res: Response
       if (existing.externalId) {
         const provider = dnsManager.getProvider(existing.providerId);
         if (provider) {
-          try {
-            await provider.deleteRecord(existing.externalId);
-          } catch (providerError) {
-            // Log but continue - the record might already be deleted at provider
-            console.warn(`Failed to delete record ${id} from provider:`, providerError);
-          }
+          // Throws on real provider failures -> counted as failed, DB row kept
+          await deleteSafely(provider, existing.externalId);
         }
       }
 

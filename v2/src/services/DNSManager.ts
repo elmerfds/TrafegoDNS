@@ -2,6 +2,7 @@
  * DNS Manager Service
  * Orchestrates DNS record management across providers
  */
+import { deleteSafely } from '../providers/base/deleteSafely.js';
 import { v4 as uuidv4 } from 'uuid';
 import { logger, createChildLogger } from '../core/Logger.js';
 import { eventBus, EventTypes } from '../core/EventBus.js';
@@ -1501,7 +1502,10 @@ export class DNSManager {
             // Grace period elapsed - delete
             try {
               if (record.externalId) {
-                await provider.deleteRecord(record.externalId);
+                const result = await deleteSafely(provider, record.externalId);
+                if (result === 'absent') {
+                  this.logger.warn({ name: record.name, type: record.type }, 'Orphaned record was already absent at provider; removing tracking row');
+                }
               }
               await db.delete(dnsRecords).where(eq(dnsRecords.id, record.id));
               totalDeleted++;
