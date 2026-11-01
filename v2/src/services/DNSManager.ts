@@ -96,6 +96,8 @@ export class DNSManager {
   };
   private initialized: boolean = false;
   private previousHostnames: Set<string> = new Set();
+  /** Labels used for each active record in the latest sync, keyed `${providerId}:${fqdn}` (for force re-sync) */
+  private lastRecordLabels: Map<string, Record<string, string>> = new Map();
   private syncCount: number = 0;
   private lastLoggedHostnameCount: number = 0;
 
@@ -307,24 +309,37 @@ export class DNSManager {
           continue;
         }
 
-        // Re-resolve defaults for this record's type
-        const defaults = this.resolveRecordDefaults(record.type as DNSRecordType, provider);
-
-        // Determine what the content should be based on current defaults
-        let expectedContent = record.content;
-        if (record.source === 'traefik' || record.source === 'direct' || record.source === 'managed') {
-          // Only update content for auto-managed records, not manually created ones
-          if (record.type === 'A') {
-            expectedContent = defaults.publicIp;
-          } else if (record.type === 'AAAA') {
-            expectedContent = defaults.publicIpv6;
-          } else if (record.type === 'CNAME') {
-            expectedContent = defaults.content || provider.getZoneName() || '';
-          }
+        // Only auto-managed records are re-derived; API-created/claimed records keep
+        // their own settings. Re-derive through the same path as a normal sync so
+        // labels and hostname overrides keep precedence over defaults.
+        const isAuto = record.source === 'traefik' || record.source === 'direct' || record.source === 'managed';
+        if (!isAuto) {
+          result.unchanged++;
+          continue;
+        }
+        const labels = this.lastRecordLabels.get(`${record.providerId}:${record.name.toLowerCase()}`);
+        if (!labels) {
+          // Not active in the latest sync (orphaned, tunnel-routed, or no sync yet since
+          // startup): the poll/cleanup loop owns it, don't rewrite it here.
+          result.unchanged++;
+          continue;
+        }
+        const labelPrefix = this.config.docker.labelPrefix;
+        const expected = this.extractDnsConfig(
+          record.name,
+          { ...labels, [`${labelPrefix}type`]: record.type },
+          labelPrefix,
+          provider
+        );
+        if (expected.content === '__SKIP__') {
+          result.unchanged++;
+          continue;
         }
 
-        const expectedTtl = defaults.ttl;
-        const expectedProxied = ['A', 'AAAA', 'CNAME'].includes(record.type) ? defaults.proxied : undefined;
+        const expectedContent = expected.content;
+        const expectedTtl = expected.ttl ?? record.ttl;
+        // undefined for providers without proxy support -> never treated as a change
+        const expectedProxied = expected.proxied;
 
         // Check if update is needed
         const contentChanged = expectedContent && record.content !== expectedContent;
@@ -358,21 +373,31 @@ export class DNSManager {
           });
         }
 
-        // Update at provider
-        if (record.externalId) {
-          await provider.updateRecord(record.externalId, {
-            type: record.type as DNSRecordType,
-            name: record.name,
-            content: expectedContent,
-            ttl: expectedTtl,
-            proxied: expectedProxied,
+        if (proxiedChanged) {
+          result.details.push({
+            hostname: record.name,
+            field: 'proxied',
+            oldValue: String(record.proxied),
+            newValue: String(expectedProxied),
           });
         }
+
+        // Update at provider; keep the returned id (content-derived ids change with content)
+        const updated = record.externalId
+          ? await provider.updateRecord(record.externalId, {
+              type: record.type as DNSRecordType,
+              name: record.name,
+              content: expectedContent,
+              ttl: expectedTtl,
+              ...(expectedProxied !== undefined && { proxied: expectedProxied }),
+            })
+          : undefined;
 
         // Update in database
         await db
           .update(dnsRecords)
           .set({
+            externalId: updated?.id ?? record.externalId,
             content: expectedContent,
             ttl: expectedTtl,
             proxied: expectedProxied ?? record.proxied,
@@ -646,6 +671,7 @@ export class DNSManager {
     // (neither orphan nor delete them) until routing succeeds or the hostname disappears.
     const tunnelFailedHostnames = new Set<string>();
     const tunnelManager = this.getTunnelManager();
+    const recordLabels = new Map<string, Record<string, string>>();
 
     for (const hostname of hostnames) {
       try {
@@ -706,6 +732,7 @@ export class DNSManager {
 
           // Extract DNS config from labels (provider-specific content if needed)
           const recordConfig = this.extractDnsConfig(fqdn, labels, labelPrefix, provider);
+          recordLabels.set(`${providerId}:${fqdn.toLowerCase()}`, labels);
 
           // Skip records marked for skipping (e.g., self-referencing CNAMEs)
           if (recordConfig.content === '__SKIP__') {
@@ -764,6 +791,8 @@ export class DNSManager {
         this.stats.errors += group.records.length;
       }
     }
+
+    this.lastRecordLabels = recordLabels;
 
     // Log stats
     this.logStats();
