@@ -3,6 +3,7 @@
  * Uses nsupdate and dig CLI tools for DNS record management
  * Compatible with BIND9, PowerDNS, Knot DNS, Windows DNS Server, and other RFC 2136 compliant servers
  */
+import { isIPv4, isIPv6 } from 'node:net';
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { DNSProvider, type ProviderCredentials, type ProviderInfo } from '../base/DNSProvider.js';
@@ -151,6 +152,8 @@ export class RFC2136Provider extends DNSProvider {
     const type = record.type ?? existing.type;
     const content = record.content ?? existing.content;
     const ttl = record.ttl ?? existing.ttl;
+    this.assertSafeFields(type, name, content, record.tag ?? existing.tag);
+    if (!Number.isInteger(ttl) || ttl < 0) throw new Error(`Invalid TTL: ${ttl}`);
     const fqdn = this.toFqdn(name);
 
     // Delete old record by specific name+type+rdata, then add new one
@@ -212,10 +215,46 @@ export class RFC2136Provider extends DNSProvider {
     return true;
   }
 
+  /**
+   * nsupdate scripts are line-based and built by interpolation, so every field
+   * must be validated before use: a newline (or other control char) in a name
+   * or value would inject extra TSIG-signed commands (e.g. delete other records).
+   */
+  private assertSafeFields(type: DNSRecordType, name: string, content: string, tag?: string): void {
+    const CONTROL = /[\u0000-\u001f\u007f]/;
+    const HOSTNAME = /^(\*\.)?([A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?\.)*[A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?\.?$/;
+    for (const [field, value] of [['name', name], ['content', content], ['tag', tag ?? '']] as const) {
+      if (CONTROL.test(value)) throw new Error(`Invalid ${field}: control characters are not allowed`);
+    }
+    if (!HOSTNAME.test(name)) throw new Error(`Invalid record name: ${name}`);
+    switch (type) {
+      case 'A':
+        if (!isIPv4(content)) throw new Error(`Invalid IPv4 address: ${content}`);
+        break;
+      case 'AAAA':
+        if (!isIPv6(content)) throw new Error(`Invalid IPv6 address: ${content}`);
+        break;
+      case 'CNAME':
+      case 'NS':
+      case 'MX':
+      case 'SRV':
+        if (!HOSTNAME.test(content)) throw new Error(`Invalid ${type} target: ${content}`);
+        break;
+      case 'TXT':
+        // Quotes inside TXT would break out of the quoted string
+        if (/"/.test(content.replace(/^"|"$/g, ''))) throw new Error('TXT content must not contain embedded double quotes');
+        break;
+      case 'CAA':
+        if (/["\s]/.test(content) || (tag !== undefined && !/^[A-Za-z0-9]+$/.test(tag))) throw new Error('Invalid CAA value or tag');
+        break;
+    }
+  }
+
   validateRecord(record: DNSRecordCreateInput): void {
     if (!record.name) throw new Error('Record name is required');
     if (!record.content) throw new Error('Record content is required');
     if (!record.type) throw new Error('Record type is required');
+    this.assertSafeFields(record.type, record.name, record.content, record.tag);
     if (!SUPPORTED_TYPES.includes(record.type)) {
       throw new Error(`Unsupported record type: ${record.type}`);
     }

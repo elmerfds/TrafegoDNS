@@ -21,6 +21,7 @@ import { sessionService, hashToken } from '../../services/SessionService.js';
 import { securityLogService } from '../../services/SecurityLogService.js';
 import { getClientIp, isRequestSecure } from '../requestUtils.js';
 import { createChildLogger } from '../../core/Logger.js';
+import { ROLE_ALLOWED_PERMISSIONS, persistableUserId } from '../../core/syntheticUsers.js';
 
 const logger = createChildLogger({ service: 'AuthController' });
 
@@ -245,15 +246,6 @@ export const getCurrentUser = asyncHandler(async (req: Request, res: Response) =
   });
 });
 
-/**
- * Maximum allowed permissions per role (OWASP A01: Broken Access Control)
- * Users cannot create API keys with more permissions than their role allows.
- */
-const ROLE_ALLOWED_PERMISSIONS: Record<string, string[]> = {
-  admin: ['*', 'read', 'write'],
-  user: ['read', 'write'],
-  readonly: ['read'],
-};
 
 /**
  * Create API key
@@ -272,13 +264,20 @@ export const createApiKeyHandler = asyncHandler(async (req: Request, res: Respon
     );
   }
 
+  // Keys act on behalf of a real user; synthetic principals (global API key,
+  // auth disabled) have no user row to own one.
+  const ownerId = persistableUserId(req.user?.id);
+  if (!ownerId) {
+    throw ApiError.badRequest('API keys must be created by a user account');
+  }
+
   // Generate API key
   const { key, prefix, hash } = generateApiKey();
 
   const id = uuidv4();
   await db.insert(apiKeys).values({
     id,
-    userId: req.user?.id ?? null,
+    userId: ownerId,
     name: input.name,
     keyHash: hash,
     keyPrefix: prefix,

@@ -8,6 +8,7 @@ import { getDatabase } from '../../database/connection.js';
 import { auditLogs } from '../../database/schema/index.js';
 import { createChildLogger } from '../../core/Logger.js';
 import { getClientIp } from '../requestUtils.js';
+import { persistableUserId } from '../../core/syntheticUsers.js';
 
 const logger = createChildLogger({ service: 'Audit' });
 
@@ -56,7 +57,7 @@ export async function logAudit(
 
     await db.insert(auditLogs).values({
       id: uuidv4(),
-      userId: req.user?.id ?? null,
+      userId: persistableUserId(req.user?.id),
       action: context.action,
       resourceType: context.resourceType,
       resourceId: context.resourceId ?? null,

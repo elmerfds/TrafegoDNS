@@ -77,7 +77,15 @@ export async function oidcCallback(req: Request, res: Response): Promise<void> {
     const expectedState = req.cookies?.oidc_state as string | undefined;
     res.clearCookie('oidc_state', { path: '/api/v1/auth/oidc' });
 
-    logger.info(`OIDC callback received: hasStateCookie=${!!expectedState}, query=${JSON.stringify(req.query)}, cookies=${Object.keys(req.cookies || {}).join(',')}`);
+    // Never log the query itself: it carries the one-time authorization code
+    logger.debug(
+      {
+        hasStateCookie: !!expectedState,
+        hasCode: typeof req.query.code === 'string',
+        error: typeof req.query.error === 'string' ? req.query.error : undefined,
+      },
+      'OIDC callback received'
+    );
 
     if (!expectedState) {
       logger.warn('OIDC callback: missing state cookie');
@@ -95,7 +103,7 @@ export async function oidcCallback(req: Request, res: Response): Promise<void> {
       callbackUrl.searchParams.set(key, value);
     });
 
-    logger.info(`OIDC callback URL: ${callbackUrl.toString().replace(/code=[^&]+/, 'code=REDACTED')}`);
+    logger.debug(`OIDC callback URL: ${callbackUrl.origin}${callbackUrl.pathname} (params: ${[...callbackUrl.searchParams.keys()].join(',')})`);
 
     // Exchange code for tokens and find/create user
     const oidcUser = await oidcService.handleCallback(callbackUrl, expectedState);

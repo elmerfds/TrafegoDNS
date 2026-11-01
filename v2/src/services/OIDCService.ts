@@ -8,7 +8,7 @@ import { randomBytes } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcrypt';
 import { getDatabase } from '../database/connection.js';
-import { users } from '../database/schema/index.js';
+import { users, sessions, apiKeys } from '../database/schema/index.js';
 import { eq, and } from 'drizzle-orm';
 import { getConfig, type OIDCConfig } from '../config/ConfigManager.js';
 import { createChildLogger } from '../core/Logger.js';
@@ -162,6 +162,7 @@ export class OIDCService {
     const email = (userInfo?.email ?? claims.email ?? '') as string;
     const name = (userInfo?.name ?? claims.name ?? userInfo?.preferred_username ?? claims.preferred_username ?? '') as string;
     const picture = (userInfo?.picture ?? claims.picture ?? null) as string | null;
+    const emailVerified = (userInfo?.email_verified ?? claims.email_verified) === true;
     const groups = this.extractGroups(userInfo, claims);
 
     if (!email) {
@@ -174,7 +175,7 @@ export class OIDCService {
     logger.info({ sub, email, name, groups, role }, 'OIDC user authenticated');
 
     // Find or create user in database
-    return this.findOrCreateUser(sub, email, name, role, picture);
+    return this.findOrCreateUser(sub, email, name, role, picture, emailVerified);
   }
 
   /**
@@ -225,7 +226,8 @@ export class OIDCService {
     email: string,
     displayName: string,
     role: 'admin' | 'user' | 'readonly',
-    avatar: string | null
+    avatar: string | null,
+    emailVerified: boolean
   ): Promise<OIDCUser> {
     const db = getDatabase();
     const issuer = this.config.issuerUrl;
@@ -267,11 +269,29 @@ export class OIDCService {
       .limit(1);
 
     if (existingByEmail) {
-      // Link existing user to OIDC
+      // Linking by email lets whoever controls that address at the IdP take
+      // over the account (including its role and local password), so it is
+      // opt-in, needs a verified email, and never re-binds an account that
+      // already belongs to another OIDC identity.
+      if (!this.config.linkExistingByEmail) {
+        throw new Error(
+          `An account with email ${email} already exists and is not linked to this OIDC identity. ` +
+            'An admin can delete or change that account, or set OIDC_LINK_EXISTING_BY_EMAIL=true to link it.'
+        );
+      }
+      if (!emailVerified) {
+        throw new Error(`Refusing to link account ${email}: the OIDC provider did not mark the email as verified`);
+      }
+      if (existingByEmail.oidcSubject) {
+        throw new Error(`Refusing to link account ${email}: it is already bound to a different OIDC identity`);
+      }
+
+      // Link existing user to OIDC; the local password no longer applies
       await db
         .update(users)
         .set({
           authProvider: 'oidc',
+          passwordHash: null,
           oidcSubject: sub,
           oidcIssuer: issuer,
           role,
@@ -280,6 +300,11 @@ export class OIDCService {
           updatedAt: new Date(),
         })
         .where(eq(users.id, existingByEmail.id));
+
+      // Whoever used this account before the link must not inherit the
+      // IdP-mapped role through existing sessions or API keys
+      await db.delete(sessions).where(eq(sessions.userId, existingByEmail.id));
+      await db.delete(apiKeys).where(eq(apiKeys.userId, existingByEmail.id));
 
       logger.info({ userId: existingByEmail.id, email }, 'Linked existing user to OIDC');
 

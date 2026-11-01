@@ -11,6 +11,7 @@ import { eq } from 'drizzle-orm';
 import { ApiError } from './errorHandler.js';
 import { createChildLogger } from '../../core/Logger.js';
 import { getConfig, type AuthMode } from '../../config/ConfigManager.js';
+import { ANONYMOUS_USER_ID, GLOBAL_API_KEY_USER_ID, effectiveKeyPermissions } from '../../core/syntheticUsers.js';
 
 const logger = createChildLogger({ service: 'Auth' });
 
@@ -41,7 +42,7 @@ declare global {
 
 /** Synthetic user for auth-disabled mode */
 const ANONYMOUS_USER: AuthenticatedUser = {
-  id: 'anonymous',
+  id: ANONYMOUS_USER_ID,
   username: 'anonymous',
   email: 'anonymous@trafegodns.local',
   role: 'admin',
@@ -49,7 +50,7 @@ const ANONYMOUS_USER: AuthenticatedUser = {
 
 /** Synthetic user for global API key access */
 const GLOBAL_API_KEY_USER: AuthenticatedUser = {
-  id: 'global-api-key',
+  id: GLOBAL_API_KEY_USER_ID,
   username: 'global_api_key',
   email: 'system@trafegodns.local',
   role: 'admin',
@@ -252,26 +253,29 @@ export function authenticate(
         req.apiKey = apiKeyInfo;
         req.authMethod = 'apikey';
 
-        // If API key has associated user, load user info
-        if (apiKeyInfo.userId) {
-          const db = getDatabase();
-          return db
-            .select()
-            .from(users)
-            .where(eq(users.id, apiKeyInfo.userId))
-            .limit(1)
-            .then(([user]) => {
-              if (user) {
-                req.user = {
-                  id: user.id,
-                  username: user.username,
-                  email: user.email,
-                  role: user.role,
-                };
-              }
-            });
+        // A key acts on behalf of its owner: the owner must still exist and the
+        // key is capped to what the owner's *current* role allows.
+        if (!apiKeyInfo.userId) {
+          throw ApiError.unauthorized('API key has no owner');
         }
-        return;
+        const db = getDatabase();
+        return db
+          .select()
+          .from(users)
+          .where(eq(users.id, apiKeyInfo.userId))
+          .limit(1)
+          .then(([user]) => {
+            if (!user) {
+              throw ApiError.unauthorized('API key owner no longer exists');
+            }
+            apiKeyInfo.permissions = effectiveKeyPermissions(apiKeyInfo.permissions, user.role);
+            req.user = {
+              id: user.id,
+              username: user.username,
+              email: user.email,
+              role: user.role,
+            };
+          });
       })
       .then(() => next())
       .catch(next);
