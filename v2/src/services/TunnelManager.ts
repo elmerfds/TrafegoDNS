@@ -629,8 +629,9 @@ export class TunnelManager {
       .limit(1);
 
     if (!tunnelRecord) {
-      this.logger.warn({ tunnelName, hostname }, 'Tunnel not found for auto-management, skipping');
-      return;
+      // Throw rather than return: the caller treats a normal return as "routed via
+      // tunnel" and skips DNS, which would orphan and later delete the hostname's record.
+      throw new Error(`Tunnel "${tunnelName}" not found`);
     }
 
     // Check if rule already exists

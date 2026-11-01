@@ -50,6 +50,11 @@ export const dnsRecords = sqliteTable('dns_records', {
   comment: text('comment'),
   source: text('source', { enum: ['traefik', 'direct', 'api', 'managed', 'discovered'] }).notNull().default('traefik'),
   managed: integer('managed', { mode: 'boolean' }).notNull().default(true), // Whether TrafegoDNS owns this record
+  // How TrafegoDNS came to manage this record (null = legacy row, treated as 'created'):
+  //  created  - TrafegoDNS created it (or it carries the ownership marker): updated and deleted when orphaned
+  //  adopted  - pre-existing record at an active hostname: kept in sync, released (not deleted) when orphaned
+  //  released - explicitly unclaimed by a user: never re-claimed or modified by auto-sync
+  ownership: text('ownership', { enum: ['created', 'adopted', 'released'] }),
   orphanedAt: integer('orphaned_at', { mode: 'timestamp' }),
   lastSyncedAt: integer('last_synced_at', { mode: 'timestamp' }),
   ...timestamps,

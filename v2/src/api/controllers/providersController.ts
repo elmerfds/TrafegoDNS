@@ -468,7 +468,7 @@ export const discoverRecords = asyncHandler(async (req: Request, res: Response) 
         .from(dnsRecords)
         .where(
           record.id
-            ? eq(dnsRecords.externalId, record.id)
+            ? and(eq(dnsRecords.providerId, id), eq(dnsRecords.externalId, record.id))
             : and(eq(dnsRecords.name, record.name), eq(dnsRecords.type, record.type), eq(dnsRecords.providerId, id))
         )
         .limit(1);

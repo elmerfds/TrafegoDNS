@@ -2,6 +2,7 @@
  * Docker Monitor
  * Watches Docker events and maintains container label cache
  */
+import { extractHostArgs } from '../utils/traefikRules.js';
 import Docker from 'dockerode';
 import { logger, createChildLogger } from '../core/Logger.js';
 import { eventBus, EventTypes } from '../core/EventBus.js';
@@ -337,17 +338,7 @@ export class DockerMonitor {
    */
   private extractHostsFromTraefikRule(rule: string): string[] {
     const hosts: string[] = [];
-    const hostMatch = rule.match(/Host\(`([^`]+)`\)/g);
-
-    if (hostMatch) {
-      for (const match of hostMatch) {
-        const hostValue = match.match(/Host\(`([^`]+)`\)/)?.[1];
-        if (hostValue) {
-          // Handle multiple hosts separated by ||
-          hosts.push(...hostValue.split('||').map((h) => h.trim().replace(/`/g, '')));
-        }
-      }
-    }
+    hosts.push(...extractHostArgs(rule));
 
     // Filter out invalid hostnames (regex patterns, templates, etc.)
     return hosts.filter((h) => {

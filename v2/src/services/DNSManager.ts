@@ -2,6 +2,7 @@
  * DNS Manager Service
  * Orchestrates DNS record management across providers
  */
+import { deleteSafely } from '../providers/base/deleteSafely.js';
 import { v4 as uuidv4 } from 'uuid';
 import { logger, createChildLogger } from '../core/Logger.js';
 import { eventBus, EventTypes } from '../core/EventBus.js';
@@ -95,6 +96,8 @@ export class DNSManager {
   };
   private initialized: boolean = false;
   private previousHostnames: Set<string> = new Set();
+  /** Labels used for each active record in the latest sync, keyed `${providerId}:${fqdn}` (for force re-sync) */
+  private lastRecordLabels: Map<string, Record<string, string>> = new Map();
   private syncCount: number = 0;
   private lastLoggedHostnameCount: number = 0;
 
@@ -306,24 +309,37 @@ export class DNSManager {
           continue;
         }
 
-        // Re-resolve defaults for this record's type
-        const defaults = this.resolveRecordDefaults(record.type as DNSRecordType, provider);
-
-        // Determine what the content should be based on current defaults
-        let expectedContent = record.content;
-        if (record.source === 'traefik' || record.source === 'direct' || record.source === 'managed') {
-          // Only update content for auto-managed records, not manually created ones
-          if (record.type === 'A') {
-            expectedContent = defaults.publicIp;
-          } else if (record.type === 'AAAA') {
-            expectedContent = defaults.publicIpv6;
-          } else if (record.type === 'CNAME') {
-            expectedContent = defaults.content || provider.getZoneName() || '';
-          }
+        // Only auto-managed records are re-derived; API-created/claimed records keep
+        // their own settings. Re-derive through the same path as a normal sync so
+        // labels and hostname overrides keep precedence over defaults.
+        const isAuto = record.source === 'traefik' || record.source === 'direct' || record.source === 'managed';
+        if (!isAuto) {
+          result.unchanged++;
+          continue;
+        }
+        const labels = this.lastRecordLabels.get(`${record.providerId}:${record.name.toLowerCase()}`);
+        if (!labels) {
+          // Not active in the latest sync (orphaned, tunnel-routed, or no sync yet since
+          // startup): the poll/cleanup loop owns it, don't rewrite it here.
+          result.unchanged++;
+          continue;
+        }
+        const labelPrefix = this.config.docker.labelPrefix;
+        const expected = this.extractDnsConfig(
+          record.name,
+          { ...labels, [`${labelPrefix}type`]: record.type },
+          labelPrefix,
+          provider
+        );
+        if (expected.content === '__SKIP__') {
+          result.unchanged++;
+          continue;
         }
 
-        const expectedTtl = defaults.ttl;
-        const expectedProxied = ['A', 'AAAA', 'CNAME'].includes(record.type) ? defaults.proxied : undefined;
+        const expectedContent = expected.content;
+        const expectedTtl = expected.ttl ?? record.ttl;
+        // undefined for providers without proxy support -> never treated as a change
+        const expectedProxied = expected.proxied;
 
         // Check if update is needed
         const contentChanged = expectedContent && record.content !== expectedContent;
@@ -357,21 +373,31 @@ export class DNSManager {
           });
         }
 
-        // Update at provider
-        if (record.externalId) {
-          await provider.updateRecord(record.externalId, {
-            type: record.type as DNSRecordType,
-            name: record.name,
-            content: expectedContent,
-            ttl: expectedTtl,
-            proxied: expectedProxied,
+        if (proxiedChanged) {
+          result.details.push({
+            hostname: record.name,
+            field: 'proxied',
+            oldValue: String(record.proxied),
+            newValue: String(expectedProxied),
           });
         }
+
+        // Update at provider; keep the returned id (content-derived ids change with content)
+        const updated = record.externalId
+          ? await provider.updateRecord(record.externalId, {
+              type: record.type as DNSRecordType,
+              name: record.name,
+              content: expectedContent,
+              ttl: expectedTtl,
+              ...(expectedProxied !== undefined && { proxied: expectedProxied }),
+            })
+          : undefined;
 
         // Update in database
         await db
           .update(dnsRecords)
           .set({
+            externalId: updated?.id ?? record.externalId,
             content: expectedContent,
             ttl: expectedTtl,
             proxied: expectedProxied ?? record.proxied,
@@ -641,7 +667,20 @@ export class DNSManager {
     // Group records by provider
     const providerGroups = new Map<string, ProviderRecordGroup>();
     const tunnelManagedHostnames = new Set<string>();
+    // Hostnames whose tunnel routing failed this cycle: keep their existing DNS records
+    // (neither orphan nor delete them) until routing succeeds or the hostname disappears.
+    const tunnelFailedHostnames = new Set<string>();
     const tunnelManager = this.getTunnelManager();
+    const recordLabels = new Map<string, Record<string, string>>();
+
+    // Records auto-sync must leave alone: explicitly unclaimed by a user, or created via the API
+    const handsOff = new Set(
+      (await getDatabase()
+        .select({ providerId: dnsRecords.providerId, name: dnsRecords.name, type: dnsRecords.type })
+        .from(dnsRecords)
+        .where(or(eq(dnsRecords.ownership, 'released'), eq(dnsRecords.source, 'api'))))
+        .map((r) => `${r.providerId}:${r.name.toLowerCase()}:${r.type}`)
+    );
 
     for (const hostname of hostnames) {
       try {
@@ -676,6 +715,10 @@ export class DNSManager {
             } catch (error) {
               this.logger.error({ error, hostname, tunnel: tunnelConfig.tunnelName }, 'Failed to ensure tunnel ingress rule');
               this.stats.errors++;
+              tunnelFailedHostnames.add(hostname.toLowerCase());
+              for (const p of this.providerInstances.values()) {
+                tunnelFailedHostnames.add(this.ensureFqdn(hostname, p.getZoneName()).toLowerCase());
+              }
             }
             continue; // Skip normal DNS processing
           }
@@ -698,9 +741,16 @@ export class DNSManager {
 
           // Extract DNS config from labels (provider-specific content if needed)
           const recordConfig = this.extractDnsConfig(fqdn, labels, labelPrefix, provider);
+          recordLabels.set(`${providerId}:${fqdn.toLowerCase()}`, labels);
 
           // Skip records marked for skipping (e.g., self-referencing CNAMEs)
           if (recordConfig.content === '__SKIP__') {
+            this.stats.skipped++;
+            continue;
+          }
+
+          if (handsOff.has(`${providerId}:${fqdn.toLowerCase()}:${recordConfig.type}`)) {
+            this.logger.debug({ fqdn, type: recordConfig.type, providerId }, 'Skipping record released by user or created via API');
             this.stats.skipped++;
             continue;
           }
@@ -757,6 +807,8 @@ export class DNSManager {
       }
     }
 
+    this.lastRecordLabels = recordLabels;
+
     // Log stats
     this.logStats();
 
@@ -764,7 +816,7 @@ export class DNSManager {
     // Read from SettingsService (database-persisted) rather than ConfigManager (env-only)
     const cleanupEnabled = getSettingsService().get<boolean>('cleanup_orphaned');
     if (cleanupEnabled && (processedHostnames.length > 0 || tunnelManagedHostnames.size > 0)) {
-      await this.cleanupOrphanedRecords(processedHostnames);
+      await this.cleanupOrphanedRecords(processedHostnames, tunnelFailedHostnames);
 
       // Also cleanup orphaned tunnel ingress rules
       // Always run when tunnel manager exists — even with 0 active tunnel hostnames,
@@ -1270,6 +1322,7 @@ export class DNSManager {
         tag: record.tag,
         source: 'traefik',
         managed: true, // Records we create are always managed
+        ownership: 'created',
         lastSyncedAt: now,
       });
 
@@ -1289,11 +1342,13 @@ export class DNSManager {
     // (unchanged records may exist at provider but not in our database - e.g., fresh v2 install)
     for (const record of [...result.updated, ...result.unchanged]) {
       if (record.id) {
-        // First try to find by externalId (works for providers with stable IDs like DigitalOcean/Cloudflare)
+        // First try to find by externalId (works for providers with stable IDs like DigitalOcean/Cloudflare).
+        // Scoped to this provider: several providers derive ids from name:type:content, so the
+        // same record on two providers has the same externalId.
         let existing = await db
-          .select({ id: dnsRecords.id })
+          .select({ id: dnsRecords.id, ownership: dnsRecords.ownership, source: dnsRecords.source, managed: dnsRecords.managed })
           .from(dnsRecords)
-          .where(eq(dnsRecords.externalId, record.id))
+          .where(and(eq(dnsRecords.providerId, providerId), eq(dnsRecords.externalId, record.id)))
           .limit(1);
 
         // If not found by externalId, try by providerId + name + type
@@ -1301,7 +1356,7 @@ export class DNSManager {
         // and may change if content normalization differs between syncs
         if (existing.length === 0) {
           existing = await db
-            .select({ id: dnsRecords.id })
+            .select({ id: dnsRecords.id, ownership: dnsRecords.ownership, source: dnsRecords.source, managed: dnsRecords.managed })
             .from(dnsRecords)
             .where(
               and(
@@ -1313,9 +1368,13 @@ export class DNSManager {
             .limit(1);
         }
 
+        const markedAsOurs = provider?.isOwnedByTrafego(record) ?? false;
+
         if (existing.length > 0) {
-          // Update existing record (also update externalId in case it changed)
-          // Also reclaim "discovered" records that are now being actively synced from Traefik
+          const row = existing[0]!;
+          // Rows TrafegoDNS already manages keep their ownership; a row we didn't manage
+          // (e.g. found by "discover") is adopted unless it carries our ownership marker.
+          const ownership = row.managed ? row.ownership : markedAsOurs ? 'created' : 'adopted';
           await db
             .update(dnsRecords)
             .set({
@@ -1326,14 +1385,15 @@ export class DNSManager {
               priority: record.priority,
               lastSyncedAt: now,
               orphanedAt: null, // Clear orphaned status
-              source: 'traefik', // Reclaim as Traefik-managed
-              managed: true, // Mark as managed since we're actively syncing
+              source: 'traefik',
+              managed: true, // Actively synced from Traefik
+              ownership,
             })
-            .where(eq(dnsRecords.id, existing[0]!.id));
+            .where(eq(dnsRecords.id, row.id));
         } else {
-          // Insert record that exists at provider but not in our database
-          // Since we're actively syncing from Traefik, mark as managed
-          // (The ownership marker check is only for manual "discover" operations)
+          // Record exists at the provider but not in our database: claim it so it's kept in
+          // sync, but unless it carries our ownership marker it is only adopted (released,
+          // not deleted, when its hostname goes away).
           await db.insert(dnsRecords).values({
             id: uuidv4(),
             providerId,
@@ -1350,7 +1410,8 @@ export class DNSManager {
             tag: record.tag,
             comment: record.comment,
             source: 'traefik',
-            managed: true, // Record is being actively synced from Traefik
+            managed: true,
+            ownership: markedAsOurs ? 'created' : 'adopted',
             lastSyncedAt: now,
           });
           this.logger.debug(
@@ -1365,7 +1426,10 @@ export class DNSManager {
   /**
    * Cleanup orphaned DNS records across all providers
    */
-  private async cleanupOrphanedRecords(processedHostnames: ProcessedHostname[]): Promise<void> {
+  private async cleanupOrphanedRecords(
+    processedHostnames: ProcessedHostname[],
+    protectedHostnames: Set<string> = new Set()
+  ): Promise<void> {
     const db = getDatabase();
     // Read grace period from SettingsService (database-persisted) so changes survive restarts
     const gracePeriodMinutes = getSettingsService().get<number>('cleanup_grace_period');
@@ -1442,6 +1506,12 @@ export class DNSManager {
           continue;
         }
 
+        // Tunnel routing failed this cycle: leave the existing record alone
+        if (protectedHostnames.has(normalizedHostname)) {
+          this.logger.debug({ name: record.name, providerId }, 'Skipping orphan check: tunnel routing failed this cycle');
+          continue;
+        }
+
         if (isActive) {
           // Record is active - clear orphaned status if set
           if (record.orphanedAt) {
@@ -1481,11 +1551,22 @@ export class DNSManager {
               },
               gracePeriodMinutes,
             });
+          } else if (new Date(record.orphanedAt) < cutoffTime && record.ownership === 'adopted') {
+            // Grace period elapsed for a record we adopted (it existed before TrafegoDNS
+            // touched it): hand it back instead of deleting it.
+            await db
+              .update(dnsRecords)
+              .set({ managed: false, source: 'discovered', orphanedAt: null, updatedAt: now })
+              .where(eq(dnsRecords.id, record.id));
+            this.logger.info({ name: record.name, type: record.type }, 'Released adopted record (not deleted: it pre-dated TrafegoDNS)');
           } else if (new Date(record.orphanedAt) < cutoffTime) {
             // Grace period elapsed - delete
             try {
               if (record.externalId) {
-                await provider.deleteRecord(record.externalId);
+                const result = await deleteSafely(provider, record.externalId);
+                if (result === 'absent') {
+                  this.logger.warn({ name: record.name, type: record.type }, 'Orphaned record was already absent at provider; removing tracking row');
+                }
               }
               await db.delete(dnsRecords).where(eq(dnsRecords.id, record.id));
               totalDeleted++;
