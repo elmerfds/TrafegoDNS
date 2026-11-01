@@ -11,6 +11,7 @@ import { webhooks, webhookDeliveries } from '../database/schema/index.js';
 import { eq, and, lt, isNull, isNotNull, or } from 'drizzle-orm';
 import type { WebhookEventType } from '../types/index.js';
 import type { Logger } from 'pino';
+import { safePost } from '../utils/safeHttp.js';
 
 interface WebhookPayload {
   id: string;
@@ -228,28 +229,20 @@ export class WebhookService {
     }
 
     try {
-      const response = await fetch(webhook.url, {
-        method: 'POST',
-        headers,
-        body: payloadString,
-        signal: AbortSignal.timeout(30000), // 30 second timeout
-      });
+      const response = await safePost(webhook.url, headers, payloadString, 30000);
+      const responseText = response.body.slice(0, 1000);
 
-      const responseText = await response.text().catch(() => '');
-
-      if (response.ok) {
-        return {
-          success: true,
-          statusCode: response.status,
-          response: responseText.slice(0, 1000), // Limit response size
-        };
-      } else {
-        return {
-          success: false,
-          statusCode: response.status,
-          error: responseText.slice(0, 1000),
-        };
+      if (response.status >= 200 && response.status < 300) {
+        return { success: true, statusCode: response.status, response: responseText };
       }
+      return {
+        success: false,
+        statusCode: response.status,
+        error:
+          response.status >= 300 && response.status < 400
+            ? `Redirects are not followed (HTTP ${response.status})`
+            : responseText,
+      };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       return {
