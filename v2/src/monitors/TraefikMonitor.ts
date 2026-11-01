@@ -3,6 +3,7 @@
  * Polls Traefik API for router information and extracts hostnames
  */
 import { logger, createChildLogger } from '../core/Logger.js';
+import { extractHostArgs } from '../utils/traefikRules.js';
 import { eventBus, EventTypes } from '../core/EventBus.js';
 import type { ConfigManager } from '../config/ConfigManager.js';
 import type { DockerMonitor } from './DockerMonitor.js';
@@ -125,14 +126,8 @@ export class TraefikMonitor {
     eventBus.publish(EventTypes.TRAEFIK_POLL_STARTED, { timestamp: new Date() });
 
     try {
-      // Fetch HTTP routers
-      const httpRouters = await this.fetchRouters('http');
-
-      // Fetch HTTPS routers
-      const httpsRouters = await this.fetchRouters('https');
-
-      // Combine and dedupe
-      const allRouters = [...httpRouters, ...httpsRouters];
+      // Fetch all HTTP routers (Traefik serves HTTP and HTTPS routers from one endpoint)
+      const allRouters = await this.fetchRouters();
       const hostnames = this.extractHostnames(allRouters);
 
       // Get container labels for each hostname
@@ -171,22 +166,34 @@ export class TraefikMonitor {
   }
 
   /**
-   * Fetch routers from Traefik API
+   * Fetch every HTTP router from the Traefik API, following pagination.
+   * Traefik pages /http/routers (100 per page by default) and signals the next
+   * page via X-Next-Page ("1" on the last page). All-or-nothing: if any page
+   * fails, return [] so the poll publishes nothing rather than a partial list
+   * that would orphan (and later delete) records for the routers not seen.
    */
-  private async fetchRouters(type: 'http' | 'https'): Promise<TraefikApiRouter[]> {
+  private async fetchRouters(): Promise<TraefikApiRouter[]> {
+    const PER_PAGE = 100;
+    const MAX_PAGES = 1000;
+    const all: TraefikApiRouter[] = [];
+    let page = 1;
     try {
-      const endpoint = type === 'http' ? '/http/routers' : '/http/routers';
-      const response = await this.makeRequest(endpoint);
-
-      if (!response.ok) {
-        this.logger.warn({ type, status: response.status }, 'Failed to fetch routers');
-        return [];
+      for (let i = 0; i < MAX_PAGES; i++) {
+        const response = await this.makeRequest(`/http/routers?page=${page}&per_page=${PER_PAGE}`);
+        if (!response.ok) {
+          this.logger.warn({ page, status: response.status }, 'Failed to fetch routers');
+          return [];
+        }
+        const batch = (await response.json()) as TraefikApiRouter[];
+        if (Array.isArray(batch)) all.push(...batch);
+        const next = Number.parseInt(response.headers.get('X-Next-Page') ?? '', 10);
+        if (!Number.isFinite(next) || next <= page) return all;
+        page = next;
       }
-
-      const routers = (await response.json()) as TraefikApiRouter[];
-      return routers;
+      this.logger.warn({ pages: MAX_PAGES }, 'Traefik router pagination limit reached; skipping this poll');
+      return [];
     } catch (error) {
-      this.logger.error({ error, type }, 'Error fetching routers');
+      this.logger.error({ error, page }, 'Error fetching routers');
       return [];
     }
   }
@@ -219,17 +226,8 @@ export class TraefikMonitor {
   private extractHostsFromRule(rule: string): string[] {
     const hosts: string[] = [];
 
-    // Match Host(`hostname`) or Host(`host1`) || Host(`host2`)
-    const hostMatches = rule.matchAll(/Host\(`([^`]+)`\)/g);
-
-    for (const match of hostMatches) {
-      const hostValue = match[1];
-      if (hostValue) {
-        // Handle comma-separated hosts
-        const individualHosts = hostValue.split(',').map((h) => h.trim());
-        hosts.push(...individualHosts);
-      }
-    }
+    // Host(`a`), Host(`a`, `b`), Host(`a`) || Host(`b`)
+    hosts.push(...extractHostArgs(rule));
 
     // Also match HostRegexp for wildcards (but we only take the base domain)
     const regexpMatches = rule.matchAll(/HostRegexp\(`([^`]+)`\)/g);
