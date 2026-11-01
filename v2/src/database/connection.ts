@@ -149,7 +149,7 @@ function createTablesDirectly(): void {
       name TEXT NOT NULL,
       secret TEXT,
       token TEXT,
-      status TEXT NOT NULL DEFAULT 'inactive' CHECK(status IN ('active', 'inactive', 'degraded')),
+      status TEXT NOT NULL DEFAULT 'inactive' CHECK(status IN ('active', 'inactive', 'degraded', 'deleted')),
       connector_id TEXT,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()),
       updated_at INTEGER NOT NULL DEFAULT (unixepoch())
@@ -412,10 +412,29 @@ function createTablesDirectly(): void {
 }
 
 /**
- * Run schema migrations for existing databases
- * Adds new columns to existing tables if they don't exist
+ * Run schema migrations for existing databases.
+ *
+ * Several migrations rebuild tables (SQLite cannot ALTER a CHECK constraint).
+ * With foreign_keys=ON, DROP TABLE on a parent performs an implicit DELETE that
+ * fires ON DELETE CASCADE / SET NULL on every child table — e.g. rebuilding
+ * `providers` would wipe dns_records, tunnels and overrides. FK enforcement is
+ * therefore disabled for the duration (SQLite's documented ALTER procedure).
+ * The pragma is a no-op inside a transaction, so this must run outside one.
  */
 function runSchemaMigrations(sqliteDb: Database.Database): void {
+  sqliteDb.pragma('foreign_keys = OFF');
+  try {
+    runSchemaMigrationSteps(sqliteDb);
+    const violations = sqliteDb.pragma('foreign_key_check') as unknown[];
+    if (violations.length > 0) {
+      logger.warn({ count: violations.length }, 'Foreign key violations present after schema migrations');
+    }
+  } finally {
+    sqliteDb.pragma('foreign_keys = ON');
+  }
+}
+
+function runSchemaMigrationSteps(sqliteDb: Database.Database): void {
   // Check if 'managed' column exists in dns_records
   const tableInfo = sqliteDb.prepare('PRAGMA table_info(dns_records)').all() as Array<{ name: string }>;
   const hasManaged = tableInfo.some((col) => col.name === 'managed');
@@ -458,6 +477,46 @@ function runSchemaMigrations(sqliteDb: Database.Database): void {
 
   // Migrate users table for OIDC support (nullable password_hash, new columns)
   migrateUsersForOIDC(sqliteDb);
+
+  // Allow tunnels.status = 'deleted' (used when a tunnel disappears from Cloudflare)
+  migrateTunnelStatusConstraint(sqliteDb);
+}
+
+/**
+ * Rebuild the tunnels table so its status CHECK constraint includes 'deleted'.
+ * Uses the table's own stored DDL so columns added later by ALTER are preserved.
+ */
+function migrateTunnelStatusConstraint(sqliteDb: Database.Database): void {
+  const table = sqliteDb
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='tunnels'")
+    .get() as { sql: string } | undefined;
+  if (!table || table.sql.includes("'deleted'")) return;
+
+  const oldCheck = /CHECK\s*\(\s*status\s+IN\s*\(\s*'active'\s*,\s*'inactive'\s*,\s*'degraded'\s*\)\s*\)/i;
+  if (!oldCheck.test(table.sql)) {
+    logger.warn('tunnels.status constraint has an unexpected shape; skipping migration');
+    return;
+  }
+
+  logger.info("Migrating tunnels table to allow status 'deleted'");
+  const newSql = table.sql
+    .replace(oldCheck, "CHECK(status IN ('active', 'inactive', 'degraded', 'deleted'))")
+    .replace(/CREATE TABLE\s+(IF NOT EXISTS\s+)?["`]?tunnels["`]?/i, 'CREATE TABLE tunnels_new');
+
+  sqliteDb.exec('BEGIN TRANSACTION');
+  try {
+    sqliteDb.exec(newSql);
+    sqliteDb.exec('INSERT INTO tunnels_new SELECT * FROM tunnels');
+    sqliteDb.exec('DROP TABLE tunnels');
+    sqliteDb.exec('ALTER TABLE tunnels_new RENAME TO tunnels');
+    sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_tunnels_provider ON tunnels(provider_id)');
+    sqliteDb.exec('COMMIT');
+    logger.info('Migration complete: tunnels status constraint updated');
+  } catch (error) {
+    sqliteDb.exec('ROLLBACK');
+    logger.error({ error }, 'Failed to migrate tunnels status constraint');
+    throw error;
+  }
 }
 
 /**
