@@ -30,6 +30,7 @@ export class FakeProvider extends DNSProvider {
   }
   async listRecords(): Promise<DNSRecord[]> { return [...this.remote.values()]; }
   validateRecord(): void {}
+  supportsOwnershipMarker(): boolean { return true; }
 
   private maybeFail(op: 'create' | 'update' | 'delete') {
     if (this.failNext?.op === op) { const e = this.failNext.error; this.failNext = null; throw e; }

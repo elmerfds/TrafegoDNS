@@ -673,6 +673,15 @@ export class DNSManager {
     const tunnelManager = this.getTunnelManager();
     const recordLabels = new Map<string, Record<string, string>>();
 
+    // Records auto-sync must leave alone: explicitly unclaimed by a user, or created via the API
+    const handsOff = new Set(
+      (await getDatabase()
+        .select({ providerId: dnsRecords.providerId, name: dnsRecords.name, type: dnsRecords.type })
+        .from(dnsRecords)
+        .where(or(eq(dnsRecords.ownership, 'released'), eq(dnsRecords.source, 'api'))))
+        .map((r) => `${r.providerId}:${r.name.toLowerCase()}:${r.type}`)
+    );
+
     for (const hostname of hostnames) {
       try {
         this.stats.total++;
@@ -736,6 +745,12 @@ export class DNSManager {
 
           // Skip records marked for skipping (e.g., self-referencing CNAMEs)
           if (recordConfig.content === '__SKIP__') {
+            this.stats.skipped++;
+            continue;
+          }
+
+          if (handsOff.has(`${providerId}:${fqdn.toLowerCase()}:${recordConfig.type}`)) {
+            this.logger.debug({ fqdn, type: recordConfig.type, providerId }, 'Skipping record released by user or created via API');
             this.stats.skipped++;
             continue;
           }
@@ -1307,6 +1322,7 @@ export class DNSManager {
         tag: record.tag,
         source: 'traefik',
         managed: true, // Records we create are always managed
+        ownership: 'created',
         lastSyncedAt: now,
       });
 
@@ -1326,11 +1342,13 @@ export class DNSManager {
     // (unchanged records may exist at provider but not in our database - e.g., fresh v2 install)
     for (const record of [...result.updated, ...result.unchanged]) {
       if (record.id) {
-        // First try to find by externalId (works for providers with stable IDs like DigitalOcean/Cloudflare)
+        // First try to find by externalId (works for providers with stable IDs like DigitalOcean/Cloudflare).
+        // Scoped to this provider: several providers derive ids from name:type:content, so the
+        // same record on two providers has the same externalId.
         let existing = await db
-          .select({ id: dnsRecords.id })
+          .select({ id: dnsRecords.id, ownership: dnsRecords.ownership, source: dnsRecords.source, managed: dnsRecords.managed })
           .from(dnsRecords)
-          .where(eq(dnsRecords.externalId, record.id))
+          .where(and(eq(dnsRecords.providerId, providerId), eq(dnsRecords.externalId, record.id)))
           .limit(1);
 
         // If not found by externalId, try by providerId + name + type
@@ -1338,7 +1356,7 @@ export class DNSManager {
         // and may change if content normalization differs between syncs
         if (existing.length === 0) {
           existing = await db
-            .select({ id: dnsRecords.id })
+            .select({ id: dnsRecords.id, ownership: dnsRecords.ownership, source: dnsRecords.source, managed: dnsRecords.managed })
             .from(dnsRecords)
             .where(
               and(
@@ -1350,9 +1368,13 @@ export class DNSManager {
             .limit(1);
         }
 
+        const markedAsOurs = provider?.isOwnedByTrafego(record) ?? false;
+
         if (existing.length > 0) {
-          // Update existing record (also update externalId in case it changed)
-          // Also reclaim "discovered" records that are now being actively synced from Traefik
+          const row = existing[0]!;
+          // Rows TrafegoDNS already manages keep their ownership; a row we didn't manage
+          // (e.g. found by "discover") is adopted unless it carries our ownership marker.
+          const ownership = row.managed ? row.ownership : markedAsOurs ? 'created' : 'adopted';
           await db
             .update(dnsRecords)
             .set({
@@ -1363,14 +1385,15 @@ export class DNSManager {
               priority: record.priority,
               lastSyncedAt: now,
               orphanedAt: null, // Clear orphaned status
-              source: 'traefik', // Reclaim as Traefik-managed
-              managed: true, // Mark as managed since we're actively syncing
+              source: 'traefik',
+              managed: true, // Actively synced from Traefik
+              ownership,
             })
-            .where(eq(dnsRecords.id, existing[0]!.id));
+            .where(eq(dnsRecords.id, row.id));
         } else {
-          // Insert record that exists at provider but not in our database
-          // Since we're actively syncing from Traefik, mark as managed
-          // (The ownership marker check is only for manual "discover" operations)
+          // Record exists at the provider but not in our database: claim it so it's kept in
+          // sync, but unless it carries our ownership marker it is only adopted (released,
+          // not deleted, when its hostname goes away).
           await db.insert(dnsRecords).values({
             id: uuidv4(),
             providerId,
@@ -1387,7 +1410,8 @@ export class DNSManager {
             tag: record.tag,
             comment: record.comment,
             source: 'traefik',
-            managed: true, // Record is being actively synced from Traefik
+            managed: true,
+            ownership: markedAsOurs ? 'created' : 'adopted',
             lastSyncedAt: now,
           });
           this.logger.debug(
@@ -1527,6 +1551,14 @@ export class DNSManager {
               },
               gracePeriodMinutes,
             });
+          } else if (new Date(record.orphanedAt) < cutoffTime && record.ownership === 'adopted') {
+            // Grace period elapsed for a record we adopted (it existed before TrafegoDNS
+            // touched it): hand it back instead of deleting it.
+            await db
+              .update(dnsRecords)
+              .set({ managed: false, source: 'discovered', orphanedAt: null, updatedAt: now })
+              .where(eq(dnsRecords.id, record.id));
+            this.logger.info({ name: record.name, type: record.type }, 'Released adopted record (not deleted: it pre-dated TrafegoDNS)');
           } else if (new Date(record.orphanedAt) < cutoffTime) {
             // Grace period elapsed - delete
             try {

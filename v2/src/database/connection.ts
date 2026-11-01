@@ -133,6 +133,7 @@ function createTablesDirectly(): void {
       comment TEXT,
       source TEXT NOT NULL DEFAULT 'traefik' CHECK(source IN ('traefik', 'direct', 'api', 'managed', 'discovered')),
       managed INTEGER NOT NULL DEFAULT 1,
+      ownership TEXT,
       orphaned_at INTEGER,
       last_synced_at INTEGER,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()),
@@ -444,6 +445,12 @@ function runSchemaMigrationSteps(sqliteDb: Database.Database): void {
     sqliteDb.exec('ALTER TABLE dns_records ADD COLUMN managed INTEGER NOT NULL DEFAULT 1');
     sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_dns_records_managed ON dns_records(managed)');
     logger.info('Migration complete: added managed column');
+  }
+
+  // Ownership column (no CHECK constraint, so future values don't need a table rebuild)
+  if (!tableInfo.some((col) => col.name === 'ownership')) {
+    logger.info('Adding ownership column to dns_records table');
+    sqliteDb.exec('ALTER TABLE dns_records ADD COLUMN ownership TEXT');
   }
 
   // Fix CHECK constraint for source column (add 'discovered' if missing)

@@ -666,6 +666,9 @@ export const toggleManaged = asyncHandler(async (req: Request, res: Response) =>
     .set({
       managed: input.managed,
       source: input.managed ? 'managed' : 'discovered',
+      // Unclaim is sticky: auto-sync won't re-claim or modify a released record.
+      // An explicit claim hands full ownership (incl. deletion when orphaned) to TrafegoDNS.
+      ownership: input.managed ? 'created' : 'released',
       updatedAt: new Date(),
     })
     .where(eq(dnsRecords.id, id));
