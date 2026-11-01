@@ -3,7 +3,7 @@
  * Supports API key and JWT authentication
  */
 import type { Request, Response, NextFunction } from 'express';
-import { createHash, timingSafeEqual, randomBytes } from 'crypto';
+import { createHash, timingSafeEqual, randomBytes, randomUUID } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { getDatabase } from '../../database/connection.js';
 import { apiKeys, users } from '../../database/schema/index.js';
@@ -122,7 +122,9 @@ export function generateToken(user: AuthenticatedUser): string {
       role: user.role,
     },
     getJwtSecret(),
-    { algorithm: JWT_ALGORITHM, expiresIn: JWT_EXPIRES_IN_SECONDS }
+    // jwtid makes each token unique; without it two logins in the same second
+    // produce identical tokens and collide on the sessions.token_hash UNIQUE index
+    { algorithm: JWT_ALGORITHM, expiresIn: JWT_EXPIRES_IN_SECONDS, jwtid: randomUUID() }
   );
 }
 
