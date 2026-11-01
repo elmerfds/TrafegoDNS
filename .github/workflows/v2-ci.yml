@@ -2,7 +2,7 @@ name: v2 CI
 
 on:
   pull_request:
-    branches: [feat/v2-rewrite, main]
+    # all PRs touching v2 (incl. stacked PRs targeting other work branches)
     paths:
       - 'v2/**'
       - '.github/workflows/v2-ci.yml'
