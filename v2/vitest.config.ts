@@ -13,6 +13,11 @@ export default defineConfig({
       exclude: ['src/types/**', 'src/**/*.d.ts'],
     },
     testTimeout: 10000,
+    // Keep resource use bounded: this runs on a shared host alongside other services
+    pool: 'forks',
+    maxWorkers: 2,
+    minWorkers: 1,
+    env: { NODE_ENV: 'test' },
   },
   resolve: {
     alias: {

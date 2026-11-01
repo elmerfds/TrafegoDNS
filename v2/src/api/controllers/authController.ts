@@ -27,7 +27,8 @@ const logger = createChildLogger({ service: 'AuthController' });
 /** JWT expiration in seconds (mirrors auth.ts constant) */
 const JWT_EXPIRES_IN_SECONDS = parseInt(process.env.JWT_EXPIRES_IN_SECONDS ?? '86400', 10);
 
-const BCRYPT_ROUNDS = 12;
+// Lower cost under tests only (keeps the suite from saturating the host); production uses 12
+const BCRYPT_ROUNDS = process.env.NODE_ENV === 'test' ? 4 : 12;
 
 /**
  * Login with username/password
