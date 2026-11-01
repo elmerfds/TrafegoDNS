@@ -1,0 +1,133 @@
+# TrafegoDNS v2 local test environment.
+#
+# Isolated from the host's real containers:
+#   - own compose project + network; only the web UI is published, on 127.0.0.1
+#   - Docker API via a read-only socket proxy (no POST/exec/delete)
+#   - DNS_LABEL_PREFIX=trafegotest. so only containers in this project are picked up
+#   - all DNS writes go to a throwaway BIND9 zone (test.local) via RFC 2136
+#
+# Usage: ./dev/up.sh   |   ./dev/down.sh
+name: trafegodns-dev
+
+services:
+  trafegodns:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: trafegodns:dev-local
+    container_name: trafegodns-dev
+    restart: unless-stopped
+    depends_on:
+      bind9: { condition: service_healthy }
+      docker-sock: { condition: service_started }
+    environment:
+      - OPERATION_MODE=direct
+      - LOG_LEVEL=debug
+      - PUID=99
+      - PGID=100
+      - JWT_SECRET=dev-local-jwt-secret-not-for-production-0123456789abcdef
+      - ENCRYPTION_KEY=devlocalencryptionkey0123456789a
+      - AUTH_DEFAULT_ADMIN_USERNAME=admin
+      - AUTH_DEFAULT_ADMIN_PASSWORD=DevPassword123!
+      - AUTH_DEFAULT_ADMIN_EMAIL=admin@test.local
+      - DNS_LABEL_PREFIX=trafegotest.
+      - DNS_DEFAULT_TYPE=A
+      - DNS_DEFAULT_CONTENT=192.0.2.10
+      - DNS_DEFAULT_TTL=300
+      - PUBLIC_IP=192.0.2.10
+      - CLEANUP_ORPHANED=true
+      - CLEANUP_GRACE_PERIOD=1
+      - POLL_INTERVAL=15000
+      - DOCKER_SOCKET=/sock/docker.sock
+    volumes:
+      - trafegodns-config:/config
+      - docker-sock:/sock
+    ports:
+      - "127.0.0.1:${TRAFEGO_DEV_PORT:-3170}:3000"
+    networks: [dev-net]
+
+  # Read-only Docker API: containers + events only
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    container_name: trafegodns-dev-socket-proxy
+    restart: unless-stopped
+    environment:
+      - CONTAINERS=1
+      - EVENTS=1
+      - INFO=1
+      - VERSION=1
+      - POST=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [proxy-net]
+
+  # Exposes the proxy as a unix socket, since TrafegoDNS only supports DOCKER_SOCKET paths
+  docker-sock:
+    image: alpine/socat:1.8.0.0
+    container_name: trafegodns-dev-docker-sock
+    restart: unless-stopped
+    command: ["UNIX-LISTEN:/sock/docker.sock,fork,mode=777,unlink-early", "TCP:socket-proxy:2375"]
+    volumes:
+      - docker-sock:/sock
+    networks: [proxy-net]
+
+  bind9:
+    image: ubuntu/bind9:9.18-22.04_beta
+    container_name: trafegodns-dev-bind9
+    restart: unless-stopped
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        mkdir -p /etc/bind /var/cache/bind /var/lib/bind /run/named
+        cat > /etc/bind/named.conf <<'EOC'
+        key "trafego-key" {
+            algorithm hmac-sha256;
+            secret "dGVzdC1rZXktc2VjcmV0LWZvci10cmFmZWdvZG5zLXRlc3Rpbmc=";
+        };
+        options {
+            directory "/var/cache/bind";
+            listen-on { any; };
+            allow-query { any; };
+            allow-transfer { key "trafego-key"; any; };
+            recursion no;
+            dnssec-validation no;
+        };
+        zone "test.local" {
+            type primary;
+            file "/var/lib/bind/test.local.zone";
+            allow-update { key "trafego-key"; };
+        };
+        EOC
+        cat > /var/lib/bind/test.local.zone <<'EOZ'
+        $$TTL 300
+        @   IN  SOA ns1.test.local. admin.test.local. ( 1 3600 900 604800 300 )
+            IN  NS  ns1.test.local.
+        ns1 IN  A   127.0.0.1
+        EOZ
+        chown -R bind:bind /etc/bind /var/cache/bind /var/lib/bind /run/named
+        exec named -g -u bind
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep named >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [dev-net]
+
+  # Sample workload: TrafegoDNS should create app.test.local and api.test.local for it
+  whoami:
+    image: traefik/whoami:v1.10
+    container_name: trafegodns-dev-whoami
+    restart: unless-stopped
+    labels:
+      - "trafegotest.hostname=app.test.local,api.test.local"
+      - "trafegotest.type=A"
+      - "trafegotest.content=192.0.2.20"
+    networks: [dev-net]
+
+networks:
+  dev-net: {}
+  proxy-net: {}
+
+volumes:
+  trafegodns-config: {}
+  docker-sock: {}

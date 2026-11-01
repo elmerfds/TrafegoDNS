@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
+  <!-- Gradient background -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0F172A" />
+      <stop offset="100%" style="stop-color:#1E293B" />
+    </linearGradient>
+  </defs>
+
+  <!-- Circular background - centered in the new square dimensions -->
+  <circle cx="120" cy="120" r="95" fill="url(#bgGradient)" />
+  
+  <!-- Main Routes with Semantic Colors - More tube-like with horizontal segments and bends -->
+  <!-- Red route - top route -->
+  <path d="M45 120 L100 120 L130 120 L160 90 L185 90" stroke="#FF0000" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  
+  <!-- Green route - middle route -->
+  <path d="M100 120 L130 120 L160 120 L185 120" stroke="#00A86B" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  
+  <!-- Blue route - bottom route -->
+  <path d="M100 120 L130 120 L160 150 L185 150" stroke="#0066CC" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  
+  <!-- DNS Provider Node (Central Management) -->
+  <circle cx="45" cy="120" r="10" fill="#FFD700" />
+  <circle cx="45" cy="120" r="5" fill="#F8FAFC" />
+  
+  <!-- Endpoint Dots with Matching Service Colors -->
+  <circle cx="185" cy="90" r="8" fill="#FF0000" />
+  <circle cx="185" cy="120" r="8" fill="#00A86B" />
+  <circle cx="185" cy="150" r="8" fill="#0066CC" />
+  
+  <!-- Junction points -->
+  <circle cx="130" cy="120" r="4" fill="#F8FAFC" />
+  <circle cx="160" cy="90" r="4" fill="#F8FAFC" />
+  <circle cx="160" cy="120" r="4" fill="#F8FAFC" />
+  <circle cx="160" cy="150" r="4" fill="#F8FAFC" />
+  
+  <!-- Central Hub -->
+  <circle cx="100" cy="120" r="15" fill="#F8FAFC" />
+  <circle cx="100" cy="120" r="8" fill="#0F172A" />
+</svg>

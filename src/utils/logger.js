@@ -12,6 +12,28 @@ const LOG_LEVELS = {
   TRACE: 4
 };
 
+/**
+ * Sanitize log message to prevent log injection attacks
+ * Removes/escapes control characters that could manipulate log output
+ * @param {string} message - The message to sanitize
+ * @returns {string} - Sanitized message
+ */
+function sanitizeLogMessage(message) {
+  if (typeof message !== 'string') {
+    return String(message);
+  }
+
+  return message
+    // Replace newlines with visible markers to prevent log line injection
+    .replace(/\r\n/g, '\\r\\n')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    // Remove ANSI escape sequences that could manipulate terminal output
+    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+    // Remove other control characters (except tab which is commonly used)
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+}
+
 class Logger {
   constructor() {
     // Default to INFO level unless specified in environment
@@ -56,20 +78,24 @@ class Logger {
   
   /**
    * Log a message if the current log level allows it
+   * Security: Sanitizes messages to prevent log injection attacks
    */
   log(level, message, symbol = null) {
     if (level > this.level) return;
-    
+
+    // Security: Sanitize message to prevent log injection
+    const safeMessage = sanitizeLogMessage(message);
+
     let formattedMessage;
-    
+
     if (level === LOG_LEVELS.INFO && symbol) {
       // Pretty format for INFO level
-      formattedMessage = `${this.formatTimestamp(level)} ${symbol} ${message}`;
+      formattedMessage = `${this.formatTimestamp(level)} ${symbol} ${safeMessage}`;
     } else {
       // Standard format for other levels
-      formattedMessage = `${this.formatTimestamp(level)} [${this.levelNames[level]}] ${message}`;
+      formattedMessage = `${this.formatTimestamp(level)} [${this.levelNames[level]}] ${safeMessage}`;
     }
-    
+
     console.log(formattedMessage);
   }
   

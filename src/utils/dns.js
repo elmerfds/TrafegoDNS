@@ -4,6 +4,83 @@
 const logger = require('./logger');
 const { LOG_LEVELS } = require('./logger');
 
+// Security: TTL bounds (in seconds)
+const MIN_TTL = 1;
+const MAX_TTL = 604800; // 7 days
+
+// Security: Valid DNS hostname pattern (RFC 1123)
+// Allows letters, numbers, hyphens; labels separated by dots; max 253 chars total
+const HOSTNAME_REGEX = /^(?=.{1,253}$)(?:(?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)*(?!-)[a-zA-Z0-9-]{1,63}(?<!-)$/;
+
+// Security: Valid wildcard hostname pattern (*.example.com)
+const WILDCARD_HOSTNAME_REGEX = /^\*\.(?=.{1,251}$)(?:(?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)*(?!-)[a-zA-Z0-9-]{1,63}(?<!-)$/;
+
+/**
+ * Validate hostname format
+ * @param {string} hostname - The hostname to validate
+ * @returns {boolean} - True if valid hostname format
+ */
+function isValidHostname(hostname) {
+  if (!hostname || typeof hostname !== 'string') return false;
+
+  // Allow wildcard hostnames
+  if (hostname.startsWith('*.')) {
+    return WILDCARD_HOSTNAME_REGEX.test(hostname);
+  }
+
+  return HOSTNAME_REGEX.test(hostname);
+}
+
+/**
+ * Validate and clamp TTL to safe bounds
+ * @param {number} ttl - The TTL value
+ * @param {number} minTTL - Provider-specific minimum TTL
+ * @returns {number} - Validated TTL value
+ */
+function validateTTL(ttl, minTTL = MIN_TTL) {
+  const parsed = parseInt(ttl, 10);
+  if (isNaN(parsed)) return minTTL;
+  return Math.max(minTTL, Math.min(parsed, MAX_TTL));
+}
+
+/**
+ * Sanitize DNS record content to prevent injection
+ * Removes control characters and validates format based on record type
+ * @param {string} content - The content to sanitize
+ * @param {string} recordType - The DNS record type
+ * @returns {string} - Sanitized content
+ */
+function sanitizeContent(content, recordType) {
+  if (!content || typeof content !== 'string') return content;
+
+  // Remove control characters (except for TXT records which may need some special chars)
+  let sanitized = content.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+
+  // Trim whitespace
+  sanitized = sanitized.trim();
+
+  // Type-specific validation
+  switch (recordType) {
+    case 'CNAME':
+    case 'NS':
+    case 'MX':
+      // These should be valid hostnames
+      if (!isValidHostname(sanitized) && sanitized !== '@') {
+        logger.warn(`Invalid hostname format for ${recordType} content: ${sanitized}`);
+      }
+      break;
+    case 'TXT':
+      // TXT records: limit length to 255 chars per string (DNS limit)
+      if (sanitized.length > 255) {
+        logger.warn(`TXT content exceeds 255 characters, truncating`);
+        sanitized = sanitized.substring(0, 255);
+      }
+      break;
+  }
+
+  return sanitized;
+}
+
 /**
  * Check if a hostname is an apex/root domain
  * @param {string} hostname - The hostname to check
@@ -102,10 +179,17 @@ function getMinimumTTL(provider) {
 
 /**
  * Extract DNS configuration from container labels
+ * Security: Validates hostname format, TTL bounds, and sanitizes content
  */
 function extractDnsConfigFromLabels(labels, config, hostname) {
   logger.trace(`dns.extractDnsConfigFromLabels: Extracting DNS config for ${hostname}`);
   logger.trace(`dns.extractDnsConfigFromLabels: Label count: ${Object.keys(labels).length}`);
+
+  // Security: Validate hostname format
+  if (!isValidHostname(hostname)) {
+    logger.warn(`Security: Invalid hostname format rejected: ${hostname}`);
+    return null;
+  }
   
   if (logger.level >= LOG_LEVELS.TRACE) {
     // In TRACE mode, log all DNS-related labels
@@ -132,11 +216,13 @@ function extractDnsConfigFromLabels(labels, config, hostname) {
   const defaults = config.getDefaultsForType(recordType);
   logger.trace(`dns.extractDnsConfigFromLabels: Using defaults for type ${recordType}: ${JSON.stringify(defaults)}`);
   
-  // Build basic record config
+  // Build basic record config with validated TTL
+  const minTTL = getMinimumTTL(config.dnsProvider);
+  const rawTTL = getLabelValue(labels, genericPrefix, providerPrefix, 'ttl', defaults.ttl);
   const recordConfig = {
     type: recordType,
     name: hostname,
-    ttl: parseInt(getLabelValue(labels, genericPrefix, providerPrefix, 'ttl', defaults.ttl), 10)
+    ttl: validateTTL(rawTTL, minTTL)
   };
   
   // Handle content based on record type and apex status
@@ -167,8 +253,9 @@ function extractDnsConfigFromLabels(labels, config, hostname) {
       logger.trace(`dns.extractDnsConfigFromLabels: Using default content: ${defaults.content}`);
     }
   } else {
-    recordConfig.content = content;
-    logger.trace(`dns.extractDnsConfigFromLabels: Using label-specified content: ${content}`);
+    // Security: Sanitize user-provided content
+    recordConfig.content = sanitizeContent(content, recordConfig.type);
+    logger.trace(`dns.extractDnsConfigFromLabels: Using label-specified content: ${recordConfig.content}`);
   }
 
   const isIPv4 = isIPv4Address(recordConfig.content);
@@ -285,5 +372,9 @@ module.exports = {
   isApexDomain,
   extractDnsConfigFromLabels,
   getLabelValue,
-  getMinimumTTL
+  getMinimumTTL,
+  // Security validation utilities
+  isValidHostname,
+  validateTTL,
+  sanitizeContent
 };
