@@ -386,6 +386,7 @@ Roles are updated on every login to reflect current group membership. If a user 
 #### User Management
 
 - **Auto-creation**: New OIDC users are automatically created in the database on first login (disable with `OIDC_AUTO_CREATE_USERS=false`)
+- **Existing accounts**: an OIDC login is never attached to an existing local account by email unless `OIDC_LINK_EXISTING_BY_EMAIL=true` (otherwise the login is refused with an explanation)
 - **Email linking**: If an existing local user has the same email as the OIDC user, the accounts are automatically linked
 - **Password**: OIDC users cannot set or change local passwords — they authenticate exclusively through the identity provider
 - **Mixed mode**: Set `OIDC_ALLOW_LOCAL_LOGIN=true` to show both SSO and local credential forms on the login page
@@ -468,6 +469,7 @@ Provider-specific labels follow the pattern `dns.<provider>.<setting>`, e.g., `d
 | `OIDC_SCOPES` | Space-separated OIDC scopes | `openid profile email groups` |
 | `OIDC_ALLOW_LOCAL_LOGIN` | Show local login form alongside SSO | `false` |
 | `OIDC_AUTO_CREATE_USERS` | Create user in DB on first OIDC login | `true` |
+| `OIDC_LINK_EXISTING_BY_EMAIL` | Bind an OIDC login to an existing account with the same email. Requires `email_verified` from the IdP and an account not already bound to another OIDC identity; the account's local password, sessions and API keys are cleared on link | `false` |
 | `OIDC_DEFAULT_ROLE` | Default role when no group mapping matches | `user` |
 | `OIDC_GROUP_CLAIM` | Claim name for group membership | `groups` |
 | `OIDC_ADMIN_GROUPS` | Comma-separated groups → admin role | - |

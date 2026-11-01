@@ -105,6 +105,8 @@ export interface OIDCConfig {
   scopes: string;
   allowLocalLogin: boolean;
   autoCreateUsers: boolean;
+  /** Bind an OIDC identity to an existing unbound account with the same verified email */
+  linkExistingByEmail: boolean;
   defaultRole: 'admin' | 'user' | 'readonly';
   groupClaim: string;
   adminGroups: string[];
@@ -269,6 +271,7 @@ export class ConfigManager {
         scopes: getEnv('OIDC_SCOPES', 'openid profile email groups') ?? 'openid profile email groups',
         allowLocalLogin: getEnvBool('OIDC_ALLOW_LOCAL_LOGIN', false),
         autoCreateUsers: getEnvBool('OIDC_AUTO_CREATE_USERS', true),
+        linkExistingByEmail: getEnvBool('OIDC_LINK_EXISTING_BY_EMAIL', false),
         defaultRole: (getEnv('OIDC_DEFAULT_ROLE', 'user') as 'admin' | 'user' | 'readonly') ?? 'user',
         groupClaim: getEnv('OIDC_GROUP_CLAIM', 'groups') ?? 'groups',
         adminGroups: parseGroups(getEnv('OIDC_ADMIN_GROUPS')),
@@ -283,6 +286,7 @@ export class ConfigManager {
         scopes: this._oidc.scopes,
         allowLocalLogin: this._oidc.allowLocalLogin,
         autoCreateUsers: this._oidc.autoCreateUsers,
+        linkExistingByEmail: this._oidc.linkExistingByEmail,
         defaultRole: this._oidc.defaultRole,
       }, 'OIDC authentication configured');
     } else {
