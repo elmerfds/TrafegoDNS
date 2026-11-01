@@ -15,7 +15,7 @@ const attempt = (xff?: string) => {
   return r.send({ username: 'admin', password: 'wrong' });
 };
 
-describe('auth rate limit', { timeout: 90_000 }, () => {
+describe('auth rate limit', { timeout: 30_000 }, () => {
   it('blocks the 31st attempt from one client within the window', async () => {
     ctx = await createTestApp();
     for (let i = 0; i < 30; i++) expect((await attempt('203.0.113.10')).status).toBe(401);

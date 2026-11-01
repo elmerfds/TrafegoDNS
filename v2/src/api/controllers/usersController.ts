@@ -10,7 +10,8 @@ import { eq, sql } from 'drizzle-orm';
 import { ApiError, asyncHandler, setAuditContext } from '../middleware/index.js';
 import { createUserSchema, updateUserSchema, paginationSchema } from '../validation.js';
 
-const BCRYPT_ROUNDS = 12;
+// Lower cost under tests only (keeps the suite from saturating the host); production uses 12
+const BCRYPT_ROUNDS = process.env.NODE_ENV === 'test' ? 4 : 12;
 
 /**
  * List all users (admin only)
