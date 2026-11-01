@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDatabase } from '../../database/connection.js';
 import { auditLogs } from '../../database/schema/index.js';
 import { createChildLogger } from '../../core/Logger.js';
+import { getClientIp } from '../requestUtils.js';
 
 const logger = createChildLogger({ service: 'Audit' });
 
@@ -78,17 +79,6 @@ export async function logAudit(
   } catch (error) {
     logger.error({ error }, 'Failed to create audit log');
   }
-}
-
-/**
- * Get client IP address from request
- */
-function getClientIp(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string') {
-    return forwarded.split(',')[0]?.trim() ?? 'unknown';
-  }
-  return req.ip ?? 'unknown';
 }
 
 /**

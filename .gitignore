@@ -48,5 +48,8 @@ temp/
 # Claude Code
 CLAUDE.md
 
+# Git worktrees
+.worktrees/
+
 # Debug
 debug/
