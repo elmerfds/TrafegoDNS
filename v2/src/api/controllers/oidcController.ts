@@ -11,19 +11,10 @@ import { getConfig } from '../../config/ConfigManager.js';
 import { createChildLogger } from '../../core/Logger.js';
 import { sessionService } from '../../services/SessionService.js';
 import { securityLogService } from '../../services/SecurityLogService.js';
+import { getClientIp } from '../requestUtils.js';
 
 /** JWT expiration in seconds (mirrors auth.ts constant) */
 const JWT_EXPIRES_IN_SECONDS = parseInt(process.env.JWT_EXPIRES_IN_SECONDS ?? '86400', 10);
-
-/**
- * Extract client IP from request
- */
-function getClientIp(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string') return forwarded.split(',')[0]!.trim();
-  if (Array.isArray(forwarded)) return forwarded[0]!.trim();
-  return req.ip ?? req.socket.remoteAddress ?? 'unknown';
-}
 
 const logger = createChildLogger({ service: 'OIDCController' });
 

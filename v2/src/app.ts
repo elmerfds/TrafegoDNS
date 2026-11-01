@@ -16,7 +16,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export interface AppOptions {
-  trustProxy?: boolean;
+  /** Express 'trust proxy' value; never pass `true` (makes X-Forwarded-For spoofable) */
+  trustProxy?: number | string | false;
 }
 
 /**
@@ -27,8 +28,8 @@ export function createApp(options: AppOptions = {}): Express {
   const config = getConfig();
 
   // Trust proxy for correct client IP detection
-  if (options.trustProxy) {
-    app.set('trust proxy', true);
+  if (options.trustProxy !== undefined && options.trustProxy !== false) {
+    app.set('trust proxy', options.trustProxy);
   }
 
   // Security middleware with proper CSP for SPA

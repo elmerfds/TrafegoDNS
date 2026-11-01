@@ -218,7 +218,7 @@ export class Application {
    * Start the API server
    */
   private async startApiServer(): Promise<void> {
-    const app = createApp({ trustProxy: true });
+    const app = createApp({ trustProxy: this.config.security.trustProxy });
     await startServer(app);
   }
 

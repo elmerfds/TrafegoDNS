@@ -89,8 +89,8 @@ services:
       - TRAEFIK_API_URL=http://traefik:8080/api
 
       # Authentication
-      - DEFAULT_ADMIN_USERNAME=admin
-      - DEFAULT_ADMIN_PASSWORD=changeme
+      - AUTH_DEFAULT_ADMIN_USERNAME=admin
+      - AUTH_DEFAULT_ADMIN_PASSWORD=changeme
       - JWT_SECRET=your-secret-key    # Auto-generated if not set
 
       # Application settings
@@ -117,7 +117,7 @@ services:
       - "3000:3000"
     environment:
       - OPERATION_MODE=direct
-      - DEFAULT_ADMIN_PASSWORD=changeme
+      - AUTH_DEFAULT_ADMIN_PASSWORD=changeme
       - LOG_LEVEL=info
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -301,9 +301,9 @@ TrafegoDNS supports three authentication modes controlled by the `AUTH_MODE` env
 
 | Setting | Default | Environment Variable |
 |---------|---------|---------------------|
-| Username | `admin` | `DEFAULT_ADMIN_USERNAME` |
-| Password | `admin` | `DEFAULT_ADMIN_PASSWORD` |
-| Email | `admin@localhost` | `DEFAULT_ADMIN_EMAIL` |
+| Username | `admin` | `AUTH_DEFAULT_ADMIN_USERNAME` |
+| Password | `admin` | `AUTH_DEFAULT_ADMIN_PASSWORD` |
+| Email | `admin@localhost` | `AUTH_DEFAULT_ADMIN_EMAIL` |
 
 > **Important**: Change the default admin password after first login, or set it via environment variable before first start.
 
@@ -451,9 +451,10 @@ Provider-specific labels follow the pattern `dns.<provider>.<setting>`, e.g., `d
 | `JWT_SECRET` | JWT signing secret | Auto-generated |
 | `JWT_EXPIRES_IN` | JWT token expiry | `24h` |
 | `ENCRYPTION_KEY` | Credential encryption key | Auto-generated |
-| `DEFAULT_ADMIN_USERNAME` | Initial admin username | `admin` |
-| `DEFAULT_ADMIN_PASSWORD` | Initial admin password | `admin` |
-| `DEFAULT_ADMIN_EMAIL` | Initial admin email | `admin@localhost` |
+| `AUTH_DEFAULT_ADMIN_USERNAME` | Initial admin username (legacy `DEFAULT_ADMIN_*` names still work) | `admin` |
+| `AUTH_DEFAULT_ADMIN_PASSWORD` | Initial admin password | `admin` |
+| `AUTH_DEFAULT_ADMIN_EMAIL` | Initial admin email | `admin@localhost` |
+| `TRUST_PROXY` | Which upstream proxies to trust for client IP/HTTPS detection (`X-Forwarded-*`): hop count (e.g. `1`), comma-separated IPs/subnets, or `false`. `true` is treated as `1` | `loopback, linklocal, uniquelocal` |
 | `GLOBAL_API_KEY` | Master API key for programmatic access (min 32 chars) | - |
 
 ### OIDC / SSO (when `AUTH_MODE=oidc`)
@@ -660,7 +661,7 @@ services:
       - OPERATION_MODE=traefik
       - TRAEFIK_API_URL=http://traefik:8080/api
       - CLEANUP_ORPHANED=true
-      - DEFAULT_ADMIN_PASSWORD=changeme
+      - AUTH_DEFAULT_ADMIN_PASSWORD=changeme
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./config:/config

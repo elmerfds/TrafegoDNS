@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDatabase } from '../../database/connection.js';
 import { auditLogs } from '../../database/schema/index.js';
 import { createChildLogger } from '../../core/Logger.js';
+import { getClientIp } from '../requestUtils.js';
 
 const logger = createChildLogger({ service: 'Audit' });
 
@@ -78,14 +79,6 @@ export async function logAudit(
   } catch (error) {
     logger.error({ error }, 'Failed to create audit log');
   }
-}
-
-/**
- * Get client IP — uses req.ip which respects Express trust proxy setting.
- * Avoids reading X-Forwarded-For directly to prevent IP spoofing in audit logs.
- */
-function getClientIp(req: Request): string {
-  return req.ip ?? 'unknown';
 }
 
 /**

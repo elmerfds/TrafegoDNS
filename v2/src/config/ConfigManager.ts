@@ -116,6 +116,25 @@ export interface OIDCConfig {
 interface SecurityConfig {
   authMode: AuthMode;
   globalApiKeyHash: string | null; // SHA-256 hash; raw key is never stored
+  /** Express 'trust proxy' value: hop count, or comma-separated addresses/subnets/presets */
+  trustProxy: number | string | false;
+}
+
+/**
+ * Parse TRUST_PROXY. Never returns `true`: trusting every hop makes req.ip the
+ * client-controlled leftmost X-Forwarded-For entry.
+ * Default trusts only private/loopback peers (e.g. Traefik on a Docker network).
+ */
+function parseTrustProxy(raw: string | undefined): number | string | false {
+  const value = raw?.trim();
+  if (!value) return 'loopback, linklocal, uniquelocal';
+  if (value.toLowerCase() === 'false' || value === '0') return false;
+  if (value.toLowerCase() === 'true') {
+    logger.warn('TRUST_PROXY=true would allow client IP spoofing; treating as 1 hop');
+    return 1;
+  }
+  if (/^\d+$/.test(value)) return parseInt(value, 10);
+  return value;
 }
 
 export class ConfigManager {
@@ -183,22 +202,15 @@ export class ConfigManager {
       manage: getEnvBool('DNS_DEFAULT_MANAGE', true),
     });
 
-    // Load auth config — use documented AUTH_DEFAULT_ADMIN_* env var names
-    const defaultAdminPassword =
-      getSecret('AUTH_DEFAULT_ADMIN_PASSWORD') ?? getEnv('AUTH_DEFAULT_ADMIN_PASSWORD', 'admin') ?? 'admin';
+    // Load auth config — AUTH_DEFAULT_ADMIN_* preferred, legacy DEFAULT_ADMIN_* still honoured
     this._auth = {
-      defaultAdminUsername: getEnv('AUTH_DEFAULT_ADMIN_USERNAME', 'admin') ?? 'admin',
-      defaultAdminPassword,
-      defaultAdminEmail: getEnv('AUTH_DEFAULT_ADMIN_EMAIL', 'admin@localhost') ?? 'admin@localhost',
+      defaultAdminUsername:
+        getEnv('AUTH_DEFAULT_ADMIN_USERNAME') ?? getEnv('DEFAULT_ADMIN_USERNAME') ?? 'admin',
+      defaultAdminPassword:
+        getSecret('AUTH_DEFAULT_ADMIN_PASSWORD') ?? getSecret('DEFAULT_ADMIN_PASSWORD') ?? 'admin',
+      defaultAdminEmail:
+        getEnv('AUTH_DEFAULT_ADMIN_EMAIL') ?? getEnv('DEFAULT_ADMIN_EMAIL') ?? 'admin@localhost',
     };
-
-    if (defaultAdminPassword === 'admin') {
-      logger.warn('╔════════════════════════════════════════════════════════════════╗');
-      logger.warn('║  ⚠  DEFAULT ADMIN PASSWORD IN USE                             ║');
-      logger.warn('║  Set AUTH_DEFAULT_ADMIN_PASSWORD to a strong password before   ║');
-      logger.warn('║  first startup to secure the initial admin account.            ║');
-      logger.warn('╚════════════════════════════════════════════════════════════════╝');
-    }
 
     // Load security config
     const authModeEnv = getEnv('AUTH_MODE');
@@ -226,6 +238,7 @@ export class ConfigManager {
     this._security = {
       authMode,
       globalApiKeyHash,
+      trustProxy: parseTrustProxy(getEnv('TRUST_PROXY')),
     };
 
     // Load OIDC config when mode is 'oidc'

@@ -63,10 +63,11 @@ export const listRecords = asyncHandler(async (req: Request, res: Response) => {
   }
   // Filter by zone/domain - matches records ending with the zone
   if (filter.zone && filter.zone.trim()) {
-    const zone = escapeLike(filter.zone.trim().toLowerCase());
-    // Match exact zone or subdomains (e.g., "example.com" matches "app.example.com" and "example.com")
+    const zone = filter.zone.trim().toLowerCase();
+    // Match exact zone or subdomains (e.g., "example.com" matches "app.example.com" and "example.com").
+    // Only the LIKE pattern is escaped; the '=' comparison uses the raw value.
     conditions.push(
-      sql`(LOWER(${dnsRecords.name}) = ${zone} OR LOWER(${dnsRecords.name}) LIKE ${`%.${zone}`} ESCAPE '\\')`
+      sql`(LOWER(${dnsRecords.name}) = ${zone} OR LOWER(${dnsRecords.name}) LIKE ${`%.${escapeLike(zone)}`} ESCAPE '\\')`
     );
   }
   // Filter by status (active = no orphanedAt, orphaned = has orphanedAt)

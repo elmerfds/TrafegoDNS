@@ -19,22 +19,10 @@ import { loginSchema, createApiKeySchema, securePasswordSchema } from '../valida
 import { getConfig } from '../../config/ConfigManager.js';
 import { sessionService, hashToken } from '../../services/SessionService.js';
 import { securityLogService } from '../../services/SecurityLogService.js';
+import { getClientIp, isRequestSecure } from '../requestUtils.js';
+import { createChildLogger } from '../../core/Logger.js';
 
-/**
- * Get client IP — uses req.ip which respects Express trust proxy setting.
- * Avoids reading X-Forwarded-For directly to prevent IP spoofing.
- */
-function getClientIp(req: Request): string {
-  return req.ip ?? req.socket.remoteAddress ?? 'unknown';
-}
-
-/**
- * Determine if the current request is over a secure (HTTPS) connection.
- * Checks both direct TLS and X-Forwarded-Proto from a trusted proxy.
- */
-function isRequestSecure(req: Request): boolean {
-  return req.secure || req.headers['x-forwarded-proto'] === 'https';
-}
+const logger = createChildLogger({ service: 'AuthController' });
 
 /** JWT expiration in seconds (mirrors auth.ts constant) */
 const JWT_EXPIRES_IN_SECONDS = parseInt(process.env.JWT_EXPIRES_IN_SECONDS ?? '86400', 10);
@@ -213,6 +201,8 @@ export const logout = asyncHandler(async (req: Request, res: Response) => {
   });
 
   res.clearCookie('token', { path: '/api/' });
+  // Also clear legacy cookies issued with path '/' before the path was restricted
+  res.clearCookie('token', { path: '/' });
 
   res.json({
     success: true,
@@ -601,6 +591,9 @@ export async function ensureAdminUser(
     .limit(1);
 
   if (existingAdmin) {
+    if (existingAdmin.passwordHash && (await bcrypt.compare('admin', existingAdmin.passwordHash))) {
+      warnDefaultAdminPassword(existingAdmin.username);
+    }
     return;
   }
 
@@ -615,4 +608,15 @@ export async function ensureAdminUser(
     createdAt: new Date(),
     updatedAt: new Date(),
   });
+
+  if (password === 'admin') {
+    warnDefaultAdminPassword(username);
+  }
+}
+
+function warnDefaultAdminPassword(username: string): void {
+  logger.warn(
+    { username },
+    'DEFAULT ADMIN PASSWORD IN USE — change it in the UI, or set AUTH_DEFAULT_ADMIN_PASSWORD before first startup'
+  );
 }

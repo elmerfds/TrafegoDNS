@@ -56,15 +56,20 @@ export const safeUrlSchema = z.string().url().refine(
         if (a === 100 && b !== undefined && b >= 64 && b <= 127) return false;
       }
 
-      // Block private IPv6 ranges
-      // fc00::/7 — Unique Local Addresses (fc** and fd**)
-      if (/^f[cd]/i.test(hostname)) return false;
-      // fe80::/10 — link-local
-      if (/^fe[89ab]/i.test(hostname)) return false;
-      // ::ffff:0:0/96 — IPv4-mapped (e.g. ::ffff:10.0.0.1)
-      if (/^::ffff:/i.test(hostname)) return false;
-      // 2001:db8::/32 — documentation range
-      if (/^2001:db8/i.test(hostname)) return false;
+      // Block private IPv6 ranges — only for IPv6 literals, so DNS names like
+      // fcm.googleapis.com or fd.example.com are not caught by the prefix checks
+      if (hostname.includes(':')) {
+        // :: — unspecified address
+        if (hostname === '::') return false;
+        // fc00::/7 — Unique Local Addresses (fc** and fd**)
+        if (/^f[cd][0-9a-f]{0,2}:/i.test(hostname)) return false;
+        // fe80::/10 — link-local
+        if (/^fe[89ab][0-9a-f]?:/i.test(hostname)) return false;
+        // ::ffff:0:0/96 — IPv4-mapped (e.g. ::ffff:10.0.0.1)
+        if (/^::ffff:/i.test(hostname)) return false;
+        // 2001:db8::/32 — documentation range
+        if (/^2001:0?db8:/i.test(hostname)) return false;
+      }
 
       return true;
     } catch {
