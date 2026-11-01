@@ -38,12 +38,11 @@ setInterval(
 ); // Every minute
 
 /**
- * Default key generator - uses IP address
+ * Default key generator - uses req.ip which respects Express trust proxy setting.
+ * Using req.ip prevents IP spoofing via a forged X-Forwarded-For header.
  */
 function defaultKeyGenerator(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  const ip = typeof forwarded === 'string' ? forwarded.split(',')[0]?.trim() : req.ip;
-  return `ip:${ip ?? 'unknown'}`;
+  return `ip:${req.ip ?? 'unknown'}`;
 }
 
 /**
