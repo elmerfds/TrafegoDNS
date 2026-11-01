@@ -641,6 +641,9 @@ export class DNSManager {
     // Group records by provider
     const providerGroups = new Map<string, ProviderRecordGroup>();
     const tunnelManagedHostnames = new Set<string>();
+    // Hostnames whose tunnel routing failed this cycle: keep their existing DNS records
+    // (neither orphan nor delete them) until routing succeeds or the hostname disappears.
+    const tunnelFailedHostnames = new Set<string>();
     const tunnelManager = this.getTunnelManager();
 
     for (const hostname of hostnames) {
@@ -676,6 +679,10 @@ export class DNSManager {
             } catch (error) {
               this.logger.error({ error, hostname, tunnel: tunnelConfig.tunnelName }, 'Failed to ensure tunnel ingress rule');
               this.stats.errors++;
+              tunnelFailedHostnames.add(hostname.toLowerCase());
+              for (const p of this.providerInstances.values()) {
+                tunnelFailedHostnames.add(this.ensureFqdn(hostname, p.getZoneName()).toLowerCase());
+              }
             }
             continue; // Skip normal DNS processing
           }
@@ -764,7 +771,7 @@ export class DNSManager {
     // Read from SettingsService (database-persisted) rather than ConfigManager (env-only)
     const cleanupEnabled = getSettingsService().get<boolean>('cleanup_orphaned');
     if (cleanupEnabled && (processedHostnames.length > 0 || tunnelManagedHostnames.size > 0)) {
-      await this.cleanupOrphanedRecords(processedHostnames);
+      await this.cleanupOrphanedRecords(processedHostnames, tunnelFailedHostnames);
 
       // Also cleanup orphaned tunnel ingress rules
       // Always run when tunnel manager exists — even with 0 active tunnel hostnames,
@@ -1365,7 +1372,10 @@ export class DNSManager {
   /**
    * Cleanup orphaned DNS records across all providers
    */
-  private async cleanupOrphanedRecords(processedHostnames: ProcessedHostname[]): Promise<void> {
+  private async cleanupOrphanedRecords(
+    processedHostnames: ProcessedHostname[],
+    protectedHostnames: Set<string> = new Set()
+  ): Promise<void> {
     const db = getDatabase();
     // Read grace period from SettingsService (database-persisted) so changes survive restarts
     const gracePeriodMinutes = getSettingsService().get<number>('cleanup_grace_period');
@@ -1439,6 +1449,12 @@ export class DNSManager {
             { name: record.name, type: record.type, providerId },
             'Skipping unmanaged record (not created by TrafegoDNS)'
           );
+          continue;
+        }
+
+        // Tunnel routing failed this cycle: leave the existing record alone
+        if (protectedHostnames.has(normalizedHostname)) {
+          this.logger.debug({ name: record.name, providerId }, 'Skipping orphan check: tunnel routing failed this cycle');
           continue;
         }
 
